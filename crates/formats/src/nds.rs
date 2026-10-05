@@ -152,6 +152,8 @@ pub struct NdsRom {
     paths: Vec<Option<String>>,
     overlays: Vec<Overlay>,
     replaced: BTreeMap<u16, Vec<u8>>,
+    /// ARM9 modifié (même taille que l'original, compressé ou non).
+    arm9_override: Option<Vec<u8>>,
 }
 
 impl NdsRom {
@@ -180,7 +182,7 @@ impl NdsRom {
             .map(Overlay::parse)
             .collect();
 
-        Ok(Self { data, header, fat, paths, overlays, replaced: BTreeMap::new() })
+        Ok(Self { data, header, fat, paths, overlays, replaced: BTreeMap::new(), arm9_override: None })
     }
 
     pub fn header(&self) -> &NdsHeader {
@@ -228,9 +230,93 @@ impl NdsRom {
         self.replace_file(id, data)
     }
 
+    /// ARM9 tel que stocké dans la ROM (éventuellement compressé en BLZ).
     pub fn arm9(&self) -> &[u8] {
+        if let Some(a) = &self.arm9_override {
+            return a;
+        }
         let start = self.header.arm9_offset as usize;
         &self.data[start..start + self.header.arm9_size as usize]
+    }
+
+    /// `true` si l'ARM9 est compressé (BLZ). Indiqué par le champ « fin du code
+    /// compressé » des paramètres du module SDK, repérés par leurs signatures.
+    pub fn arm9_compressed(&self) -> bool {
+        const NITROCODE: [u8; 8] = [0x21, 0x06, 0xC0, 0xDE, 0xDE, 0xC0, 0x06, 0x21];
+        let arm9 = self.arm9();
+        arm9.windows(8)
+            .position(|w| w == NITROCODE)
+            // Paramètres : …, fin compressée (+0x10), version SDK (+0x14), signatures (+0x18).
+            .filter(|&p| p >= 8)
+            .is_some_and(|p| u32le(arm9, p - 8) != 0)
+    }
+
+    /// ARM9 décompressé (identique à `arm9()` s'il n'est pas compressé).
+    pub fn arm9_decompressed(&self) -> Result<Vec<u8>> {
+        if self.arm9_compressed() {
+            lz::decompress_blz(self.arm9())
+        } else {
+            Ok(self.arm9().to_vec())
+        }
+    }
+
+    /// Modifie un octet de l'ARM9, à une position du code **décompressé**.
+    ///
+    /// ARM9 non compressé : modification directe. ARM9 compressé : modification sur
+    /// place dans le flux BLZ si l'octet y est stocké tel quel, sinon recompression
+    /// complète (voir [`NdsRom::replace_arm9`]).
+    pub fn patch_arm9(&mut self, pos: usize, value: u8) -> Result<()> {
+        let mut arm9 = self.arm9().to_vec();
+        if !self.arm9_compressed() {
+            *arm9.get_mut(pos).ok_or(FormatError::Invalid("position hors de l'ARM9"))? = value;
+            self.arm9_override = Some(arm9);
+            return Ok(());
+        }
+        if lz::blz_patch_byte(&mut arm9, pos, value).is_ok() {
+            self.arm9_override = Some(arm9);
+            return Ok(());
+        }
+        let mut decompressed = self.arm9_decompressed()?;
+        *decompressed.get_mut(pos).ok_or(FormatError::Invalid("position hors de l'ARM9"))? = value;
+        self.replace_arm9(&decompressed)
+    }
+
+    /// Remplace l'ARM9 par un code décompressé. S'il était compressé, il est
+    /// recompressé (les 0x4000 premiers octets restent en clair, comme chez Nintendo),
+    /// et le champ « fin du code compressé » des paramètres du module est mis à jour.
+    /// Refuse si le résultat ne tient pas dans la place disponible.
+    pub fn replace_arm9(&mut self, decompressed: &[u8]) -> Result<()> {
+        if !self.arm9_compressed() {
+            if decompressed.len() != self.arm9().len() {
+                return Err(FormatError::Invalid("l'ARM9 non compressé doit garder sa taille"));
+            }
+            self.arm9_override = Some(decompressed.to_vec());
+            return Ok(());
+        }
+        const KEEP: usize = 0x4000;
+        const NITROCODE: [u8; 8] = [0x21, 0x06, 0xC0, 0xDE, 0xDE, 0xC0, 0x06, 0x21];
+        let mut packed = lz::compress_blz(decompressed, KEEP);
+        let params = packed[..KEEP.min(packed.len())]
+            .windows(8)
+            .position(|w| w == NITROCODE)
+            .filter(|&p| p >= 8)
+            .ok_or(FormatError::Invalid("paramètres du module ARM9 introuvables"))?;
+        let load_address = u32le(&self.data, 0x28);
+        let end = load_address + packed.len() as u32;
+        packed[params - 8..params - 4].copy_from_slice(&end.to_le_bytes());
+
+        let start = self.header.arm9_offset;
+        let next = [self.header.arm9_overlay_offset, self.header.arm7_offset, self.header.fnt_offset, self.header.fat_offset]
+            .into_iter()
+            .chain(self.fat.iter().map(|&(s, _)| s))
+            .filter(|&o| o > start)
+            .min()
+            .unwrap_or(start + self.header.arm9_size);
+        if start as usize + packed.len() > next as usize {
+            return Err(FormatError::Invalid("l'ARM9 recompressé ne tient plus à sa place"));
+        }
+        self.arm9_override = Some(packed);
+        Ok(())
     }
 
     pub fn overlays(&self) -> &[Overlay] {
@@ -267,6 +353,17 @@ impl NdsRom {
     /// Reconstruit l'image complète de la ROM.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut out = self.data.clone();
+        if let Some(arm9) = &self.arm9_override {
+            let start = self.header.arm9_offset as usize;
+            let old_end = start + self.header.arm9_size as usize;
+            out[start..start + arm9.len()].copy_from_slice(arm9);
+            if start + arm9.len() < old_end {
+                out[start + arm9.len()..old_end].fill(0);
+            }
+            out[0x2C..0x30].copy_from_slice(&(arm9.len() as u32).to_le_bytes());
+            let crc = crc16(&out[..0x15E]);
+            out[0x15E..0x160].copy_from_slice(&crc.to_le_bytes());
+        }
         if self.replaced.is_empty() {
             return Ok(out);
         }

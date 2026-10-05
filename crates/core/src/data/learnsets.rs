@@ -29,6 +29,30 @@ pub fn read(generation: u8, d: &[u8]) -> Learnset {
     out
 }
 
+/// Remplace sur place chaque attaque : `f(index, attaque, niveau)` renvoie la nouvelle
+/// attaque. Le format et les niveaux ne changent pas.
+pub fn map_moves(generation: u8, d: &mut [u8], mut f: impl FnMut(usize, u16, u8) -> u16) {
+    if generation <= 4 {
+        for (i, at) in (0..d.len().saturating_sub(1)).step_by(2).enumerate() {
+            let v = u16_at(d, at);
+            if v == 0xFFFF {
+                break;
+            }
+            let new = f(i, v & 0x1FF, (v >> 9) as u8) & 0x1FF;
+            d[at..at + 2].copy_from_slice(&((v & !0x1FF) | new).to_le_bytes());
+        }
+    } else {
+        for (i, at) in (0..d.len().saturating_sub(3)).step_by(4).enumerate() {
+            let (mv, lvl) = (u16_at(d, at), u16_at(d, at + 2));
+            if mv == 0xFFFF {
+                break;
+            }
+            let new = f(i, mv, lvl as u8);
+            d[at..at + 2].copy_from_slice(&new.to_le_bytes());
+        }
+    }
+}
+
 /// Les 4 dernières attaques apprises jusqu'à `level` (comme un Pokémon sauvage).
 pub fn moves_at_level(learnset: &Learnset, level: u16) -> [u16; 4] {
     let mut known: Vec<u16> = Vec::new();

@@ -14,7 +14,7 @@ use kaleido_formats::garc::Garc;
 use kaleido_formats::lz;
 use serde::{Deserialize, Serialize};
 
-use super::{apply_personal, randomize_trainers, randomize_wild, share_code, Ctx, Outcome, Settings, Sources, TrainerMode, WildMode};
+use super::{apply_personal, randomize_trainers, randomize_wild, share_code, Ctx, Outcome, Settings, Sources, WildMode};
 use crate::ctr_rom::CtrGameRom;
 use crate::data::encounters;
 use crate::games::Game;
@@ -175,6 +175,27 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
         let _ = writeln!(log);
     }
 
+    // Évolutions et attaques apprises (avant les dresseurs, qui s'en servent).
+    if settings.easy_evolutions {
+        let mut garc = game.garc(l.evolution)?;
+        let mut evo_files = entries(&garc);
+        super::extras::easy_evolutions(&mut ctx, &mut evo_files, &mut log);
+        for (i, f) in evo_files.into_iter().enumerate() {
+            garc.set_file(i, f)?;
+        }
+        files.push((l.evolution.to_string(), garc.to_bytes()));
+    }
+    if settings.random_movesets {
+        let max_move = game.text_file(l.move_names)?.len().saturating_sub(1) as u16;
+        let mut garc = game.garc(l.levelup)?;
+        let mut learn_files = entries(&garc);
+        super::extras::random_movesets(&mut ctx, &mut learn_files, max_move, seed, &mut log);
+        for (i, f) in learn_files.into_iter().enumerate() {
+            garc.set_file(i, f)?;
+        }
+        files.push((l.levelup.to_string(), garc.to_bytes()));
+    }
+
     // 3. Pokémon sauvages : fichiers de zone compressés en LZ11 + copie concaténée « EN ».
     let mut wild_slots = 0;
     if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {
@@ -221,7 +242,7 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
 
     // 4. Dresseurs.
     let mut trainer_pokemon = 0;
-    if settings.trainers != TrainerMode::Unchanged || settings.trainer_level_percent != 100 {
+    if super::trainers_changed(settings) {
         let mut trdata_garc = game.garc(l.trainer_data)?;
         let mut trpoke_garc = game.garc(l.trainer_pokemon)?;
         let mut trdata = entries(&trdata_garc);

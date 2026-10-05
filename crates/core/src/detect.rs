@@ -103,6 +103,41 @@ pub enum DetectError {
     Format(#[from] FormatError),
 }
 
+/// Extensions des fichiers ajoutés quand on dépose un dossier ordinaire.
+const KNOWN_EXTENSIONS: &[&str] = &["nds", "3ds", "cci", "cia", "cxi", "sav", "dsv"];
+
+fn is_ctr_dump(dir: &Path) -> bool {
+    dir.join("romfs").is_dir() || dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs"))
+}
+
+/// Développe un chemin déposé : un fichier ou un dossier de jeu 3DS extrait reste tel
+/// quel ; un dossier ordinaire est remplacé par les ROMs, sauvegardes et dossiers
+/// 3DS qu'il contient (sur deux niveaux de profondeur).
+pub fn expand_path(path: &Path) -> Vec<std::path::PathBuf> {
+    fn walk(dir: &Path, depth: u8, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else { return };
+        let mut entries: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            if p.is_dir() {
+                if is_ctr_dump(&p) {
+                    out.push(p);
+                } else if depth > 0 {
+                    walk(&p, depth - 1, out);
+                }
+            } else if p.extension().and_then(|e| e.to_str()).is_some_and(|e| KNOWN_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())) {
+                out.push(p);
+            }
+        }
+    }
+    if !path.is_dir() || is_ctr_dump(path) {
+        return vec![path.to_path_buf()];
+    }
+    let mut out = Vec::new();
+    walk(path, 1, &mut out);
+    out
+}
+
 pub fn detect_path(path: &Path) -> Result<Detection, DetectError> {
     let io_err = |e| DetectError::Io(path.display().to_string(), e);
     let mut detection = if path.is_dir() {
@@ -272,6 +307,21 @@ mod tests {
         let d = detect_stream(&mut Cursor::new(vec![0u8; 0x6BE00])).unwrap();
         assert_eq!(d.kind, FileKind::Save);
         assert_eq!(d.generation, Some(7));
+    }
+
+    #[test]
+    fn expand_plain_folder() {
+        let root = std::env::temp_dir().join(format!("kaleido-expand-{}", std::process::id()));
+        let dump = root.join("Rubis").join("romfs");
+        fs::create_dir_all(&dump).unwrap();
+        fs::create_dir_all(root.join("sous")).unwrap();
+        for f in ["a.nds", "b.SAV", "notes.txt", "sous/c.3ds"] {
+            fs::write(root.join(f), b"x").unwrap();
+        }
+        let found: Vec<String> = expand_path(&root).iter().map(|p| p.strip_prefix(&root).unwrap().display().to_string().replace('\\', "/")).collect();
+        assert_eq!(found, vec!["Rubis", "a.nds", "b.SAV", "sous/c.3ds"]);
+        assert_eq!(expand_path(&root.join("Rubis")), vec![root.join("Rubis")]);
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

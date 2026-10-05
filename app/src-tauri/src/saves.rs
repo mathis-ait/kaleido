@@ -96,12 +96,13 @@ pub fn save_write(output: Option<PathBuf>, state: State<'_, OpenSave>) -> Result
 
 #[derive(Serialize)]
 pub struct NameLists {
+    species: &'static [String],
     moves: &'static [String],
     items: &'static [String],
 }
 
-/// Listes de noms pour les menus (attaques, objets).
+/// Listes de noms pour les menus (espèces, attaques, objets).
 #[tauri::command]
 pub fn name_lists() -> NameLists {
-    NameLists { moves: names::all_moves(), items: names::all_items() }
+    NameLists { species: names::all_species(), moves: names::all_moves(), items: names::all_items() }
 }

@@ -1916,6 +1916,7 @@ version = "0.1.0"
 dependencies = [
  "kaleido-core",
  "kaleido-formats",
+ "serde_json",
 ]
 
 [[package]]

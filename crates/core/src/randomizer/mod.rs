@@ -6,6 +6,7 @@
 //! bouleverse pas les autres parties.
 
 pub mod ctr;
+mod extras;
 pub mod settings;
 
 use std::collections::HashMap;
@@ -16,7 +17,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::Serialize;
 
-pub use settings::{parse_share_code, presets, share_code, Preset, Settings, StarterMode, StatsMode, TrainerMode, WildMode};
+pub use settings::{parse_share_code, presets, share_code, CatchRateMode, Preset, Settings, StarterMode, StatsMode, TrainerMode, WildMode};
 
 use crate::data::evolutions::{self, EvolutionInfo};
 use crate::data::learnsets::{self, Learnset};
@@ -74,6 +75,8 @@ pub(crate) struct Ctx {
     /// Fiche « personal » de chaque espèce (index = n° national).
     personal: Vec<Vec<u8>>,
     evo: EvolutionInfo,
+    /// Évolutions de chaque espèce (méthode, paramètre, cible).
+    evo_tables: Vec<Vec<evolutions::Evolution>>,
     learnsets: Vec<Learnset>,
     no_legendaries: bool,
     max_ability: u16,
@@ -103,6 +106,7 @@ impl Ctx {
             names: src.names,
             personal: src.personal,
             evo: EvolutionInfo::build(&evo_tables, count),
+            evo_tables,
             learnsets: src.learnsets.iter().map(|f| learnsets::read(src.gen, f)).collect(),
             no_legendaries: settings.no_legendaries,
             max_ability: src.max_ability,
@@ -210,7 +214,20 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
         let _ = writeln!(log);
     }
 
-    // 3. Pokémon sauvages.
+    // 3. Évolutions et attaques apprises (avant les dresseurs, qui s'en servent).
+    if settings.easy_evolutions {
+        let mut narc = game.narc(paths.evolutions)?;
+        extras::easy_evolutions(&mut ctx, &mut narc.files, &mut log);
+        game.replace_narc(paths.evolutions, &narc)?;
+    }
+    if settings.random_movesets {
+        let max_move = game.text_file(paths.move_names)?.len().saturating_sub(1) as u16;
+        let mut narc = game.narc(paths.learnsets)?;
+        extras::random_movesets(&mut ctx, &mut narc.files, max_move, seed, &mut log);
+        game.replace_narc(paths.learnsets, &narc)?;
+    }
+
+    // 4. Pokémon sauvages.
     let wild_slots = if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {
         let mut narc = game.narc(paths.encounters)?;
         let n = randomize_wild(&ctx, settings, seed, &mut narc.files, &mut log);
@@ -220,8 +237,14 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
         0
     };
 
-    // 4. Dresseurs.
-    let trainer_pokemon = if settings.trainers != TrainerMode::Unchanged || settings.trainer_level_percent != 100 {
+    // 5. Taux de chromatiques (modification du code du jeu).
+    if settings.shiny_multiplier > 1 {
+        let odds = crate::data::shiny::set_multiplier(game.rom_mut(), settings.shiny_multiplier)?;
+        let _ = writeln!(log, "== Chromatiques ==\nTaux : 1 / {odds} (au lieu de 1 / 8192)\n");
+    }
+
+    // 6. Dresseurs.
+    let trainer_pokemon = if trainers_changed(settings) {
         let mut trdata = game.narc(paths.trainer_data)?;
         let mut trpoke = game.narc(paths.trainer_pokemon)?;
         let moves = game.text_file(paths.move_names)?;
@@ -243,6 +266,15 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     })
 }
 
+/// Les dresseurs sont-ils modifiés par l'un des réglages ?
+fn trainers_changed(settings: &Settings) -> bool {
+    settings.trainers != TrainerMode::Unchanged
+        || settings.trainer_level_percent != 100
+        || settings.trainer_evolutions
+        || settings.trainer_max_ivs
+        || settings.random_movesets
+}
+
 /// Index de type tel que stocké par la génération.
 fn type_index(gen: u8, t: PokeType) -> u8 {
     (0..18).find(|&i| PokeType::from_index(gen, i) == Some(t)).unwrap_or(0)
@@ -254,9 +286,23 @@ fn all_types(gen: u8) -> Vec<PokeType> {
 
 /// Types, statistiques et talents. Renvoie `true` si quelque chose a changé.
 pub(crate) fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut String) -> bool {
-    let changed = settings.random_types || settings.stats != StatsMode::Unchanged || settings.random_abilities;
+    let changed = settings.random_types
+        || settings.stats != StatsMode::Unchanged
+        || settings.random_abilities
+        || settings.catch_rate != CatchRateMode::Unchanged;
     if !changed {
         return false;
+    }
+
+    if settings.catch_rate != CatchRateMode::Unchanged {
+        for s in 1..=ctx.count as usize {
+            let rate = &mut ctx.personal[s][8];
+            *rate = match settings.catch_rate {
+                CatchRateMode::Doubled => rate.saturating_mul(2),
+                CatchRateMode::Max => 255,
+                CatchRateMode::Unchanged => *rate,
+            };
+        }
     }
     let gen = ctx.gen;
     let count = ctx.count as usize;
@@ -378,6 +424,14 @@ fn choose_starters(ctx: &Ctx, settings: &Settings, seed: u64, current: [u16; 3])
                 out[i] = ctx.pick(&mut rng, None, |s| three_stage(s) && ctx.types(s).contains(&t), &out[..i].to_vec());
             }
         }
+        StarterMode::Custom => {
+            // Espèces choisies par le joueur ; une case vide ou hors du jeu garde l'original.
+            for (slot, &wanted) in out.iter_mut().zip(&settings.custom_starters) {
+                if (1..=ctx.count).contains(&wanted) {
+                    *slot = wanted;
+                }
+            }
+        }
     }
     out
 }
@@ -479,6 +533,16 @@ pub(crate) fn randomize_trainers(
                 used.push(p.species);
             }
             p.level = scale_level(p.level, settings.trainer_level_percent);
+            if settings.trainer_evolutions {
+                let evolved = extras::evolve_for_level(ctx, &mut rng, p.species, p.level);
+                if evolved != p.species {
+                    p.species = evolved;
+                    p.form = 0;
+                }
+            }
+            if settings.trainer_max_ivs {
+                p.difficulty = 255;
+            }
             if team.flags & trainers::FLAG_MOVES != 0 {
                 if let Some(ls) = ctx.learnsets.get(p.species as usize) {
                     p.moves = learnsets::moves_at_level(ls, p.level);

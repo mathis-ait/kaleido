@@ -53,7 +53,14 @@ export interface RomOverview {
 }
 
 export interface RandomizerSettings {
-  starters: "unchanged" | "random" | "three_stage" | "triangle";
+  starters: "unchanged" | "random" | "three_stage" | "triangle" | "custom";
+  customStarters: number[];
+  catchRate: "unchanged" | "doubled" | "max";
+  easyEvolutions: boolean;
+  randomMovesets: boolean;
+  trainerEvolutions: boolean;
+  trainerMaxIvs: boolean;
+  shinyMultiplier: number;
   wild: "unchanged" | "random" | "area" | "global";
   wildSimilarStrength: boolean;
   wildLevelPercent: number;

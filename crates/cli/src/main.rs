@@ -58,6 +58,30 @@ fn main() -> ExitCode {
         ["randomize", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| randomize(rom, preset, s, out)),
         ["starters", rom] => starters(rom),
         ["search", rom, values] => search(&open(rom), values),
+        ["shinyscan", rom] => shiny_scan(&open(rom)),
+        ["shiny", rom, mult, out] => mult.parse().map_err(Into::into).and_then(|m: u16| {
+            use kaleido_core::data::shiny;
+            let mut r = open(rom);
+            let before = r.arm9_decompressed()?;
+            println!("ARM9 compressé : {}, {} octets, constante en {:#X}", r.arm9_compressed(), r.arm9().len(), shiny::locate(&r)?);
+            let t = std::time::Instant::now();
+            let odds = shiny::set_multiplier(&mut r, m)?;
+            println!("taux : 1/{odds} ({} ms), ARM9 : {} octets", t.elapsed().as_millis(), r.arm9().len());
+            std::fs::write(out, r.to_bytes()?)?;
+            let check = NdsRom::open(Path::new(out))?;
+            let after = check.arm9_decompressed()?;
+            let diff: Vec<usize> = (0..before.len().min(after.len())).filter(|&i| before[i] != after[i]).collect();
+            println!(
+                "relu : seuil {}, {} octet(s) différent(s) {:X?}, tailles {} / {}, CRC en-tête {}",
+                shiny::current_threshold(&check)?,
+                diff.len(),
+                diff.iter().take(4).collect::<Vec<_>>(),
+                before.len(),
+                after.len(),
+                check.header().header_crc_ok
+            );
+            Ok(())
+        }),
         ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["info3ds", rom] => ctr::info(&ctr::open(rom)),
         ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
@@ -355,7 +379,7 @@ fn hex3ds(rom: &str, path: &str, rest: &[&str]) -> CliResult {
 
 fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     use kaleido_core::randomizer;
-    let settings = randomizer::presets().into_iter().find(|p| p.id == preset).ok_or("préréglage inconnu")?.settings;
+    let settings = load_settings(preset)?;
     let mut game = kaleido_core::GameRom::open(Path::new(path))?;
     let outcome = randomizer::randomize(&mut game, &settings, seed)?;
     game.save(Path::new(out))?;
@@ -365,6 +389,15 @@ fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     println!("Code : {}", outcome.share_code);
     std::fs::write(format!("{out}.log.txt"), &outcome.log)?;
     Ok(())
+}
+
+/// Réglages : nom d'un préréglage, ou fichier `.json` (mêmes champs que l'interface).
+pub(crate) fn load_settings(arg: &str) -> Result<kaleido_core::randomizer::Settings, Box<dyn std::error::Error>> {
+    use kaleido_core::randomizer;
+    if arg.ends_with(".json") {
+        return Ok(serde_json::from_str(&std::fs::read_to_string(arg)?)?);
+    }
+    Ok(randomizer::presets().into_iter().find(|p| p.id == arg).ok_or("préréglage inconnu")?.settings)
 }
 
 fn starters(path: &str) -> CliResult {
@@ -379,6 +412,67 @@ fn starters(path: &str) -> CliResult {
         let gifts = kaleido_core::data::starters::read_bw_gifts(&game)?;
         let list: Vec<_> = gifts.iter().map(|&g| names.get(g as usize).cloned().unwrap_or_else(|| g.to_string())).collect();
         println!("Donnés par le script 782 : {}", list.join(", "));
+    }
+    Ok(())
+}
+
+/// Outil de recherche : instructions Thumb `cmp rX, #8` précédées de XOR (calcul shiny).
+fn shiny_scan(rom: &NdsRom) -> CliResult {
+    let arm9 = kaleido_formats::lz::decompress_blz(rom.arm9()).unwrap_or_else(|_| rom.arm9().to_vec());
+    println!("arm9 : {} octets ({} décompressé)", rom.arm9().len(), arm9.len());
+    let mut sources: Vec<(String, Vec<u8>)> = vec![("arm9".into(), arm9)];
+    for o in rom.overlays() {
+        sources.push((format!("overlay {}", o.id), rom.overlay(o.id)?));
+    }
+    let half = |d: &[u8], at: usize| u16::from_le_bytes([d[at], d[at + 1]]);
+    for (name, d) in &sources {
+        for at in (24..d.len().saturating_sub(4)).step_by(2) {
+            let ins = half(d, at);
+            if ins & 0xF8FF != 0x2808 {
+                continue; // cmp rX, #8
+            }
+            let eors = (1..=12).filter(|k| (0x4040..=0x407F).contains(&half(d, at - 2 * k))).count();
+            let next = half(d, at + 2);
+            if eors >= 2 && matches!(next >> 8, 0xD2 | 0xD3) {
+                let ctx: Vec<String> = (at - 24..at + 6).step_by(2).map(|i| format!("{:04X}", half(d, i))).collect();
+                println!("{name} @ {at:#X} : eor×{eors} | {}", ctx.join(" "));
+            }
+        }
+        // Variante ARM 32 bits : `cmp rX, #8` (E35X0008) précédé d'EOR (E02…).
+        let word = |at: usize| u32::from_le_bytes(d[at..at + 4].try_into().unwrap());
+        for at in (32..d.len().saturating_sub(8)).step_by(4) {
+            if word(at) & 0xFFF0_FFFF != 0xE350_0008 {
+                continue;
+            }
+            let eors = (1..=8).filter(|k| word(at - 4 * k) & 0x0FE0_0000 == 0x0020_0000).count();
+            if eors >= 2 {
+                println!("{name} @ {at:#X} (ARM) : eor×{eors} | {:08X} {:08X}", word(at), word(at + 4));
+            }
+        }
+        // Variante « (x >> 3) == 0 » : lsr rD, rS, #3 juste après des EOR.
+        for at in (24..d.len().saturating_sub(4)).step_by(2) {
+            let ins = half(d, at);
+            if ins & 0xFFC0 != 0x08C0 {
+                continue;
+            }
+            let eors = (1..=6).filter(|k| (0x4040..=0x407F).contains(&half(d, at - 2 * k))).count();
+            if eors >= 2 {
+                let ctx: Vec<String> = (at - 24..at + 8).step_by(2).map(|i| format!("{:04X}", half(d, i))).collect();
+                println!("{name} @ {at:#X} (lsr #3) : eor×{eors} | {}", ctx.join(" "));
+            }
+        }
+        // Variante Thumb avec seuil dans un registre ou comparaison « 7 » (≤ 7).
+        for at in (24..d.len().saturating_sub(4)).step_by(2) {
+            let ins = half(d, at);
+            if ins & 0xF8FF != 0x2807 {
+                continue;
+            }
+            let eors = (1..=12).filter(|k| (0x4040..=0x407F).contains(&half(d, at - 2 * k))).count();
+            if eors >= 2 {
+                let ctx: Vec<String> = (at - 24..at + 6).step_by(2).map(|i| format!("{:04X}", half(d, i))).collect();
+                println!("{name} @ {at:#X} (≤7) : eor×{eors} | {}", ctx.join(" "));
+            }
+        }
     }
     Ok(())
 }

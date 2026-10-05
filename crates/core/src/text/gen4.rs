@@ -24,13 +24,15 @@ pub struct MsgFile {
     pub entries: Vec<Vec<u16>>,
 }
 
+// Les clés sont calculées modulo 2^16 : multiplications « wrapping » (sinon débordement
+// en mode développement sur les gros fichiers, comme le texte des dresseurs de Platine).
 fn table_key(seed: u16, index: usize) -> u32 {
-    let k = (seed as u32 * 0x2FD * (index as u32 + 1)) & 0xFFFF;
+    let k = (seed as u32).wrapping_mul(0x2FD).wrapping_mul(index as u32 + 1) & 0xFFFF;
     k | k << 16
 }
 
 fn string_key(index: usize) -> u16 {
-    ((0x91BD3 * (index as u32 + 1)) & 0xFFFF) as u16
+    (0x91BD3u32.wrapping_mul(index as u32 + 1) & 0xFFFF) as u16
 }
 
 fn crypt_string(codes: &mut [u16], index: usize) {

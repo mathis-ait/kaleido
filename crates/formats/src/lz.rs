@@ -334,6 +334,194 @@ pub fn decompress_blz(d: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Compression BLZ (portage de `BLZ_Code` de CUE, mode « best »). Les `keep`
+/// premiers octets ne sont jamais compressés (0x4000 pour un ARM9, comme Nintendo).
+pub fn compress_blz(input: &[u8], keep: usize) -> Vec<u8> {
+    const THRESHOLD: usize = 2;
+    const WINDOW: usize = 0x1002;
+    const MAX_LEN: usize = 0x12;
+
+    let raw_len = input.len();
+    let raw_new = raw_len.saturating_sub(keep.min(raw_len));
+    let raw: Vec<u8> = input.iter().rev().copied().collect();
+
+    // Plus longue correspondance à la position `at` (distance ≥ 3), limitée à `end`.
+    let search = |at: usize, end: usize| -> (usize, usize) {
+        let (mut best_len, mut best_pos) = (THRESHOLD, 0);
+        let max = at.min(WINDOW);
+        for pos in 3..=max {
+            let mut len = 0;
+            while len < MAX_LEN && at + len < end && len < pos && raw[at + len] == raw[at + len - pos] {
+                len += 1;
+            }
+            if len > best_len {
+                best_len = len;
+                best_pos = pos;
+                if len == MAX_LEN {
+                    break;
+                }
+            }
+        }
+        (best_len, best_pos)
+    };
+
+    let mut pak: Vec<u8> = Vec::with_capacity(raw_len + raw_len / 8 + 11);
+    let (mut pak_tmp, mut raw_tmp) = (0usize, raw_len);
+    let mut at = 0;
+    let mut flag_at = 0;
+    let mut mask = 0u8;
+    while at < raw_new {
+        mask >>= 1;
+        if mask == 0 {
+            flag_at = pak.len();
+            pak.push(0);
+            mask = 0x80;
+        }
+        let (mut len_best, pos_best) = search(at, raw_new);
+        // Optimisation LZ-CUE : vérifie qu'un littéral suivi d'une copie ne serait pas meilleur.
+        if len_best > THRESHOLD && at + len_best < raw_new {
+            let (mut len_next, _) = search(at + len_best, raw_new);
+            let (mut len_post, _) = search(at + 1, raw_new);
+            if len_next <= THRESHOLD {
+                len_next = 1;
+            }
+            if len_post <= THRESHOLD {
+                len_post = 1;
+            }
+            if len_best + len_next <= 1 + len_post {
+                len_best = 1;
+            }
+        }
+        pak[flag_at] <<= 1;
+        if len_best > THRESHOLD {
+            at += len_best;
+            pak[flag_at] |= 1;
+            pak.push((((len_best - (THRESHOLD + 1)) << 4) | ((pos_best - 3) >> 8)) as u8);
+            pak.push(((pos_best - 3) & 0xFF) as u8);
+        } else {
+            pak.push(raw[at]);
+            at += 1;
+        }
+        if pak.len() + raw_len - at < pak_tmp + raw_tmp {
+            pak_tmp = pak.len();
+            raw_tmp = raw_len - at;
+        }
+    }
+    while mask != 0 && mask != 1 {
+        mask >>= 1;
+        pak[flag_at] <<= 1;
+    }
+    let pak_len = pak.len();
+    pak.reverse();
+
+    if pak_tmp == 0 || raw_len + 4 < ((pak_tmp + raw_tmp + 3) & !3) + 8 {
+        // Compression inutile : données brutes + pied nul.
+        let mut out = input.to_vec();
+        while out.len() % 4 != 0 {
+            out.push(0);
+        }
+        out.extend([0; 4]);
+        return out;
+    }
+    let mut out = Vec::with_capacity(raw_tmp + pak_tmp + 11);
+    out.extend_from_slice(&input[..raw_tmp]);
+    out.extend_from_slice(&pak[pak_len - pak_tmp..]);
+    let enc_len = pak_tmp;
+    let mut hdr_len = 8;
+    let inc_len = raw_len - pak_tmp - raw_tmp;
+    while out.len() % 4 != 0 {
+        out.push(0xFF);
+        hdr_len += 1;
+    }
+    out.extend(&((enc_len + hdr_len) as u32).to_le_bytes()[..3]);
+    out.push(hdr_len as u8);
+    out.extend(((inc_len - hdr_len) as u32).to_le_bytes());
+    out
+}
+
+/// Modifie l'octet `out_pos` des données **décompressées** directement dans un bloc
+/// BLZ, sans recompresser : possible si cet octet est stocké tel quel (littéral) et
+/// qu'aucune copie ne le réutilise. La taille du bloc ne change pas.
+pub fn blz_patch_byte(d: &mut [u8], out_pos: usize, value: u8) -> Result<()> {
+    const NOT_PATCHABLE: FormatError = FormatError::Invalid("octet non modifiable dans le code compressé");
+    let len = d.len();
+    if len < 8 {
+        return Err(TRUNCATED);
+    }
+    let inc_len = u32::from_le_bytes(d[len - 4..].try_into().unwrap()) as usize;
+    if inc_len == 0 {
+        // Pas compressé : modification directe.
+        *d.get_mut(out_pos).ok_or(NOT_PATCHABLE)? = value;
+        return Ok(());
+    }
+    let hdr_len = d[len - 5] as usize;
+    let enc_len = u32::from_le_bytes(d[len - 8..len - 4].try_into().unwrap()) as usize & 0x00FF_FFFF;
+    if enc_len > len || hdr_len > enc_len {
+        return Err(FormatError::Invalid("pied BLZ incohérent"));
+    }
+    let dec_len = len - enc_len;
+    if out_pos < dec_len {
+        d[out_pos] = value; // partie laissée en clair au début
+        return Ok(());
+    }
+    let pak_len = enc_len - hdr_len;
+    let target = enc_len + inc_len;
+    // Index dans `d` de l'octet compressé lu en position `p` (lecture à rebours).
+    let src = |p: usize| dec_len + pak_len - 1 - p;
+
+    let mut raw: Vec<u8> = Vec::with_capacity(target);
+    let mut literal: Vec<Option<usize>> = Vec::with_capacity(target);
+    let mut referenced: Vec<bool> = Vec::with_capacity(target);
+    let (mut p, mut flags, mut mask) = (0usize, 0u8, 0u8);
+    while raw.len() < target {
+        mask >>= 1;
+        if mask == 0 {
+            if p >= pak_len {
+                break;
+            }
+            flags = d[src(p)];
+            p += 1;
+            mask = 0x80;
+        }
+        if flags & mask == 0 {
+            if p >= pak_len {
+                break;
+            }
+            raw.push(d[src(p)]);
+            literal.push(Some(src(p)));
+            referenced.push(false);
+            p += 1;
+        } else {
+            if p + 1 >= pak_len {
+                break;
+            }
+            let pos = (d[src(p)] as usize) << 8 | d[src(p + 1)] as usize;
+            p += 2;
+            let n = ((pos >> 12) + 3).min(target - raw.len());
+            let disp = (pos & 0xFFF) + 3;
+            if disp > raw.len() {
+                return Err(BAD_DISTANCE);
+            }
+            for _ in 0..n {
+                let s = raw.len() - disp;
+                referenced[s] = true;
+                raw.push(raw[s]);
+                literal.push(None);
+                referenced.push(false);
+            }
+        }
+    }
+    // La sortie finale est `raw` à l'envers, après la partie en clair.
+    let r = (dec_len + raw.len()).checked_sub(1 + out_pos).filter(|&r| r < raw.len()).ok_or(NOT_PATCHABLE)?;
+    match literal[r] {
+        Some(i) if !referenced[r] => {
+            d[i] = value;
+            Ok(())
+        }
+        _ => Err(NOT_PATCHABLE),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,6 +555,15 @@ mod tests {
         assert_eq!(decompress(&packed).unwrap(), src);
         assert_eq!(decompress(&compress_lz11(b"ab")).unwrap(), b"ab");
         assert_eq!(decompress(&compress_lz11(&[])).unwrap(), b"");
+    }
+
+    #[test]
+    fn blz_roundtrip() {
+        let src: Vec<u8> = (0..20_000u32).map(|i| ((i * 7) % 251) as u8 ^ if i % 97 < 40 { 0 } else { (i / 13) as u8 }).collect();
+        let packed = compress_blz(&src, 0x400);
+        assert!(packed.len() < src.len());
+        assert_eq!(&packed[..0x400], &src[..0x400]);
+        assert_eq!(decompress_blz(&packed).unwrap(), src);
     }
 
     #[test]

@@ -71,6 +71,12 @@ async fn detect_file(path: PathBuf) -> Result<Detection, String> {
     blocking(move || kaleido_core::detect_path(&path).map_err(|e| e.to_string())).await
 }
 
+/// Remplace chaque dossier ordinaire par les ROMs et sauvegardes qu'il contient.
+#[tauri::command]
+fn expand_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    paths.iter().flat_map(|p| kaleido_core::detect::expand_path(p)).collect()
+}
+
 /// Charge une ROM (DS ou 3DS) et renvoie son Pokédex.
 #[tauri::command]
 async fn open_rom(path: PathBuf, app: AppHandle) -> Result<RomOverview, String> {
@@ -187,6 +193,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             detect_file,
+            expand_paths,
             open_rom,
             randomizer_presets,
             preview_starters,

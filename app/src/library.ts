@@ -9,7 +9,13 @@ export const library = reactive({
   errors: [] as string[],
 });
 
-export async function addPaths(paths: string[]) {
+export async function addPaths(dropped: string[]) {
+  // Un dossier ordinaire déposé apporte toutes les ROMs et sauvegardes qu'il contient.
+  const paths = await invoke<string[]>("expand_paths", { paths: dropped }).catch(() => dropped);
+  if (!paths.length) {
+    library.errors.push("Aucune ROM ni sauvegarde trouvée dans ce dossier.");
+    return;
+  }
   const fresh = paths.filter((p) => !library.items.some((d) => d.path === p));
   library.pending += fresh.length;
   await Promise.all(

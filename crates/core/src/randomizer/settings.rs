@@ -15,6 +15,19 @@ pub enum StarterMode {
     ThreeStage,
     /// Comme `ThreeStage`, en gardant le trio Plante / Feu / Eau.
     Triangle,
+    /// Les trois espèces choisies par le joueur (`Settings::custom_starters`).
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CatchRateMode {
+    #[default]
+    Unchanged,
+    /// Taux de capture doublé.
+    Doubled,
+    /// Taux maximal (255) pour toutes les espèces.
+    Max,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -65,11 +78,31 @@ pub struct Settings {
     pub random_types: bool,
     pub random_abilities: bool,
     pub no_legendaries: bool,
+    /// Starters choisis à la main (mode `Custom`).
+    pub custom_starters: [u16; 3],
+    pub catch_rate: CatchRateMode,
+    /// Évolutions par échange remplacées par un niveau (37) ou un objet.
+    pub easy_evolutions: bool,
+    /// Attaques apprises par niveau aléatoires (la première attaque est conservée).
+    pub random_movesets: bool,
+    /// Les Pokémon des dresseurs évoluent selon leur niveau.
+    pub trainer_evolutions: bool,
+    /// IV au maximum pour tous les Pokémon des dresseurs.
+    pub trainer_max_ivs: bool,
+    /// Multiplicateur du taux de chromatiques (1 = 1/8192 ; 32 ≈ 1/257). DS seulement.
+    pub shiny_multiplier: u16,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            custom_starters: [0; 3],
+            catch_rate: CatchRateMode::Unchanged,
+            easy_evolutions: false,
+            random_movesets: false,
+            trainer_evolutions: false,
+            trainer_max_ivs: false,
+            shiny_multiplier: 1,
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,

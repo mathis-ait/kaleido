@@ -9,23 +9,50 @@ import Toggle from "../components/Toggle.vue";
 import { library } from "../library";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
-import { RANDOMIZABLE, isRom, type CtrOutcome, type Outcome, type PokemonRef, type Preset, type RandomizerSettings } from "../types";
+import { RANDOMIZABLE, isRom, type CtrOutcome, type Outcome, type PokemonRef, type RandomizerSettings } from "../types";
 
-const presets = ref<Preset[]>([]);
-const activePreset = ref<string | null>("equilibre");
-const settings = reactive<RandomizerSettings>({
-  starters: "unchanged",
-  wild: "unchanged",
+/** Réglages par défaut : une randomisation « classique », à ajuster librement. */
+const defaults = (): RandomizerSettings => ({
+  starters: "triangle",
+  customStarters: [0, 0, 0],
+  wild: "area",
   wildSimilarStrength: true,
   wildLevelPercent: 100,
-  trainers: "unchanged",
+  trainers: "random",
   trainersSimilarStrength: true,
   trainerLevelPercent: 100,
+  trainerEvolutions: false,
+  trainerMaxIvs: false,
   stats: "unchanged",
   randomTypes: false,
   randomAbilities: false,
   noLegendaries: true,
+  catchRate: "unchanged",
+  easyEvolutions: true,
+  randomMovesets: false,
+  shinyMultiplier: 1,
 });
+const settings = reactive<RandomizerSettings>(defaults());
+const reset = () => {
+  Object.assign(settings, defaults());
+  customNames.value = ["", "", ""];
+};
+
+/** Le segmented control manipule des chaînes ; le réglage est un nombre. */
+const shinyChoice = computed({
+  get: () => String(settings.shinyMultiplier),
+  set: (v: string) => (settings.shinyMultiplier = Number(v)),
+});
+
+/** Noms des espèces (français), pour choisir ses starters. */
+const speciesNames = ref<string[]>([]);
+const speciesCount = computed(() => ({ 4: 493, 5: 649, 6: 721, 7: 807 })[selected.value?.generation ?? 5] ?? 649);
+const customNames = ref(["", "", ""]);
+const speciesId = (name: string) => {
+  const i = speciesNames.value.findIndex((n, idx) => idx > 0 && idx <= speciesCount.value && n.toLowerCase() === name.trim().toLowerCase());
+  return i > 0 ? i : 0;
+};
+watch(customNames, (names) => (settings.customStarters = names.map(speciesId)), { deep: true });
 
 const newSeed = () => Math.floor(Math.random() * 4_294_967_295);
 const seed = ref(newSeed());
@@ -50,30 +77,14 @@ const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
 onMounted(async () => {
-  presets.value = await invoke<Preset[]>("randomizer_presets");
-  applyPreset(presets.value[0]);
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
+  speciesNames.value = (await invoke<{ species: string[] }>("name_lists")).species;
 });
-
-function applyPreset(p: Preset | undefined) {
-  if (!p) return;
-  Object.assign(settings, p.settings);
-  activePreset.value = p.id;
-}
-
-// Toute modification manuelle sort du préréglage.
-watch(
-  () => ({ ...settings }),
-  (now) => {
-    const p = presets.value.find((p) => p.id === activePreset.value);
-    if (p && JSON.stringify(p.settings) !== JSON.stringify(now)) activePreset.value = null;
-  },
-);
 
 // Aperçu des starters, recalculé quand la ROM, la seed ou les réglages changent.
 let previewTimer: number | undefined;
 watch(
-  [romPath, seed, () => settings.starters, () => settings.noLegendaries, () => settings.randomTypes],
+  [romPath, seed, () => settings.starters, () => settings.noLegendaries, () => settings.randomTypes, () => [...settings.customStarters]],
   () => {
     clearTimeout(previewTimer);
     previewTimer = window.setTimeout(refreshPreview, 200);
@@ -166,9 +177,12 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
 <template>
   <section class="rando">
-    <header>
-      <h1>Randomizer</h1>
-      <p class="lead">Une nouvelle aventure à chaque seed. Partage le code pour que tes amis jouent exactement la même.</p>
+    <header class="page-head">
+      <div>
+        <h1>Randomizer</h1>
+        <p class="lead">Une nouvelle aventure à chaque seed. Partage le code pour que tes amis jouent exactement la même.</p>
+      </div>
+      <button class="btn" title="Revenir aux réglages par défaut" @click="reset">Réinitialiser</button>
     </header>
 
     <!-- Choix de la ROM -->
@@ -195,14 +209,6 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
       <div class="layout">
         <div class="options">
-          <!-- Préréglages -->
-          <div class="presets">
-            <button v-for="p in presets" :key="p.id" class="preset panel" :class="{ active: activePreset === p.id }" @click="applyPreset(p)">
-              <strong>{{ p.name }}</strong>
-              <small>{{ p.description }}</small>
-            </button>
-          </div>
-
           <div v-if="isCtr" class="section panel">
             <h3>Sortie 3DS</h3>
             <Segmented
@@ -227,8 +233,24 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 { value: 'random', label: 'Aléatoires' },
                 { value: 'three_stage', label: 'Trio évolutif', hint: 'Pokémon de base avec deux évolutions' },
                 { value: 'triangle', label: 'Plante · Feu · Eau', hint: 'Trio évolutif qui garde le triangle des types' },
+                { value: 'custom', label: 'Je choisis', hint: 'Tape le nom des trois Pokémon de ton choix' },
               ]"
             />
+            <div v-if="settings.starters === 'custom'" class="custom-starters">
+              <label v-for="(_, i) in customNames" :key="i">
+                <Sprite v-if="settings.customStarters[i]" :id="settings.customStarters[i]" :size="44" />
+                <input
+                  v-model="customNames[i]"
+                  class="input"
+                  list="kaleido-species"
+                  :placeholder="['Starter Plante', 'Starter Feu', 'Starter Eau'][i]"
+                  :class="{ invalid: customNames[i] && !settings.customStarters[i] }"
+                />
+              </label>
+              <datalist id="kaleido-species">
+                <option v-for="n in speciesNames.slice(1, speciesCount + 1)" :key="n" :value="n" />
+              </datalist>
+            </div>
           </div>
 
           <div class="section panel">
@@ -268,10 +290,18 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <input v-model.number="settings.trainerLevelPercent" type="range" min="50" max="200" step="5" />
               </label>
             </div>
+            <div class="row">
+              <Toggle
+                v-model="settings.trainerEvolutions"
+                label="Pokémon évolués selon leur niveau"
+                hint="Un Machoc niveau 40 devient Mackogneur… (niveau 40 pour les évolutions sans niveau)"
+              />
+              <Toggle v-model="settings.trainerMaxIvs" label="IV au maximum" hint="Tous les Pokémon des dresseurs ont des IV parfaits" />
+            </div>
           </div>
 
           <div class="section panel">
-            <h3>Espèces</h3>
+            <h3>Pokémon</h3>
             <Segmented
               v-model="settings.stats"
               :options="[
@@ -285,6 +315,49 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" />
               <Toggle v-model="settings.noLegendaries" label="Sans légendaires" />
             </div>
+            <div class="row">
+              <Toggle
+                v-model="settings.easyEvolutions"
+                label="Évolutions sans échange"
+                hint="Les évolutions par échange se font au niveau 37, ou avec l'objet habituel (Peau Métal…)"
+              />
+              <Toggle
+                v-model="settings.randomMovesets"
+                label="Attaques apprises aléatoires"
+                hint="Chaque Pokémon garde sa première attaque, les suivantes sont tirées au hasard"
+              />
+            </div>
+            <div class="row">
+              <span class="row-label">Capture</span>
+              <Segmented
+                v-model="settings.catchRate"
+                :options="[
+                  { value: 'unchanged', label: 'Normale' },
+                  { value: 'doubled', label: 'Facile (×2)' },
+                  { value: 'max', label: 'Garantie', hint: 'Taux de capture maximal pour toutes les espèces' },
+                ]"
+              />
+            </div>
+          </div>
+
+          <div class="section panel">
+            <h3>Chromatiques ✨</h3>
+            <Segmented
+              v-model="shinyChoice"
+              :options="[
+                { value: '1', label: 'Normal (1/8192)' },
+                { value: '4', label: '×4 (1/2048)' },
+                { value: '16', label: '×16 (1/512)' },
+                { value: '32', label: 'Maximum (1/257)' },
+              ]"
+            />
+            <p class="dim note">
+              {{
+                isCtr
+                  ? "Pas encore disponible sur 3DS : le taux est défini dans le code du jeu (code.bin)."
+                  : "Modifie la fonction du jeu qui décide si un Pokémon est chromatique : sauvages, dons et œufs."
+              }}
+            </p>
           </div>
         </div>
 
@@ -410,8 +483,7 @@ h3 {
   text-align: left;
 }
 
-.rom.active,
-.preset.active {
+.rom.active {
   outline-color: var(--accent);
 }
 
@@ -420,8 +492,7 @@ h3 {
   cursor: not-allowed;
 }
 
-.rom small,
-.preset small {
+.rom small {
   color: var(--text-dim);
 }
 
@@ -436,32 +507,6 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.presets {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-.preset {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-  text-align: left;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  transition: transform 0.15s;
-}
-
-.preset:hover {
-  transform: translateY(-2px);
-}
-
-.preset small {
-  font-size: 12px;
-  line-height: 1.35;
 }
 
 .section {
@@ -615,6 +660,31 @@ h3 {
 .error,
 .error-text {
   color: var(--danger);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.row-label {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.custom-starters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.custom-starters label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .note {

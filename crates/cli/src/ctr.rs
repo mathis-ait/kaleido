@@ -20,7 +20,7 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     use kaleido_core::data::{encounters, trainers};
     use kaleido_core::randomizer::{self, ctr::LayeredFsTarget};
 
-    let settings = randomizer::presets().into_iter().find(|p| p.id == preset).ok_or("préréglage inconnu")?.settings;
+    let settings = crate::load_settings(preset)?;
     let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
     let (outcome, romfs) = randomizer::ctr::randomize(&game, &settings, seed, Path::new(out), LayeredFsTarget::Luma)?;
     println!("{} emplacements sauvages, {} Pokémon de dresseurs → {}", outcome.wild_slots, outcome.trainer_pokemon, romfs.display());

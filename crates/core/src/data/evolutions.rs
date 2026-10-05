@@ -21,6 +21,37 @@ pub fn read(d: &[u8]) -> Vec<Evolution> {
         .collect()
 }
 
+/// Méthode « niveau » (paramètre = niveau requis), identique en Gen 4 à 6.
+pub const METHOD_LEVEL: u16 = 4;
+const METHOD_TRADE: u16 = 5;
+const METHOD_TRADE_ITEM: u16 = 6;
+/// Gen 5+ : échange contre une espèce précise (Carabing / Escargaume).
+const METHOD_TRADE_SPECIES: u16 = 7;
+/// Niveau donné aux évolutions par échange (comme l'Universal Pokémon Randomizer).
+pub const TRADE_REPLACEMENT_LEVEL: u16 = 37;
+
+/// Remplace les évolutions par échange : échange simple → niveau 37 ; échange avec
+/// objet → utilisation de cet objet. Modifie `d` sur place ; renvoie le nombre de changements.
+pub fn remove_trade_evolutions(generation: u8, d: &mut [u8]) -> usize {
+    let use_item = if generation <= 4 { 7 } else { 8 };
+    let mut changed = 0;
+    for at in (0..(d.len() / 6).min(8)).map(|i| i * 6) {
+        let method = u16_at(d, at);
+        let new = match method {
+            METHOD_TRADE => Some((METHOD_LEVEL, TRADE_REPLACEMENT_LEVEL)),
+            METHOD_TRADE_ITEM => Some((use_item, u16_at(d, at + 2))),
+            METHOD_TRADE_SPECIES if generation >= 5 => Some((METHOD_LEVEL, TRADE_REPLACEMENT_LEVEL)),
+            _ => None,
+        };
+        if let Some((m, p)) = new.filter(|_| u16_at(d, at + 4) != 0) {
+            d[at..at + 2].copy_from_slice(&m.to_le_bytes());
+            d[at + 2..at + 4].copy_from_slice(&p.to_le_bytes());
+            changed += 1;
+        }
+    }
+    changed
+}
+
 /// Stade d'évolution de chaque espèce (0 = de base) et présence d'une évolution.
 pub struct EvolutionInfo {
     pub stage: Vec<u8>,
@@ -64,6 +95,18 @@ mod tests {
         let mut d = vec![0u8; 42];
         d[..6].copy_from_slice(&[4, 0, 16, 0, 2, 0]);
         assert_eq!(read(&d), vec![Evolution { method: 4, param: 16, target: 2 }]);
+    }
+
+    #[test]
+    fn trade_evolutions() {
+        // Kadabra (échange) et Onix (échange avec Peau Métal, objet 233) en Gen 4.
+        let mut d = vec![0u8; 44];
+        d[..6].copy_from_slice(&[5, 0, 0, 0, 65, 0]);
+        d[6..12].copy_from_slice(&[6, 0, 233, 0, 208, 0]);
+        assert_eq!(remove_trade_evolutions(4, &mut d), 2);
+        let evos = read(&d);
+        assert_eq!(evos[0], Evolution { method: 4, param: 37, target: 65 });
+        assert_eq!(evos[1], Evolution { method: 7, param: 233, target: 208 });
     }
 
     #[test]
