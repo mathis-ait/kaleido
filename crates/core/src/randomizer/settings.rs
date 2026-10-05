@@ -94,6 +94,9 @@ pub struct Settings {
     /// CT/CS et donneurs de capacités.
     #[serde(default)]
     pub moves: super::moves::MoveSettings,
+    /// Objets ramassables et boutiques.
+    #[serde(default)]
+    pub items: super::items::ItemSettings,
 }
 
 impl Default for Settings {
@@ -107,6 +110,7 @@ impl Default for Settings {
             trainer_max_ivs: false,
             shiny_odds: 8192,
             moves: Default::default(),
+            items: Default::default(),
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,

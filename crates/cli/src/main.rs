@@ -43,7 +43,8 @@ Outils DS :
   search    <rom> <v1,v2,…>             Cherche une suite de valeurs (u16/u32)
   randomize <rom> <préréglage> <seed> <sortie.nds>   Randomise (equilibre, nuzlocke, chaos, defi)
   starters  <rom>                       Starters actuels
-  tms       <rom> [n° espèce]           CT/CS, donneurs de capacités et compatibilité d'une espèce";
+  tms       <rom> [n° espèce]           CT/CS, donneurs de capacités et compatibilité d'une espèce
+  items     <rom> [autre.nds]           Objets ramassables et boutiques (ou différences avec une autre ROM)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -60,6 +61,8 @@ fn main() -> ExitCode {
         ["starters", rom] => starters(rom),
         ["tms", rom] => tms(rom, 25),
         ["tms", rom, species] => species.parse().map_err(Into::into).and_then(|s| tms(rom, s)),
+        ["items", rom] => items(rom, None),
+        ["items", rom, other] => items(rom, Some(other)),
         ["search", rom, values] => search(&open(rom), values),
         ["shinyscan", rom] => shiny_scan(&open(rom)),
         ["shiny", rom, odds, out] => odds.parse().map_err(Into::into).and_then(|n: u32| {
@@ -469,6 +472,53 @@ fn tms(path: &str, species: u16) -> CliResult {
             .map(|(_, &t)| move_name(t))
             .collect();
         println!("{label} : {} / {} : {}", learn.len(), tutor_moves.len(), learn.join(", "));
+    }
+    Ok(())
+}
+
+/// Objets ramassables et boutiques d'une ROM ; avec une seconde ROM, seulement les différences.
+fn items(path: &str, other: Option<&str>) -> CliResult {
+    use kaleido_core::data::{field_items, shops};
+    let game = kaleido_core::GameRom::open(Path::new(path))?;
+    let layout = field_items::ItemLayout::for_rom(&game).ok_or("jeu non pris en charge")?;
+    let names = game.text_file(layout.item_names)?;
+    let name = |id: u16| names.get(id as usize).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| format!("objet n°{id}"));
+    let field = field_items::read(&game)?;
+    let shop_list = shops::read(&game)?;
+
+    let Some(other) = other else {
+        let visible = field.iter().filter(|f| f.kind == field_items::FieldItemKind::Visible).count();
+        println!("== Objets ramassables : {} ({visible} au sol, {} cachés) ==", field.len(), field.len() - visible);
+        for (i, f) in field.iter().enumerate() {
+            println!("{i:4} {:<7} {:4} {}", f.kind.name_fr(), f.item, name(f.item));
+        }
+        println!("\n== Boutiques : {} ==", shop_list.len());
+        for s in &shop_list {
+            let list: Vec<String> = s.items.iter().map(|&i| name(i)).collect();
+            println!("{:2} [{}] {} : {}", s.index, s.kind.name_fr(), s.name, list.join(", "));
+        }
+        return Ok(());
+    };
+
+    let new = kaleido_core::GameRom::open(Path::new(other))?;
+    let new_field = field_items::read(&new)?;
+    let new_shops = shops::read(&new)?;
+    if new_field.len() != field.len() || new_shops.len() != shop_list.len() {
+        return Err("les deux ROMs n'ont pas le même nombre d'objets ou de boutiques".into());
+    }
+    let changed: Vec<_> = field.iter().zip(&new_field).enumerate().filter(|(_, (a, b))| a.item != b.item).collect();
+    println!("== Objets ramassables modifiés : {} / {} ==", changed.len(), field.len());
+    for (i, (a, b)) in &changed {
+        println!("{i:4} {:<7} {} → {}", a.kind.name_fr(), name(a.item), name(b.item));
+    }
+    println!("\n== Boutiques ==");
+    for (a, b) in shop_list.iter().zip(&new_shops) {
+        if a.items == b.items {
+            println!("{:2} [{}] {} : inchangée", a.index, a.kind.name_fr(), a.name);
+        } else {
+            let list: Vec<String> = b.items.iter().map(|&i| name(i)).collect();
+            println!("{:2} [{}] {} : {}", a.index, a.kind.name_fr(), a.name, list.join(", "));
+        }
     }
     Ok(())
 }
