@@ -13,6 +13,7 @@ pub mod randomizer;
 pub mod rom;
 pub mod save;
 pub mod saves;
+pub mod showdown;
 pub mod text;
 
 pub use ctr_rom::{CtrGameRom, CtrLayout};

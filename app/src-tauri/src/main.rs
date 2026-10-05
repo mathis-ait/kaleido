@@ -16,6 +16,7 @@ mod play;
 mod nuzlocke;
 mod bank;
 mod saves;
+mod showdown;
 mod sprites;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
@@ -264,7 +265,13 @@ fn main() {
             bank::bank_import,
             bank::bank_export,
             bank::bank_deposit,
-            bank::bank_withdraw
+            bank::bank_withdraw,
+            showdown::showdown_preview,
+            showdown::showdown_import,
+            showdown::showdown_export,
+            showdown::showdown_apply,
+            showdown::showdown_add_set,
+            showdown::smogon_sets
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

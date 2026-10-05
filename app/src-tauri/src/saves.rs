@@ -15,7 +15,7 @@ use tauri::State;
 pub struct OpenSave(Mutex<Option<(PathBuf, SaveSession)>>);
 
 impl OpenSave {
-    fn with<T>(&self, f: impl FnOnce(&mut SaveSession) -> Result<T, save::SaveError>) -> Result<T, String> {
+    pub(crate) fn with<T>(&self, f: impl FnOnce(&mut SaveSession) -> Result<T, save::SaveError>) -> Result<T, String> {
         let mut slot = self.0.lock().map_err(|e| e.to_string())?;
         let (_, session) = slot.as_mut().ok_or("aucune sauvegarde ouverte")?;
         f(session).map_err(|e| e.to_string())
