@@ -19,6 +19,9 @@
 //! **Non vérifié sur de vraies sauvegardes** : surtout l'ordre des compteurs dans le
 //! pied et la comparaison HGSS (un seul compteur supposé), ainsi que les offsets du
 //! dresseur (nom +0, TID +0x10, SID +0x12, argent +0x14, sexe +0x18, temps de jeu +0x22).
+//!
+//! Sac : bloc général + 0x624 (DP), 0x630 (Pt), 0x644 (HGSS), d'après
+//! `PlayerBag4*.BaseOffset` de PKHeX (voir [`super::inventory`]).
 
 use super::checksum::crc16_ccitt;
 use super::{rd_u32, wr_u16, BlockCheck, Checks, Layout, PkmFormat, SaveError, SaveVersion, TrainerLayout};
@@ -35,6 +38,8 @@ pub(super) struct Consts {
     pub(super) footer: usize,
     trainer: usize,
     party: usize,
+    /// Sac, relatif au bloc général (`PlayerBag4*.BaseOffset` de PKHeX).
+    bag: usize,
     hgss: bool,
 }
 
@@ -47,6 +52,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             footer: 0x14,
             trainer: 0x64,
             party: 0x98,
+            bag: 0x624,
             hgss: false,
         },
         SaveVersion::Platinum => Consts {
@@ -56,6 +62,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             footer: 0x14,
             trainer: 0x68,
             party: 0xA0,
+            bag: 0x630,
             hgss: false,
         },
         _ => Consts {
@@ -65,6 +72,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             footer: 0x10,
             trainer: 0x64,
             party: 0x98,
+            bag: 0x644,
             hgss: true,
         },
     }
@@ -147,6 +155,7 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
         box_names,
         box_name_stride: BOX_NAME_BYTES,
         box_name_max: BOX_NAME_BYTES / 2 - 1,
+        items: general + c.bag,
         checks: Checks::Gen4(vec![
             FooterBlock { name: "bloc général", start: general, size: c.general_size, footer: c.footer },
             FooterBlock { name: "bloc des boîtes", start: storage, size: c.storage_size, footer: c.footer },

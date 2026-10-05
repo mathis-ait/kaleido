@@ -16,7 +16,8 @@
 //! | ROSA | 0x14000 | 0x14200 | 0x1800 | 0x4200 | 0x4400 | 0x33000 |
 //!
 //! Dresseur Gen 6 : TID +0, SID +2, sexe +5, nom +0x48. Équipe : 6 × 260 octets puis
-//! le compteur. Boîtes : 31 × 30 × 232 octets ; noms de 0x22 octets.
+//! le compteur. Boîtes : 31 × 30 × 232 octets ; noms de 0x22 octets. Sac : bloc 1
+//! (0x400, 0xB88 octets en XY, 0xB90 en ROSA, d'après `SaveBlockAccessor6XY/6AO`).
 //! À l'ouverture, Kaleido vérifie que ces zones tombent dans un bloc de la table et
 //! signale sinon une structure inattendue.
 
@@ -100,6 +101,9 @@ pub(super) struct CtrOffsets {
     pub(super) box_names: usize,
     pub(super) boxes: usize,
     pub(super) box_count: usize,
+    /// Bloc « MyItem » (sac) : offset et taille (`SaveBlockAccessor6*/7*` de PKHeX).
+    pub(super) items: usize,
+    pub(super) items_len: usize,
 }
 
 /// Construit la disposition 3DS et vérifie que chaque zone tombe dans un bloc.
@@ -113,6 +117,7 @@ pub(super) fn ctr_layout(format: PkmFormat, data: &[u8], o: &CtrOffsets, invert:
         ("argent", o.money, 4),
         ("noms des boîtes", o.box_names, o.box_count * BOX_NAME_BYTES),
         ("boîtes", o.boxes, o.box_count * BOX_SLOTS * format.stored_size()),
+        ("sac", o.items, o.items_len),
     ];
     let mut warnings = Vec::new();
     for (name, start, len) in zones {
@@ -146,6 +151,7 @@ pub(super) fn ctr_layout(format: PkmFormat, data: &[u8], o: &CtrOffsets, invert:
         box_names: o.box_names,
         box_name_stride: BOX_NAME_BYTES,
         box_name_max: BOX_NAME_BYTES / 2 - 1,
+        items: o.items,
         checks: Checks::Ctr { blocks, invert },
     };
     Ok((layout, warnings))
@@ -161,6 +167,9 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
         box_names: 0x4400,
         boxes: if version == SaveVersion::XY { 0x22600 } else { 0x33000 },
         box_count: 31,
+        // Bloc 1 « MyItem » : SaveBlockAccessor6XY (0x400, 0xB88) / 6AO (0x400, 0xB90).
+        items: 0x400,
+        items_len: if version == SaveVersion::XY { 0xB88 } else { 0xB90 },
     }
 }
 
