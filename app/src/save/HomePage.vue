@@ -70,6 +70,15 @@ const tiles = computed<Tile[]>(() => [
     go: () => goTo("tools", "dex"),
   },
   {
+    id: "nuzlocke",
+    title: "Nuzlocke",
+    sub: "Routes, morts, niveau maximum",
+    band: "Suivre un défi Nuzlocke avec la ROM (randomisée) de ta partie",
+    icon: "swords",
+    gradient: "linear-gradient(150deg, #ff7b7b, #c2365a 55%, #7a1f4a)",
+    go: () => goTo("nuzlocke"),
+  },
+  {
     id: "manager",
     title: "Sauvegardes",
     sub: "Toutes tes parties",
