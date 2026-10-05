@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { ref } from "vue";
 import { openRom } from "../editor";
 import { openSave } from "../saveStore";
-import { removeItem } from "../library";
+import { library, removeItem } from "../library";
 import { nav } from "../nav";
-import { RANDOMIZABLE, isRom as isRomFile, type Detection, type FileKind } from "../types";
+import { RANDOMIZABLE, isKaleidoRom, isRom as isRomFile, type Detection, type FileKind } from "../types";
 
 const props = defineProps<{ item: Detection }>();
 
@@ -20,7 +21,19 @@ const platformLabel = computed(() => (props.item.platform === "nds" ? "DS" : pro
 const isRom = computed(() => ["nds_rom", "ctr_rom", "ctr_dump"].includes(props.item.kind) && props.item.game !== null);
 const isSave = computed(() => props.item.kind === "save");
 const canEdit = computed(() => isRomFile(props.item));
-const canRandomize = computed(() => canEdit.value && RANDOMIZABLE.includes(props.item.game?.id ?? ""));
+const randomized = computed(() => isKaleidoRom(props.item));
+const canRandomize = computed(() => canEdit.value && !randomized.value && RANDOMIZABLE.includes(props.item.game?.id ?? ""));
+/** Autre fichier de la bibliothèque au contenu identique. */
+const duplicateOf = computed(() =>
+  props.item.fingerprint ? library.items.find((d) => d.path !== props.item.path && d.fingerprint === props.item.fingerprint) : undefined,
+);
+const copiedCode = ref(false);
+async function copyShareCode() {
+  if (!props.item.kaleido) return;
+  await navigator.clipboard.writeText(props.item.kaleido.shareCode);
+  copiedCode.value = true;
+  setTimeout(() => (copiedCode.value = false), 1500);
+}
 
 function randomize() {
   nav.randomizerRom = props.item.path;
@@ -44,6 +57,8 @@ function formatSize(bytes: number): string {
       <span class="chip">{{ KIND_LABELS[item.kind] }}</span>
       <span v-if="item.generation" class="chip">Gen {{ item.generation }}</span>
       <span v-if="item.language" class="chip" :class="{ fr: item.isFrench }">{{ item.language }}</span>
+      <span v-if="randomized" class="chip kaleido" title="ROM générée par Kaleido">✨ Kaleido</span>
+      <span v-if="duplicateOf" class="chip dup" :title="`Contenu identique à : ${duplicateOf.fileName}`">Doublon</span>
     </div>
 
     <h3>{{ item.title }}</h3>
@@ -56,14 +71,20 @@ function formatSize(bytes: number): string {
       </template>
     </dl>
 
-    <ul v-if="item.warnings.length" class="warnings">
+    <ul v-if="item.warnings.length || duplicateOf" class="warnings">
       <li v-for="w in item.warnings" :key="w">{{ w }}</li>
+      <li v-if="duplicateOf">Même contenu que « {{ duplicateOf.fileName }} » : tu peux retirer l'un des deux.</li>
     </ul>
 
     <div class="actions">
       <template v-if="isRom">
         <button v-if="canRandomize" class="btn btn-primary" @click="randomize">Randomiser</button>
-        <button v-else class="btn btn-primary" disabled title="Pas encore pris en charge par le randomizer">Randomiser</button>
+        <button v-else-if="item.kaleido" class="btn btn-primary" title="Copie le code pour régénérer la même ROM à partir de l'originale" @click="copyShareCode">
+          {{ copiedCode ? "Code copié !" : "Copier le code" }}
+        </button>
+        <button v-else class="btn btn-primary" disabled :title="randomized ? 'Déjà randomisée : pars de la ROM d\'origine' : 'Pas encore pris en charge par le randomizer'">
+          Randomiser
+        </button>
         <button v-if="canEdit" class="btn" @click="openRom(item.path)">Explorer</button>
         <button v-else class="btn" disabled title="Jeu non identifié">Explorer</button>
       </template>
@@ -125,6 +146,21 @@ function formatSize(bytes: number): string {
   flex-wrap: wrap;
   gap: 6px;
   padding-right: 28px;
+}
+
+.chip.kaleido {
+  color: var(--on-accent);
+  border-color: transparent;
+  background: var(--prism);
+}
+
+:root[data-theme="lagon"] .chip.kaleido {
+  background: #fff;
+}
+
+.chip.dup {
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 .chip.fr {

@@ -154,6 +154,33 @@ pub struct NdsRom {
     replaced: BTreeMap<u16, Vec<u8>>,
     /// ARM9 modifié (même taille que l'original, compressé ou non).
     arm9_override: Option<Vec<u8>>,
+    /// Bloc « signature » ajouté après les données (voir [`NdsRom::set_signature`]).
+    signature: Option<Vec<u8>>,
+}
+
+/// Octet 0x15 de l'en-tête (zone réservée, nulle sur les cartouches) : « K » si la
+/// ROM porte une signature Kaleido ; l'offset du bloc suit en 0x16 (u32).
+const SIGNATURE_FLAG: u8 = b'K';
+const SIGNATURE_MAGIC: &[u8; 8] = b"KALEIDO1";
+
+/// Lit la signature d'une ROM (contenu du bloc, sans l'en-tête « KALEIDO1 » + taille).
+pub fn read_signature<R: Read + Seek>(r: &mut R, header: &[u8]) -> Result<Option<Vec<u8>>> {
+    if header.len() < 0x1A || header[0x15] != SIGNATURE_FLAG {
+        return Ok(None);
+    }
+    let offset = u32le(header, 0x16) as u64;
+    if offset + 12 > stream_len(r)? {
+        return Ok(None);
+    }
+    let head = read_at(r, offset, 12)?;
+    if &head[..8] != SIGNATURE_MAGIC {
+        return Ok(None);
+    }
+    let len = u32le(&head, 8) as usize;
+    if len > 64 * 1024 {
+        return Ok(None);
+    }
+    Ok(Some(read_at(r, offset + 12, len)?))
 }
 
 impl NdsRom {
@@ -182,7 +209,7 @@ impl NdsRom {
             .map(Overlay::parse)
             .collect();
 
-        Ok(Self { data, header, fat, paths, overlays, replaced: BTreeMap::new(), arm9_override: None })
+        Ok(Self { data, header, fat, paths, overlays, replaced: BTreeMap::new(), arm9_override: None, signature: None })
     }
 
     pub fn header(&self) -> &NdsHeader {
@@ -237,6 +264,12 @@ impl NdsRom {
         }
         let start = self.header.arm9_offset as usize;
         &self.data[start..start + self.header.arm9_size as usize]
+    }
+
+    /// Ajoute une signature (données libres, max 64 Kio) écrite après les données de
+    /// la ROM ; l'en-tête indique son emplacement (zone réservée 0x15-0x19).
+    pub fn set_signature(&mut self, content: Vec<u8>) {
+        self.signature = Some(content);
     }
 
     /// `true` si l'ARM9 est compressé (BLZ). Indiqué par le champ « fin du code
@@ -364,7 +397,7 @@ impl NdsRom {
             let crc = crc16(&out[..0x15E]);
             out[0x15E..0x160].copy_from_slice(&crc.to_le_bytes());
         }
-        if self.replaced.is_empty() {
+        if self.replaced.is_empty() && self.signature.is_none() {
             return Ok(out);
         }
         let h = &self.header;
@@ -418,6 +451,23 @@ impl NdsRom {
         for (i, ovl) in self.overlays.iter().enumerate() {
             let at = ovt_at + i * OVERLAY_ENTRY_SIZE + 28;
             out[at..at + 4].copy_from_slice(&ovl.flags.to_le_bytes());
+        }
+
+        // Signature : bloc « KALEIDO1 » + taille + contenu, après les données (s'il y a la place).
+        if let Some(sig) = self.signature.as_ref().filter(|s| s.len() <= 64 * 1024) {
+            let start = append;
+            let end = start + 12 + sig.len() as u32;
+            if end <= limit {
+                if out.len() < end as usize {
+                    out.resize(end as usize, 0xFF);
+                }
+                let at = start as usize;
+                out[at..at + 8].copy_from_slice(SIGNATURE_MAGIC);
+                out[at + 8..at + 12].copy_from_slice(&(sig.len() as u32).to_le_bytes());
+                out[at + 12..end as usize].copy_from_slice(sig);
+                out[0x15] = SIGNATURE_FLAG;
+                out[0x16..0x1A].copy_from_slice(&start.to_le_bytes());
+            }
         }
 
         let used = fat.iter().map(|&(_, e)| e).max().unwrap_or(0).max(h.used_rom_size);
@@ -559,6 +609,19 @@ mod tests {
         let files: Vec<_> = rom.files().collect();
         assert_eq!(files, vec![(0, "a.bin"), (1, "d/b.bin")]);
         assert_eq!(rom.file_by_path("/d/b.bin").unwrap(), b"BB");
+    }
+
+    #[test]
+    fn signature_roundtrip() {
+        let mut rom = NdsRom::from_bytes(tiny_rom()).unwrap();
+        rom.set_signature(b"{\"seed\":42}".to_vec());
+        let bytes = rom.to_bytes().unwrap();
+        let reread = NdsRom::from_bytes(bytes.clone()).unwrap();
+        assert!(reread.header().header_crc_ok);
+        let sig = read_signature(&mut Cursor::new(&bytes), &bytes[..HEADER_SIZE]).unwrap();
+        assert_eq!(sig.as_deref(), Some(&b"{\"seed\":42}"[..]));
+        let plain = tiny_rom();
+        assert_eq!(read_signature(&mut Cursor::new(&plain), &plain[..HEADER_SIZE]).unwrap(), None);
     }
 
     #[test]

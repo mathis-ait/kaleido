@@ -60,7 +60,7 @@ export interface RandomizerSettings {
   randomMovesets: boolean;
   trainerEvolutions: boolean;
   trainerMaxIvs: boolean;
-  shinyMultiplier: number;
+  shinyOdds: number;
   wild: "unchanged" | "random" | "area" | "global";
   wildSimilarStrength: boolean;
   wildLevelPercent: number;
@@ -191,4 +191,11 @@ export interface Detection {
   size: number;
   details: Detail[];
   warnings: string[];
+  /** Signature d'une ROM générée par Kaleido. */
+  kaleido: { tool: string; version: string; seed: number; shareCode: string } | null;
+  /** Empreinte du contenu, pour repérer les doublons. */
+  fingerprint: string | null;
 }
+
+/** ROM produite par Kaleido (signature, ou seed retrouvée dans le nom du fichier). */
+export const isKaleidoRom = (d: Detection) => !!d.kaleido || d.details.some((x) => x.label === "Randomisée par");

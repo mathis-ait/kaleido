@@ -63,6 +63,29 @@ pub struct Detection {
     pub size: u64,
     pub details: Vec<Detail>,
     pub warnings: Vec<String>,
+    /// Présent si le fichier a été généré par Kaleido (seed, code de partage).
+    pub kaleido: Option<crate::randomizer::KaleidoTag>,
+    /// Empreinte du contenu (fichiers ≤ 600 Mo), pour repérer les doublons.
+    pub fingerprint: Option<String>,
+}
+
+/// Au-delà, pas d'empreinte (lecture trop longue, ex. ROM 3DS de 2 Go).
+const FINGERPRINT_MAX: u64 = 600 * 1024 * 1024;
+
+/// Empreinte rapide du contenu d'un flux (SipHash par blocs de 1 Mo).
+fn fingerprint<R: Read + Seek>(r: &mut R) -> std::io::Result<String> {
+    use std::hash::Hasher;
+    r.rewind()?;
+    let mut hasher = std::hash::DefaultHasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = r.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.write(&buf[..n]);
+    }
+    Ok(format!("{:016x}", hasher.finish()))
 }
 
 impl Detection {
@@ -80,6 +103,8 @@ impl Detection {
             size: 0,
             details: Vec::new(),
             warnings: Vec::new(),
+            kaleido: None,
+            fingerprint: None,
         }
     }
 
@@ -148,25 +173,57 @@ pub fn detect_path(path: &Path) -> Result<Detection, DetectError> {
     };
     detection.path = path.display().to_string();
     detection.file_name = path.file_name().map_or_else(|| detection.path.clone(), |n| n.to_string_lossy().into_owned());
+    // ROM générée avant l'ajout de la signature : la seed figure dans le nom proposé par Kaleido.
+    if detection.kind == FileKind::NdsRom && detection.kaleido.is_none() {
+        if let Some(seed) = seed_from_file_name(&detection.file_name) {
+            detection.detail("Randomisée par", "Kaleido (d'après le nom du fichier)");
+            detection.detail("Seed", seed.to_string());
+        }
+    }
     Ok(detection)
+}
+
+/// « … - Kaleido 4145467160.nds » → 4145467160.
+fn seed_from_file_name(name: &str) -> Option<u64> {
+    let rest = &name[name.rfind("Kaleido ")? + "Kaleido ".len()..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
 }
 
 pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError> {
     let size = stream_len(r).map_err(FormatError::from)?;
 
     let mut detection = if let Some(header) = NdsHeader::probe(r)? {
-        from_nds(&header)
+        let mut d = from_nds(&header);
+        // ROM générée par Kaleido : signature pointée depuis l'en-tête.
+        let mut raw = vec![0u8; kaleido_formats::nds::HEADER_SIZE];
+        r.rewind().map_err(FormatError::from)?;
+        r.read_exact(&mut raw).map_err(FormatError::from)?;
+        if let Some(tag) = kaleido_formats::nds::read_signature(r, &raw)?
+            .and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok())
+        {
+            d.detail("Randomisée par", format!("Kaleido {}", tag.version));
+            d.detail("Seed", tag.seed.to_string());
+            d.kaleido = Some(tag);
+        }
+        d
     } else if let Some(image) = CtrImage::probe(r)? {
         from_ctr(&image)
     } else if size <= MAX_SAVE_SIZE {
         let mut data = Vec::with_capacity(size as usize);
         r.rewind().map_err(FormatError::from)?;
         r.read_to_end(&mut data).map_err(FormatError::from)?;
-        saves::identify(&data).map_or_else(unknown, from_save)
+        match saves::identify(&data) {
+            Some(kind) => from_save(kind, &data),
+            None => unknown(),
+        }
     } else {
         unknown()
     };
     detection.size = size;
+    if size <= FINGERPRINT_MAX {
+        detection.fingerprint = fingerprint(r).ok();
+    }
     Ok(detection)
 }
 
@@ -215,12 +272,26 @@ fn from_ctr(img: &CtrImage) -> Detection {
     d
 }
 
-fn from_save(kind: saves::SaveKind) -> Detection {
-    let mut d = Detection::new(FileKind::Save, format!("Sauvegarde · {}", kind.label()));
+fn from_save(kind: saves::SaveKind, data: &[u8]) -> Detection {
+    // Le moteur de sauvegardes identifie le jeu exact (Noire/Blanche ou leurs suites)
+    // et lit le nom du dresseur.
+    let parsed = crate::save::SaveFile::from_bytes(data).ok();
+    let label = parsed.as_ref().map_or(kind.label(), |s| s.version().label());
+    let mut d = Detection::new(FileKind::Save, format!("Sauvegarde · {label}"));
     d.generation = Some(kind.generation());
     d.platform = Some(if kind.generation() <= 5 { Platform::Nds } else { Platform::N3ds });
-    if kind.is_guess() {
-        d.warnings.push("Identification par la taille seulement : Gen 5 supposée.".into());
+    match &parsed {
+        Some(save) => {
+            let trainer = save.trainer();
+            if !trainer.name.trim().is_empty() {
+                d.detail("Dresseur", trainer.name.trim());
+            }
+            d.detail("Équipe", format!("{} Pokémon", save.party_count()));
+            let t = trainer.play_time;
+            d.detail("Temps de jeu", format!("{} h {:02}", t.hours, t.minutes));
+        }
+        None if kind.is_guess() => d.warnings.push("Identification par la taille seulement : Gen 5 supposée.".into()),
+        None => {}
     }
     d
 }
@@ -307,6 +378,12 @@ mod tests {
         let d = detect_stream(&mut Cursor::new(vec![0u8; 0x6BE00])).unwrap();
         assert_eq!(d.kind, FileKind::Save);
         assert_eq!(d.generation, Some(7));
+    }
+
+    #[test]
+    fn seed_in_file_name() {
+        assert_eq!(seed_from_file_name("Blanche - Kaleido 4145467160.nds"), Some(4145467160));
+        assert_eq!(seed_from_file_name("Blanche.nds"), None);
     }
 
     #[test]

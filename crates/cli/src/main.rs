@@ -59,13 +59,13 @@ fn main() -> ExitCode {
         ["starters", rom] => starters(rom),
         ["search", rom, values] => search(&open(rom), values),
         ["shinyscan", rom] => shiny_scan(&open(rom)),
-        ["shiny", rom, mult, out] => mult.parse().map_err(Into::into).and_then(|m: u16| {
+        ["shiny", rom, odds, out] => odds.parse().map_err(Into::into).and_then(|n: u32| {
             use kaleido_core::data::shiny;
             let mut r = open(rom);
             let before = r.arm9_decompressed()?;
-            println!("ARM9 compressé : {}, {} octets, constante en {:#X}", r.arm9_compressed(), r.arm9().len(), shiny::locate(&r)?);
+            println!("ARM9 compressé : {}, {} octets, test en {:#X}", r.arm9_compressed(), r.arm9().len(), shiny::locate(&r)?);
             let t = std::time::Instant::now();
-            let odds = shiny::set_multiplier(&mut r, m)?;
+            let odds = shiny::set_threshold(&mut r, shiny::threshold_for_odds(n))?;
             println!("taux : 1/{odds} ({} ms), ARM9 : {} octets", t.elapsed().as_millis(), r.arm9().len());
             std::fs::write(out, r.to_bytes()?)?;
             let check = NdsRom::open(Path::new(out))?;

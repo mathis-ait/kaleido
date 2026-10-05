@@ -9,7 +9,7 @@ import Toggle from "../components/Toggle.vue";
 import { library } from "../library";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
-import { RANDOMIZABLE, isRom, type CtrOutcome, type Outcome, type PokemonRef, type RandomizerSettings } from "../types";
+import { RANDOMIZABLE, isKaleidoRom, isRom, type CtrOutcome, type Outcome, type PokemonRef, type RandomizerSettings } from "../types";
 
 /** Réglages par défaut : une randomisation « classique », à ajuster librement. */
 const defaults = (): RandomizerSettings => ({
@@ -30,7 +30,7 @@ const defaults = (): RandomizerSettings => ({
   catchRate: "unchanged",
   easyEvolutions: true,
   randomMovesets: false,
-  shinyMultiplier: 1,
+  shinyOdds: 8192,
 });
 const settings = reactive<RandomizerSettings>(defaults());
 const reset = () => {
@@ -38,10 +38,21 @@ const reset = () => {
   customNames.value = ["", "", ""];
 };
 
-/** Le segmented control manipule des chaînes ; le réglage est un nombre. */
-const shinyChoice = computed({
-  get: () => String(settings.shinyMultiplier),
-  set: (v: string) => (settings.shinyMultiplier = Number(v)),
+const SHINY_PRESETS = [
+  { odds: 8192, label: "Normal" },
+  { odds: 4096, label: "×2" },
+  { odds: 1024, label: "×8" },
+  { odds: 512, label: "×16" },
+  { odds: 257, label: "Max (1/257)" },
+  { odds: 1, label: "Tous ✨" },
+];
+
+/** Même calcul que le moteur : seuil arrondi entre 1 et 255 (sur 65 536). */
+const shinyLabel = computed(() => {
+  const n = Number(settings.shinyOdds) || 8192;
+  if (n <= 1) return "tous les Pokémon";
+  const threshold = Math.min(255, Math.max(1, Math.round(65536 / n)));
+  return `1 / ${Math.floor(65536 / threshold)}`;
 });
 
 /** Noms des espèces (français), pour choisir ses starters. */
@@ -67,7 +78,8 @@ const outputPath = ref<string | null>(null);
 const runError = ref<string | null>(null);
 const showLog = ref(false);
 
-const roms = computed(() => library.items.filter(isRom));
+/** ROMs d'origine seulement : on ne randomise pas une ROM déjà générée. */
+const roms = computed(() => library.items.filter((d) => isRom(d) && !isKaleidoRom(d)));
 const selected = computed(() => roms.value.find((r) => r.path === romPath.value) ?? null);
 const isCtr = computed(() => selected.value?.platform === "3ds");
 const target = ref<"luma" | "emulator">("luma");
@@ -342,21 +354,27 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
           <div class="section panel">
             <h3>Chromatiques ✨</h3>
-            <Segmented
-              v-model="shinyChoice"
-              :options="[
-                { value: '1', label: 'Normal (1/8192)' },
-                { value: '4', label: '×4 (1/2048)' },
-                { value: '16', label: '×16 (1/512)' },
-                { value: '32', label: 'Maximum (1/257)' },
-              ]"
-            />
+            <div class="row shiny-row">
+              <label class="shiny-input">
+                1 chance sur
+                <input v-model.number="settings.shinyOdds" class="input" type="number" min="1" max="65536" :disabled="isCtr" />
+              </label>
+              <div class="chips-row">
+                <button v-for="q in SHINY_PRESETS" :key="q.odds" class="chip-btn" :class="{ on: settings.shinyOdds === q.odds }" :disabled="isCtr" @click="settings.shinyOdds = q.odds">
+                  {{ q.label }}
+                </button>
+              </div>
+            </div>
             <p class="dim note">
-              {{
-                isCtr
-                  ? "Pas encore disponible sur 3DS : le taux est défini dans le code du jeu (code.bin)."
-                  : "Modifie la fonction du jeu qui décide si un Pokémon est chromatique : sauvages, dons et œufs."
-              }}
+              <template v-if="isCtr">Pas encore disponible sur 3DS : le taux est défini dans le code du jeu (code.bin).</template>
+              <template v-else>
+                Taux réel : <strong>{{ shinyLabel }}</strong>. Modifie la fonction du jeu qui décide si un Pokémon est chromatique
+                (sauvages, dons, œufs, dresseurs).
+              </template>
+            </p>
+            <p v-if="!isCtr && settings.shinyOdds <= 1" class="warn-text">
+              ⚠ Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
+              doivent jamais l'être, comme Reshiram / Zekrom). Avec 100 %, ces scènes peuvent bloquer le jeu.
             </p>
           </div>
         </div>
@@ -667,6 +685,62 @@ h3 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.shiny-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.shiny-input .input {
+  width: 110px;
+  flex: none;
+}
+
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.chip-btn.on {
+  background: var(--prism);
+  color: var(--on-accent);
+  border-color: transparent;
+}
+
+:root[data-theme="lagon"] .chip-btn.on {
+  background: #fff;
+}
+
+.chip-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.warn-text {
+  margin: 10px 0 0;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .row-label {

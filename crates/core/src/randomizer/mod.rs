@@ -56,6 +56,16 @@ pub struct Outcome {
     pub log: String,
 }
 
+/// Signature écrite dans les ROMs générées (lue par la détection des fichiers).
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KaleidoTag {
+    pub tool: String,
+    pub version: String,
+    pub seed: u64,
+    pub share_code: String,
+}
+
 fn rng_for(seed: u64, part: &str) -> ChaCha8Rng {
     // FNV-1a du nom de la partie, pour des flux indépendants.
     let salt = part.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3));
@@ -238,9 +248,11 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     };
 
     // 5. Taux de chromatiques (modification du code du jeu).
-    if settings.shiny_multiplier > 1 {
-        let odds = crate::data::shiny::set_multiplier(game.rom_mut(), settings.shiny_multiplier)?;
-        let _ = writeln!(log, "== Chromatiques ==\nTaux : 1 / {odds} (au lieu de 1 / 8192)\n");
+    let threshold = crate::data::shiny::threshold_for_odds(settings.shiny_odds);
+    if threshold != crate::data::shiny::DEFAULT_THRESHOLD {
+        let odds = crate::data::shiny::set_threshold(game.rom_mut(), threshold)?;
+        let rate = if odds == 1 { "tous les Pokémon".to_string() } else { format!("1 / {odds}") };
+        let _ = writeln!(log, "== Chromatiques ==\nTaux : {rate} (au lieu de 1 / 8192)\n");
     }
 
     // 6. Dresseurs.
@@ -255,6 +267,10 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     } else {
         0
     };
+
+    // Signature lisible par la bibliothèque : « ROM randomisée par Kaleido, seed … ».
+    let tag = KaleidoTag { tool: "Kaleido".into(), version: env!("CARGO_PKG_VERSION").into(), seed, share_code: code.clone() };
+    game.rom_mut().set_signature(serde_json::to_vec(&tag).unwrap_or_default());
 
     Ok(Outcome {
         seed,
