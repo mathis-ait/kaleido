@@ -29,6 +29,7 @@ mod gen6;
 mod gen7;
 mod inventory;
 mod memecrypto;
+mod origin;
 pub mod pkm;
 pub mod pokedex;
 pub mod session;
@@ -41,6 +42,7 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 pub use inventory::{InventoryItem, Pouch, PouchKind};
+pub use origin::TrainerOrigin;
 pub use pkm::{Gender, PkmDate, PkmError, PkmFormat, Pokemon, PokemonSummary, ShinyMode};
 pub use stats::{calc_stats, exp_for_level, level_from_exp, nature_name, GrowthRate, NATURES_FR};
 

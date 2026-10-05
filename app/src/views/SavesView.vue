@@ -14,6 +14,7 @@ import PlayGuide from "../play/PlayGuide.vue";
 import SyncBanner from "../play/SyncBanner.vue";
 import NuzlockePage from "../save/NuzlockePage.vue";
 import BankPage from "../save/BankPage.vue";
+import GiftsPage from "../save/gifts/GiftsPage.vue";
 import { goTo, history, openSave, SAVE_PAGES, saveState, writeSave, type SavePage } from "../saveStore";
 import { keyOf, shell, typing } from "../save/shell";
 
@@ -108,7 +109,7 @@ onBeforeUnmount(() => {
 });
 
 const time = computed(() => now.value.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
-const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pokemon: PokemonPage, tools: ToolsPage, nuzlocke: NuzlockePage, manager: ManagerPage, bank: BankPage };
+const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pokemon: PokemonPage, tools: ToolsPage, gifts: GiftsPage, nuzlocke: NuzlockePage, manager: ManagerPage, bank: BankPage };
 </script>
 
 <template>
