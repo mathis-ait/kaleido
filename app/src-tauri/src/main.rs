@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager};
 
 mod play;
 mod nuzlocke;
+mod bank;
 mod saves;
 mod sprites;
 
@@ -191,6 +192,7 @@ fn main() {
         .manage(saves::OpenSave::default())
         .manage(play::SaveWatch::default())
         .manage(nuzlocke::RomCache::default())
+        .manage(bank::OpenBank::default())
         .register_asynchronous_uri_scheme_protocol("sprite", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
@@ -247,7 +249,22 @@ fn main() {
             play::watch_save_resync,
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
-            nuzlocke::nuzlocke_link_rom
+            nuzlocke::nuzlocke_link_rom,
+            bank::bank_info,
+            bank::bank_set_path,
+            bank::bank_box,
+            bank::bank_box_compat,
+            bank::bank_detail,
+            bank::bank_search,
+            bank::bank_move,
+            bank::bank_delete,
+            bank::bank_add_box,
+            bank::bank_rename_box,
+            bank::bank_delete_box,
+            bank::bank_import,
+            bank::bank_export,
+            bank::bank_deposit,
+            bank::bank_withdraw
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

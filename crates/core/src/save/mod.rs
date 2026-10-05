@@ -21,6 +21,7 @@
 //! Le Pokédex est géré par [`pokedex`].
 
 pub mod checksum;
+pub mod convert;
 pub mod edit;
 mod gen4;
 mod gen5;
