@@ -1,4 +1,5 @@
 //! Un jeu DS ouvert : relie la ROM brute à l'emplacement des données de chaque jeu.
+//! (Les jeux 3DS sont dans [crate::ctr_rom].)
 
 use std::path::Path;
 
@@ -117,41 +118,52 @@ impl GameRom {
     }
 
     pub fn species(&self) -> Result<Vec<Species>, RomError> {
-        let count = self.layout.species_count as usize;
         let names = self.text_file(self.layout.species_names)?;
         let abilities = self.text_file(self.layout.ability_names)?;
         let personal = self.narc(self.layout.personal)?;
-        if names.len() <= count || personal.files.len() <= count || abilities.len() < 100 {
-            return Err(RomError::Layout(format!(
-                "{} : emplacements des données à vérifier ({} noms, {} fiches, {} talents)",
-                self.game.name_fr(),
-                names.len(),
-                personal.files.len(),
-                abilities.len()
-            )));
-        }
-        let ability_name = |id: u16| abilities.get(id as usize).filter(|n| id != 0 && !n.is_empty() && *n != "-").cloned();
-
-        (1..=count)
-            .map(|id| {
-                let p = Personal::new(self.generation(), personal.files[id].clone())
-                    .ok_or_else(|| RomError::Layout(format!("fiche n°{id} trop courte")))?;
-                let ids = p.abilities();
-                let mut regular: Vec<String> = ids.iter().take(2).filter_map(|&a| ability_name(a)).collect();
-                regular.dedup();
-                let hidden = ids.get(2).and_then(|&a| ability_name(a)).filter(|h| !regular.contains(h));
-                let stats = p.base_stats();
-                Ok(Species {
-                    id: id as u16,
-                    name: names[id].clone(),
-                    types: p.types().into_iter().map(Into::into).collect(),
-                    base_stats: stats,
-                    total: stats.total(),
-                    abilities: regular,
-                    hidden_ability: hidden,
-                    catch_rate: p.catch_rate(),
-                })
-            })
-            .collect()
+        assemble_species(self.game, self.layout.species_count, &names, &abilities, &personal.files)
     }
+}
+
+/// Construit le Pokédex à partir des noms, des talents et des fiches « personal »
+/// (indexées par numéro national, l'entrée 0 étant vide). Commun à la DS et à la 3DS.
+pub(crate) fn assemble_species(
+    game: Game,
+    species_count: u16,
+    names: &[String],
+    abilities: &[String],
+    personal: &[Vec<u8>],
+) -> Result<Vec<Species>, RomError> {
+    let count = species_count as usize;
+    if names.len() <= count || personal.len() <= count || abilities.len() < 100 {
+        return Err(RomError::Layout(format!(
+            "{} : emplacements des données à vérifier ({} noms, {} fiches, {} talents)",
+            game.name_fr(),
+            names.len(),
+            personal.len(),
+            abilities.len()
+        )));
+    }
+    let ability_name = |id: u16| abilities.get(id as usize).filter(|n| id != 0 && !n.is_empty() && *n != "-").cloned();
+
+    (1..=count)
+        .map(|id| {
+            let p = Personal::new(game.generation(), personal[id].clone()).ok_or_else(|| RomError::Layout(format!("fiche n°{id} trop courte")))?;
+            let ids = p.abilities();
+            let mut regular: Vec<String> = ids.iter().take(2).filter_map(|&a| ability_name(a)).collect();
+            regular.dedup();
+            let hidden = ids.get(2).and_then(|&a| ability_name(a)).filter(|h| !regular.contains(h));
+            let stats = p.base_stats();
+            Ok(Species {
+                id: id as u16,
+                name: names[id].clone(),
+                types: p.types().into_iter().map(Into::into).collect(),
+                base_stats: stats,
+                total: stats.total(),
+                abilities: regular,
+                hidden_ability: hidden,
+                catch_rate: p.catch_rate(),
+            })
+        })
+        .collect()
 }

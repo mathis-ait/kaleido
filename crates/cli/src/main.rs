@@ -1,29 +1,46 @@
 //! `kaleido` : inspection et vérification des ROMs en ligne de commande.
 
+mod ctr;
+
 use std::path::Path;
 use std::process::ExitCode;
 
 use std::collections::BTreeMap;
 
+use kaleido_core::text::gen5::Variant;
 use kaleido_core::text::{gen4, gen5};
-use kaleido_core::Game;
+use kaleido_core::FileKind;
+use kaleido_formats::garc::Garc;
 use kaleido_formats::narc::Narc;
 use kaleido_formats::nds::NdsRom;
 
 type CliResult = Result<(), Box<dyn std::error::Error>>;
 
 const USAGE: &str = "\
-Usage : kaleido <commande> <rom.nds> [arguments]
+Usage : kaleido <commande> <rom> [arguments]
 
-Commandes :
+Commandes DS (.nds) :
   info      <rom>                       En-tête, nombre de fichiers et d'overlays
   ls        <rom> [filtre]              Liste des fichiers (taille, nombre d'entrées NARC)
   check     <rom>                       Vérifie la relecture / reconstruction de toute la ROM
+  species   <rom>                       Pokédex : types, statistiques, talents
+
+Commandes 3DS (.3ds / .cxi / .cia déchiffrés, ou dossier extrait avec romfs/) :
+  info3ds    <rom>                      Title ID, jeu, contenu du RomFS
+  ls3ds      <rom> [filtre]             Fichiers du RomFS (GARC : entrées, LZ11)
+  check3ds   <rom>                      Reconstruit tous les GARC, vérifie le LZ11
+  species3ds <rom>                      Pokédex Gen 6/7
+  hex3ds     <rom> <chemin> [entrée|-] [début] [longueur]   Vidage hexadécimal
+
+Textes (DS : archive NARC ; 3DS : archive GARC, ex. a/0/7/4) :
   text      <rom> <archive> <n°>        Affiche un fichier de texte
   find      <rom> <archive> <texte>     Cherche un texte dans toute une archive
   textcheck <rom> <archive>             Vérifie déchiffrement, décodage et réencodage
-  species   <rom>                       Pokédex : types, statistiques, talents
+  (alias 3DS : text3ds, find3ds, textcheck3ds)
+
+Outils DS :
   hex       <rom> <archive> <n°>        Vidage hexadécimal d'une entrée NARC
+  search    <rom> <v1,v2,…>             Cherche une suite de valeurs (u16/u32)
   randomize <rom> <préréglage> <seed> <sortie.nds>   Randomise (equilibre, nuzlocke, chaos, defi)
   starters  <rom>                       Starters actuels";
 
@@ -34,15 +51,23 @@ fn main() -> ExitCode {
         ["ls", rom] => ls(&open(rom), ""),
         ["ls", rom, filter] => ls(&open(rom), filter),
         ["check", rom] => check(&open(rom)),
-        ["text", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text(&open(rom), archive, n)),
-        ["find", rom, archive, needle] => find(&open(rom), archive, needle),
-        ["textcheck", rom, archive] => text_check(&open(rom), archive),
+        ["text" | "text3ds", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text(rom, archive, n)),
+        ["find" | "find3ds", rom, archive, needle] => find(rom, archive, needle),
+        ["textcheck" | "textcheck3ds", rom, archive] => text_check(rom, archive),
         ["species", rom] => species(rom),
         ["randomize", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| randomize(rom, preset, s, out)),
         ["starters", rom] => starters(rom),
         ["search", rom, values] => search(&open(rom), values),
         ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
-        ["textdiff", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text_diff(&open(rom), archive, n)),
+        ["info3ds", rom] => ctr::info(&ctr::open(rom)),
+        ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
+        ["ls3ds", rom, filter] => ctr::ls(&ctr::open(rom), filter),
+        ["check3ds", rom] => ctr::check(&ctr::open(rom)),
+        ["hex3ds", rom, path, rest @ ..] => hex3ds(rom, path, rest),
+        ["bytes3ds", rom, pattern] => ctr::search_bytes(&ctr::open(rom), pattern, ""),
+        ["bytes3ds", rom, pattern, filter] => ctr::search_bytes(&ctr::open(rom), pattern, filter),
+        ["species3ds", rom] => ctr::species(rom),
+        ["textdiff", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text_diff(rom, archive, n)),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;
@@ -140,21 +165,35 @@ fn check(rom: &NdsRom) -> CliResult {
     Ok(())
 }
 
-fn generation(rom: &NdsRom) -> Result<u8, String> {
-    Game::from_nds_code(&rom.header().game_code)
-        .map(Game::generation)
-        .ok_or_else(|| format!("jeu non reconnu : {}", rom.header().game_code))
+/// Fichiers d'une archive de textes (NARC sur DS, GARC sur 3DS) et génération du jeu.
+struct TextArchive {
+    gen: u8,
+    files: Vec<Vec<u8>>,
 }
 
-fn text_archive(rom: &NdsRom, archive: &str) -> Result<(u8, Narc), Box<dyn std::error::Error>> {
-    Ok((generation(rom)?, Narc::parse(rom.file_by_path(archive)?)?))
+fn text_archive(rom: &str, archive: &str) -> Result<TextArchive, Box<dyn std::error::Error>> {
+    let detection = kaleido_core::detect_path(Path::new(rom))?;
+    let gen = detection.generation.ok_or("jeu non reconnu")?;
+    let files = match detection.kind {
+        FileKind::NdsRom => Narc::parse(open(rom).file_by_path(archive)?)?.files,
+        FileKind::CtrRom | FileKind::CtrDump => {
+            let garc = Garc::parse(&ctr::open(rom).read(archive)?)?;
+            garc.entries.iter().map(|e| e.data().unwrap_or_default().to_vec()).collect()
+        }
+        _ => return Err("ce n'est pas une ROM DS ou 3DS".into()),
+    };
+    Ok(TextArchive { gen, files })
+}
+
+fn parse_gen5(gen: u8, data: &[u8]) -> Result<gen5::MsgFile, kaleido_core::text::TextError> {
+    gen5::MsgFile::parse_with(data, Variant::for_generation(gen))
 }
 
 fn strings(gen: u8, data: &[u8]) -> Result<Vec<String>, kaleido_core::text::TextError> {
     if gen == 4 {
         Ok(gen4::MsgFile::parse(data)?.strings())
     } else {
-        Ok(gen5::MsgFile::parse(data)?.strings())
+        Ok(parse_gen5(gen, data)?.strings())
     }
 }
 
@@ -162,19 +201,19 @@ fn printable(s: &str) -> String {
     s.replace('\n', "⏎").replace('\r', "⇣").replace('\u{c}', "¶")
 }
 
-fn text(rom: &NdsRom, archive: &str, n: usize) -> CliResult {
-    let (gen, narc) = text_archive(rom, archive)?;
-    let file = narc.files.get(n).ok_or("numéro de fichier hors de l'archive")?;
+fn text(rom: &str, archive: &str, n: usize) -> CliResult {
+    let TextArchive { gen, files } = text_archive(rom, archive)?;
+    let file = files.get(n).ok_or("numéro de fichier hors de l'archive")?;
     for (i, s) in strings(gen, file)?.iter().enumerate() {
         println!("{i:4}: {}", printable(s));
     }
     Ok(())
 }
 
-fn find(rom: &NdsRom, archive: &str, needle: &str) -> CliResult {
-    let (gen, narc) = text_archive(rom, archive)?;
+fn find(rom: &str, archive: &str, needle: &str) -> CliResult {
+    let TextArchive { gen, files } = text_archive(rom, archive)?;
     let needle = needle.to_lowercase();
-    for (n, file) in narc.files.iter().enumerate() {
+    for (n, file) in files.iter().enumerate() {
         let Ok(list) = strings(gen, file) else { continue };
         for (i, s) in list.iter().enumerate().filter(|(_, s)| s.to_lowercase().contains(&needle)) {
             let s: String = printable(s).chars().take(90).collect();
@@ -184,13 +223,14 @@ fn find(rom: &NdsRom, archive: &str, needle: &str) -> CliResult {
     Ok(())
 }
 
-fn text_check(rom: &NdsRom, archive: &str) -> CliResult {
-    let (gen, narc) = text_archive(rom, archive)?;
-    let (mut files_ok, mut strings_total, mut strings_ok) = (0, 0, 0);
+fn text_check(rom: &str, archive: &str) -> CliResult {
+    let TextArchive { gen, files } = text_archive(rom, archive)?;
+    let variant = Variant::for_generation(gen);
+    let (mut files_ok, mut strings_total, mut strings_ok, mut roundtrip_ok, mut single_block) = (0, 0, 0, 0, 0);
     let mut unknown: BTreeMap<String, usize> = BTreeMap::new();
     let mut mismatches = Vec::new();
 
-    for (n, file) in narc.files.iter().enumerate() {
+    for (n, file) in files.iter().enumerate() {
         // (codes bruts, réencodage) pour chaque chaîne du fichier.
         let (rewritten, pairs): (Vec<u8>, Vec<(Vec<u16>, Result<Vec<u16>, _>, String)>) = if gen == 4 {
             let m = gen4::MsgFile::parse(file)?;
@@ -200,10 +240,21 @@ fn text_check(rom: &NdsRom, archive: &str) -> CliResult {
             });
             (m.to_bytes(), pairs.collect())
         } else {
-            let m = gen5::MsgFile::parse(file)?;
+            let m = parse_gen5(gen, file)?;
+            // Aller-retour complet par les chaînes (fichiers à un seul bloc : toutes les langues sauf le japonais).
+            if m.blocks.len() == 1 {
+                single_block += 1;
+                let mut copy = m.clone();
+                copy.set_strings(&m.strings())?;
+                if copy.to_bytes() == *file {
+                    roundtrip_ok += 1;
+                } else if mismatches.len() < 5 {
+                    mismatches.push(format!("fichier {n} : aller-retour par les chaînes différent"));
+                }
+            }
             let pairs = m.blocks.iter().flatten().map(|e| {
-                let s = gen5::decode(&e.codes);
-                (e.codes.clone(), gen5::encode(&s), s)
+                let s = gen5::decode_with(&e.codes, variant);
+                (e.codes.clone(), gen5::encode_with(&s, variant), s)
             });
             (m.to_bytes(), pairs.collect())
         };
@@ -219,6 +270,8 @@ fn text_check(rom: &NdsRom, archive: &str) -> CliResult {
             let same = match &reencoded {
                 Ok(r) if *r == codes => true,
                 Ok(r) if gen == 4 && codes.first() == Some(&0xF100) => gen4::decode(r) == s,
+                // Lignes de taille fixe : la suite n'est faite que de terminateurs.
+                Ok(r) if gen >= 5 && codes.starts_with(r) && codes[r.len()..].iter().all(|&c| Some(&c) == r.last()) => true,
                 _ => false,
             };
             if same {
@@ -234,8 +287,11 @@ fn text_check(rom: &NdsRom, archive: &str) -> CliResult {
         }
     }
 
-    println!("Fichiers réécrits à l'octet près : {files_ok}/{}", narc.files.len());
+    println!("Fichiers réécrits à l'octet près : {files_ok}/{}", files.len());
     println!("Chaînes réencodées à l'identique : {strings_ok}/{strings_total}");
+    if gen >= 5 {
+        println!("Fichiers identiques après lecture et réécriture des chaînes : {roundtrip_ok}/{single_block}");
+    }
     let mut unknown: Vec<_> = unknown.into_iter().collect();
     unknown.sort_by(|a, b| b.1.cmp(&a.1));
     println!("Caractères inconnus : {} distincts", unknown.len());
@@ -250,7 +306,12 @@ fn text_check(rom: &NdsRom, archive: &str) -> CliResult {
 
 fn species(path: &str) -> CliResult {
     let game = kaleido_core::GameRom::open(Path::new(path))?;
-    for s in game.species()? {
+    print_species(&game.species()?);
+    Ok(())
+}
+
+fn print_species(species: &[kaleido_core::pokemon::Species]) {
+    for s in species {
         let types: Vec<_> = s.types.iter().map(|t| t.name).collect();
         let b = s.base_stats;
         let mut abilities = s.abilities.join(" / ");
@@ -271,7 +332,18 @@ fn species(path: &str) -> CliResult {
             s.total
         );
     }
-    Ok(())
+}
+
+/// `hex3ds <rom> <chemin> [entrée|-] [début] [longueur]` (valeurs décimales ou 0x…).
+fn hex3ds(rom: &str, path: &str, rest: &[&str]) -> CliResult {
+    let num = |s: &str| match s.strip_prefix("0x") {
+        Some(h) => usize::from_str_radix(h, 16),
+        None => s.parse(),
+    };
+    let entry = rest.first().filter(|s| **s != "-").map(|s| num(s)).transpose()?;
+    let offset = rest.get(1).map(|s| num(s)).transpose()?.unwrap_or(0);
+    let len = rest.get(2).map(|s| num(s)).transpose()?.unwrap_or(0x100);
+    ctr::hex(&ctr::open(rom), path, entry, offset, len)
 }
 
 fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
@@ -351,10 +423,10 @@ fn hex_entry(rom: &NdsRom, path: &str, n: usize) -> CliResult {
 }
 
 /// Outil de mise au point : premiers octets qui diffèrent après réécriture.
-fn text_diff(rom: &NdsRom, archive: &str, n: usize) -> CliResult {
-    let (gen, narc) = text_archive(rom, archive)?;
-    let file = narc.files.get(n).ok_or("numéro de fichier hors de l'archive")?;
-    let rewritten = if gen == 4 { gen4::MsgFile::parse(file)?.to_bytes() } else { gen5::MsgFile::parse(file)?.to_bytes() };
+fn text_diff(rom: &str, archive: &str, n: usize) -> CliResult {
+    let TextArchive { gen, files } = text_archive(rom, archive)?;
+    let file = files.get(n).ok_or("numéro de fichier hors de l'archive")?;
+    let rewritten = if gen == 4 { gen4::MsgFile::parse(file)?.to_bytes() } else { parse_gen5(gen, file)?.to_bytes() };
     let hex = |d: &[u8], at: usize| d[at.saturating_sub(4)..(at + 12).min(d.len())].iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
     println!("en-tête original : {}", hex(file, 4));
     println!("en-tête réécrit  : {}", hex(&rewritten, 4));

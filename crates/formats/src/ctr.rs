@@ -45,6 +45,11 @@ pub struct NcchInfo {
     pub product_code: String,
     /// `true` si le contenu est chiffré (flag `NoCrypto` absent).
     pub encrypted: bool,
+    /// Position absolue de la partition NCCH dans le fichier.
+    pub offset: u64,
+    /// RomFS : position absolue et taille en octets (taille 0 si absent).
+    pub romfs_offset: u64,
+    pub romfs_size: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,7 +76,7 @@ impl CtrImage {
                 Ok(Some(Self { container: Container::Cci, title_id, ncch }))
             }
             b"NCCH" => {
-                let ncch = parse_ncch(&h);
+                let ncch = parse_ncch(&h, 0);
                 Ok(Some(Self { container: Container::Cxi, title_id: ncch.program_id, ncch: Some(ncch) }))
             }
             _ => probe_cia(r, &h, len),
@@ -79,11 +84,15 @@ impl CtrImage {
     }
 }
 
-fn parse_ncch(h: &[u8]) -> NcchInfo {
+fn parse_ncch(h: &[u8], offset: u64) -> NcchInfo {
+    let romfs_size = u32le(h, 0x1B4) as u64 * MEDIA_UNIT;
     NcchInfo {
         program_id: u64le(h, 0x118),
         product_code: ascii(&h[0x150..0x160]),
         encrypted: h[0x18F] & 0x04 == 0,
+        offset,
+        romfs_offset: if romfs_size == 0 { 0 } else { offset + u32le(h, 0x1B0) as u64 * MEDIA_UNIT },
+        romfs_size,
     }
 }
 
@@ -92,7 +101,7 @@ fn read_ncch<R: Read + Seek>(r: &mut R, offset: u64, len: u64) -> Result<Option<
         return Ok(None);
     }
     let h = read_at(r, offset, NCCH_HEADER_SIZE)?;
-    Ok((&h[0x100..0x104] == b"NCCH").then(|| parse_ncch(&h)))
+    Ok((&h[0x100..0x104] == b"NCCH").then(|| parse_ncch(&h, offset)))
 }
 
 fn probe_cia<R: Read + Seek>(r: &mut R, h: &[u8], len: u64) -> Result<Option<CtrImage>> {
@@ -149,6 +158,8 @@ mod tests {
         if no_crypto {
             h[0x18F] = 0x04;
         }
+        h[0x1B0..0x1B4].copy_from_slice(&0x10u32.to_le_bytes());
+        h[0x1B4..0x1B8].copy_from_slice(&0x20u32.to_le_bytes());
         h
     }
 
@@ -165,6 +176,8 @@ mod tests {
         let ncch = img.ncch.unwrap();
         assert!(!ncch.encrypted);
         assert_eq!(ncch.product_code, "CTR-P-EKJA");
+        assert_eq!(ncch.offset, 0x4000);
+        assert_eq!((ncch.romfs_offset, ncch.romfs_size), (0x4000 + 0x10 * MEDIA_UNIT, 0x20 * MEDIA_UNIT));
     }
 
     #[test]

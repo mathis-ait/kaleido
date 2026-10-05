@@ -27,6 +27,8 @@ pub enum PokeType {
     Ice,
     Dragon,
     Dark,
+    /// Type Fée (à partir de la Gen 6).
+    Fairy,
 }
 
 impl PokeType {
@@ -56,6 +58,9 @@ impl PokeType {
         let i = index as usize;
         if generation <= 4 {
             Self::GEN4.get(i).copied()
+        } else if generation >= 6 && i == 17 {
+            // La Gen 6 ajoute Fée à la suite des types de la Gen 5.
+            Some(PokeType::Fairy)
         } else {
             // La Gen 5 supprime « ??? » : les types suivants sont décalés d'un cran.
             Self::GEN4.iter().copied().filter(|t| *t != PokeType::Mystery).nth(i)
@@ -82,6 +87,7 @@ impl PokeType {
             PokeType::Ice => "Glace",
             PokeType::Dragon => "Dragon",
             PokeType::Dark => "Ténèbres",
+            PokeType::Fairy => "Fée",
         }
     }
 }
@@ -124,12 +130,13 @@ pub struct Personal {
 }
 
 impl Personal {
-    /// Taille minimale d'une fiche, par génération.
+    /// Taille minimale d'une fiche, par génération (X/Y : 0x40, ROSA : 0x50, Gen 7 : 0x54).
     fn min_size(generation: u8) -> usize {
-        if generation <= 4 {
-            0x2C
-        } else {
-            0x3C
+        match generation {
+            0..=4 => 0x2C,
+            5 => 0x3C,
+            6 => 0x40,
+            _ => 0x54,
         }
     }
 
@@ -137,7 +144,8 @@ impl Personal {
         (data.len() >= Self::min_size(generation)).then_some(Self { generation, data })
     }
 
-    // Les six statistiques sont dans le même ordre en Gen 4 et 5 : PV, Att, Déf, Vit, Atq Spé, Déf Spé.
+    // Les six statistiques sont dans le même ordre de la Gen 4 à la Gen 7 : PV, Att, Déf, Vit, Atq Spé, Déf Spé.
+    // Types en 6 et 7, taux de capture en 8, talents en 0x18-0x1A (Gen 5 à 7, vérifié sur ROSA).
     pub fn base_stats(&self) -> BaseStats {
         let d = &self.data;
         BaseStats { hp: d[0], attack: d[1], defense: d[2], speed: d[3], sp_attack: d[4], sp_defense: d[5] }
@@ -185,5 +193,22 @@ mod tests {
         assert_eq!(PokeType::from_index(5, 9), Some(PokeType::Fire));
         assert_eq!(PokeType::from_index(5, 16), Some(PokeType::Dark));
         assert_eq!(PokeType::from_index(5, 17), None);
+        assert_eq!(PokeType::from_index(6, 9), Some(PokeType::Fire));
+        assert_eq!(PokeType::from_index(7, 17), Some(PokeType::Fairy));
+        assert_eq!(PokeType::from_index(6, 18), None);
+    }
+
+    #[test]
+    fn gen6_personal() {
+        // Dracaufeu dans Rubis Oméga (a/1/9/5, entrée 6).
+        let mut d = vec![0u8; 0x50];
+        d[..9].copy_from_slice(&[78, 84, 78, 100, 109, 85, 9, 2, 45]);
+        d[0x18..0x1B].copy_from_slice(&[66, 66, 94]);
+        let p = Personal::new(6, d).unwrap();
+        let s = p.base_stats();
+        assert_eq!((s.hp, s.attack, s.defense, s.sp_attack, s.sp_defense, s.speed), (78, 84, 78, 109, 85, 100));
+        assert_eq!(p.types(), [PokeType::Fire, PokeType::Flying]);
+        assert_eq!(p.abilities(), [66, 66, 94]);
+        assert!(Personal::new(7, vec![0; 0x50]).is_none());
     }
 }
