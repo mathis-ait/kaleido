@@ -7,6 +7,7 @@
 
 pub mod ctr;
 mod extras;
+pub mod items;
 pub mod settings;
 
 use std::collections::HashMap;
@@ -236,6 +237,9 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     } else {
         0
     };
+
+    // 4 bis. Objets ramassables et boutiques.
+    items::randomize_items(game, &settings.items, seed, &mut log)?;
 
     // 5. Taux de chromatiques (modification du code du jeu).
     if settings.shiny_multiplier > 1 {

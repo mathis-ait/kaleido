@@ -91,6 +91,9 @@ pub struct Settings {
     pub trainer_max_ivs: bool,
     /// Multiplicateur du taux de chromatiques (1 = 1/8192 ; 32 ≈ 1/257). DS seulement.
     pub shiny_multiplier: u16,
+    /// Objets ramassables et boutiques.
+    #[serde(default)]
+    pub items: super::items::ItemSettings,
 }
 
 impl Default for Settings {
@@ -103,6 +106,7 @@ impl Default for Settings {
             trainer_evolutions: false,
             trainer_max_ivs: false,
             shiny_multiplier: 1,
+            items: Default::default(),
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,

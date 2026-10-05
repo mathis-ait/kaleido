@@ -346,6 +346,27 @@ impl NdsRom {
         self.replace_file(file_id, data)
     }
 
+    /// Remplace un overlay en le recompressant (BLZ) s'il était compressé, pour qu'il
+    /// garde à peu près sa taille d'origine (utile sur les ROMs « DSi Enhanced », où
+    /// la zone DS est presque pleine). Sinon, identique à [`NdsRom::replace_overlay`].
+    pub fn replace_overlay_recompressed(&mut self, id: u32, data: Vec<u8>) -> Result<()> {
+        let idx = self.overlays.iter().position(|o| o.id == id).ok_or_else(|| FormatError::NotFound(format!("overlay {id}")))?;
+        if !self.overlays[idx].is_compressed() {
+            return self.replace_overlay(id, data);
+        }
+        let ovl = &mut self.overlays[idx];
+        if data.len() as u32 > ovl.ram_size {
+            return Err(FormatError::Invalid("overlay plus grand que sa zone mémoire"));
+        }
+        let packed = lz::compress_blz(&data, 0);
+        if packed.len() > 0x00FF_FFFF {
+            return Err(FormatError::Invalid("overlay compressé trop grand"));
+        }
+        ovl.flags = (ovl.flags & !0x00FF_FFFF) | OVERLAY_COMPRESSED | packed.len() as u32;
+        let file_id = ovl.file_id;
+        self.replace_file(file_id, packed)
+    }
+
     fn find_overlay(&self, id: u32) -> Result<&Overlay> {
         self.overlays.iter().find(|o| o.id == id).ok_or_else(|| FormatError::NotFound(format!("overlay {id}")))
     }

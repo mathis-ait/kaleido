@@ -4,8 +4,10 @@
 
 pub mod encounters;
 pub mod evolutions;
+pub mod field_items;
 pub mod learnsets;
 pub mod shiny;
+pub mod shops;
 pub mod starters;
 pub mod trainers;
 
