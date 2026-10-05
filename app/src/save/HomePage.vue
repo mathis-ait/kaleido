@@ -90,11 +90,11 @@ const tiles = computed<Tile[]>(() => [
   {
     id: "encounters",
     title: "Rencontres",
-    sub: "Bientôt",
-    band: "Où trouver chaque Pokémon (en préparation)",
-    icon: "sparkle",
+    sub: "Où trouver chaque Pokémon",
+    band: "Hautes herbes, dons, échanges, œufs… et créer un Pokémon légal",
+    icon: "map",
     gradient: "linear-gradient(150deg, #5fe0c2, #22a59a)",
-    soon: true,
+    go: () => goTo("encounters"),
   },
   {
     id: "gifts",

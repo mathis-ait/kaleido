@@ -302,6 +302,7 @@ pub struct Encounter {
 }
 
 impl Encounter {
+    #[allow(clippy::too_many_arguments)]
     fn base(kind: EncounterKind, generation: u8, versions: Vec<u8>, species: u16, form: u8, min: u8, max: u8, location: u16) -> Self {
         Encounter {
             kind,
@@ -608,7 +609,10 @@ const B2W2_OT_F: [(u8, &str); 7] = [(1, "ルリ"), (2, "Yancy"), (3, "Brenda"), 
 const B2W2_OT_M: [(u8, &str); 7] = [(1, "テツ"), (2, "Curtis"), (3, "Julien"), (4, "Dadi"), (5, "Markus"), (7, "Julián"), (8, "철권")];
 const RANCH_OT: [(u8, &str); 6] = [(1, "ユカリ"), (2, "Hayley"), (3, "EULALIE"), (4, "GIULIA"), (5, "EUKALIA"), (7, "Eulalia")];
 
-fn trade_lines(file: &str, index: usize) -> (Vec<(u8, String)>, Vec<(u8, String)>) {
+/// Noms par langue (identifiant de langue, texte).
+type Names = Vec<(u8, String)>;
+
+fn trade_lines(file: &str, index: usize) -> (Names, Names) {
     let mut nicks = Vec::new();
     let mut ots = Vec::new();
     if let Some(langs) = TRADE_NAMES.get(file) {
@@ -740,7 +744,8 @@ fn build(game: Game) -> Vec<Encounter> {
 /// Fusionne les emplacements identiques des deux versions d'une paire (`versions` réunies).
 fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
     let mut out: Vec<Encounter> = Vec::with_capacity(list.len());
-    let mut index: HashMap<(EncounterKind, u16, u8, u8, u8, u16, bool), usize> = HashMap::new();
+    type Key = (EncounterKind, u16, u8, u8, u8, u16, bool);
+    let mut index: HashMap<Key, usize> = HashMap::new();
     for e in list {
         if e.kind.is_wild() {
             let key = (e.kind, e.species, e.form, e.level_min, e.level_max, e.location, e.ability == AbilityRule::Any12H);

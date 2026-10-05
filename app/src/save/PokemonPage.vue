@@ -7,7 +7,8 @@ import Tip from "../components/Tip.vue";
 import TypeBadge from "../components/TypeBadge.vue";
 import { editPokemon, exportPokemon, goTo, lists, saveState } from "../saveStore";
 import type { ShinyMode } from "../types";
-import { checkPokemon, checkSummary } from "./checks";
+import { checkPokemon, checkSummary, legalityOf } from "./checks";
+import { legalizeSlot } from "./legality";
 import { apply } from "./pokemon/edit";
 import OverviewTab from "./pokemon/OverviewTab.vue";
 import MetTab from "./pokemon/MetTab.vue";
@@ -35,7 +36,39 @@ const current = computed(() => TABS.find((t) => t.id === tab.value)!);
 const checks = computed(() => (p.value ? checkPokemon(p.value, view.value.generation, lists.itemName) : []));
 const summary = computed(() => checkSummary(checks.value));
 const showReport = ref(false);
-watch(p, () => (showReport.value = false));
+const report = computed(() => (p.value ? legalityOf(p.value) : null));
+/** Modifications faites par le dernier « Rendre légal ». */
+const lastChanges = ref<string[] | null>(null);
+const legalizing = ref(false);
+watch(
+  () => JSON.stringify(p.value?.slot),
+  () => {
+    showReport.value = false;
+    lastChanges.value = null;
+  },
+);
+
+const PID_LABELS: Record<string, string> = {
+  method1: "méthode 1",
+  method2: "méthode 2",
+  method4: "méthode 4",
+  chainShiny: "Poké Radar (chaîne chromatique)",
+  cuteCharm: "Joli Sourire",
+  pokewalker: "Pokéwalker",
+  none: "aucune",
+};
+const pidLabel = (t: string) => PID_LABELS[t] ?? t;
+
+async function makeLegal() {
+  if (!p.value || legalizing.value) return;
+  legalizing.value = true;
+  const r = await legalizeSlot(p.value.slot);
+  legalizing.value = false;
+  if (r) {
+    lastChanges.value = r.changes;
+    showReport.value = true;
+  }
+}
 
 const types = computed(() =>
   (p.value?.speciesData?.types ?? []).map((t) => ({ key: TYPE_KEYS[t] ?? "normal", name: lists.types[t] ?? "" })),
@@ -97,6 +130,7 @@ useShell(() => ({
         { key: ",", cap: "<", label: "Précédent", run: () => stepPokemon(-1) },
         { key: ".", cap: ">", label: "Suivant", run: () => stepPokemon(1) },
         { key: "y", cap: "Y", label: "Vérifications", run: () => (showReport.value = !showReport.value) },
+        { key: "l", cap: "L", label: "Rendre légal", run: makeLegal, disabled: summary.value.level !== "error" || legalizing.value },
         { key: "Ctrl+Tab", cap: "Ctrl+Tab", label: "Onglet suivant", run: () => goTab(1) },
       ]
     : [],
@@ -168,9 +202,12 @@ const locationText = computed(() => {
       <button class="legal" :class="summary.level" @click="showReport = !showReport">
         <Icon :name="summary.level === 'ok' ? 'shield' : 'shield-alert'" :size="22" />
         <span>
-          <strong>{{ summary.level === "ok" ? "Cohérent" : summary.level === "warn" ? "À vérifier" : "Problèmes" }}</strong>
+          <strong>{{ summary.label }}</strong>
           <small>{{ summary.text }} · voir le rapport</small>
         </span>
+      </button>
+      <button v-if="summary.level === 'error'" class="sv-btn solid fix" :disabled="legalizing" @click="makeLegal">
+        <Icon name="wand" :size="15" /> {{ legalizing ? "Correction…" : "Rendre légal" }}
       </button>
 
       <div class="spacer" />
@@ -191,14 +228,44 @@ const locationText = computed(() => {
         <Transition name="fade" mode="out-in">
           <div v-if="showReport" key="report" class="report">
             <h3 class="sv-section-title">Vérifications <Tip term="legality" /></h3>
+            <div class="verdict" :class="summary.level">
+              <Icon :name="summary.level === 'ok' ? 'shield' : 'shield-alert'" :size="22" />
+              <div>
+                <strong>{{ summary.label }}</strong>
+                <p v-if="report">
+                  Origine : {{ report.origin || "inconnue" }} <Tip term="origin" />
+                  <template v-if="report.encounter">
+                    <br />Rencontre : {{ report.encounter.kindLabel }}
+                    <template v-if="report.encounter.locationName"> · {{ report.encounter.locationName }}</template>
+                    · niv. {{ report.encounter.levelMin }}<template v-if="report.encounter.levelMax !== report.encounter.levelMin">–{{ report.encounter.levelMax }}</template>
+                    <Tip term="encounter" />
+                  </template>
+                  <template v-if="report.pidType">
+                    <br />Corrélation PID / IV : {{ pidLabel(report.pidType) }} <Tip term="pidiv" />
+                  </template>
+                </p>
+                <p v-else>Analyse en cours…</p>
+              </div>
+              <button v-if="summary.level === 'error'" class="sv-btn solid" :disabled="legalizing" @click="makeLegal">
+                <Icon name="wand" :size="15" /> {{ legalizing ? "Correction…" : "Rendre légal" }}
+              </button>
+              <Tip term="legalize" />
+            </div>
+            <div v-if="lastChanges" class="changes">
+              <strong>{{ lastChanges.length ? "Modifications faites" : "Aucune modification nécessaire" }}</strong>
+              <ul v-if="lastChanges.length">
+                <li v-for="c in lastChanges" :key="c">{{ c }}</li>
+              </ul>
+              <small v-if="lastChanges.length">Ctrl+Z annule toutes ces modifications d'un coup.</small>
+            </div>
             <ul>
-              <li v-for="c in checks" :key="c.title" :class="c.level">
+              <li v-for="c in checks" :key="c.title + c.detail" :class="c.level">
                 <Icon :name="c.level === 'ok' ? 'check' : 'alert'" :size="18" />
                 <div>
-                  <strong>{{ c.title }}</strong>
+                  <strong>{{ c.title }} <Tip v-if="c.term" :term="c.term" /></strong>
                   <p>{{ c.detail }}</p>
                 </div>
-                <button v-if="c.tab" class="sv-btn" @click="(tab = c.tab), (showReport = false)">Corriger</button>
+                <button v-if="c.tab && c.level !== 'ok'" class="sv-btn" @click="(tab = c.tab), (showReport = false)">Corriger</button>
               </li>
             </ul>
             <button class="sv-btn" @click="showReport = false">Fermer le rapport</button>
@@ -476,6 +543,78 @@ const locationText = computed(() => {
 
 .report li.error {
   color: var(--danger);
+}
+
+.card > .fix {
+  width: 100%;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 14px;
+}
+
+.verdict > div {
+  flex: 1;
+}
+
+.verdict strong {
+  font-size: 16px;
+}
+
+.verdict p {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.verdict.ok {
+  border-color: #6ee7a8;
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  color: #c9ffe0;
+}
+
+.verdict.warn {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.verdict.error {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.changes {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
+}
+
+.changes ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  gap: 2px;
+  list-style: disc;
+}
+
+.changes li {
+  display: list-item;
+  padding: 0;
+  background: none;
+  font-size: 13px;
+}
+
+.changes small {
+  color: var(--text-dim);
 }
 
 .report li.warn {

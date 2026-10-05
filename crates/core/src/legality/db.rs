@@ -1,6 +1,7 @@
-//! Base « Rencontres » pour l'interface : où trouver chaque Pokémon dans un jeu.
+//! Base « Rencontres » pour l'interface : où trouver chaque Pokémon, jeu par jeu.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::LazyLock;
 
 use serde::Serialize;
 
@@ -11,7 +12,9 @@ use crate::dex::{self, Game};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncounterEntry {
-    /// Indice d'une rencontre représentative dans [`encounters`] (pour « Créer ce Pokémon »).
+    /// Groupe de jeux et indice d'une rencontre représentative dans [`encounters`] (pour « Créer ce Pokémon »).
+    pub game: Game,
+    pub game_name: &'static str,
     pub index: usize,
     pub species: u16,
     pub form: u8,
@@ -51,6 +54,39 @@ pub struct EncounterEntry {
     pub egg: bool,
 }
 
+/// Résumé par espèce (liste de gauche de la page « Rencontres »).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeciesEncounters {
+    pub species: u16,
+    pub name: String,
+    /// Familles de rencontres disponibles (herbes, surf, don…).
+    pub families: Vec<&'static str>,
+    pub count: usize,
+    pub level_min: u8,
+    pub games: Vec<&'static str>,
+}
+
+/// Nom français d'un groupe de jeux.
+pub fn game_label(game: Game) -> &'static str {
+    match game {
+        Game::DP => "Diamant / Perle",
+        Game::Pt => "Platine",
+        Game::HGSS => "Or HeartGold / Argent SoulSilver",
+        Game::BW => "Noir / Blanc",
+        Game::B2W2 => "Noir 2 / Blanc 2",
+        Game::XY => "X / Y",
+        Game::ORAS => "Rubis Oméga / Saphir Alpha",
+        Game::SM => "Soleil / Lune",
+        Game::USUM => "Ultra-Soleil / Ultra-Lune",
+    }
+}
+
+/// Groupe de jeux d'après son identifiant (`dp`, `pt`, `hgss`, `bw`, `b2w2`, `xy`, `oras`, `sm`, `usum`).
+pub fn game_from_id(id: &str) -> Option<Game> {
+    Game::ALL.iter().copied().find(|g| serde_json::to_value(g).ok().and_then(|v| v.as_str().map(|s| s == id)).unwrap_or(false))
+}
+
 fn location_label(game: Game, loc: u16) -> String {
     match loc {
         0 => "—".into(),
@@ -58,11 +94,12 @@ fn location_label(game: Game, loc: u16) -> String {
     }
 }
 
-/// Toutes les rencontres du jeu, regroupées (niveaux fusionnés) et triées par n° de Pokédex.
-pub fn encounter_db(game: Game) -> Vec<EncounterEntry> {
+type GroupKey = (u16, u8, EncounterKind, u16, Vec<u8>, bool);
+
+fn build(game: Game) -> Vec<EncounterEntry> {
     let list = encounters(game);
     let mut out: Vec<EncounterEntry> = Vec::new();
-    let mut groups: HashMap<(u16, u8, EncounterKind, u16, Vec<u8>, bool), usize> = HashMap::new();
+    let mut groups: HashMap<GroupKey, usize> = HashMap::new();
     for (index, e) in list.iter().enumerate() {
         let mut versions = e.versions.clone();
         versions.sort();
@@ -77,8 +114,16 @@ pub fn encounter_db(game: Game) -> Vec<EncounterEntry> {
             }
             groups.insert(key, out.len());
         }
-        let form_name = if e.form >= 30 { Some("Forme variable".to_string()) } else if e.form != 0 { dex::form_name(game, e.species, e.form) } else { None };
+        let form_name = if e.form >= 30 {
+            Some("Forme variable".to_string())
+        } else if e.form != 0 {
+            dex::form_name(game, e.species, e.form)
+        } else {
+            None
+        };
         out.push(EncounterEntry {
+            game,
+            game_name: game_label(game),
             index,
             species: e.species,
             form: e.form,
@@ -114,4 +159,62 @@ pub fn encounter_db(game: Game) -> Vec<EncounterEntry> {
     }
     out.sort_by_key(|e| (e.species, e.form, e.level_min));
     out
+}
+
+static TABLES: [LazyLock<Vec<EncounterEntry>>; 9] = [
+    LazyLock::new(|| build(Game::DP)),
+    LazyLock::new(|| build(Game::Pt)),
+    LazyLock::new(|| build(Game::HGSS)),
+    LazyLock::new(|| build(Game::BW)),
+    LazyLock::new(|| build(Game::B2W2)),
+    LazyLock::new(|| build(Game::XY)),
+    LazyLock::new(|| build(Game::ORAS)),
+    LazyLock::new(|| build(Game::SM)),
+    LazyLock::new(|| build(Game::USUM)),
+];
+
+/// Toutes les rencontres du jeu, regroupées (niveaux fusionnés) et triées par n° de Pokédex.
+pub fn encounter_db(game: Game) -> &'static [EncounterEntry] {
+    let i = Game::ALL.iter().position(|&g| g == game).unwrap_or(0);
+    &TABLES[i]
+}
+
+/// Jeux consultés : celui de la sauvegarde, ou tous ceux dont les Pokémon peuvent y arriver.
+pub fn games_for(save: Game, all: bool) -> Vec<Game> {
+    if all {
+        Game::ALL.iter().copied().filter(|g| g.generation() <= save.generation()).collect()
+    } else {
+        vec![save]
+    }
+}
+
+/// Résumé par espèce pour une liste de jeux.
+pub fn species_index(games: &[Game]) -> Vec<SpeciesEncounters> {
+    let mut map: BTreeMap<u16, SpeciesEncounters> = BTreeMap::new();
+    for &g in games {
+        for e in encounter_db(g) {
+            let s = map.entry(e.species).or_insert_with(|| SpeciesEncounters {
+                species: e.species,
+                name: e.species_name.clone(),
+                families: Vec::new(),
+                count: 0,
+                level_min: e.level_min,
+                games: Vec::new(),
+            });
+            s.count += 1;
+            s.level_min = s.level_min.min(e.level_min);
+            if !s.families.contains(&e.family) {
+                s.families.push(e.family);
+            }
+            if !s.games.contains(&e.game_name) {
+                s.games.push(e.game_name);
+            }
+        }
+    }
+    map.into_values().collect()
+}
+
+/// Rencontres d'une espèce dans une liste de jeux.
+pub fn species_entries(games: &[Game], species: u16) -> Vec<EncounterEntry> {
+    games.iter().flat_map(|&g| encounter_db(g).iter().filter(move |e| e.species == species).cloned()).collect()
 }

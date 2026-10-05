@@ -1,7 +1,7 @@
 //! Commandes de légalité : vérifier, rendre légal, générer un Pokémon légal, base
 //! « Rencontres » (moteur : `kaleido_core::legality`).
 
-use kaleido_core::legality::{self, encounter_db, EncounterEntry, GenerateRequest, Report, Verdict};
+use kaleido_core::legality::{self, games_for, species_entries, species_index, EncounterEntry, GenerateRequest, Report, SpeciesEncounters, Verdict};
 use kaleido_core::save::session::{SaveView, Slot, SlotView};
 use kaleido_core::save::{self, BOX_SLOTS};
 use serde::Serialize;
@@ -141,9 +141,17 @@ pub fn legality_generate(slot: Option<Slot>, from_box: Option<usize>, request: G
     })
 }
 
-/// Base « Rencontres » du jeu de la sauvegarde.
+/// Base « Rencontres » : résumé par espèce, pour le jeu de la sauvegarde (`all = false`)
+/// ou pour tous les jeux dont les Pokémon peuvent y être transférés.
 #[tauri::command]
-pub async fn encounter_database(state: State<'_, OpenSave>) -> Result<Vec<EncounterEntry>, String> {
+pub async fn encounter_species(all: bool, state: State<'_, OpenSave>) -> Result<Vec<SpeciesEncounters>, String> {
     let game = state.with(|s| Ok(s.game()))?;
-    tauri::async_runtime::spawn_blocking(move || encounter_db(game)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || species_index(&games_for(game, all))).await.map_err(|e| e.to_string())
+}
+
+/// Base « Rencontres » : toutes les rencontres d'une espèce.
+#[tauri::command]
+pub async fn encounter_details(species: u16, all: bool, state: State<'_, OpenSave>) -> Result<Vec<EncounterEntry>, String> {
+    let game = state.with(|s| Ok(s.game()))?;
+    tauri::async_runtime::spawn_blocking(move || species_entries(&games_for(game, all), species)).await.map_err(|e| e.to_string())
 }

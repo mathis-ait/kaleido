@@ -132,6 +132,65 @@ fn generate_is_legal_every_generation() {
     }
 }
 
+/// « Créer ce Pokémon » depuis la base, y compris une rencontre d'un jeu plus ancien (transfert).
+#[test]
+fn generate_from_database_entries() {
+    use super::db::{encounter_db, games_for, species_entries, species_index};
+    let index = species_index(&games_for(Game::USUM, false));
+    assert!(index.len() > 300, "{} espèces", index.len());
+    assert!(index.iter().any(|s| s.species == 731 && s.families.contains(&"herbes")));
+    // Toutes les jeux transférables vers USUL : Étourmi existe (Platine…).
+    let all = games_for(Game::USUM, true);
+    let starly = species_entries(&all, 396);
+    let pt = starly.iter().find(|e| e.game == Game::Pt && e.family == "herbes").expect("Étourmi dans Platine");
+    for (game, format, entry) in [(Game::Pt, PkmFormat::Gen4, pt.clone()), (Game::USUM, PkmFormat::Gen7, pt.clone())] {
+        let req = GenerateRequest {
+            species: entry.species,
+            level: entry.level_min.max(5),
+            encounter_index: Some(entry.index),
+            encounter_game: Some("pt".into()),
+            ..Default::default()
+        };
+        let out = generate_legal(game, format, &trainer(), &req).unwrap();
+        assert!(out.success, "{game:?} : {:?}", out.report.checks);
+        assert_eq!(out.pokemon.version(), crate::legality::encounters::PT, "{game:?}");
+    }
+    // Chaque type de rencontre de chaque jeu produit un Pokémon légal (quelques entrées par type).
+    let mut failures = Vec::new();
+    let mut total = 0;
+    for game in Game::ALL {
+        let format = match game.generation() {
+            4 => PkmFormat::Gen4,
+            5 => PkmFormat::Gen5,
+            6 => PkmFormat::Gen6,
+            _ => PkmFormat::Gen7,
+        };
+        let mut by_kind: std::collections::HashMap<_, Vec<_>> = std::collections::HashMap::new();
+        for e in encounter_db(game) {
+            let list = by_kind.entry(e.kind).or_default();
+            if list.len() < 6 {
+                list.push(e.clone());
+            }
+        }
+        for (kind, list) in by_kind {
+            for e in list {
+                total += 1;
+                let req = GenerateRequest { species: e.species, form: if e.form >= 30 { 0 } else { e.form }, level: e.level_max.max(e.level_min), encounter_index: Some(e.index), ..Default::default() };
+                let out = generate_legal(game, format, &trainer(), &req).unwrap();
+                if !out.success {
+                    let bad: Vec<String> = out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
+                    failures.push(format!("{game:?} {kind:?} n°{} {} : {bad:?}", e.species, e.location_name));
+                } else if !e.egg && out.pokemon.met_location() != e.location {
+                    failures.push(format!("{game:?} {kind:?} n°{} : autre rencontre choisie ({} au lieu de {})", e.species, out.pokemon.met_location(), e.location));
+                }
+            }
+        }
+    }
+    println!("{}", failures.join("\n"));
+    println!("Création depuis la base : {}/{total} légaux", total - failures.len());
+    assert!(failures.len() * 20 <= total, "trop d'échecs : {}/{total}", failures.len());
+}
+
 #[test]
 fn generate_shiny_gen4_keeps_method1() {
     let req = GenerateRequest { species: 396, level: 5, shiny: Some(true), nature: Some(3), ..Default::default() };

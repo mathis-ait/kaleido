@@ -48,6 +48,8 @@ pub struct GenerateRequest {
     pub nickname: Option<String>,
     /// Rencontre précise (indice dans [`encounters::encounters`] du jeu) : « Créer ce Pokémon ».
     pub encounter_index: Option<usize>,
+    /// Jeu de cette rencontre (`dp`, `pt`… ; par défaut celui de la sauvegarde).
+    pub encounter_game: Option<String>,
 }
 
 /// Une façon d'obtenir le Pokémon : rencontre + version.
@@ -688,10 +690,8 @@ pub(crate) fn fix_moves(pk: &Pokemon, game: Game, enc: Option<&Encounter>, chang
                 } else if e.kind == EncounterKind::Egg {
                     let og = ctx.origin_game().unwrap_or(game);
                     let eggs = learn::egg_moves(og, e.species, e.form);
-                    let mut i = 0;
-                    for &m in moves.iter().filter(|&&m| m != 0 && eggs.contains(&m)) {
+                    for (i, &m) in moves.iter().filter(|&&m| m != 0 && eggs.contains(&m)).enumerate() {
                         relearn[i] = m;
-                        i += 1;
                     }
                 }
             }
@@ -832,9 +832,12 @@ pub fn generate_legal(game: Game, format: PkmFormat, trainer: &Trainer, req: &Ge
     let prefer = game_versions(game)[0];
     let mut list: Vec<Plan> = Vec::new();
     if let Some(i) = req.encounter_index {
-        if let Some(e) = encounters::encounters(game).get(i) {
-            let version = e.versions.first().copied().unwrap_or(prefer);
-            list.push(Plan { enc: e.clone(), version });
+        let eg = req.encounter_game.as_deref().and_then(super::db::game_from_id).unwrap_or(game);
+        if eg.generation() <= game.generation() {
+            if let Some(e) = encounters::encounters(eg).get(i) {
+                let version = e.versions.first().copied().unwrap_or(prefer);
+                list.push(Plan { enc: e.clone(), version });
+            }
         }
     }
     list.extend(plans(game, species, req.form, level, prefer));

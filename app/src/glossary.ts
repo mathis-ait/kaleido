@@ -172,8 +172,84 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "Soleil, Lune, Ultra-Soleil et Ultra-Lune signent leurs sauvegardes (« MemeCrypto »). Kaleido ne sait pas encore recalculer cette signature : passe la sauvegarde modifiée dans PKHeX avant de la charger sur console.",
   },
   legality: {
-    title: "Vérifications",
-    text: "Kaleido contrôle la cohérence des données (sommes de contrôle, valeurs hors limites, talent, objets…). Ce n'est pas encore une analyse de légalité complète comme celle de PKHeX, qui compare chaque Pokémon à toutes les rencontres possibles.",
+    title: "Vérifications (légalité)",
+    text: "Comme PKHeX, Kaleido cherche une rencontre possible (hautes herbes, don, échange, œuf…) puis vérifie attaques, talent, Ball, PID, IV, dresseur… Verdict : Légal, Douteux (impossible à confirmer : événements, Pokémon des Gen 1 à 3) ou Illégal (le jeu ne peut pas le produire).",
+  },
+  legalize: {
+    title: "Rendre légal",
+    text: "Kaleido choisit la rencontre la plus proche (en gardant chromatique, nature, sexe, attaques légales…) et réécrit ce qu'il faut : lieu et niveau de rencontre, Ball, talent, PID et IV, attaques impossibles, dresseur d'origine. Tout se fait en une seule étape : Ctrl+Z annule.",
+  },
+  origin: {
+    title: "Origine",
+    text: "Jeu où le Pokémon a été obtenu (champ « version »). Un Pokémon venu d'un jeu plus ancien a été transféré (Pal Parc, Poké Transfert, Banque) : certaines données ont alors été réécrites.",
+  },
+  encounter: {
+    title: "Rencontre",
+    text: "Façon dont le Pokémon a été obtenu : sauvage (herbes, surf, pêche, Éclate-Roc…), fixe (légendaires), don d'un personnage, échange en jeu, œuf ou événement. Chaque rencontre impose un lieu, des niveaux et parfois la Ball, le talent ou le chromatique.",
+  },
+  encounterSlot: {
+    title: "Emplacement de rencontre (slot)",
+    text: "Une zone sauvage a une liste de Pokémon possibles, chacun avec une plage de niveaux et une probabilité : ce sont les « slots ». Le niveau de rencontre du Pokémon doit tomber dans la plage de son slot.",
+  },
+  pidiv: {
+    title: "PID-IV (méthode 1)",
+    text: "En Gen 3 et 4, le jeu tire le PID puis les IV à la suite avec le même générateur : les IV découlent donc du PID (« méthode 1 »). Modifier les IV ou la nature d'un Pokémon sauvage sans recalculer le PID le rend illégal. Exceptions : Poké Radar, Joli Sourire, Pokéwalker, œufs.",
+  },
+  method1: {
+    title: "Méthode 1",
+    text: "Algorithme de génération des Gen 3/4 : 4 tirages successifs donnent la moitié basse et haute du PID puis les deux moitiés des IV. Kaleido retrouve la graine pour vérifier le lien, et en génère une valide quand il crée un Pokémon.",
+  },
+  pidGen5: {
+    title: "PID en Gen 5",
+    text: "Noir/Blanc fixent le bit le plus haut du PID des Pokémon sauvages d'après l'ID du dresseur, et le talent d'après le bit 16 du PID. Un PID choisi au hasard est refusé une fois sur deux.",
+  },
+  transfer: {
+    title: "Transfert",
+    text: "Pal Parc (Gen 3 → 4), Poké Transfert (Gen 4 → 5), Poké Transporteur (Gen 5 → 6) et Banque (Gen 6 → 7, Console virtuelle). Le Poké Transfert remplace le lieu de rencontre ; vers la Gen 6, le PID devient la constante de chiffrement.",
+  },
+  shinyLock: {
+    title: "Verrou chromatique",
+    text: "Certains Pokémon (la plupart des légendaires depuis la Gen 5, dons, Trouées Cachées…) ne peuvent jamais être chromatiques : le jeu recalcule le PID s'il tombe sur un chromatique.",
+  },
+  flawlessIvs: {
+    title: "IV parfaits garantis",
+    text: "Depuis X/Y, les légendaires et les Pokémon du groupe Œuf « Inconnu » ont au moins 3 IV à 31 (2 au Safari des Amis). Moins que ça : illégal.",
+  },
+  relearn: {
+    title: "Attaques à réapprendre",
+    text: "Gen 6+ : liste cachée d'attaques retenues depuis la naissance (capacités Œuf) ou imposées par la rencontre. Un Pokémon sauvage ou transféré n'en a normalement aucune.",
+  },
+  eggOrigin: {
+    title: "Pokémon né d'un œuf",
+    text: "Un œuf garde le lieu où il a été reçu (Pension, échange…). À l'éclosion, il est « rencontré » au niveau 1 (0 en Gen 4) là où il est né. Jusqu'à la Gen 5, il est toujours dans une Poké Ball ; ensuite il hérite de la Ball d'un parent.",
+  },
+  learnset: {
+    title: "Attaques possibles",
+    text: "Une attaque est légale si l'espèce (ou une pré-évolution) l'apprend par niveau, par CT/CS, chez un donneur de capacités, comme capacité Œuf, ou si la rencontre la donne. Les attaques des jeux Gen 1 à 3 ne sont pas encore vérifiées.",
+  },
+  virtualConsole: {
+    title: "Console virtuelle",
+    text: "Rouge, Bleu, Jaune, Or, Argent et Cristal sur 3DS : leurs Pokémon arrivent dans Soleil/Lune par la Banque, avec leur talent caché, au moins 3 IV à 31, leur statut chromatique d'origine et un lieu de rencontre de transfert.",
+  },
+  encounterDb: {
+    title: "Base des rencontres",
+    text: "Toutes les rencontres connues de PKHeX pour les jeux Gen 4 à 7 : Pokémon sauvages, fixes, dons, œufs offerts, échanges, Rêve Radar, Pokéwalker, Monde des Rêves. « Créer ce Pokémon » en fabrique un, légal, dans le premier emplacement libre.",
+  },
+  onlyThisGame: {
+    title: "Seulement ce jeu",
+    text: "Décoché : affiche aussi les rencontres des jeux plus anciens dont les Pokémon peuvent être transférés dans cette sauvegarde (par exemple Platine ou Noir 2 pour Soleil/Lune).",
+  },
+  dreamWorld: {
+    title: "Monde des Rêves",
+    text: "Service en ligne de Noir/Blanc (Pokémon Global Link, fermé en 2014) : les Pokémon arrivaient au niveau 10 environ, avec leur talent caché, dans une Rêve Ball ou une Ball classique.",
+  },
+  safari: {
+    title: "Safari",
+    text: "Grand Marais (DPPt) et Parc Safari (HGSS) : capture avec des Safari Balls uniquement. Le Safari des Amis de X/Y donne 2 IV à 31 et parfois le talent caché.",
+  },
+  hordeSos: {
+    title: "Hordes, PokéRadar Nav, appels à l'aide",
+    text: "Rencontres spéciales qui peuvent donner le talent caché : hordes de 5 Pokémon (X/Y, ROSA), Pokémon cachés du PokéRadar Nav (ROSA, avec parfois une capacité Œuf), appels à l'aide (SOS) de Soleil/Lune.",
   },
   backup: {
     title: "Copie de sécurité",

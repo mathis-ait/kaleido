@@ -235,7 +235,8 @@ fn main() {
             legality::legality_legalize,
             legality::legality_legalize_all,
             legality::legality_generate,
-            legality::encounter_database
+            legality::encounter_species,
+            legality::encounter_details
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

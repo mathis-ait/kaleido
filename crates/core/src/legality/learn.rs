@@ -144,7 +144,7 @@ pub fn can_learn(game: Game, q: &LearnQuery, mv: u16) -> Option<LearnMethod> {
     if lvl.iter().any(|&(m, l)| m == mv && (any_level || l <= q.level)) {
         return Some(LearnMethod::LevelUp);
     }
-    let Some((index, raw)) = dex::personal_raw(game, q.species, q.form) else { return None };
+    let (index, raw) = dex::personal_raw(game, q.species, q.form)?;
     match generation {
         4 => {
             if bits_contain(raw, 0x1C, &TM4, mv) {

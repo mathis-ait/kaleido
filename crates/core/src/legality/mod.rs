@@ -25,7 +25,7 @@ pub mod verify;
 #[cfg(test)]
 mod tests;
 
-pub use db::{encounter_db, EncounterEntry};
+pub use db::{encounter_db, game_from_id, game_label, games_for, species_entries, species_index, EncounterEntry, SpeciesEncounters};
 pub use encounters::{encounters, Encounter, EncounterKind};
 pub use legalize::{generate_legal, legalize, GenerateRequest, LegalizeOutcome};
 pub use verify::{analyze, Check, Report, Severity, Verdict};

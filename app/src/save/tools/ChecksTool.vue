@@ -4,25 +4,37 @@ import { invoke } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
-import { editPokemon, lists, loadBox, saveState } from "../../saveStore";
+import { editPokemon, loadBox, saveState } from "../../saveStore";
 import type { SlotView } from "../../types";
-import { checkPokemon } from "../checks";
+import { checksFromReport, type Check } from "../checks";
+import { legalizeAll, type SlotReport } from "../legality";
 
 const all = ref<SlotView[] | null>(null);
+const reports = ref<SlotReport[]>([]);
 const onlyProblems = ref(true);
+const working = ref(false);
 
 async function scan() {
   all.value = null;
-  all.value = await invoke<SlotView[]>("save_all").catch(() => []);
+  const [views, reps] = await Promise.all([
+    invoke<SlotView[]>("save_all").catch(() => [] as SlotView[]),
+    invoke<SlotReport[]>("legality_check_all").catch(() => [] as SlotReport[]),
+  ]);
+  reports.value = reps;
+  all.value = views;
 }
 onMounted(scan);
 
-const results = computed(() =>
-  (all.value ?? []).map((p) => {
-    const checks = checkPokemon(p, saveState.view!.generation, lists.itemName).filter((c) => c.level !== "ok");
-    return { p, checks, errors: checks.filter((c) => c.level === "error").length };
-  }),
-);
+const key = (s: SlotView["slot"]) => JSON.stringify(s);
+
+const results = computed(() => {
+  const byslot = new Map(reports.value.map((r) => [key(r.slot), r]));
+  return (all.value ?? []).map((p) => {
+    const r = byslot.get(key(p.slot));
+    const checks: Check[] = r ? checksFromReport(r).filter((c) => c.level !== "ok") : [];
+    return { p, r, checks, errors: checks.filter((c) => c.level === "error").length };
+  });
+});
 const shown = computed(() => results.value.filter((r) => !onlyProblems.value || r.checks.length).sort((a, b) => b.errors - a.errors));
 const count = computed(() => ({
   total: results.value.length,
@@ -35,6 +47,19 @@ async function open(p: SlotView) {
   editPokemon(p);
 }
 
+async function fixAll() {
+  const n = count.value.errors;
+  if (!n || working.value) return;
+  const ok = window.confirm(
+    `Rendre légaux les ${n} Pokémon illégaux ?\n\nKaleido réécrit au besoin leur rencontre, leur Ball, leur talent, leur PID/IV et retire les attaques impossibles. Une seule étape d'annulation : Ctrl+Z remet tout comme avant.`,
+  );
+  if (!ok) return;
+  working.value = true;
+  await legalizeAll(results.value.filter((r) => r.errors).map((r) => r.p.slot));
+  working.value = false;
+  await scan();
+}
+
 const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.index + 1}` : `${saveState.view!.boxNames[p.slot.box]} · ${p.slot.index + 1}`);
 </script>
 
@@ -43,8 +68,8 @@ const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.inde
     <div class="sv-row head">
       <div class="stats">
         <span><strong>{{ count.total }}</strong> Pokémon</span>
-        <span class="bad"><strong>{{ count.errors }}</strong> avec problème</span>
-        <span class="warn"><strong>{{ count.warns }}</strong> à vérifier</span>
+        <span class="bad"><strong>{{ count.errors }}</strong> illégaux</span>
+        <span class="warn"><strong>{{ count.warns }}</strong> douteux</span>
         <Tip term="legality" />
       </div>
       <label class="sv-switch">
@@ -52,20 +77,25 @@ const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.inde
         <span class="track" />
         Seulement les problèmes
       </label>
-      <button class="sv-btn" @click="scan"><Icon name="refresh" :size="15" /> Relancer</button>
+      <button class="sv-btn" :disabled="!all" @click="scan"><Icon name="refresh" :size="15" /> Relancer</button>
+      <button class="sv-btn solid" :disabled="!count.errors || working" @click="fixAll">
+        <Icon name="wand" :size="15" /> {{ working ? "Correction…" : "Tout rendre légal" }}
+      </button>
+      <Tip term="legalize" />
     </div>
     <p v-if="!all" class="sv-help">Analyse en cours…</p>
     <p v-else-if="!shown.length" class="sv-help">Aucun problème trouvé.</p>
     <div class="list">
-      <button v-for="r in shown" :key="JSON.stringify(r.p.slot)" class="row" @click="open(r.p)">
+      <button v-for="r in shown" :key="key(r.p.slot)" class="row" @click="open(r.p)">
         <Sprite :id="r.p.species" :shiny="r.p.shiny" :size="48" />
         <div class="who">
           <strong>{{ r.p.nickname || r.p.speciesName }}</strong>
           <small>{{ where(r.p) }} · N. {{ r.p.level }}</small>
+          <small v-if="r.r" :class="['verdict', r.r.verdict]">{{ r.r.verdictLabel }}</small>
         </div>
         <ul>
-          <li v-for="c in r.checks" :key="c.title" :class="c.level">{{ c.title }}</li>
-          <li v-if="!r.checks.length" class="ok">Cohérent</li>
+          <li v-for="c in r.checks" :key="c.title + c.detail" :class="c.level" :title="c.detail">{{ c.title }}</li>
+          <li v-if="!r.checks.length" class="ok">Légal</li>
         </ul>
         <Icon name="chevron-right" />
       </button>
@@ -131,6 +161,16 @@ const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.inde
 
 .who small {
   color: var(--text-dim);
+}
+
+.who small.verdict.illegal {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.who small.verdict.fishy {
+  color: var(--warn);
+  font-weight: 600;
 }
 
 .row ul {
