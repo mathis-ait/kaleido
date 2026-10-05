@@ -438,7 +438,7 @@ fn load_database() -> Vec<Gift> {
             out.push(g);
         }
     };
-    for c in WC4.chunks_exact(card::PCD_SIZE) {
+    for c in WC4.as_chunks::<{ card::PCD_SIZE }>().0 {
         push(GiftFormat::Pcd, c, 0, 0);
     }
     // PGF.GetArray : n cartes de 0xCC octets puis n octets de restrictions.
@@ -448,16 +448,16 @@ fn load_database() -> Vec<Gift> {
         push(GiftFormat::Pgf, &PGF[i * card::PGF_SIZE..(i + 1) * card::PGF_SIZE], r & 0x0F, r >> 4);
     }
     // WC6Full.GetArray / WC7Full.GetArray : les « full » d'abord, puis les cartes seules.
-    for c in WC6_FULL.chunks_exact(card::FULL_SIZE) {
+    for c in WC6_FULL.as_chunks::<{ card::FULL_SIZE }>().0 {
         push(GiftFormat::Wc6Full, c, 0, 0);
     }
-    for c in WC6.chunks_exact(card::WC_SIZE) {
+    for c in WC6.as_chunks::<{ card::WC_SIZE }>().0 {
         push(GiftFormat::Wc6, c, 0, 0);
     }
-    for c in WC7_FULL.chunks_exact(card::FULL_SIZE) {
+    for c in WC7_FULL.as_chunks::<{ card::FULL_SIZE }>().0 {
         push(GiftFormat::Wc7Full, c, 0, 0);
     }
-    for c in WC7.chunks_exact(card::WC_SIZE) {
+    for c in WC7.as_chunks::<{ card::WC_SIZE }>().0 {
         push(GiftFormat::Wc7, c, 0, 0);
     }
     out

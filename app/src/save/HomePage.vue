@@ -99,11 +99,11 @@ const tiles = computed<Tile[]>(() => [
   {
     id: "gifts",
     title: "Cadeaux mystère",
-    sub: "Bientôt",
-    band: "Distributions d'événements (en préparation)",
+    sub: "Distributions Gen 4 à 7",
+    band: "Recevoir les Pokémon et objets des événements officiels, ouvrir ou enregistrer des cartes cadeau",
     icon: "gift",
     gradient: "linear-gradient(150deg, #ffb36b, #f0703a)",
-    soon: true,
+    go: () => goTo("gifts"),
   },
   {
     id: "bank",

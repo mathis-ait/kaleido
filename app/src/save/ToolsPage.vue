@@ -33,7 +33,7 @@ useShell(() => (tool.value ? {} : { hint: "Choisis un outil", actions: [] }));
         </button>
       </div>
       <p class="later">
-        Bientôt : Cadeaux mystère, rubans, souvenirs, records, Pokéwalker / Pokémon Global Link, et un mode « avancé » pour les données
+        Bientôt : rubans, souvenirs, records, Pokéwalker / Pokémon Global Link, et un mode « avancé » pour les données
         propres à chaque jeu.
       </p>
     </template>

@@ -32,7 +32,7 @@ pub(super) fn u32le(d: &[u8], at: usize) -> u32 {
 }
 
 fn words(d: &[u8]) -> impl Iterator<Item = u16> + '_ {
-    d.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]))
+    d.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c))
 }
 
 /// Chaîne Gen 4 (table de caractères propre au jeu, terminateur 0xFFFF).

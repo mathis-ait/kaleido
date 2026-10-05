@@ -9,6 +9,7 @@ import BoxesPage from "../save/BoxesPage.vue";
 import PokemonPage from "../save/PokemonPage.vue";
 import ToolsPage from "../save/ToolsPage.vue";
 import ManagerPage from "../save/ManagerPage.vue";
+import GiftsPage from "../save/gifts/GiftsPage.vue";
 import { goTo, history, openSave, SAVE_PAGES, saveState, writeSave, type SavePage } from "../saveStore";
 import { keyOf, shell, typing } from "../save/shell";
 
@@ -78,7 +79,7 @@ function onKey(e: KeyboardEvent) {
   } else if (k === "Ctrl+h") {
     e.preventDefault();
     goTo("home");
-  } else if (/^Ctrl\+[1-4]$/.test(k)) {
+  } else if (/^Ctrl\+[1-9]$/.test(k) && SAVE_PAGES[Number(k.slice(-1)) - 1]) {
     e.preventDefault();
     goTo(SAVE_PAGES[Number(k.slice(-1)) - 1].id);
   } else if (inField) {
@@ -103,7 +104,7 @@ onBeforeUnmount(() => {
 });
 
 const time = computed(() => now.value.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
-const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pokemon: PokemonPage, tools: ToolsPage, manager: ManagerPage };
+const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pokemon: PokemonPage, tools: ToolsPage, gifts: GiftsPage, manager: ManagerPage };
 </script>
 
 <template>
