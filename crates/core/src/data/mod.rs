@@ -5,6 +5,7 @@
 pub mod encounters;
 pub mod evolutions;
 pub mod learnsets;
+pub mod machines;
 pub mod shiny;
 pub mod starters;
 pub mod trainers;

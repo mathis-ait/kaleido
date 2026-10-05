@@ -42,7 +42,8 @@ Outils DS :
   hex       <rom> <archive> <n°>        Vidage hexadécimal d'une entrée NARC
   search    <rom> <v1,v2,…>             Cherche une suite de valeurs (u16/u32)
   randomize <rom> <préréglage> <seed> <sortie.nds>   Randomise (equilibre, nuzlocke, chaos, defi)
-  starters  <rom>                       Starters actuels";
+  starters  <rom>                       Starters actuels
+  tms       <rom> [n° espèce]           CT/CS, donneurs de capacités et compatibilité d'une espèce";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,6 +58,8 @@ fn main() -> ExitCode {
         ["species", rom] => species(rom),
         ["randomize", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| randomize(rom, preset, s, out)),
         ["starters", rom] => starters(rom),
+        ["tms", rom] => tms(rom, 25),
+        ["tms", rom, species] => species.parse().map_err(Into::into).and_then(|s| tms(rom, s)),
         ["search", rom, values] => search(&open(rom), values),
         ["shinyscan", rom] => shiny_scan(&open(rom)),
         ["shiny", rom, mult, out] => mult.parse().map_err(Into::into).and_then(|m: u16| {
@@ -412,6 +415,60 @@ fn starters(path: &str) -> CliResult {
         let gifts = kaleido_core::data::starters::read_bw_gifts(&game)?;
         let list: Vec<_> = gifts.iter().map(|&g| names.get(g as usize).cloned().unwrap_or_else(|| g.to_string())).collect();
         println!("Donnés par le script 782 : {}", list.join(", "));
+    }
+    Ok(())
+}
+
+/// CT/CS (attaque, type, couleur d'icône), donneurs de capacités (Platine) et
+/// compatibilité d'une espèce.
+fn tms(path: &str, species: u16) -> CliResult {
+    use kaleido_core::data::machines::{self, MachineSpec, TutorTable};
+    let game = kaleido_core::GameRom::open(Path::new(path))?;
+    let gen = game.generation();
+    let paths = kaleido_core::data::DataPaths::for_game(game.game).ok_or("jeu non pris en charge")?;
+    let spec = MachineSpec::for_generation(gen).ok_or("génération non prise en charge")?;
+    let moves = game.text_file(paths.move_names)?;
+    let names = game.text_file(game.layout.species_names)?;
+    let move_data = Narc::parse(game.rom().file_by_path(machines::move_data_path(game.game).ok_or("données d'attaques inconnues")?)?)?.files;
+    let move_name = |m: u16| moves.get(m as usize).cloned().unwrap_or_else(|| format!("#{m}"));
+    let move_type = |m: u16| {
+        move_data.get(m as usize).and_then(|d| machines::move_info(gen, d)).and_then(|i| i.kind).map_or("?", |t| t.name_fr())
+    };
+    let arm9 = game.rom().arm9_decompressed()?;
+    let m = machines::read_from(&arm9, &spec)?;
+    let palettes = machines::palette_slots(&arm9, &spec);
+    println!("Tableau des CT : ARM9 {:#X}", machines::table_offset(&arm9, &spec)?);
+    for (i, &mv) in m.tms.iter().enumerate() {
+        let pal = palettes.as_ref().map(|p| format!("  palette {}", u16::from_le_bytes([arm9[p[i]], arm9[p[i] + 1]]))).unwrap_or_default();
+        println!("CT{:02}  {mv:3}  {:<16} {:<9}{pal}", i + 1, move_name(mv), move_type(mv));
+    }
+    for (i, &mv) in m.hms.iter().enumerate() {
+        println!("CS{:02}  {mv:3}  {:<16} {}", i + 1, move_name(mv), move_type(mv));
+    }
+
+    let personal = game.narc(game.layout.personal)?.files;
+    let data = personal.get(species as usize).ok_or("espèce hors de la table")?;
+    let learn: Vec<String> = (0..spec.total())
+        .filter(|&i| machines::compatible(data, &spec, i))
+        .map(|i| if i < spec.tm_count { format!("CT{:02}", i + 1) } else { format!("CS{:02}", i - spec.tm_count + 1) })
+        .collect();
+    let label = names.get(species as usize).cloned().unwrap_or_default();
+    println!("\n{label} ({species}) : {} machine(s) sur {}\n  {}", learn.len(), spec.total(), learn.join(" "));
+
+    if game.game == kaleido_core::games::Game::Platinum {
+        let ovl = game.rom().overlay(machines::PT_TUTOR_OVERLAY)?;
+        let table = TutorTable::locate(&ovl, moves.len().saturating_sub(1) as u16, game.layout.species_count as usize)?;
+        println!("\nDonneurs de capacités : overlay {} @ {:#X}", machines::PT_TUTOR_OVERLAY, table.offset);
+        let tutor_moves = table.moves(&ovl);
+        let list: Vec<String> = tutor_moves.iter().map(|&t| format!("{} ({})", move_name(t), move_type(t))).collect();
+        println!("  {}", list.join(", "));
+        let learn: Vec<String> = tutor_moves
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| species >= 1 && table.compatible(&ovl, species as usize - 1, *i))
+            .map(|(_, &t)| move_name(t))
+            .collect();
+        println!("{label} : {} / {} : {}", learn.len(), tutor_moves.len(), learn.join(", "));
     }
     Ok(())
 }
