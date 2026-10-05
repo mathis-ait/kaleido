@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use kaleido_core::save::edit::TrainerPatch;
-use kaleido_core::save::session::{PokemonPatch, SaveSession, SaveView, Slot, SlotView};
-use kaleido_core::{names, save};
+use kaleido_core::save::session::{self, PokemonPatch, SaveSession, SaveView, Slot, SlotView};
+use kaleido_core::{dex, names, save};
 use serde::Serialize;
 use tauri::State;
 
@@ -187,4 +187,71 @@ pub fn ability_names() -> Vec<String> {
         list.pop();
     }
     list
+}
+
+/// Option d'une liste déroulante : identifiant et nom.
+#[derive(Serialize)]
+pub struct Named {
+    value: u16,
+    label: String,
+}
+
+/// Listes propres au jeu de la sauvegarde ouverte (espèces, attaques, objets, lieux…).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveLists {
+    species: Vec<Named>,
+    moves: Vec<Named>,
+    items: Vec<Named>,
+    abilities: Vec<Named>,
+    locations: Vec<Named>,
+    balls: Vec<Named>,
+    types: Vec<String>,
+}
+
+#[tauri::command]
+pub fn save_lists(state: State<'_, OpenSave>) -> Result<SaveLists, String> {
+    let game = state.with(|s| Ok(s.game()))?;
+    let range = |max: u16, name: &dyn Fn(u16) -> Option<&'static str>| -> Vec<Named> {
+        (1..=max).filter_map(|i| name(i).filter(|n| !n.is_empty() && *n != "???").map(|n| Named { value: i, label: n.to_string() })).collect()
+    };
+    let mut locations: Vec<Named> =
+        dex::locations(game.generation()).into_iter().filter(|(_, n)| !n.is_empty()).map(|(value, n)| Named { value, label: n.to_string() }).collect();
+    locations.sort_by(|a, b| (a.value != 0).cmp(&(b.value != 0)).then_with(|| a.label.cmp(&b.label)));
+    Ok(SaveLists {
+        species: range(dex::max_species(game), &dex::species_name),
+        moves: range(dex::max_move(game), &dex::move_name),
+        items: range(dex::max_item(game), &|i| dex::item_name_in(game, i)),
+        abilities: range(dex::max_ability(game), &dex::ability_name),
+        locations,
+        balls: (1..=dex::max_ball(game)).filter_map(|b| dex::ball_name(b).map(|n| Named { value: b as u16, label: n.to_string() })).collect(),
+        types: dex::type_names().iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Attaques que l'espèce connaît à ce niveau (4 dernières apprises par niveau).
+#[tauri::command]
+pub fn save_suggest_moves(species: u16, form: u8, level: u8, state: State<'_, OpenSave>) -> Result<SuggestedMoves, String> {
+    let game = state.with(|s| Ok(s.game()))?;
+    let moves = session::suggested_moves(game, species, form, level);
+    Ok(SuggestedMoves { pp: moves.map(|m| dex::move_info_in(game, m).map_or(0, |i| i.pp)), moves })
+}
+
+#[derive(Serialize)]
+pub struct SuggestedMoves {
+    moves: [u16; 4],
+    pp: [u8; 4],
+}
+
+/// Attaques apprises par niveau et par reproduction, pour aider à choisir.
+#[tauri::command]
+pub fn save_learnset(species: u16, form: u8, state: State<'_, OpenSave>) -> Result<Learnset, String> {
+    let game = state.with(|s| Ok(s.game()))?;
+    Ok(Learnset { levelup: dex::levelup(game, species, form).to_vec(), egg: dex::egg_moves(game, species, form).to_vec() })
+}
+
+#[derive(Serialize)]
+pub struct Learnset {
+    levelup: Vec<(u16, u8)>,
+    egg: Vec<u16>,
 }

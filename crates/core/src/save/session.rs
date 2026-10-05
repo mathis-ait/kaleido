@@ -9,6 +9,7 @@ use super::{
     calc_stats, exp_for_level, Gender, GrowthRate, PkmDate, PkmFormat, Pokemon, PokemonSummary, SaveError, SaveFile, SaveVersion, ShinyMode,
     Trainer, BOX_SLOTS, PARTY_SLOTS,
 };
+use crate::dex::{self, Game};
 use crate::names;
 
 /// Nombre d'états gardés pour « Annuler ».
@@ -34,6 +35,10 @@ pub struct SlotView {
     pub move_names: Vec<String>,
     /// PV, Att, Déf, Atq Spé, Déf Spé, Vit (calculées si le Pokémon est en boîte).
     pub stats: Option<[u16; 6]>,
+    pub known_moves: Vec<KnownMove>,
+    pub met_location_name: Option<String>,
+    pub egg_location_name: Option<String>,
+    pub species_data: Option<SpeciesData>,
     #[serde(flatten)]
     pub details: PokemonDetails,
 }
@@ -134,8 +139,8 @@ pub struct SaveSession {
     redo: Vec<SaveFile>,
 }
 
-fn growth(species: u16) -> Option<GrowthRate> {
-    names::growth_rate(species)
+fn growth(game: Game, species: u16, form: u8) -> Option<GrowthRate> {
+    dex::personal(game, species, form).map(|p| p.growth_rate).or_else(|| names::growth_rate(species))
 }
 
 fn details(p: &Pokemon) -> PokemonDetails {
@@ -164,26 +169,143 @@ fn details(p: &Pokemon) -> PokemonDetails {
     }
 }
 
-pub fn view_of(slot: Slot, p: &Pokemon) -> SlotView {
-    let summary = p.summary(growth(p.species()));
+/// Données de l'espèce dans le jeu de la sauvegarde (fiche « personal » de PKHeX).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeciesData {
+    /// Types (identifiants PKHeX : 0 Normal … 17 Fée) ; un seul si les deux sont égaux.
+    pub types: Vec<u8>,
+    /// PV, Att, Déf, Atq Spé, Déf Spé, Vit.
+    pub base_stats: [u8; 6],
+    /// Talents 1, 2 et caché (0 = aucun).
+    pub abilities: [u16; 3],
+    pub ability_names: [String; 3],
+    /// 0 = toujours mâle, 254 = toujours femelle, 255 = asexué, sinon seuil sur le PID.
+    pub gender_ratio: u8,
+    pub form_name: Option<String>,
+    pub form_names: Vec<String>,
+    pub base_friendship: u8,
+}
+
+/// Infos d'une attaque connue (type, PP max avec les PP Plus).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownMove {
+    pub id: u16,
+    pub name: String,
+    pub type_id: u8,
+    pub category: &'static str,
+    pub power: Option<u8>,
+    pub accuracy: Option<u8>,
+    pub base_pp: u8,
+    pub max_pp: u8,
+}
+
+fn species_data(game: Game, species: u16, form: u8) -> Option<SpeciesData> {
+    let info = dex::personal(game, species, form)?;
+    let b = info.base_stats;
+    let types = if info.types[0] == info.types[1] { vec![info.types[0]] } else { info.types.to_vec() };
+    Some(SpeciesData {
+        types,
+        base_stats: [b.hp, b.attack, b.defense, b.sp_attack, b.sp_defense, b.speed],
+        abilities: info.abilities,
+        ability_names: info.abilities.map(|a| dex::ability_name(a).unwrap_or_default().to_string()),
+        gender_ratio: info.gender_ratio,
+        form_name: dex::form_name(game, species, form),
+        form_names: dex::form_names(game, species),
+        base_friendship: info.base_friendship,
+    })
+}
+
+fn known_moves(game: Game, p: &Pokemon) -> Vec<KnownMove> {
+    let ups = p.pp_ups();
+    p.moves()
+        .iter()
+        .enumerate()
+        .filter(|(_, &m)| m != 0)
+        .map(|(i, &m)| {
+            let info = dex::move_info_in(game, m);
+            let base_pp = info.as_ref().map_or(0, |i| i.pp);
+            KnownMove {
+                id: m,
+                name: dex::move_name(m).map_or_else(|| format!("n°{m}"), str::to_string),
+                type_id: info.as_ref().map_or(0, |i| i.type_id),
+                category: info.as_ref().map_or("", |i| i.category.name_fr()),
+                power: info.as_ref().and_then(|i| i.power),
+                accuracy: info.as_ref().and_then(|i| i.accuracy),
+                base_pp,
+                max_pp: max_pp(base_pp, ups[i]),
+            }
+        })
+        .collect()
+}
+
+/// PP maximum : chaque PP Plus ajoute 20 % des PP de base.
+pub fn max_pp(base: u8, ups: u8) -> u8 {
+    (base as u16 + base as u16 * ups.min(3) as u16 / 5) as u8
+}
+
+pub fn view_of(game: Game, slot: Slot, p: &Pokemon) -> SlotView {
+    let summary = p.summary(growth(game, p.species(), p.form()));
     let name_or_id = |n: Option<&str>, id: u16| match (n, id) {
         (Some(n), _) => n.to_string(),
         (None, 0) => "—".to_string(),
         (None, id) => format!("n°{id}"),
     };
+    let species = species_data(game, p.species(), p.form());
     let stats = p.party_stats().or_else(|| {
-        names::base_stats(p.species()).map(|b| calc_stats(&b, summary.level, summary.ivs, summary.evs, summary.nature))
+        base_stats(game, p.species(), p.form()).map(|b| calc_stats(&b, summary.level, summary.ivs, summary.evs, summary.nature))
     });
     SlotView {
         slot,
-        species_name: name_or_id(names::species(summary.species), summary.species),
-        ability_name: name_or_id(names::ability(summary.ability), summary.ability),
-        item_name: names::item(summary.held_item).map(str::to_string),
-        move_names: summary.moves.iter().filter(|&&m| m != 0).map(|&m| name_or_id(names::move_name(m), m)).collect(),
+        species_name: name_or_id(dex::species_name(summary.species), summary.species),
+        ability_name: name_or_id(dex::ability_name(summary.ability), summary.ability),
+        item_name: dex::item_name_in(game, summary.held_item).filter(|_| summary.held_item != 0).map(str::to_string),
+        move_names: summary.moves.iter().filter(|&&m| m != 0).map(|&m| name_or_id(dex::move_name(m), m)).collect(),
         stats,
+        known_moves: known_moves(game, p),
+        met_location_name: dex::location_name(game.generation(), p.met_location()).map(str::to_string),
+        egg_location_name: dex::location_name(game.generation(), p.egg_location()).map(str::to_string),
+        species_data: species,
         details: details(p),
         summary,
     }
+}
+
+fn base_stats(game: Game, species: u16, form: u8) -> Option<crate::pokemon::BaseStats> {
+    dex::personal(game, species, form).map(|p| p.base_stats).or_else(|| names::base_stats(species))
+}
+
+/// Jeu des données correspondant à une sauvegarde.
+pub fn game_of(v: SaveVersion) -> Game {
+    match v {
+        SaveVersion::DiamondPearl => Game::DP,
+        SaveVersion::Platinum => Game::Pt,
+        SaveVersion::HeartGoldSoulSilver => Game::HGSS,
+        SaveVersion::BlackWhite => Game::BW,
+        SaveVersion::Black2White2 => Game::B2W2,
+        SaveVersion::XY => Game::XY,
+        SaveVersion::OmegaRubyAlphaSapphire => Game::ORAS,
+        SaveVersion::SunMoon => Game::SM,
+        SaveVersion::UltraSunUltraMoon => Game::USUM,
+    }
+}
+
+/// Les 4 dernières attaques apprises par niveau jusqu'au niveau donné (comme PKHeX).
+pub fn suggested_moves(game: Game, species: u16, form: u8, level: u8) -> [u16; 4] {
+    let mut learned: Vec<u16> = Vec::new();
+    for &(m, l) in dex::levelup(game, species, form) {
+        if l <= level && m != 0 {
+            learned.retain(|&x| x != m);
+            learned.push(m);
+        }
+    }
+    let start = learned.len().saturating_sub(4);
+    let mut out = [0u16; 4];
+    for (i, &m) in learned[start..].iter().enumerate() {
+        out[i] = m;
+    }
+    out
 }
 
 /// Identifiant de version (`GameVersion` de PKHeX) du premier jeu de la paire.
@@ -209,6 +331,11 @@ fn invalid(e: super::PkmError) -> SaveError {
 }
 
 impl SaveSession {
+    /// Jeu des données (fiches, attaques, noms) correspondant à la sauvegarde.
+    pub fn game(&self) -> Game {
+        game_of(self.save.version())
+    }
+
     pub fn open(bytes: &[u8]) -> Result<Self, SaveError> {
         Ok(Self { save: SaveFile::from_bytes(bytes)?, undo: Vec::new(), redo: Vec::new() })
     }
@@ -255,7 +382,7 @@ impl SaveSession {
 
     pub fn view(&self) -> Result<SaveView, SaveError> {
         let s = &self.save;
-        let party = s.party()?.iter().enumerate().map(|(i, p)| view_of(Slot::Party { index: i }, p)).collect();
+        let party = s.party()?.iter().enumerate().map(|(i, p)| view_of(self.game(), Slot::Party { index: i }, p)).collect();
         let (trainer_name_max, box_name_max) = s.name_limits();
         Ok(SaveView {
             game: s.version().label(),
@@ -282,14 +409,14 @@ impl SaveSession {
         (0..BOX_SLOTS)
             .map(|i| {
                 let slot = Slot::Box { r#box: b, index: i };
-                Ok(self.save.box_slot(b, i)?.filter(|p| !p.is_empty()).map(|p| view_of(slot, &p)))
+                Ok(self.save.box_slot(b, i)?.filter(|p| !p.is_empty()).map(|p| view_of(self.game(), slot, &p)))
             })
             .collect()
     }
 
     /// Tous les Pokémon de la sauvegarde (équipe puis boîtes).
     pub fn all(&self) -> Result<Vec<SlotView>, SaveError> {
-        let mut out: Vec<SlotView> = self.save.party()?.iter().enumerate().map(|(i, p)| view_of(Slot::Party { index: i }, p)).collect();
+        let mut out: Vec<SlotView> = self.save.party()?.iter().enumerate().map(|(i, p)| view_of(self.game(), Slot::Party { index: i }, p)).collect();
         for b in 0..self.save.box_count() {
             out.extend(self.box_view(b)?.into_iter().flatten());
         }
@@ -305,8 +432,9 @@ impl SaveSession {
     }
 
     fn set(&mut self, slot: Slot, p: Option<Pokemon>) -> Result<(), SaveError> {
+        let game = self.game();
         match slot {
-            Slot::Party { index } => self.save.set_party_slot(index, p.map(prepare_for_party)),
+            Slot::Party { index } => self.save.set_party_slot(index, p.map(|p| prepare_for_party(game, p))),
             Slot::Box { r#box, index } => self.save.set_box_slot(r#box, index, p),
         }
     }
@@ -349,7 +477,7 @@ impl SaveSession {
                 if matches!(from, Slot::Party { .. }) {
                     return Ok(()); // déjà dans l'équipe : l'ordre ne change pas
                 }
-                self.save.set_party_slot(count, Some(prepare_for_party(a)))?;
+                self.save.set_party_slot(count, Some(prepare_for_party(self.game(), a)))?;
                 self.set(from, None)
             }
             (_, Some(b)) => {
@@ -411,7 +539,7 @@ impl SaveSession {
 
     /// Crée un Pokémon neuf, attrapé par le dresseur de la sauvegarde.
     pub fn create(&mut self, slot: Slot, species: u16, level: u8) -> Result<SlotView, SaveError> {
-        if names::species(species).is_none() {
+        if dex::species_name(species).is_none() {
             return Err(SaveError::Invalid(format!("espèce n°{species} inconnue")));
         }
         let p = self.new_pokemon(species, level)?;
@@ -440,27 +568,46 @@ impl SaveSession {
         p.set_sid(t.sid);
         p.set_ot_name(&t.name).map_err(invalid)?;
         p.set_ot_gender(t.gender);
-        p.set_nickname(names::species(species).unwrap_or("?")).map_err(invalid)?;
+        p.set_nickname(dex::species_name(species).unwrap_or("?")).map_err(invalid)?;
         p.set_is_nicknamed(false);
         p.set_language(LANGUAGE_FR);
         p.set_version(default_version_id(self.save.version()));
         p.set_ball(4);
         p.set_met_level(level).map_err(invalid)?;
-        if let Some(g) = growth(species) {
+        let game = self.game();
+        if let Some(g) = growth(game, species, 0) {
             p.set_exp(exp_for_level(g, level));
-        }
-        if let Some(a) = names::first_ability(species) {
-            p.set_ability(a).map_err(invalid)?;
-        }
-        if format.generation() >= 6 {
-            p.set_ability_number(1).map_err(invalid)?;
         }
         if format != PkmFormat::Gen4 {
             p.set_nature((next() >> 16) as u8 % 25).map_err(invalid)?;
         }
-        p.set_friendship(70);
-        p.set_moves([33, 0, 0, 0]);
-        p.set_pp([35, 0, 0, 0]);
+        let info = dex::personal(game, species, 0);
+        // Sexe et talent cohérents avec le PID (règle des Gen 3 à 5, reprise par PKHeX).
+        if format.generation() >= 6 {
+            p.set_ability_number(1).map_err(invalid)?;
+        }
+        let slot = (p.ability_number() == 2) as usize;
+        match info {
+            Some(info) => {
+                let ability = match info.abilities[slot] {
+                    0 => info.abilities[0],
+                    a => a,
+                };
+                p.set_ability(ability).map_err(invalid)?;
+                p.set_gender(gender_from_pid(info.gender_ratio, p.pid()));
+                p.set_friendship(info.base_friendship);
+            }
+            None => {
+                if let Some(a) = names::first_ability(species) {
+                    p.set_ability(a).map_err(invalid)?;
+                }
+                p.set_friendship(70);
+            }
+        }
+        let moves = suggested_moves(game, species, 0, level);
+        let moves = if moves == [0; 4] { [33, 0, 0, 0] } else { moves };
+        p.set_moves(moves);
+        p.set_pp(moves.map(|m| dex::move_info_in(game, m).map_or(0, |i| i.pp)));
         let now = today();
         p.set_met_date(Some(now));
         p.refresh_checksum();
@@ -469,13 +616,13 @@ impl SaveSession {
 
     pub fn view_slot(&self, slot: Slot) -> Result<SlotView, SaveError> {
         let p = self.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
-        Ok(view_of(slot, &p))
+        Ok(view_of(self.game(), slot, &p))
     }
 
     pub fn patch(&mut self, slot: Slot, patch: &PokemonPatch) -> Result<SlotView, SaveError> {
         self.mutate(|s| {
             let p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
-            let p = apply_patch(p, patch)?;
+            let p = apply_patch(s.game(), p, patch)?;
             s.set(slot, Some(p))
         })?;
         self.view_slot(slot)
@@ -517,20 +664,36 @@ pub fn today() -> PkmDate {
     PkmDate { year, month, day }
 }
 
-fn apply_patch(mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveError> {
+fn apply_patch(game: Game, mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveError> {
     if let Some(species) = patch.species {
-        if names::species(species).is_none() {
-            return Err(SaveError::Invalid(format!("espèce n°{species} inconnue")));
+        if dex::species_name(species).is_none() || species > dex::max_species(game) {
+            return Err(SaveError::Invalid(format!("l'espèce n°{species} n'existe pas dans ce jeu")));
         }
-        let level = p.level(growth(p.species()));
+        let level = p.level(growth(game, p.species(), p.form()));
         let renamed = !p.is_nicknamed();
         p.set_species(species);
+        // Forme inexistante pour la nouvelle espèce : forme de base.
+        if patch.form.is_none() && dex::form_names(game, species).len() <= p.form() as usize {
+            p.set_form(0).map_err(invalid)?;
+        }
+        // Talent du même emplacement chez la nouvelle espèce.
+        if patch.ability.is_none() {
+            if let Some(info) = dex::personal(game, species, p.form()) {
+                let i = match p.ability_number() {
+                    4 => 2,
+                    2 => 1,
+                    _ => 0,
+                };
+                let a = if info.abilities[i] == 0 { info.abilities[0] } else { info.abilities[i] };
+                p.set_ability(a).map_err(invalid)?;
+            }
+        }
         // Même niveau avec la courbe de la nouvelle espèce.
-        if let (Some(level), Some(g)) = (level, growth(species)) {
+        if let (Some(level), Some(g)) = (level, growth(game, species, p.form())) {
             p.set_exp(exp_for_level(g, level));
         }
         if renamed {
-            p.set_nickname(names::species(species).unwrap_or("?")).map_err(invalid)?;
+            p.set_nickname(dex::species_name(species).unwrap_or("?")).map_err(invalid)?;
             p.set_is_nicknamed(false);
         }
     }
@@ -539,10 +702,10 @@ fn apply_patch(mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveErro
     }
     if let Some(name) = &patch.nickname {
         p.set_nickname(name).map_err(invalid)?;
-        p.set_is_nicknamed(names::species(p.species()) != Some(name.as_str()));
+        p.set_is_nicknamed(dex::species_name(p.species()) != Some(name.as_str()));
     }
     if patch.is_nicknamed == Some(false) {
-        p.set_nickname(names::species(p.species()).unwrap_or("?")).map_err(invalid)?;
+        p.set_nickname(dex::species_name(p.species()).unwrap_or("?")).map_err(invalid)?;
         p.set_is_nicknamed(false);
     }
     if let Some(v) = patch.encryption_constant {
@@ -653,19 +816,19 @@ fn apply_patch(mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveErro
         p.set_exp(exp);
     }
     if let Some(level) = patch.level {
-        let g = growth(p.species()).ok_or_else(|| SaveError::Invalid("courbe d'expérience inconnue pour cette espèce".into()))?;
+        let g = growth(game, p.species(), p.form()).ok_or_else(|| SaveError::Invalid("courbe d'expérience inconnue pour cette espèce".into()))?;
         p.set_exp(exp_for_level(g, level.clamp(1, 100)));
     }
     if p.party_level().is_some() {
-        p = prepare_for_party(p);
+        p = prepare_for_party(game, p);
     }
     p.refresh_checksum();
     Ok(p)
 }
 
 /// Recalcule niveau et statistiques de la section équipe (nécessaire en équipe).
-fn prepare_for_party(mut p: Pokemon) -> Pokemon {
-    if let (Some(base), Some(g)) = (names::base_stats(p.species()), growth(p.species())) {
+fn prepare_for_party(game: Game, mut p: Pokemon) -> Pokemon {
+    if let (Some(base), Some(g)) = (base_stats(game, p.species(), p.form()), growth(game, p.species(), p.form())) {
         p.update_party_stats(&base, g);
         p.refresh_checksum();
     }
@@ -679,5 +842,16 @@ impl SaveSession {
 
     pub fn set_inventory(&mut self, pouches: &[super::Pouch]) -> Result<(), SaveError> {
         self.mutate(|s| s.save.set_inventory(pouches))
+    }
+}
+
+/// Sexe déduit du PID et du taux de femelles de l'espèce (Gen 3 à 5).
+pub fn gender_from_pid(ratio: u8, pid: u32) -> Gender {
+    match ratio {
+        255 => Gender::Genderless,
+        254 => Gender::Female,
+        0 => Gender::Male,
+        r if ((pid & 0xFF) as u8) < r => Gender::Female,
+        _ => Gender::Male,
     }
 }

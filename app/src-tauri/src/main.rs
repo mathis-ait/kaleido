@@ -221,6 +221,9 @@ fn main() {
             saves::save_inventory,
             saves::save_set_inventory,
             saves::ability_names,
+            saves::save_lists,
+            saves::save_suggest_moves,
+            saves::save_learnset,
             saves::name_lists
         ])
         .run(tauri::generate_context!())

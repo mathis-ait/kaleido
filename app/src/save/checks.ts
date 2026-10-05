@@ -14,7 +14,7 @@ export interface Check {
  * Vérifications de cohérence d'un Pokémon, sans base de rencontres :
  * elles repèrent les erreurs évidentes, pas toutes les illégalités (voir la bulle « Vérifications »).
  */
-export function checkPokemon(p: SlotView, saveGen: number, itemNames: string[]): Check[] {
+export function checkPokemon(p: SlotView, saveGen: number, itemNames: Record<number, string>): Check[] {
   const out: Check[] = [];
   const err = (title: string, detail: string, tab?: string) => out.push({ level: "error", title, detail, tab });
   const warn = (title: string, detail: string, tab?: string) => out.push({ level: "warn", title, detail, tab });

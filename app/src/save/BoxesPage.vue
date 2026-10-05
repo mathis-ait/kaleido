@@ -14,7 +14,7 @@ import {
   importPokemon,
   loadBox,
   movePokemon,
-  names,
+  lists,
   notify,
   sameSlot,
   saveState,
@@ -130,7 +130,7 @@ function paste() {
 // ---- Case vide : création ou import
 const newSpecies = ref(25);
 const newLevel = ref(5);
-const speciesOptions = computed(() => names.species.map((label, value) => ({ value, label, hint: `n°${value}` })).filter((o) => o.value > 0 && o.label));
+const speciesOptions = computed(() => lists.species.map((o) => ({ ...o, hint: `n°${o.value}` })));
 
 async function importInto(slot: Slot) {
   const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk4", "pk5", "pk6", "pk7"] }] });

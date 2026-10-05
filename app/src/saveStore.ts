@@ -1,10 +1,10 @@
 import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { nav } from "./nav";
-import type { PokemonPatch, Pouch, SaveView, Slot, SlotView, TrainerPatch } from "./types";
+import type { Named, PokemonPatch, Pouch, SaveLists, SaveView, Slot, SlotView, TrainerPatch } from "./types";
 
 export type SavePage = "home" | "boxes" | "pokemon" | "tools" | "manager";
-export type SaveTool = "trainer" | "items" | "dex" | "boxes";
+export type SaveTool = "trainer" | "items" | "dex" | "boxes" | "checks";
 
 /** Pages de l'éditeur, dans l'ordre des onglets (Q / E pour passer de l'une à l'autre). */
 export const SAVE_PAGES: { id: SavePage; label: string; icon: string }[] = [
@@ -29,24 +29,6 @@ export const saveState = reactive({
   notice: null as string | null,
 });
 
-/** Listes de noms (index = identifiant), chargées une fois. */
-export const names = reactive({
-  loaded: false,
-  species: [] as string[],
-  moves: [] as string[],
-  items: [] as string[],
-  abilities: [] as string[],
-});
-
-export async function loadNames() {
-  if (names.loaded) return;
-  const [lists, abilities] = await Promise.all([
-    invoke<{ species: string[]; moves: string[]; items: string[] }>("name_lists"),
-    invoke<string[]>("ability_names"),
-  ]);
-  Object.assign(names, lists, { abilities, loaded: true });
-}
-
 export const sameSlot = (a: Slot, b: Slot) => JSON.stringify(a) === JSON.stringify(b);
 
 let noticeTimer: number | undefined;
@@ -56,6 +38,30 @@ export function notify(text: string) {
   noticeTimer = window.setTimeout(() => (saveState.notice = null), 4000);
 }
 
+/** Listes du jeu de la sauvegarde ouverte (espèces, attaques, objets, lieux…). */
+export const lists = reactive({
+  loaded: false,
+  species: [] as Named[],
+  moves: [] as Named[],
+  items: [] as Named[],
+  abilities: [] as Named[],
+  locations: [] as Named[],
+  balls: [] as Named[],
+  types: [] as string[],
+  /** Noms par identifiant. */
+  itemName: {} as Record<number, string>,
+  moveName: {} as Record<number, string>,
+});
+
+export async function loadLists() {
+  const l = await run(() => invoke<SaveLists>("save_lists"));
+  if (!l) return;
+  Object.assign(lists, l, {
+    loaded: true,
+    itemName: Object.fromEntries(l.items.map((o) => [o.value, o.label])),
+    moveName: Object.fromEntries(l.moves.map((o) => [o.value, o.label])),
+  });
+}
 async function run<T>(action: () => Promise<T>): Promise<T | undefined> {
   saveState.error = null;
   try {
@@ -76,7 +82,7 @@ export async function openSave(path: string) {
   Object.assign(saveState, { path, view, box: 0, dirty: false, notice: null, page: "home", tool: null });
   await loadBox(0);
   saveState.selected = view.party[0] ?? null;
-  loadNames();
+  loadLists();
 }
 
 export function closeSave() {

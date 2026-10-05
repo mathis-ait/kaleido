@@ -141,3 +141,21 @@ export const POUCH_COLORS: Record<string, string> = {
 export const genderSymbol = (g: string) => (g === "male" ? "♂" : g === "female" ? "♀" : "");
 
 export const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+
+/** Clés de couleur des types, dans l'ordre des identifiants PKHeX (0 Normal … 17 Fée). */
+export const TYPE_KEYS = [
+  "normal", "fighting", "flying", "poison", "ground", "rock", "bug", "ghost", "steel",
+  "fire", "water", "grass", "electric", "psychic", "ice", "dragon", "dark", "fairy",
+] as const;
+
+/** Type de Puissance Cachée d'après les IV (ordre Kaleido : PV, Att, Déf, AtS, DéS, Vit). */
+export function hiddenPowerType(ivs: number[]) {
+  // Ordre de la formule : PV, Att, Déf, Vit, AtS, DéS.
+  const order = [ivs[0], ivs[1], ivs[2], ivs[5], ivs[3], ivs[4]];
+  const t = Math.floor((order.reduce((acc, iv, i) => acc + ((iv & 1) << i), 0) * 15) / 63);
+  return t + 1; // de Combat (1) à Ténèbres (16)
+}
+
+export function genderLabel(g: string) {
+  return g === "male" ? "Mâle" : g === "female" ? "Femelle" : "Asexué";
+}

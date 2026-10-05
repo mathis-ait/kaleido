@@ -188,6 +188,10 @@ export interface SlotView {
   pokerusDays: number;
   tsv: number;
   psv: number;
+  knownMoves: KnownMove[];
+  metLocationName: string | null;
+  eggLocationName: string | null;
+  speciesData: SpeciesData | null;
 }
 
 export interface Trainer {
@@ -321,4 +325,42 @@ export interface Pouch {
   maxCount: number;
   allowed: number[];
   items: InventoryItem[];
+}
+
+export interface KnownMove {
+  id: number;
+  name: string;
+  typeId: number;
+  category: string;
+  power: number | null;
+  accuracy: number | null;
+  basePp: number;
+  maxPp: number;
+}
+
+export interface SpeciesData {
+  types: number[];
+  /** PV, Att, Déf, AtS, DéS, Vit */
+  baseStats: number[];
+  abilities: number[];
+  abilityNames: string[];
+  genderRatio: number;
+  formName: string | null;
+  formNames: string[];
+  baseFriendship: number;
+}
+
+export interface Named {
+  value: number;
+  label: string;
+}
+
+export interface SaveLists {
+  species: Named[];
+  moves: Named[];
+  items: Named[];
+  abilities: Named[];
+  locations: Named[];
+  balls: Named[];
+  types: string[];
 }
