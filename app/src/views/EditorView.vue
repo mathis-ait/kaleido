@@ -1,75 +1,243 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import Combo, { type ComboOption } from "../components/Combo.vue";
 import Sprite from "../components/Sprite.vue";
 import StatRadar from "../components/StatRadar.vue";
+import Tip from "../components/Tip.vue";
 import TypeBadge from "../components/TypeBadge.vue";
-import { editor, openRom } from "../editor";
-import { library } from "../library";
+import { closeRom, editCount, editor, openRom, speciesEdit } from "../editor";
+import { addPaths, library } from "../library";
 import { nav } from "../nav";
-import { isRom, type BaseStats, type PokeTypeKey, type Species } from "../types";
-
-const query = ref("");
-const typeFilter = ref<PokeTypeKey | "">("");
-type SortKey = "id" | "name" | "total" | keyof BaseStats;
-const sortKey = ref<SortKey>("id");
-const sortDesc = ref(false);
+import { isRom, type BaseStats, type PokeTypeKey, type SpeciesEdit, type TypeTag } from "../types";
 
 const STATS: { key: keyof BaseStats; label: string }[] = [
   { key: "hp", label: "PV" },
-  { key: "attack", label: "Att" },
-  { key: "defense", label: "Déf" },
-  { key: "spAttack", label: "Atq Spé" },
-  { key: "spDefense", label: "Déf Spé" },
-  { key: "speed", label: "Vit" },
+  { key: "attack", label: "Attaque" },
+  { key: "defense", label: "Défense" },
+  { key: "spAttack", label: "Atq. Spé." },
+  { key: "spDefense", label: "Déf. Spé." },
+  { key: "speed", label: "Vitesse" },
 ];
 
 const openableRoms = computed(() => library.items.filter(isRom));
-
-const types = computed(() => {
-  const seen = new Map<PokeTypeKey, string>();
-  for (const s of editor.overview?.species ?? []) for (const t of s.types) seen.set(t.key, t.name);
-  return [...seen].sort((a, b) => a[1].localeCompare(b[1], "fr"));
-});
+const readOnly = computed(() => !editor.data);
 
 /** Recherche insensible à la casse et aux accents. */
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-const rows = computed(() => {
-  const q = normalize(query.value.trim());
-  const list = (editor.overview?.species ?? []).filter(
-    (s) =>
-      (!q || normalize(s.name).includes(q) || String(s.id) === q || s.abilities.some((a) => normalize(a).includes(q))) &&
-      (!typeFilter.value || s.types.some((t) => t.key === typeFilter.value)),
-  );
-  const value = (s: Species): number | string =>
-    sortKey.value === "id" ? s.id : sortKey.value === "name" ? s.name : sortKey.value === "total" ? s.total : s.baseStats[sortKey.value];
-  const dir = sortDesc.value ? -1 : 1;
-  return [...list].sort((a, b) => {
-    const [x, y] = [value(a), value(b)];
-    return (typeof x === "string" ? x.localeCompare(y as string, "fr") : x - (y as number)) * dir || a.id - b.id;
-  });
-});
+const typeTag = (index: number) => editor.data?.types.find((t) => t.index === index)?.tag;
+const abilityName = (id: number) => editor.data?.abilities.find((a) => a.id === id)?.name;
 
-function sortBy(key: SortKey) {
-  if (sortKey.value === key) {
-    sortDesc.value = !sortDesc.value;
-  } else {
-    sortKey.value = key;
-    // Les statistiques se lisent naturellement de la plus haute à la plus basse.
-    sortDesc.value = key !== "id" && key !== "name";
-  }
+const abilityOptions = computed<ComboOption[]>(() => (editor.data?.abilities ?? []).map((a) => ({ value: a.id, label: a.name, hint: `${a.id}` })));
+const moveOptions = computed<ComboOption[]>(() => (editor.data?.moves ?? []).map((m) => ({ value: m.id, label: m.name, hint: `${m.id}` })));
+
+// ---------- Liste ----------
+
+const query = ref("");
+const typeFilter = ref<PokeTypeKey | "">("");
+const onlyModified = ref(false);
+type SortKey = "id" | "name" | "total";
+const sortKey = ref<SortKey>("id");
+
+interface Row {
+  id: number;
+  name: string;
+  types: TypeTag[];
+  total: number;
+  abilities: string[];
+  modified: boolean;
 }
 
-const detail = ref<Species | null>(null);
+const allRows = computed<Row[]>(() =>
+  (editor.overview?.species ?? []).map((s) => {
+    const d = editor.edits[s.id];
+    if (!d) return { id: s.id, name: s.name, types: s.types, total: s.total, abilities: [...s.abilities, s.hiddenAbility ?? ""], modified: false };
+    return {
+      id: s.id,
+      name: s.name,
+      types: [...new Set(d.types)].map(typeTag).filter((t): t is TypeTag => !!t),
+      total: d.stats.reduce((a, b) => a + b, 0),
+      abilities: d.abilities.map((a) => abilityName(a) ?? ""),
+      modified: true,
+    };
+  }),
+);
+
+const types = computed(() => {
+  const seen = new Map<PokeTypeKey, string>();
+  for (const r of allRows.value) for (const t of r.types) seen.set(t.key, t.name);
+  return [...seen].sort((a, b) => a[1].localeCompare(b[1], "fr"));
+});
+
+const rows = computed(() => {
+  const q = normalize(query.value.trim());
+  const list = allRows.value.filter(
+    (r) =>
+      (!q || normalize(r.name).includes(q) || String(r.id) === q || r.abilities.some((a) => normalize(a).includes(q))) &&
+      (!typeFilter.value || r.types.some((t) => t.key === typeFilter.value)) &&
+      (!onlyModified.value || r.modified),
+  );
+  const by = sortKey.value;
+  return [...list].sort((a, b) => (by === "name" ? a.name.localeCompare(b.name, "fr") : by === "total" ? b.total - a.total : 0) || a.id - b.id);
+});
+
+const selectedId = ref(1);
+const selected = computed(() => editor.overview?.species.find((s) => s.id === selectedId.value) ?? editor.overview?.species[0]);
+const listEl = ref<HTMLElement | null>(null);
+
+function select(id: number) {
+  selectedId.value = id;
+  nextTick(() => listEl.value?.querySelector<HTMLElement>(".item.on")?.scrollIntoView({ block: "nearest" }));
+}
+
 /** Pokémon voisin dans la liste filtrée et triée. */
 const neighbour = (step: number) => {
-  const i = rows.value.findIndex((p) => p.id === detail.value?.id);
+  const i = rows.value.findIndex((r) => r.id === selectedId.value);
   return i < 0 ? null : (rows.value[i + step] ?? null);
 };
 
-const arrow = (key: SortKey) => (sortKey.value === key ? (sortDesc.value ? "↓" : "↑") : "");
-/** Couleur de la barre : rouge → jaune → vert → cyan selon la valeur. */
-const statHue = (v: number) => Math.min(190, (v / 150) * 190);
+watch(
+  () => editor.overview?.path,
+  () => (selectedId.value = 1),
+);
+
+// ---------- Fiche ----------
+
+const original = computed(() => editor.data?.species[selectedId.value - 1]);
+const cur = computed(() => speciesEdit(selectedId.value));
+const modified = computed(() => !!editor.edits[selectedId.value]);
+
+/** Valeurs affichées (statistiques et types) même en lecture seule. */
+const shownStats = computed<number[]>(() => {
+  if (cur.value) return cur.value.stats;
+  const b = selected.value?.baseStats;
+  return b ? STATS.map((s) => b[s.key]) : [0, 0, 0, 0, 0, 0];
+});
+const radarStats = computed<BaseStats>(() => Object.fromEntries(STATS.map((s, i) => [s.key, shownStats.value[i]])) as unknown as BaseStats);
+const total = computed(() => shownStats.value.reduce((a, b) => a + b, 0));
+const originalTotal = computed(() => original.value?.stats.reduce((a, b) => a + b, 0) ?? total.value);
+const shownTypes = computed(() => allRows.value.find((r) => r.id === selectedId.value)?.types ?? []);
+
+const same = (a: SpeciesEdit, b: SpeciesEdit) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Modifie l'espèce affichée ; revenir aux valeurs d'origine efface la modification. */
+function mutate(fn: (d: SpeciesEdit) => void) {
+  const base = cur.value;
+  const orig = original.value;
+  if (!base || !orig || readOnly.value) return;
+  const d: SpeciesEdit = JSON.parse(JSON.stringify(base));
+  fn(d);
+  if (same(d, orig)) delete editor.edits[d.id];
+  else editor.edits[d.id] = d;
+}
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v) || min));
+const numberOf = (e: Event) => Number((e.target as HTMLInputElement).value);
+
+function setStat(i: number, e: Event) {
+  mutate((d) => (d.stats[i] = clamp(numberOf(e), 1, 255)));
+}
+
+/** Types proposés : « ??? » (Gen 4, inutilisé par les espèces) seulement s'il est déjà en place. */
+const typeOptions = (current: number) => (editor.data?.types ?? []).filter((t) => t.tag.key !== "mystery" || t.index === current);
+
+const secondType = computed(() => (cur.value && cur.value.types[1] !== cur.value.types[0] ? cur.value.types[1] : -1));
+
+function setType(slot: 0 | 1, e: Event) {
+  const v = Number((e.target as HTMLSelectElement).value);
+  mutate((d) => {
+    if (slot === 0) {
+      const mono = d.types[0] === d.types[1];
+      d.types = [v, mono ? v : d.types[1]];
+    } else {
+      d.types[1] = v < 0 ? d.types[0] : v;
+    }
+  });
+}
+
+// Un second talent identique au premier équivaut à « aucun » : il suit le premier.
+function setAbility(slot: number, v: number) {
+  mutate((d) => {
+    if (slot === 0 && d.abilities[1] === d.abilities[0]) d.abilities[1] = v;
+    d.abilities[slot] = v;
+  });
+}
+
+function setCatchRate(e: Event) {
+  mutate((d) => (d.catchRate = clamp(numberOf(e), 1, 255)));
+}
+
+const byLevel = (d: SpeciesEdit) => d.learnset.sort((a, b) => a.level - b.level);
+
+function setLevel(i: number, e: Event) {
+  mutate((d) => {
+    d.learnset[i].level = clamp(numberOf(e), 1, 100);
+    byLevel(d);
+  });
+}
+
+function setMove(i: number, v: number) {
+  mutate((d) => (d.learnset[i].move = v));
+}
+
+function removeMove(i: number) {
+  mutate((d) => d.learnset.splice(i, 1));
+}
+
+function addMove() {
+  mutate((d) => {
+    const last = d.learnset[d.learnset.length - 1];
+    d.learnset.push({ level: last ? Math.min(100, last.level + 1) : 1, move: editor.data?.moves[0]?.id ?? 1 });
+  });
+}
+
+function revert() {
+  delete editor.edits[selectedId.value];
+}
+
+function revertAll() {
+  if (confirm(`Annuler les modifications des ${editCount.value} Pokémon ?`)) editor.edits = {};
+}
+
+// ---------- Enregistrement ----------
+
+const saving = ref(false);
+const saveError = ref<string | null>(null);
+const saved = ref<{ path: string; count: number } | null>(null);
+
+async function saveRom() {
+  const src = editor.overview?.path;
+  if (!src || !editCount.value) return;
+  const output = await save({
+    title: "Enregistrer la ROM modifiée",
+    defaultPath: `${src.replace(/\.nds$/i, "")} - modifiée.nds`,
+    filters: [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+  });
+  if (!output) return;
+  saving.value = true;
+  saveError.value = null;
+  try {
+    const count = await invoke<number>("rom_editor_save", { path: src, edits: Object.values(editor.edits), output });
+    const keep = selectedId.value;
+    await addPaths([output]);
+    // La suite de l'édition se fait sur la copie qui vient d'être écrite (sinon les
+    // modifications restent en cours, pour un nouvel essai).
+    if (await openRom(output, true)) {
+      selectedId.value = keep;
+      saved.value = { path: output, count };
+    } else {
+      saveError.value = `ROM enregistrée (${output}), mais impossible de la rouvrir : ${editor.error ?? "erreur inconnue"}`;
+    }
+  } catch (e) {
+    saveError.value = String(e);
+  } finally {
+    saving.value = false;
+  }
+}
+
 </script>
 
 <template>
@@ -77,7 +245,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
     <!-- Aucune ROM ouverte -->
     <template v-if="!editor.overview && !editor.loadingPath">
       <h1>Éditeur de ROM</h1>
-      <p class="lead">Explore les données d'un jeu DS ou 3DS : Pokédex, statistiques, types et talents.</p>
+      <p class="lead">Modifie les Pokémon d'un jeu : statistiques, types, talents, taux de capture et attaques apprises.</p>
 
       <div v-if="editor.error" class="error">{{ editor.error }}</div>
 
@@ -100,93 +268,205 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
       <p>Lecture de la ROM…</p>
     </div>
 
-    <!-- Pokédex -->
     <template v-else-if="editor.overview">
       <header class="head">
         <div>
           <div class="chips">
             <span class="chip chip-accent">Gen {{ editor.overview.game.generation }}</span>
             <span class="chip">{{ editor.overview.gameCode }}</span>
-            <span class="chip">{{ editor.overview.fileCount }} fichiers</span>
             <span v-if="!editor.overview.verified" class="chip warn" title="Emplacements des données pas encore vérifiés sur ce jeu">Non vérifié</span>
+            <span v-if="readOnly" class="chip">Lecture seule</span>
           </div>
           <h1>{{ editor.overview.game.name }}</h1>
         </div>
-        <button class="btn" @click="editor.overview = null">Changer de ROM</button>
+        <div class="actions">
+          <button class="btn" @click="closeRom">Changer de ROM</button>
+          <button v-if="editCount" class="btn" @click="revertAll">Tout annuler</button>
+          <button class="btn btn-primary" :disabled="!editCount || saving" @click="saveRom">
+            {{ saving ? "Enregistrement…" : "Enregistrer la ROM" }}
+            <span v-if="editCount" class="count-badge">{{ editCount }}</span>
+          </button>
+        </div>
       </header>
 
-      <div class="toolbar">
-        <input v-model="query" class="search" type="search" placeholder="Rechercher un Pokémon, un numéro, un talent…" />
-        <select v-model="typeFilter" class="select">
-          <option value="">Tous les types</option>
-          <option v-for="[key, name] in types" :key="key" :value="key">{{ name }}</option>
-        </select>
-        <span class="count">{{ rows.length }} Pokémon</span>
+      <p v-if="readOnly" class="notice">
+        L'édition de ce jeu n'est pas encore disponible : seuls Platine, Noire et Blanche sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
+      </p>
+      <div v-if="saveError" class="error">{{ saveError }}</div>
+      <div v-else-if="editor.error" class="error">{{ editor.error }}</div>
+      <div v-if="saved" class="success">
+        <span>
+          ROM enregistrée ({{ saved.count }} Pokémon modifié{{ saved.count > 1 ? "s" : "" }}). La suite de l'édition se fait sur cette copie ; l'originale n'a pas été touchée.
+        </span>
+        <button class="btn" @click="revealItemInDir(saved.path)">Afficher dans le dossier</button>
+        <button class="close-x" aria-label="Fermer" @click="saved = null">×</button>
       </div>
 
-      <div class="table panel">
-        <div class="row header">
-          <button @click="sortBy('id')">N° {{ arrow("id") }}</button>
-          <button @click="sortBy('name')">Nom {{ arrow("name") }}</button>
-          <span>Types</span>
-          <button v-for="s in STATS" :key="s.key" @click="sortBy(s.key)">{{ s.label }} {{ arrow(s.key) }}</button>
-          <button class="num" @click="sortBy('total')">Total {{ arrow("total") }}</button>
-          <span>Talents</span>
-        </div>
-        <div v-for="p in rows" :key="p.id" class="row clickable" :class="{ selected: detail?.id === p.id }" @click="detail = p">
-          <span class="id">#{{ String(p.id).padStart(3, "0") }}</span>
-          <strong class="name"><Sprite :id="p.id" :size="60" class="icon" />{{ p.name }}</strong>
-          <span class="types"><TypeBadge v-for="t in p.types" :key="t.key" :type="t" /></span>
-          <span v-for="s in STATS" :key="s.key" class="stat">
-            <span class="val">{{ p.baseStats[s.key] }}</span>
-            <span class="track">
-              <span class="fill" :style="{ width: `${Math.min(100, (p.baseStats[s.key] / 180) * 100)}%`, background: `hsl(${statHue(p.baseStats[s.key])} 80% 55%)` }" />
-            </span>
-          </span>
-          <span class="num total">{{ p.total }}</span>
-          <span class="abilities">
-            {{ p.abilities.join(" / ") }}
-            <em v-if="p.hiddenAbility" title="Talent caché">· {{ p.hiddenAbility }}</em>
-          </span>
-        </div>
-      </div>
-
-      <!-- Fiche détaillée -->
-      <Transition name="drawer">
-        <aside v-if="detail" class="detail panel" @keydown.esc="detail = null">
-          <button class="close" aria-label="Fermer" @click="detail = null">×</button>
-          <div class="halo">
-            <Sprite :id="detail.id" variant="model" :size="170" />
+      <div class="workspace">
+        <!-- Liste des espèces -->
+        <aside class="list panel">
+          <div class="filters">
+            <input v-model="query" class="field" type="search" placeholder="Nom, numéro, talent…" />
+            <div class="filter-row">
+              <select v-model="typeFilter" class="field">
+                <option value="">Tous les types</option>
+                <option v-for="[key, name] in types" :key="key" :value="key">{{ name }}</option>
+              </select>
+              <select v-model="sortKey" class="field" aria-label="Trier">
+                <option value="id">N°</option>
+                <option value="name">Nom</option>
+                <option value="total">Total</option>
+              </select>
+            </div>
+            <label v-if="editCount" class="only">
+              <input v-model="onlyModified" type="checkbox" />
+              Modifiés seulement ({{ editCount }})
+            </label>
           </div>
-          <span class="id">#{{ String(detail.id).padStart(3, "0") }}</span>
-          <h2>{{ detail.name }}</h2>
-          <div class="types"><TypeBadge v-for="t in detail.types" :key="t.key" :type="t" /></div>
-          <StatRadar :stats="detail.baseStats" :size="230" />
-          <dl>
-            <dt>Total</dt>
-            <dd>{{ detail.total }}</dd>
-            <dt>Talents</dt>
-            <dd>{{ detail.abilities.join(" / ") || "—" }}</dd>
-            <template v-if="detail.hiddenAbility">
-              <dt>Talent caché</dt>
-              <dd>{{ detail.hiddenAbility }}</dd>
-            </template>
-            <dt>Taux de capture</dt>
-            <dd>{{ detail.catchRate }}</dd>
-          </dl>
-          <div class="nav-buttons">
-            <button class="btn" :disabled="!neighbour(-1)" @click="detail = neighbour(-1)">‹ Précédent</button>
-            <button class="btn" :disabled="!neighbour(1)" @click="detail = neighbour(1)">Suivant ›</button>
+          <div ref="listEl" class="items">
+            <button v-for="r in rows" :key="r.id" class="item" :class="{ on: r.id === selectedId }" @click="select(r.id)">
+              <Sprite :id="r.id" :size="48" class="icon" />
+              <span class="item-main">
+                <strong>{{ r.name }}</strong>
+                <small>#{{ String(r.id).padStart(3, "0") }} · {{ r.types.map((t) => t.name).join(" / ") }}</small>
+              </span>
+              <span v-if="r.modified" class="dot" title="Modifié" />
+              <span class="item-total">{{ r.total }}</span>
+            </button>
+            <p v-if="!rows.length" class="none">Aucun Pokémon</p>
           </div>
         </aside>
-      </Transition>
+
+        <!-- Fiche -->
+        <div v-if="selected" class="sheet">
+          <div class="hero panel">
+            <div class="halo">
+              <Sprite :id="selected.id" variant="model" :size="140" />
+            </div>
+            <div class="hero-main">
+              <span class="id">#{{ String(selected.id).padStart(3, "0") }}</span>
+              <h2>
+                {{ selected.name }}
+                <span v-if="modified" class="chip chip-mod">Modifié</span>
+              </h2>
+              <div v-if="cur && editor.data" class="type-pickers">
+                <select class="field" :value="cur.types[0]" aria-label="Type 1" @change="setType(0, $event)">
+                  <option v-for="t in typeOptions(cur.types[0])" :key="t.index" :value="t.index">{{ t.tag.name }}</option>
+                </select>
+                <select class="field" :value="secondType" aria-label="Type 2" @change="setType(1, $event)">
+                  <option :value="-1">Aucun second type</option>
+                  <option v-for="t in typeOptions(cur.types[1]).filter((t) => t.index !== cur!.types[0])" :key="t.index" :value="t.index">{{ t.tag.name }}</option>
+                </select>
+              </div>
+              <div v-else class="types"><TypeBadge v-for="t in shownTypes" :key="t.key" :type="t" /></div>
+            </div>
+            <div class="hero-nav">
+              <button v-if="modified" class="btn" title="Revenir aux valeurs du jeu d'origine" @click="revert">Rétablir l'original</button>
+              <button class="btn" :disabled="!neighbour(-1)" title="Pokémon précédent" @click="select(neighbour(-1)!.id)">‹</button>
+              <button class="btn" :disabled="!neighbour(1)" title="Pokémon suivant" @click="select(neighbour(1)!.id)">›</button>
+            </div>
+          </div>
+
+          <div class="cards">
+            <section class="card panel stats-card">
+              <h3>Statistiques de base</h3>
+              <div class="stats-body">
+                <div class="stat-rows">
+                  <div v-for="(s, i) in STATS" :key="s.key" class="stat-row" :class="{ changed: original && original.stats[i] !== shownStats[i] }">
+                    <span class="stat-label">{{ s.label }}</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="255"
+                      class="slider"
+                      :value="shownStats[i]"
+                      :disabled="readOnly"
+                      :style="{ '--pct': `${(shownStats[i] / 255) * 100}%`, '--hue': Math.min(190, (shownStats[i] / 150) * 190) }"
+                      :aria-label="s.label"
+                      @input="setStat(i, $event)"
+                    />
+                    <input type="number" min="1" max="255" class="field num" :value="shownStats[i]" :disabled="readOnly" :aria-label="s.label" @change="setStat(i, $event)" />
+                  </div>
+                  <div class="stat-row total-row">
+                    <span class="stat-label">Total</span>
+                    <span />
+                    <strong class="num-total">
+                      {{ total }}
+                      <small v-if="total !== originalTotal" :class="total > originalTotal ? 'up' : 'down'">
+                        {{ total > originalTotal ? "+" : "" }}{{ total - originalTotal }}
+                      </small>
+                    </strong>
+                  </div>
+                </div>
+                <StatRadar :stats="radarStats" :size="200" class="radar" />
+              </div>
+            </section>
+
+            <section class="card panel">
+              <h3>Talents et capture</h3>
+              <div v-if="cur" class="form">
+                <label>
+                  <span>Talent 1</span>
+                  <Combo :model-value="cur.abilities[0]" :options="abilityOptions" @update:model-value="setAbility(0, $event)" />
+                </label>
+                <label>
+                  <span>Talent 2</span>
+                  <Combo :model-value="cur.abilities[1] === cur.abilities[0] ? 0 : cur.abilities[1]" :options="abilityOptions" none-label="Aucun" @update:model-value="setAbility(1, $event)" />
+                </label>
+                <label v-if="editor.data?.hiddenAbility">
+                  <span>Talent caché <Tip title="Talent caché" text="Troisième talent, obtenu surtout via le Monde des Rêves (Pokémon Global Link) et certaines rencontres spéciales." /></span>
+                  <Combo :model-value="cur.abilities[2]" :options="abilityOptions" none-label="Aucun" @update:model-value="setAbility(2, $event)" />
+                </label>
+                <label>
+                  <span>
+                    Taux de capture
+                    <Tip
+                      title="Taux de capture"
+                      text="De 1 à 255 : plus il est haut, plus le Pokémon est facile à attraper. Repères : 3 pour les légendaires, 45 pour les starters, 255 pour Rattata ou Chenipan."
+                    />
+                  </span>
+                  <input type="number" min="1" max="255" class="field" :value="cur.catchRate" @change="setCatchRate" />
+                </label>
+              </div>
+              <dl v-else class="facts">
+                <dt>Talents</dt>
+                <dd>{{ selected.abilities.join(" / ") || "—" }}</dd>
+                <template v-if="selected.hiddenAbility">
+                  <dt>Talent caché</dt>
+                  <dd>{{ selected.hiddenAbility }}</dd>
+                </template>
+                <dt>Taux de capture</dt>
+                <dd>{{ selected.catchRate }}</dd>
+              </dl>
+            </section>
+
+            <section v-if="cur && editor.data" class="card panel moves-card">
+              <div class="card-head">
+                <h3>Attaques apprises par niveau</h3>
+                <span class="dim">{{ cur.learnset.length }} / {{ editor.data.maxLearnset }}</span>
+              </div>
+              <div class="moves">
+                <div v-for="(m, i) in cur.learnset" :key="`${i}-${m.level}-${m.move}`" class="move-row">
+                  <label class="lvl">
+                    <span>Niv.</span>
+                    <input type="number" min="1" max="100" class="field" :value="m.level" aria-label="Niveau" @change="setLevel(i, $event)" />
+                  </label>
+                  <Combo :model-value="m.move" :options="moveOptions" @update:model-value="setMove(i, $event)" />
+                  <button class="remove" title="Retirer cette attaque" @click="removeMove(i)">×</button>
+                </div>
+              </div>
+              <button class="btn add" :disabled="cur.learnset.length >= editor.data.maxLearnset" @click="addMove">+ Ajouter une attaque</button>
+            </section>
+          </div>
+        </div>
+      </div>
     </template>
   </section>
 </template>
 
 <style scoped>
 .editor {
-  max-width: 1280px;
+  max-width: 1680px;
   margin: 0 auto;
 }
 
@@ -194,8 +474,17 @@ h1 {
   font-size: 34px;
 }
 
-.lead {
+h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.lead,
+.dim {
   color: var(--text-dim);
+}
+
+.lead {
   font-size: 16px;
 }
 
@@ -236,12 +525,42 @@ h1 {
   padding: 20px 24px;
 }
 
-.error {
+.error,
+.notice,
+.success {
   margin-top: 16px;
   padding: 12px 16px;
-  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
+}
+
+.error {
+  border: 1px solid var(--danger);
   color: var(--danger);
+}
+
+.notice {
+  border: 1px solid var(--warn);
+  background: var(--warn-bg);
+  color: var(--text);
+}
+
+.success {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 60%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+
+.success span {
+  flex: 1;
+}
+
+.close-x {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 20px;
 }
 
 .loading {
@@ -272,6 +591,7 @@ h1 {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .chips {
@@ -285,86 +605,201 @@ h1 {
   border-color: var(--warn);
 }
 
-.toolbar {
-  position: sticky;
-  top: -26px;
-  z-index: 2;
+.actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 20px 0 14px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(16px);
+  gap: 8px;
 }
 
-.search,
-.select {
-  padding: 10px 14px;
+.count-badge {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 35%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field {
+  padding: 9px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font: inherit;
   outline: none;
+  min-width: 0;
 }
 
-.search {
-  flex: 1;
-  max-width: 460px;
-}
-
-.search:focus,
-.select:focus {
+.field:focus {
   border-color: var(--accent);
 }
 
-.count {
-  margin-left: auto;
-  color: var(--text-dim);
+.field:disabled {
+  opacity: 0.7;
 }
 
-.table {
+/* ---------- Espace de travail : liste + fiche ---------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: clamp(280px, 22vw, 340px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+.list {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 84px);
   overflow: hidden;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.only {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.items {
+  overflow-y: auto;
   padding: 6px;
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 48px minmax(150px, 1.2fr) 140px repeat(6, minmax(50px, 0.5fr)) 44px minmax(150px, 1.4fr);
+.item {
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
   min-height: 46px;
-  padding: 4px 10px;
+  padding: 4px 10px 4px 4px;
+  border: none;
   border-radius: 8px;
+  background: none;
+  color: var(--text);
+  text-align: left;
 }
 
-.row:not(.header):hover {
+.item:hover {
   background: var(--panel-hover);
 }
 
-.row.header {
+.item.on {
+  background: var(--panel-hover);
+  box-shadow: inset 3px 0 0 var(--accent-2);
+}
+
+/* Les icônes pokesprite ont beaucoup de marge transparente. */
+.item .icon {
+  flex: none;
+  margin: -8px -6px -6px -4px;
+}
+
+.item-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-main small {
   color: var(--text-dim);
   font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.row.header button {
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  text-transform: inherit;
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  box-shadow: 0 0 8px var(--accent-2);
 }
 
-.row.header button:hover {
-  color: var(--text);
+.item-total {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.none {
+  padding: 16px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ---------- Fiche ---------- */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+}
+
+.halo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 30%, transparent), transparent 70%);
+  border: 2px solid color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-main h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 28px;
+}
+
+.chip-mod {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
 }
 
 .id {
@@ -372,25 +807,14 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-.name {
+.type-pickers {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-/* Les icônes pokesprite ont beaucoup de marge transparente : on les laisse déborder de la ligne. */
-.name .icon {
-  margin: -14px -4px -10px -12px;
-}
-
-.types {
   flex-wrap: wrap;
+  gap: 8px;
 }
 
-.type {
-  min-width: 0;
+.type-pickers .field {
+  min-width: 170px;
 }
 
 .types {
@@ -398,137 +822,217 @@ h1 {
   gap: 4px;
 }
 
-/* Valeur en clair, jauge fine dessous sur toute la largeur : le texte ne passe jamais sur la couleur. */
-.stat {
+.hero-nav {
+  display: flex;
+  align-self: flex-start;
+  gap: 8px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  padding: 18px 20px;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.stats-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-rows {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding-right: 8px;
+  gap: 6px;
+  flex: 1;
+  min-width: 260px;
 }
 
-.val {
+.stat-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 70px;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-label {
+  color: var(--text-dim);
   font-size: 13px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.track {
-  height: 5px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--text) 14%, transparent);
-  overflow: hidden;
-}
-
-.fill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
+.stat-row.changed .stat-label {
+  color: var(--accent-2);
 }
 
 .num {
+  padding: 6px 8px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.total {
-  font-weight: 700;
-}
-
-.abilities {
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
-.abilities em {
-  font-style: normal;
-  color: var(--accent-2);
-}
-
-.clickable {
+.slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  appearance: none;
+  background: linear-gradient(to right, hsl(var(--hue) 80% 55%) var(--pct), color-mix(in srgb, var(--text) 14%, transparent) var(--pct));
   cursor: pointer;
 }
 
-.row.selected {
-  background: var(--panel-hover);
-  box-shadow: inset 3px 0 0 var(--accent-2);
+.slider:disabled {
+  cursor: default;
 }
 
-.detail {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  bottom: 24px;
-  z-index: 10;
+.slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  appearance: none;
+  background: var(--text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, hsl(var(--hue) 80% 55%) 45%, transparent);
+}
+
+.slider:disabled::-webkit-slider-thumb {
+  visibility: hidden;
+}
+
+.total-row {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.num-total {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-total small {
+  display: block;
+  font-size: 12px;
+}
+
+.up {
+  color: #4ade80;
+}
+
+.down {
+  color: var(--danger);
+}
+
+.radar {
+  flex: none;
+  margin: 0 auto;
+}
+
+.form {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form label > span {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  width: 340px;
-  padding: 24px;
-  overflow-y: auto;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(20px);
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.detail .close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 50%;
-  background: var(--panel-hover);
-  font-size: 20px;
-  line-height: 1;
-}
-
-.halo {
-  display: grid;
-  place-items: center;
-  width: 190px;
-  height: 190px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 30%, transparent), transparent 70%);
-  border: 2px solid color-mix(in srgb, var(--text) 15%, transparent);
-}
-
-.detail h2 {
-  font-size: 26px;
-}
-
-.detail dl {
+.facts {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 6px 14px;
-  width: 100%;
-  margin: 4px 0 0;
+  margin: 0;
 }
 
-.detail dt {
+.facts dt {
   color: var(--text-dim);
 }
 
-.detail dd {
+.facts dd {
   margin: 0;
   font-weight: 600;
 }
 
-.nav-buttons {
-  display: flex;
+.moves-card {
+  grid-column: 1 / -1;
+}
+
+.moves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 16px;
+}
+
+.move-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 32px;
+  align-items: center;
   gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
 }
 
-.drawer-enter-active,
-.drawer-leave-active {
-  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s;
+.lvl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 13px;
 }
 
-.drawer-enter-from,
-.drawer-leave-to {
-  transform: translateX(40px);
-  opacity: 0;
+.lvl .field {
+  width: 58px;
+  padding: 7px 8px;
+  text-align: right;
+}
+
+.remove {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  font-size: 18px;
+}
+
+.remove:hover {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+.add {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .list {
+    position: static;
+    max-height: 320px;
+  }
 }
 </style>

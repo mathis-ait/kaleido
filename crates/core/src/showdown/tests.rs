@@ -173,7 +173,12 @@ fn ability_of_another_form() {
     assert_eq!((r.form, r.ability_number), (1, Some(1)));
     assert!(!r.warnings.iter().any(|w| w.contains("talent")), "{:?}", r.warnings);
     // Talent de Méga (Griffe Dure) : forme de base, talent normal, simple remarque.
-    let set = ShowdownSet { species: "Charizard".into(), item: Some("Charizardite X".into()), ability: Some("Tough Claws".into()), ..ShowdownSet::default() };
+    let set = ShowdownSet {
+        species: "Charizard".into(),
+        item: Some("Charizardite X".into()),
+        ability: Some("Tough Claws".into()),
+        ..ShowdownSet::default()
+    };
     let r = resolve(&set, Game::SM, Lang::En);
     assert_eq!((r.form, r.ability), (0, Some(66)));
     assert!(r.warnings.iter().any(|w| w.contains("forme de combat")), "{:?}", r.warnings);
@@ -453,4 +458,12 @@ fn smogon_sets_from_fixture() {
     let p = s.get(report.sets[0].slot.unwrap()).unwrap().unwrap();
     assert_eq!(p.moves(), [14, 89, 444, 424]);
     assert_eq!(p.ability(), 24);
+}
+
+#[test]
+fn gender_line() {
+    let sets = parse_team("Garchomp @ Choice Scarf\nAbility: Rough Skin\nGender: M\n- Earthquake\n\nJellicent\nGender: F\n- Recover");
+    assert_eq!(sets[0].gender, Some('M'));
+    assert_eq!(sets[1].gender, Some('F'));
+    assert!(sets.iter().all(|s| s.ignored.is_empty()));
 }

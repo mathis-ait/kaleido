@@ -104,6 +104,7 @@ export const showdownUi = reactive({
   open: false,
   tab: "import" as "import" | "export",
   smogon: false,
+  teams: false,
 });
 
 export function openShowdown(tab: "import" | "export" = "import") {

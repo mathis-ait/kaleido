@@ -214,7 +214,7 @@ pub fn read(game: &GameRom) -> Result<Vec<Shop>, RomError> {
             let ovl = game.rom().overlay(BW_SHOP_OVERLAY)?;
             let base = game.rom().overlays().iter().find(|o| o.id == BW_SHOP_OVERLAY).ok_or_else(bad)?.ram_address;
             let mut shops = Vec::new();
-            for i in 0..count {
+            for (i, &name) in BW_SHOP_NAMES.iter().enumerate().take(count) {
                 let size = *ovl.get(sizes + i).ok_or_else(bad)? as usize;
                 let start = resolve(rd32(&ovl, pointers + 4 * i)?, base, ovl.len())?;
                 let positions: Vec<usize> = (0..size).map(|j| start + j * 2).collect();
@@ -228,7 +228,7 @@ pub fn read(game: &GameRom) -> Result<Vec<Shop>, RomError> {
                 };
                 shops.push(Shop {
                     index: i,
-                    name: BW_SHOP_NAMES[i],
+                    name,
                     kind,
                     main_game: BW_MAIN_GAME_SHOPS.contains(&i),
                     items,

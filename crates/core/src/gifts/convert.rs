@@ -16,7 +16,8 @@
 use rand::Rng;
 use serde::Serialize;
 
-use super::card::{self, u16le, u32le, RIBBON_BITS_PGF, RIBBON_BITS_PK45, RIBBON_BITS_PK67, RIBBON_BITS_WC};use super::{compatibility, versions_of, Gift, GiftError, GiftKind};
+use super::card::{self, u16le, u32le, RIBBON_BITS_PGF, RIBBON_BITS_PK45, RIBBON_BITS_PK67, RIBBON_BITS_WC};
+use super::{compatibility, versions_of, Gift, GiftError, GiftKind};
 use crate::dex::{self, Game};
 use crate::names;
 use crate::save::session::{default_version_id, game_of, gender_from_pid, suggested_moves, today, SaveSession, Slot, SlotView};
@@ -388,7 +389,13 @@ fn convert5(gift: &Gift, tr: &GiftTrainer, rng: &mut impl Rng) -> Result<Pokemon
         p.set_tid(u16le(c, 0x00));
         p.set_sid(u16le(c, 0x02));
         raw(&mut p, |d| d[0x68..0x78].copy_from_slice(&c[0x4A..0x5A]))?;
-        let g = if c[0x5A] == 3 { tr.gender } else if c[0x5A] & 1 == 1 { Gender::Female } else { Gender::Male };
+        let g = if c[0x5A] == 3 {
+            tr.gender
+        } else if c[0x5A] & 1 == 1 {
+            Gender::Female
+        } else {
+            Gender::Male
+        };
         p.set_ot_gender(g);
     }
     if info.nickname.is_some() {
@@ -582,8 +589,11 @@ fn convert3ds(gift: &Gift, tr: &GiftTrainer, gen7: bool, rng: &mut impl Rng) -> 
         }
         // Gen 6 : souvenir « rencontré à … » (mémoire 3, variable 9, intensité 1).
         if !gen7 && !info.egg {
-            let (intensity, memory, feeling, variable) =
-                if handled { (pk6::HT_INTENSITY, pk6::HT_MEMORY, pk6::HT_FEELING, pk6::HT_VARIABLE) } else { (pk6::OT_INTENSITY, pk6::OT_MEMORY, pk6::OT_FEELING, pk6::OT_VARIABLE) };
+            let (intensity, memory, feeling, variable) = if handled {
+                (pk6::HT_INTENSITY, pk6::HT_MEMORY, pk6::HT_FEELING, pk6::HT_VARIABLE)
+            } else {
+                (pk6::OT_INTENSITY, pk6::OT_MEMORY, pk6::OT_FEELING, pk6::OT_VARIABLE)
+            };
             d[memory] = 3;
             d[variable..variable + 2].copy_from_slice(&9u16.to_le_bytes());
             d[intensity] = 1;

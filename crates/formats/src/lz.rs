@@ -137,7 +137,7 @@ pub fn compress_lz10(src: &[u8]) -> Vec<u8> {
             }
         }
     }
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     out
@@ -199,7 +199,7 @@ pub fn compress_lz11(src: &[u8]) -> Vec<u8> {
             pos += len;
         }
     }
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     out
@@ -417,7 +417,7 @@ pub fn compress_blz(input: &[u8], keep: usize) -> Vec<u8> {
     if pak_tmp == 0 || raw_len + 4 < ((pak_tmp + raw_tmp + 3) & !3) + 8 {
         // Compression inutile : données brutes + pied nul.
         let mut out = input.to_vec();
-        while out.len() % 4 != 0 {
+        while !out.len().is_multiple_of(4) {
             out.push(0);
         }
         out.extend([0; 4]);
@@ -429,7 +429,7 @@ pub fn compress_blz(input: &[u8], keep: usize) -> Vec<u8> {
     let enc_len = pak_tmp;
     let mut hdr_len = 8;
     let inc_len = raw_len - pak_tmp - raw_tmp;
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0xFF);
         hdr_len += 1;
     }

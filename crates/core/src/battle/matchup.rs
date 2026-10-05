@@ -74,14 +74,7 @@ fn current_hp(c: &Combatant, side: &SideState) -> u16 {
 }
 
 /// Calcule chaque attaque de `attacker` contre `defender`.
-pub fn duel(
-    game: dex::Game,
-    attacker: &Combatant,
-    att_side: &SideState,
-    defender: &Combatant,
-    def_side: &SideState,
-    field: &Field,
-) -> Duel {
+pub fn duel(game: dex::Game, attacker: &Combatant, att_side: &SideState, defender: &Combatant, def_side: &SideState, field: &Field) -> Duel {
     let generation = game.generation();
     let weather = effective_weather(field, attacker, defender);
     let max_hp = defender.stats[0].max(1);
@@ -124,11 +117,7 @@ pub fn duel(
         notes.push(format!("{item} : la cible récupère {heal} de ses PV sous la moitié (non compté)."));
     }
     if endure {
-        let what = if defender.item == it::FOCUS_SASH {
-            item.to_string()
-        } else {
-            dex::ability_name(ab::STURDY).unwrap_or("Fermeté").to_string()
-        };
+        let what = if defender.item == it::FOCUS_SASH { item.to_string() } else { dex::ability_name(ab::STURDY).unwrap_or("Fermeté").to_string() };
         notes.push(format!("{what} : la cible survit au premier coup avec 1 PV si elle a tous ses PV (compté)."));
     }
     Duel {

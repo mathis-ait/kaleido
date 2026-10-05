@@ -168,8 +168,14 @@ impl RawSet {
         let mv = |n: &str| dex::find_move(n, Lang::En, u16::MAX).and_then(dex::move_name).map_or_else(|| n.to_string(), str::to_string);
         SetOptions {
             moves: self.moves.iter().map(|m| m.all().iter().skip(1).map(|n| mv(n)).collect()).collect(),
-            items: rest(&self.item, &|n| dex::find_item(n, Lang::En, dex::max_item(game)).and_then(|i| dex::item_name_in(game, i)).map_or_else(|| n.to_string(), str::to_string)),
-            abilities: rest(&self.ability, &|n| dex::find_ability(n, Lang::En, u16::MAX).and_then(dex::ability_name).map_or_else(|| n.to_string(), str::to_string)),
+            items: rest(&self.item, &|n| {
+                dex::find_item(n, Lang::En, dex::max_item(game))
+                    .and_then(|i| dex::item_name_in(game, i))
+                    .map_or_else(|| n.to_string(), str::to_string)
+            }),
+            abilities: rest(&self.ability, &|n| {
+                dex::find_ability(n, Lang::En, u16::MAX).and_then(dex::ability_name).map_or_else(|| n.to_string(), str::to_string)
+            }),
             natures: rest(&self.nature, &|n| dex::find_nature(n, Lang::En).and_then(dex::nature_name).map_or_else(|| n.to_string(), str::to_string)),
         }
     }

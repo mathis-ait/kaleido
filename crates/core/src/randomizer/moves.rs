@@ -80,9 +80,8 @@ const STRUGGLE: u16 = 165;
 /// Sonicboom et Draco-Rage (UPR `getGameBreakingMoves`).
 const GAME_BREAKING: [u16; 2] = [49, 82];
 /// Attaques jamais comptées comme « bonnes attaques offensives » (UPR `bannedForDamagingMove`).
-const BAD_DAMAGING: [u16; 26] = [
-    120, 138, 153, 173, 206, 248, 252, 264, 353, 364, 387, 389, 132, 99, 205, 301, 485, 704, 492, 255, 49, 82, 32, 12, 90, 329,
-];
+const BAD_DAMAGING: [u16; 26] =
+    [120, 138, 153, 173, 206, 248, 252, 264, 353, 364, 387, 389, 132, 99, 205, 301, 485, 704, 492, 255, 49, 82, 32, 12, 90, 329];
 /// Capacités de terrain (UPR `dpptFieldMoves` / Gen 5 `fieldMoves`).
 const FIELD_MOVES_GEN4: [u16; 12] = [15, 19, 57, 70, 148, 91, 100, 127, 249, 230, 432, 431];
 const FIELD_MOVES_GEN5: [u16; 10] = [15, 19, 57, 70, 148, 91, 100, 127, 230, 291];
@@ -129,8 +128,7 @@ impl MoveTable {
     fn good_damaging(&self, m: u16) -> bool {
         let Some(info) = self.info.get(m as usize).copied().flatten() else { return false };
         let perfect = info.accuracy == 0 || info.accuracy > 100;
-        !BAD_DAMAGING.contains(&m)
-            && (info.power >= 2 * MIN_DAMAGING_POWER || (info.power >= MIN_DAMAGING_POWER && (info.accuracy >= 90 || perfect)))
+        !BAD_DAMAGING.contains(&m) && (info.power >= 2 * MIN_DAMAGING_POWER || (info.power >= MIN_DAMAGING_POWER && (info.accuracy >= 90 || perfect)))
     }
 }
 
@@ -149,9 +147,7 @@ struct PickRules<'a> {
 fn pick_moves(old: &[u16], table: &MoveTable, rules: &PickRules, rng: &mut ChaCha8Rng) -> Vec<u16> {
     let keep = |m: u16| rules.keep_field_moves && rules.field_moves.contains(&m);
     let kept: Vec<u16> = old.iter().copied().filter(|&m| keep(m)).collect();
-    let banned = |m: u16| {
-        m == STRUGGLE || rules.excluded.contains(&m) || kept.contains(&m) || (rules.no_game_breaking && GAME_BREAKING.contains(&m))
-    };
+    let banned = |m: u16| m == STRUGGLE || rules.excluded.contains(&m) || kept.contains(&m) || (rules.no_game_breaking && GAME_BREAKING.contains(&m));
     let mut usable: Vec<u16> = (1..=table.max).filter(|&m| !banned(m)).collect();
     let mut damaging: Vec<u16> = usable.iter().copied().filter(|&m| table.good_damaging(m)).collect();
 
@@ -265,7 +261,15 @@ fn randomize_compat(ctx: &Ctx, rows: &mut [CompatRow], moves: &[u16], table: &Mo
 }
 
 /// Applique un mode de compatibilité. Renvoie `true` si quelque chose a été tiré ou forcé.
-fn apply_mode(ctx: &Ctx, rows: &mut [CompatRow], moves: &[u16], table: &MoveTable, mode: CompatMode, rules: CompatRules, rng: &mut ChaCha8Rng) -> bool {
+fn apply_mode(
+    ctx: &Ctx,
+    rows: &mut [CompatRow],
+    moves: &[u16],
+    table: &MoveTable,
+    mode: CompatMode,
+    rules: CompatRules,
+    rng: &mut ChaCha8Rng,
+) -> bool {
     match mode {
         CompatMode::Unchanged => return false,
         CompatMode::Full => rows.iter_mut().for_each(|r| r.flags.iter_mut().for_each(|f| *f = true)),
@@ -402,7 +406,8 @@ pub(crate) fn apply(game: &mut GameRom, ctx: &mut Ctx, settings: &MoveSettings, 
     let info: Vec<Option<MoveInfo>> = game.narc(data_path)?.files.iter().map(|d| machines::move_info(gen, d)).collect();
     let max = (names.len().min(info.len())).saturating_sub(1) as u16;
     let table = MoveTable { names, info, max };
-    let (field_moves, early_hms): (&[u16], &[u16]) = if gen <= 4 { (&FIELD_MOVES_GEN4, &EARLY_HMS_GEN4) } else { (&FIELD_MOVES_GEN5, &EARLY_HMS_GEN5) };
+    let (field_moves, early_hms): (&[u16], &[u16]) =
+        if gen <= 4 { (&FIELD_MOVES_GEN4, &EARLY_HMS_GEN4) } else { (&FIELD_MOVES_GEN5, &EARLY_HMS_GEN5) };
 
     let mut arm9 = game.rom().arm9_decompressed()?;
     let current = machines::read_from(&arm9, &spec)?;
@@ -537,7 +542,8 @@ fn apply_tutors(
         }
         let total: usize = rows.iter().map(|r| r.flags.iter().filter(|&&f| f).count()).sum();
         let _ = writeln!(log, "== Compatibilité des donneurs de capacités ==");
-        let _ = writeln!(log, "Mode : {:?} ; {total} compatibilités ; {fixed} ajoutée(s) pour les attaques apprises par niveau\n", settings.tutor_compat);
+        let _ =
+            writeln!(log, "Mode : {:?} ; {total} compatibilités ; {fixed} ajoutée(s) pour les attaques apprises par niveau\n", settings.tutor_compat);
     }
     game.rom_mut().replace_overlay(machines::PT_TUTOR_OVERLAY, ovl)?;
     Ok(())
@@ -550,9 +556,8 @@ mod tests {
 
     fn table() -> MoveTable {
         // Attaques 1..=400 : les multiples de 4 sont puissantes et précises.
-        let info = (0..=400u16)
-            .map(|m| Some(MoveInfo { kind: Some(PokeType::Normal), power: if m % 4 == 0 { 90 } else { 0 }, accuracy: 100 }))
-            .collect();
+        let info =
+            (0..=400u16).map(|m| Some(MoveInfo { kind: Some(PokeType::Normal), power: if m % 4 == 0 { 90 } else { 0 }, accuracy: 100 })).collect();
         MoveTable { names: (0..=400).map(|m| format!("m{m}")).collect(), info, max: 400 }
     }
 

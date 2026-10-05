@@ -17,7 +17,8 @@ fn find_rom() -> Option<PathBuf> {
     }
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
     let dir = PathBuf::from(home).join("Documents").join("NDS & 3DS");
-    let mut roms: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("3ds"))).collect();
+    let mut roms: Vec<PathBuf> =
+        std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("3ds"))).collect();
     roms.sort();
     roms.into_iter().next()
 }

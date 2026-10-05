@@ -12,7 +12,7 @@
 //! | WC6 / WC7 | 0x108 | carte 3DS (n° en 0x00, titre en 0x02, date en 0x4C, type en 0x51) |
 //! | WC6full / WC7full | 0x310 | en-tête de distribution (version admise en 0x00, langue en 0x1FF) + carte en 0x208 |
 
-use super::{GiftError, GiftFormat, GiftItem, GiftKind, GiftPokemon, AbilityRule, ShinyRule, RIBBONS};
+use super::{AbilityRule, GiftError, GiftFormat, GiftItem, GiftKind, GiftPokemon, ShinyRule, RIBBONS};
 use crate::save::{Gender, PkmDate, PkmFormat, Pokemon};
 
 pub(super) const PGT_SIZE: usize = 0x104;
@@ -74,22 +74,82 @@ pub(super) fn date_ok(year: u16, month: u8, day: u8) -> Option<PkmDate> {
 // ChampionNational, ChampionWorld), WC6.cs / WC7.cs (RIB0 0x74 : ChampionBattle, ChampionRegional,
 // ChampionNational, Country, National, Earth, World, Event ; RIB1 0x75 : ChampionWorld, Birthday,
 // Special, Souvenir, Wishing, Classic, Premier).
-pub(super) const RIBBON_BITS_PGF: [(usize, u8); 15] =
-    [(0x0C, 0), (0x0C, 1), (0x0C, 2), (0x0C, 3), (0x0C, 4), (0x0C, 5), (0x0C, 6), (0x0C, 7), (0x0D, 0), (0x0D, 1), (0x0D, 2), (0x0D, 3), (0x0D, 4), (0x0D, 5), (0x0D, 6)];
-pub(super) const RIBBON_BITS_WC: [(usize, u8); 15] =
-    [(0x74, 3), (0x74, 4), (0x74, 5), (0x74, 6), (0x75, 5), (0x75, 6), (0x74, 7), (0x75, 1), (0x75, 2), (0x75, 3), (0x75, 4), (0x74, 0), (0x74, 1), (0x74, 2), (0x75, 0)];
+pub(super) const RIBBON_BITS_PGF: [(usize, u8); 15] = [
+    (0x0C, 0),
+    (0x0C, 1),
+    (0x0C, 2),
+    (0x0C, 3),
+    (0x0C, 4),
+    (0x0C, 5),
+    (0x0C, 6),
+    (0x0C, 7),
+    (0x0D, 0),
+    (0x0D, 1),
+    (0x0D, 2),
+    (0x0D, 3),
+    (0x0D, 4),
+    (0x0D, 5),
+    (0x0D, 6),
+];
+pub(super) const RIBBON_BITS_WC: [(usize, u8); 15] = [
+    (0x74, 3),
+    (0x74, 4),
+    (0x74, 5),
+    (0x74, 6),
+    (0x75, 5),
+    (0x75, 6),
+    (0x74, 7),
+    (0x75, 1),
+    (0x75, 2),
+    (0x75, 3),
+    (0x75, 4),
+    (0x74, 0),
+    (0x74, 1),
+    (0x74, 2),
+    (0x75, 0),
+];
 /// Mêmes rubans dans un PK4 / PK5.
 // Vérifié : PKHeX PK4.cs / PK5.cs (RIB2 0x26 : Event bit 3, ChampionWorld 5, Birthday 6, Special 7 ;
 // RIB3 0x27 : Souvenir 0, Wishing 1, Classic 2, Premier 3 ; RIB7 0x3F : ChampionBattle 1,
 // ChampionRegional 2, ChampionNational 3, Country 4, National 5, Earth 6, World 7).
-pub(super) const RIBBON_BITS_PK45: [(usize, u8); 15] =
-    [(0x3F, 4), (0x3F, 5), (0x3F, 6), (0x3F, 7), (0x27, 2), (0x27, 3), (0x26, 3), (0x26, 6), (0x26, 7), (0x27, 0), (0x27, 1), (0x3F, 1), (0x3F, 2), (0x3F, 3), (0x26, 5)];
+pub(super) const RIBBON_BITS_PK45: [(usize, u8); 15] = [
+    (0x3F, 4),
+    (0x3F, 5),
+    (0x3F, 6),
+    (0x3F, 7),
+    (0x27, 2),
+    (0x27, 3),
+    (0x26, 3),
+    (0x26, 6),
+    (0x26, 7),
+    (0x27, 0),
+    (0x27, 1),
+    (0x3F, 1),
+    (0x3F, 2),
+    (0x3F, 3),
+    (0x26, 5),
+];
 /// Mêmes rubans dans un PK6 / PK7.
 // Vérifié : PKHeX PK6.cs / PK7.cs (RIB2 0x32 : Country bit 6, National 7 ; RIB3 0x33 : Earth 0,
 // World 1, Classic 2, Premier 3, Event 4, Birthday 5, Special 6, Souvenir 7 ; RIB4 0x34 :
 // Wishing 0, ChampionBattle 1, ChampionRegional 2, ChampionNational 3, ChampionWorld 4).
-pub(super) const RIBBON_BITS_PK67: [(usize, u8); 15] =
-    [(0x32, 6), (0x32, 7), (0x33, 0), (0x33, 1), (0x33, 2), (0x33, 3), (0x33, 4), (0x33, 5), (0x33, 6), (0x33, 7), (0x34, 0), (0x34, 1), (0x34, 2), (0x34, 3), (0x34, 4)];
+pub(super) const RIBBON_BITS_PK67: [(usize, u8); 15] = [
+    (0x32, 6),
+    (0x32, 7),
+    (0x33, 0),
+    (0x33, 1),
+    (0x33, 2),
+    (0x33, 3),
+    (0x33, 4),
+    (0x33, 5),
+    (0x33, 6),
+    (0x33, 7),
+    (0x34, 0),
+    (0x34, 1),
+    (0x34, 2),
+    (0x34, 3),
+    (0x34, 4),
+];
 
 pub(super) fn ribbons_from(d: &[u8], bits: &[(usize, u8); 15]) -> Vec<&'static str> {
     RIBBONS.iter().zip(bits).filter(|(_, &(at, bit))| d[at] >> bit & 1 != 0).map(|(k, _)| *k).collect()
@@ -157,11 +217,8 @@ pub(super) fn parse_pgt(card: &[u8]) -> Result<Parsed, GiftError> {
     let item = u32le(card, 4);
     let gift = &card[8..8 + PkmFormat::Gen4.party_size()];
     let has_pk = gift.iter().any(|&b| b != 0);
-    let template = if has_pk && matches!(kind, gift4::POKEMON | gift4::EGG | gift4::MOVIE) {
-        Some(Pokemon::from_bytes(PkmFormat::Gen4, gift)?)
-    } else {
-        None
-    };
+    let template =
+        if has_pk && matches!(kind, gift4::POKEMON | gift4::EGG | gift4::MOVIE) { Some(Pokemon::from_bytes(PkmFormat::Gen4, gift)?) } else { None };
     let mut parsed = Parsed {
         card_id: 0,
         title: String::new(),

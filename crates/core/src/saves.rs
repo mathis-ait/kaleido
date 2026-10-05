@@ -83,11 +83,8 @@ pub const GEN4_MAGIC_KOREAN: u32 = 0x2007_0903;
 /// Pied du bloc général : taille du bloc à `fin − 0xC`, puis date du SDK à `fin − 0x8`.
 // Vérifié : PKHeX Saves/Util/SaveUtil.cs (IsValidGeneralFooter2, ordre DP → Pt → HGSS).
 fn identify_gen4(data: &[u8]) -> Option<SaveKind> {
-    const GENERAL_SIZES: [(usize, SaveKind); 3] = [
-        (0xC100, SaveKind::DiamondPearl),
-        (0xCF2C, SaveKind::Platinum),
-        (0xF628, SaveKind::HeartGoldSoulSilver),
-    ];
+    const GENERAL_SIZES: [(usize, SaveKind); 3] =
+        [(0xC100, SaveKind::DiamondPearl), (0xCF2C, SaveKind::Platinum), (0xF628, SaveKind::HeartGoldSoulSilver)];
     let rd = |at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
     // PKHeX ne regarde que la 2e partition (la première sauvegarde du jeu y est
     // écrite) ; on accepte aussi la 1re, pour les fichiers dont la copie de secours

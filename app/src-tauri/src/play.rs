@@ -123,12 +123,7 @@ impl Env {
         let var = |k: &str| std::env::var_os(k).map(PathBuf::from);
         let mut program_files: Vec<PathBuf> = ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"].iter().filter_map(|k| var(k)).collect();
         program_files.dedup();
-        Env {
-            program_files,
-            appdata: var("APPDATA"),
-            local_appdata: var("LOCALAPPDATA"),
-            extra: extra.iter().map(PathBuf::from).collect(),
-        }
+        Env { program_files, appdata: var("APPDATA"), local_appdata: var("LOCALAPPDATA"), extra: extra.iter().map(PathBuf::from).collect() }
     }
 }
 
@@ -964,7 +959,8 @@ pub fn prepare_files(req: &PlayRequest, r: &Resolved, title_id: Option<u64>, sta
             if save_dir.is_dir() {
                 out.backups.extend(install_save(src, &target, stamp)?.map(|b| b.display().to_string()));
             } else {
-                out.warnings.push("Sauvegarde non copiée : lance le jeu une première fois dans l'émulateur et crée une partie, puis réessaie.".into());
+                out.warnings
+                    .push("Sauvegarde non copiée : lance le jeu une première fois dans l'émulateur et crée une partie, puis réessaie.".into());
             }
         }
         out.save_path = Some(target.display().to_string());

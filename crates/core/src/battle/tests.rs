@@ -335,13 +335,7 @@ struct Case {
     expected: (u16, u16),
 }
 
-fn case(
-    game: Game,
-    att: (&'static [u8], [u16; 6], u16, u16),
-    def: (&'static [u8], [u16; 6], u16, u16),
-    mv: u16,
-    expected: (u16, u16),
-) -> Case {
+fn case(game: Game, att: (&'static [u8], [u16; 6], u16, u16), def: (&'static [u8], [u16; 6], u16, u16), mv: u16, expected: (u16, u16)) -> Case {
     Case { game, att, att_side: SideState::default(), def, mv, weather: Weather::None, crit: false, expected }
 }
 
@@ -458,13 +452,7 @@ fn matches_showdown() {
             (61, 73),
         ),
         // Gen 6
-        case(
-            Game::XY,
-            (&[FAIRY], [170, 85, 85, 162, 150, 80], ab::PIXILATE, 0),
-            (&[DRAGON, GROUND], GARCHOMP, 0, 0),
-            HYPER_VOICE,
-            (204, 242),
-        ),
+        case(Game::XY, (&[FAIRY], [170, 85, 85, 162, 150, 80], ab::PIXILATE, 0), (&[DRAGON, GROUND], GARCHOMP, 0, 0), HYPER_VOICE, (204, 242)),
         case(
             Game::XY,
             (&[GHOST, POISON], [135, 85, 80, 182, 95, 130], 0, 0),
@@ -481,13 +469,7 @@ fn matches_showdown() {
             (74, 90),
         ),
         // Gen 7
-        case(
-            Game::SM,
-            (&[FAIRY], [170, 85, 85, 162, 150, 80], ab::PIXILATE, 0),
-            (&[DRAGON, GROUND], GARCHOMP, 0, 0),
-            HYPER_VOICE,
-            (188, 224),
-        ),
+        case(Game::SM, (&[FAIRY], [170, 85, 85, 162, 150, 80], ab::PIXILATE, 0), (&[DRAGON, GROUND], GARCHOMP, 0, 0), HYPER_VOICE, (188, 224)),
         case(Game::SM, (&[FIGHTING], [165, 182, 100, 85, 105, 75], 0, 0), (&[NORMAL], [235, 130, 85, 85, 130, 50], 0, 0), 69, (50, 50)),
     ];
     for (i, c) in cases.iter().enumerate() {
@@ -524,7 +506,7 @@ fn ko_chance_matches_showdown() {
 // ---------- ROM réelles (ignorées si absentes) ----------
 
 fn rom(name: &str) -> Option<std::path::PathBuf> {
-    let p = std::path::Path::new("C:/Users/Thisma/Documents/NDS & 3DS").join(name);
+    let p = crate::test_rom_path(name);
     p.exists().then_some(p)
 }
 

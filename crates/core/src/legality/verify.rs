@@ -188,13 +188,16 @@ fn location_name(generation: u8, loc: u16) -> String {
 
 /// Espèces dont la forme change hors combat (`FormInfo.FormChange` de PKHeX, + saisons).
 fn form_changeable(species: u16) -> bool {
-    matches!(species, 412 | 676 | 741 | 479 | 386 | 483 | 484 | 487 | 492 | 493 | 641 | 642 | 645 | 646 | 647 | 649 | 720 | 773 | 800 | 585 | 586 | 718 | 351 | 421)
+    matches!(
+        species,
+        412 | 676 | 741 | 479 | 386 | 483 | 484 | 487 | 492 | 493 | 641 | 642 | 645 | 646 | 647 | 649 | 720 | 773 | 800 | 585 | 586 | 718 | 351 | 421
+    )
 }
 
 /// Méga-évolutions (Gen 6/7) : forme ≠ 0 impossible hors combat.
 const MEGA: [u16; 48] = [
-    3, 6, 9, 65, 94, 115, 127, 130, 142, 150, 181, 212, 214, 229, 248, 257, 282, 303, 306, 308, 310, 354, 359, 380, 381, 445, 448, 460, 15, 18,
-    80, 208, 254, 260, 302, 319, 323, 334, 362, 373, 376, 384, 428, 475, 531, 719, 382, 383,
+    3, 6, 9, 65, 94, 115, 127, 130, 142, 150, 181, 212, 214, 229, 248, 257, 282, 303, 306, 308, 310, 354, 359, 380, 381, 445, 448, 460, 15, 18, 80,
+    208, 254, 260, 302, 319, 323, 334, 362, 373, 376, 384, 428, 475, 531, 719, 382, 383,
 ];
 
 /// Forme qui n'existe qu'en combat (`FormInfo.IsBattleOnlyForm`).
@@ -429,7 +432,11 @@ fn candidates(ctx: &Ctx) -> Vec<Encounter> {
 fn may_be_event(ctx: &Ctx) -> bool {
     let pk = ctx.pk;
     let g = ctx.origin_generation();
-    pk.fateful_encounter() || pk.ball() == 16 || is_event_location(g, pk.met_location()) || is_event_location(g, pk.egg_location()) || pk.met_location() == 30011
+    pk.fateful_encounter()
+        || pk.ball() == 16
+        || is_event_location(g, pk.met_location())
+        || is_event_location(g, pk.egg_location())
+        || pk.met_location() == 30011
 }
 
 /// Distributions compatibles (espèce, version, lieu, niveau).
@@ -466,7 +473,12 @@ fn event_marker(ctx: &Ctx) -> bool {
     let pk = ctx.pk;
     let g = ctx.origin_generation();
     let special_location = g >= 5 && (30001..=30020).contains(&pk.met_location());
-    pk.fateful_encounter() && (pk.ball() == 16 || ctx.met_replaced || special_location || is_event_location(g, pk.met_location()) || is_event_location(g, pk.egg_location()))
+    pk.fateful_encounter()
+        && (pk.ball() == 16
+            || ctx.met_replaced
+            || special_location
+            || is_event_location(g, pk.met_location())
+            || is_event_location(g, pk.egg_location()))
         || (pk.ball() == 16 && g >= 4)
 }
 
@@ -481,7 +493,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     if stage > 0 && !e.is_egg() {
         let need = ctx.chain[..stage].iter().map(|s| s.level_min).max().unwrap_or(1);
         if ctx.level < need {
-            out.bad("evo-level", "Évolution trop précoce", format!("{} évolue au niveau {need} au plus tôt, il n'est que niveau {}.", species_name(pk.species()), ctx.level), TAB_STATS);
+            out.bad(
+                "evo-level",
+                "Évolution trop précoce",
+                format!("{} évolue au niveau {need} au plus tôt, il n'est que niveau {}.", species_name(pk.species()), ctx.level),
+                TAB_STATS,
+            );
         } else if !ctx.met_replaced && e.kind != EncounterKind::Trade && ctx.level <= pk.met_level() && needs_level_up(ctx, stage) {
             out.bad(
                 "evo-no-levelup",
@@ -497,7 +514,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     if let Some(fixed) = e.ball {
         let shedinja = pk.species() == 292 && ball == 4;
         if ball != fixed && !shedinja {
-            out.bad("ball-fixed", "Ball impossible", format!("Cette rencontre se fait obligatoirement dans une {} (ici : {}).", ball_name(fixed), ball_name(ball)), TAB_MET);
+            out.bad(
+                "ball-fixed",
+                "Ball impossible",
+                format!("Cette rencontre se fait obligatoirement dans une {} (ici : {}).", ball_name(fixed), ball_name(ball)),
+                TAB_MET,
+            );
         }
     } else if e.kind == EncounterKind::Egg {
         // Gen 6+ : la Ball de la mère (ou du père en Gen 7) est transmise.
@@ -509,12 +531,22 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
         let mut allowed = wild_balls(5, ctx.version);
         allowed.push(25);
         if !allowed.contains(&ball) {
-            out.bad("ball-dream", "Ball impossible", format!("Les Pokémon du Monde des Rêves arrivent dans une Ball de capture classique ou une Rêve Ball, pas une {}.", ball_name(ball)), TAB_MET);
+            out.bad(
+                "ball-dream",
+                "Ball impossible",
+                format!("Les Pokémon du Monde des Rêves arrivent dans une Ball de capture classique ou une Rêve Ball, pas une {}.", ball_name(ball)),
+                TAB_MET,
+            );
         }
     } else if !e.is_egg() {
         let allowed = wild_balls(e.generation, ctx.version);
         if !allowed.contains(&ball) {
-            out.bad("ball-wild", "Ball impossible", format!("Impossible de capturer ce Pokémon avec une {} dans {}.", ball_name(ball), version_name(ctx.version)), TAB_MET);
+            out.bad(
+                "ball-wild",
+                "Ball impossible",
+                format!("Impossible de capturer ce Pokémon avec une {} dans {}.", ball_name(ball), version_name(ctx.version)),
+                TAB_MET,
+            );
         }
     }
 
@@ -529,7 +561,9 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             format!("{} ne peut pas être chromatique dans cette rencontre (verrou chromatique).", species_name(e.species)),
             TAB_OVERVIEW,
         ),
-        ShinyRule::Always if !ctx.shiny => out.bad("shiny-forced", "Doit être chromatique", "Cette rencontre donne toujours un Pokémon chromatique.", TAB_OVERVIEW),
+        ShinyRule::Always if !ctx.shiny => {
+            out.bad("shiny-forced", "Doit être chromatique", "Cette rencontre donne toujours un Pokémon chromatique.", TAB_OVERVIEW)
+        }
         ShinyRule::FixedPid => {
             if let Some(pid) = e.pid {
                 let actual = if ctx.format >= 6 && origin_gen <= 5 { pk.encryption_constant() } else { ctx.pid };
@@ -553,7 +587,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     // Nature imposée.
     if let Some(n) = e.nature {
         if pk.nature() != n {
-            out.bad("nature-fixed", "Nature imposée", format!("Cette rencontre a toujours la nature {}.", dex::nature_name(n).unwrap_or("?")), TAB_STATS);
+            out.bad(
+                "nature-fixed",
+                "Nature imposée",
+                format!("Cette rencontre a toujours la nature {}.", dex::nature_name(n).unwrap_or("?")),
+                TAB_STATS,
+            );
         }
     }
 
@@ -568,14 +607,21 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     let mut flawless = e.flawless_ivs;
     if e.kind.is_wild() && e.generation >= 6 {
         let undiscovered = dex::personal(ctx.game, e.species, e.form).is_some_and(|p| p.egg_groups[0] == 15);
-        if undiscovered && !matches!(e.species, 172 | 173 | 174 | 175 | 236 | 238 | 239 | 240 | 298 | 360 | 406 | 433 | 438 | 439 | 440 | 446 | 447 | 458) {
+        if undiscovered
+            && !matches!(e.species, 172 | 173 | 174 | 175 | 236 | 238 | 239 | 240 | 298 | 360 | 406 | 433 | 438 | 439 | 440 | 446 | 447 | 458)
+        {
             flawless = flawless.max(3);
         }
     }
     if flawless > 0 && origin_gen >= 6 {
         let perfect = ivs.iter().filter(|&&v| v == 31).count() as u8;
         if perfect < flawless {
-            out.bad("iv-flawless", "IV parfaits manquants", format!("Cette rencontre garantit au moins {flawless} IV à 31 (ici {perfect})."), TAB_STATS);
+            out.bad(
+                "iv-flawless",
+                "IV parfaits manquants",
+                format!("Cette rencontre garantit au moins {flawless} IV à 31 (ici {perfect})."),
+                TAB_STATS,
+            );
         }
     }
 
@@ -583,7 +629,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     if let Some(t) = &e.trainer {
         let id_ok = pk.tid() == t.tid && pk.sid() == t.sid;
         if !id_ok {
-            out.bad("trainer-id", "ID du dresseur incorrect", format!("Ce Pokémon d'échange appartient au dresseur ID {} (ID secret {}).", t.tid, t.sid), TAB_TRAINER);
+            out.bad(
+                "trainer-id",
+                "ID du dresseur incorrect",
+                format!("Ce Pokémon d'échange appartient au dresseur ID {} (ID secret {}).", t.tid, t.sid),
+                TAB_TRAINER,
+            );
         }
         let ot = pk.ot_name();
         // Noms japonais / coréens des cartes Gen 4 : jeu de caractères non décodé, comparaison impossible.
@@ -591,7 +642,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
         let same = |n: &str| n == ot || (ctx.met_replaced && n.eq_ignore_ascii_case(&ot));
         if !t.names.is_empty() && !undecodable && !t.names.iter().any(|(_, n)| same(n)) {
             let fr = t.names.iter().find(|(l, _)| *l == 3).or(t.names.first()).map(|(_, n)| n.clone()).unwrap_or_default();
-            out.bad("trainer-name", "Nom du dresseur incorrect", format!("Le dresseur d'origine de ce Pokémon s'appelle « {fr} » (version française)."), TAB_TRAINER);
+            out.bad(
+                "trainer-name",
+                "Nom du dresseur incorrect",
+                format!("Le dresseur d'origine de ce Pokémon s'appelle « {fr} » (version française)."),
+                TAB_TRAINER,
+            );
         }
         if let Some(g) = t.ot_gender {
             if gender_code(pk.ot_gender()) != g && e.kind == EncounterKind::Trade {
@@ -608,14 +664,24 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     }
     if let Some(ec) = e.ec {
         if pk.encryption_constant() != ec {
-            out.bad("event-ec", "Constante de chiffrement de la distribution", format!("Cette distribution a une constante de chiffrement fixe ({ec:08X})."), TAB_OVERVIEW);
+            out.bad(
+                "event-ec",
+                "Constante de chiffrement de la distribution",
+                format!("Cette distribution a une constante de chiffrement fixe ({ec:08X})."),
+                TAB_OVERVIEW,
+            );
         }
     }
 
     // Rencontre fatidique.
     if pk.fateful_encounter() != e.fateful && !(n_sparkle(pk) && e.n_sparkle) {
         if pk.fateful_encounter() {
-            out.bad("fateful-extra", "Rencontre fatidique en trop", "Seuls les Pokémon d'événement (et quelques Pokémon fixes) ont la « rencontre fatidique ».", TAB_MET);
+            out.bad(
+                "fateful-extra",
+                "Rencontre fatidique en trop",
+                "Seuls les Pokémon d'événement (et quelques Pokémon fixes) ont la « rencontre fatidique ».",
+                TAB_MET,
+            );
         } else {
             out.bad("fateful-missing", "Rencontre fatidique manquante", "Ce Pokémon s'obtient avec la mention « rencontre fatidique ».", TAB_MET);
         }
@@ -632,7 +698,12 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     if e.kind == EncounterKind::Egg && !pk.is_egg() && !ctx.met_replaced {
         let expected = if e.generation == 4 { 0 } else { 1 };
         if pk.met_level() != expected {
-            out.bad("hatch-level", "Niveau d'éclosion", format!("Un Pokémon né d'un œuf en Gen {} est « rencontré » au niveau {expected}.", e.generation), TAB_MET);
+            out.bad(
+                "hatch-level",
+                "Niveau d'éclosion",
+                format!("Un Pokémon né d'un œuf en Gen {} est « rencontré » au niveau {expected}.", e.generation),
+                TAB_MET,
+            );
         }
         let daycare = matches!(egg_loc, 2000 | 2002 | 60002 | 30002 | 30003);
         if !daycare && !(2009..=2014).contains(&egg_loc) && !(3000..4000).contains(&egg_loc) {
@@ -700,7 +771,9 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
         let t = rng::analyze_gen34(pid, iv32(pk), ctx.tid, ctx.sid, ctx.shiny, gender_code(pk.gender()), ratio);
         let ok = match e.kind {
             EncounterKind::Pokewalker => t == PidType::Pokewalker,
-            EncounterKind::Grass if t == PidType::ChainShiny => e.versions.iter().any(|&v| v == encounters::D || v == encounters::P || v == encounters::PT),
+            EncounterKind::Grass if t == PidType::ChainShiny => {
+                e.versions.iter().any(|&v| v == encounters::D || v == encounters::P || v == encounters::PT)
+            }
             k if k.is_wild() => matches!(t, PidType::Method1 | PidType::CuteCharm),
             _ => t == PidType::Method1,
         };
@@ -725,10 +798,20 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             _ => false,
         };
         if wild_xor && !rng::gen5_xor_ok(pid, ctx.tid, ctx.sid) {
-            out.bad("pid-gen5", "PID incompatible (Gen 5)", "En Gen 5, le bit de poids fort du PID d'un Pokémon sauvage dépend de l'ID du dresseur.", TAB_OVERVIEW);
+            out.bad(
+                "pid-gen5",
+                "PID incompatible (Gen 5)",
+                "En Gen 5, le bit de poids fort du PID d'un Pokémon sauvage dépend de l'ID du dresseur.",
+                TAB_OVERVIEW,
+            );
         }
         if e.kind == EncounterKind::HiddenGrotto && ctx.shiny {
-            out.bad("shiny-grotto", "Chromatique de Trouée Cachée", "Les Pokémon des Trouées Cachées ne peuvent pas être chromatiques.", TAB_OVERVIEW);
+            out.bad(
+                "shiny-grotto",
+                "Chromatique de Trouée Cachée",
+                "Les Pokémon des Trouées Cachées ne peuvent pas être chromatiques.",
+                TAB_OVERVIEW,
+            );
         }
     }
 }
@@ -742,7 +825,12 @@ fn check_relearn(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     let origin_gen = ctx.origin_generation();
     if origin_gen < 6 {
         if !set.is_empty() {
-            out.bad("relearn-transfer", "Attaques à réapprendre en trop", "Un Pokémon venu d'une ancienne génération n'a pas d'attaque à réapprendre.", TAB_MOVES);
+            out.bad(
+                "relearn-transfer",
+                "Attaques à réapprendre en trop",
+                "Un Pokémon venu d'une ancienne génération n'a pas d'attaque à réapprendre.",
+                TAB_MOVES,
+            );
         }
         return;
     }
@@ -856,9 +944,22 @@ fn check_moves(ctx: &Ctx, e: Option<&Encounter>, unverifiable: bool, out: &mut L
         if learn_sources(ctx, e, m).is_none() {
             let name = move_name(m);
             if unverifiable {
-                out.fishy("move-unverified", format!("{name} non vérifiable"), "Cette attaque a pu être apprise dans un jeu plus ancien (Gen 1 à 3) ou lors d'un événement : impossible de le confirmer.", TAB_MOVES);
+                out.fishy(
+                    "move-unverified",
+                    format!("{name} non vérifiable"),
+                    "Cette attaque a pu être apprise dans un jeu plus ancien (Gen 1 à 3) ou lors d'un événement : impossible de le confirmer.",
+                    TAB_MOVES,
+                );
             } else {
-                out.bad("move-illegal", format!("{name} impossible"), format!("{} ne peut pas apprendre {name} par niveau, CT/CS, donneur de capacités ni comme capacité Œuf.", species_name(pk.species())), TAB_MOVES);
+                out.bad(
+                    "move-illegal",
+                    format!("{name} impossible"),
+                    format!(
+                        "{} ne peut pas apprendre {name} par niveau, CT/CS, donneur de capacités ni comme capacité Œuf.",
+                        species_name(pk.species())
+                    ),
+                    TAB_MOVES,
+                );
             }
         }
     }
@@ -870,7 +971,12 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
     let pk = ctx.pk;
     let game = ctx.game;
     if !pk.checksum_valid() {
-        out.bad("checksum", "Données abîmées", "La somme de contrôle du Pokémon ne correspond pas : le jeu le verra comme un « Œuf corrompu ».", TAB_EXTRAS);
+        out.bad(
+            "checksum",
+            "Données abîmées",
+            "La somme de contrôle du Pokémon ne correspond pas : le jeu le verra comme un « Œuf corrompu ».",
+            TAB_EXTRAS,
+        );
     }
     let species = pk.species();
     if species > dex::max_species(game) {
@@ -890,7 +996,12 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
         let base_forms = dex::personal(og, species, 0).map_or(1, |p| p.form_count.max(1));
         let names = dex::form_names(og, species).len();
         if form != 0 && !form_changeable(species) && form as usize >= (base_forms as usize).max(names) && species <= dex::max_species(og) {
-            out.bad("form-origin", "Forme absente du jeu d'origine", format!("Cette forme de {} n'existe pas dans {}.", species_name(species), version_name(ctx.version)), TAB_OVERVIEW);
+            out.bad(
+                "form-origin",
+                "Forme absente du jeu d'origine",
+                format!("Cette forme de {} n'existe pas dans {}.", species_name(species), version_name(ctx.version)),
+                TAB_OVERVIEW,
+            );
         }
     }
     // Mistigrix : la forme suit le sexe.
@@ -920,7 +1031,12 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
         let need = if matches!(species, 151 | 251) { 5 } else { 3 };
         let perfect = pk.ivs().iter().filter(|&&v| v == 31).count();
         if perfect < need {
-            out.bad("vc-ivs", "IV parfaits manquants", format!("Un Pokémon de la Console virtuelle reçoit au moins {need} IV à 31 lors du transfert (ici {perfect})."), TAB_STATS);
+            out.bad(
+                "vc-ivs",
+                "IV parfaits manquants",
+                format!("Un Pokémon de la Console virtuelle reçoit au moins {need} IV à 31 lors du transfert (ici {perfect})."),
+                TAB_STATS,
+            );
         }
         // Stade transféré : le premier de la lignée qui existait dans le jeu d'origine.
         let transferred = ctx.chain.iter().position(|s| s.species <= max_vc);
@@ -930,7 +1046,12 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
             Some(i) => ctx.level <= pk.met_level() && needs_level_up(ctx, i),
         };
         if impossible {
-            out.bad("vc-species", "Espèce absente de la Console virtuelle", format!("{} ne pouvait pas être transféré depuis la Gen {generation}.", species_name(species)), TAB_MET);
+            out.bad(
+                "vc-species",
+                "Espèce absente de la Console virtuelle",
+                format!("{} ne pouvait pas être transféré depuis la Gen {generation}.", species_name(species)),
+                TAB_MET,
+            );
         }
         if !matches!(lang, 1..=5 | 7) {
             out.bad("vc-language", "Langue impossible", "Les jeux de la Console virtuelle n'existent pas dans cette langue.", TAB_TRAINER);
@@ -941,12 +1062,22 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
     }
     // Gen 3 : Mentali / Noctali ne peuvent pas évoluer dans RFVF (pas d'horloge).
     if matches!(species, 196 | 197) && matches!(ctx.version, 4 | 5) && ctx.level <= pk.met_level() {
-        out.bad("evo-frlg", "Évolution impossible dans RFVF", "Rouge Feu et Vert Feuille n'ont pas d'horloge : Évoli n'a pas pu y évoluer ainsi.", TAB_MET);
+        out.bad(
+            "evo-frlg",
+            "Évolution impossible dans RFVF",
+            "Rouge Feu et Vert Feuille n'ont pas d'horloge : Évoli n'a pas pu y évoluer ainsi.",
+            TAB_MET,
+        );
     }
 
     // Niveau de rencontre.
     if !pk.is_egg() && pk.met_level() > ctx.level {
-        out.bad("met-level", "Niveau de rencontre trop haut", format!("Rencontré au niveau {}, mais il est niveau {}.", pk.met_level(), ctx.level), TAB_MET);
+        out.bad(
+            "met-level",
+            "Niveau de rencontre trop haut",
+            format!("Rencontré au niveau {}, mais il est niveau {}.", pk.met_level(), ctx.level),
+            TAB_MET,
+        );
     }
     if pk.is_egg() {
         if ctx.level != 1 {
@@ -981,11 +1112,21 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
                     origin_expected = Some(120);
                 }
                 if i == 2 && expected == 0 {
-                    out.bad("ability-nohidden", "Pas de talent caché", format!("{} n'a pas de talent caché dans ce jeu.", species_name(species)), TAB_OVERVIEW);
+                    out.bad(
+                        "ability-nohidden",
+                        "Pas de talent caché",
+                        format!("{} n'a pas de talent caché dans ce jeu.", species_name(species)),
+                        TAB_OVERVIEW,
+                    );
                 } else if ability != expected && origin_expected != Some(ability) {
                     let in_list = info.abilities.contains(&ability) && ability != 0;
                     let detail = if in_list {
-                        format!("Le talent {} ne correspond pas à l'emplacement {} (attendu : {}).", dex::ability_name(ability).unwrap_or("?"), if n == 4 { "caché".to_string() } else { n.to_string() }, dex::ability_name(expected).unwrap_or("?"))
+                        format!(
+                            "Le talent {} ne correspond pas à l'emplacement {} (attendu : {}).",
+                            dex::ability_name(ability).unwrap_or("?"),
+                            if n == 4 { "caché".to_string() } else { n.to_string() },
+                            dex::ability_name(expected).unwrap_or("?")
+                        )
                     } else {
                         format!("{} ne peut pas avoir le talent {}.", species_name(species), dex::ability_name(ability).unwrap_or("?"))
                     };
@@ -993,7 +1134,13 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
                     let bw_trade = ctx.origin_generation() == 5 && pk.met_location() == 30002 && (in_list || (species == 550 && ability == 120));
                     if bw_trade {
                         out.ok("ability-trade", "Talent d'échange", "Les échanges de Noir et Blanc imposent le talent, sans lien avec le PID.");
-                    } else if ctx.origin_generation() <= 4 && ctx.format <= 5 && in_list && i < 2 && info.abilities[0] != info.abilities[1] && ability == info.abilities[0] {
+                    } else if ctx.origin_generation() <= 4
+                        && ctx.format <= 5
+                        && in_list
+                        && i < 2
+                        && info.abilities[0] != info.abilities[1]
+                        && ability == info.abilities[0]
+                    {
                         // Gen 3 → 4/5 : le talent 2 n'existait parfois pas encore (on garde l'ancien).
                         out.fishy("ability-mismatch-old", "Talent d'une ancienne génération", detail, TAB_OVERVIEW);
                     } else {
@@ -1005,12 +1152,22 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
         // Gen 3 à 5 transférés vers la Gen 6 : l'emplacement est recalculé d'après le talent
         // (`PK5.CalculateTransferAbilityIndex`) ; talents identiques → emplacement 1.
         if ctx.format >= 6 && ctx.origin_generation() <= 5 && ctx.origin_generation() >= 3 && n == 2 && info.abilities[0] == info.abilities[1] {
-            out.bad("ability-number-transfer", "Numéro de talent incohérent", "Après transfert vers la Gen 6, un Pokémon aux deux talents identiques a le talent n°1.", TAB_OVERVIEW);
+            out.bad(
+                "ability-number-transfer",
+                "Numéro de talent incohérent",
+                "Après transfert vers la Gen 6, un Pokémon aux deux talents identiques a le talent n°1.",
+                TAB_OVERVIEW,
+            );
         }
         // VC (Gen 1/2) : talent caché à l'arrivée dans la Banque.
         if let Origin::VirtualConsole { .. } = ctx.origin {
             if n != 4 && info.abilities[2] != 0 && !matches!(species, 151 | 251) {
-                out.bad("ability-vc", "Talent de la Console virtuelle", "Les Pokémon de la Console virtuelle reçoivent leur talent caché lors du transfert.", TAB_OVERVIEW);
+                out.bad(
+                    "ability-vc",
+                    "Talent de la Console virtuelle",
+                    "Les Pokémon de la Console virtuelle reçoivent leur talent caché lors du transfert.",
+                    TAB_OVERVIEW,
+                );
             }
         }
 
@@ -1025,7 +1182,12 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
         };
         if let Some(x) = expected {
             if g != x {
-                out.bad("gender-ratio", "Sexe impossible", format!("{} est toujours {}.", species_name(species), ["mâle", "femelle", "asexué"][x as usize]), TAB_OVERVIEW);
+                out.bad(
+                    "gender-ratio",
+                    "Sexe impossible",
+                    format!("{} est toujours {}.", species_name(species), ["mâle", "femelle", "asexué"][x as usize]),
+                    TAB_OVERVIEW,
+                );
             }
         } else if g == 2 {
             out.bad("gender-none", "Sexe manquant", format!("{} a un sexe (mâle ou femelle).", species_name(species)), TAB_OVERVIEW);
@@ -1053,10 +1215,20 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
         let ec = pk.encryption_constant();
         if ctx.origin_generation() >= 3 && ctx.origin_generation() <= 5 {
             if ctx.pid != rng::transfer_pid(ec, ctx.tid, ctx.sid) {
-                out.bad("pid-transfer", "PID incohérent après transfert", "Après Poké Transfert, le PID doit être égal à la constante de chiffrement (bit 31 inversé si nécessaire).", TAB_OVERVIEW);
+                out.bad(
+                    "pid-transfer",
+                    "PID incohérent après transfert",
+                    "Après Poké Transfert, le PID doit être égal à la constante de chiffrement (bit 31 inversé si nécessaire).",
+                    TAB_OVERVIEW,
+                );
             }
         } else if ctx.origin_generation() >= 6 && ec == ctx.pid {
-            out.bad("pid-ec", "PID égal à la constante de chiffrement", "En Gen 6+, le PID et la constante de chiffrement sont tirés séparément.", TAB_OVERVIEW);
+            out.bad(
+                "pid-ec",
+                "PID égal à la constante de chiffrement",
+                "En Gen 6+, le PID et la constante de chiffrement sont tirés séparément.",
+                TAB_OVERVIEW,
+            );
         }
         if ec == 0 {
             out.fishy("ec-zero", "Constante de chiffrement nulle", "Valeur très improbable.", TAB_OVERVIEW);
@@ -1169,10 +1341,13 @@ fn evaluate(ctx: &Ctx, e: &Encounter) -> Lines {
 
 /// Meilleure rencontre (moins d'erreurs, puis moins d'avertissements).
 pub(crate) fn best_encounter(ctx: &Ctx) -> Option<(Encounter, Lines)> {
-    candidates(ctx).into_iter().map(|e| {
-        let lines = evaluate(ctx, &e);
-        (e, lines)
-    }).min_by_key(|(_, l)| (l.errors(), l.warnings()))
+    candidates(ctx)
+        .into_iter()
+        .map(|e| {
+            let lines = evaluate(ctx, &e);
+            (e, lines)
+        })
+        .min_by_key(|(_, l)| (l.errors(), l.warnings()))
 }
 
 /// Analyse complète d'un Pokémon dans le contexte du jeu de la sauvegarde.
@@ -1255,7 +1430,12 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
             }
         }
         Origin::Gen3 | Origin::VirtualConsole { .. } => {
-            out.fishy("origin-old", "Rencontre non vérifiable", format!("Pokémon venu de {} : Kaleido ne connaît pas les rencontres des Gen 1 à 3.", version_name(ctx.version)), TAB_MET);
+            out.fishy(
+                "origin-old",
+                "Rencontre non vérifiable",
+                format!("Pokémon venu de {} : Kaleido ne connaît pas les rencontres des Gen 1 à 3.", version_name(ctx.version)),
+                TAB_MET,
+            );
             let expected = match ctx.origin {
                 Origin::Gen3 if ctx.format == 4 => Some(55),
                 Origin::Gen3 => Some(30001),
@@ -1266,7 +1446,12 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
             if let Some(loc) = expected {
                 let celebi = matches!(pk.met_location(), 30010..=30013);
                 if pk.met_location() != loc && !celebi {
-                    out.bad("transfer-location", "Lieu de transfert incorrect", format!("Ce Pokémon doit avoir « {} » comme lieu de rencontre.", location_name(ctx.format.min(7), loc)), TAB_MET);
+                    out.bad(
+                        "transfer-location",
+                        "Lieu de transfert incorrect",
+                        format!("Ce Pokémon doit avoir « {} » comme lieu de rencontre.", location_name(ctx.format.min(7), loc)),
+                        TAB_MET,
+                    );
                 }
             }
             check_moves(&ctx, None, true, &mut out);

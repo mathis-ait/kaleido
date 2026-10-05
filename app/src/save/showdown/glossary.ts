@@ -17,6 +17,10 @@ Object.assign(GLOSSARY, {
     title: "Formats et paliers",
     text: "Smogon classe les Pokémon par palier selon leur puissance : Ubers (légendaires très forts), OU (OverUsed, le format principal), puis UU, RU, NU, PU, ZU pour les moins utilisés. LC (Little Cup) se joue au niveau 5 avec des Pokémon non évolués ; VGC et Doubles sont des combats en double, niveau 50.",
   },
+  smogonTeams: {
+    title: "Équipes stratégiques",
+    text: "Équipes complètes publiées par Smogon University comme exemples pour chaque format : six Pokémon qui se complètent (attaquants, défenseurs, soutiens). Kaleido les récupère via crob.at et les crée dans ta sauvegarde, avec objets, talents, natures, EV et attaques.",
+  },
   showdownSet: {
     title: "Set",
     text: "Une « fiche » de Pokémon prêt à combattre : espèce, objet tenu, talent, nature, répartition des EV (et parfois des IV), et 4 attaques. Appliquer un set remplace ces champs ; le dresseur d'origine, le lieu de rencontre et le PID sont gardés.",

@@ -36,7 +36,9 @@ impl Narc {
 
         let gmif = section(d, at, b"GMIF")?;
         let files = entries
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|c| {
                 let (s, e) = (u32le(c, 0), u32le(c, 4));
                 if s > e {

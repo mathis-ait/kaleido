@@ -90,7 +90,7 @@ impl Garc {
 
         let mut entries = Vec::with_capacity(count as usize);
         let mut pad_byte = None;
-        for c in slice(fato, FATO_HEADER, count * 4)?.chunks_exact(4) {
+        for c in slice(fato, FATO_HEADER, count * 4)?.as_chunks::<4>().0 {
             let at = FATB_HEADER.saturating_add(u32le(c, 0));
             let bits = u32le(slice(fatb, at, 4)?, 0);
             let mut subfiles = Vec::with_capacity(bits.count_ones() as usize);

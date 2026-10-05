@@ -23,8 +23,10 @@ import {
 import type { Slot, SlotView } from "../types";
 import { BALLS, genderSymbol, NATURES } from "./refdata";
 import { useShell } from "./shell";
-import { openShowdown } from "./showdown/api";
+import { openShowdown, showdownUi } from "./showdown/api";
 import ShowdownDialog from "./showdown/ShowdownDialog.vue";
+import SmogonSets from "./showdown/SmogonSets.vue";
+import TeamsDialog from "./showdown/TeamsDialog.vue";
 
 const view = computed(() => saveState.view!);
 const boxCount = computed(() => view.value.boxNames.length);
@@ -133,6 +135,10 @@ function paste() {
 const newSpecies = ref(25);
 const newLevel = ref(5);
 const speciesOptions = computed(() => lists.species.map((o) => ({ ...o, hint: `n°${o.value}` })));
+/** Espèce choisie pour la case vide, pour la fenêtre des sets stratégiques. */
+const emptyTarget = computed(() =>
+  emptySel.value ? { species: newSpecies.value, speciesName: lists.species.find((o) => o.value === newSpecies.value)?.label ?? "", slot: emptySel.value } : null,
+);
 
 async function importInto(slot: Slot) {
   const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk4", "pk5", "pk6", "pk7"] }] });
@@ -254,6 +260,9 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
             @click="loadBox(i)"
           />
         </div>
+        <button class="sv-btn" title="Équipes d'exemple de Smogon, prêtes à importer" @click="showdownUi.teams = true">
+          <Icon name="star" :size="15" /> Équipes
+        </button>
         <button class="sv-btn" title="Importer ou exporter une équipe au format Pokémon Showdown (Ctrl+I)" @click="openShowdown()">
           <Icon name="swords" :size="15" /> Showdown
         </button>
@@ -358,6 +367,7 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
         <input v-model.number="newLevel" class="num-input" type="number" min="1" max="100" />
         <p class="dim small">Il sera attrapé par toi ({{ view.trainer.name }}), dans une Poké Ball, avec ses données de base. Tu pourras tout modifier ensuite.</p>
         <button class="btn-big" @click="createPokemon(emptySel, newSpecies, newLevel)"><Icon name="plus" :size="16" /> Créer ici</button>
+        <button class="btn-line full" title="Sets conseillés par Smogon pour cette espèce" @click="showdownUi.smogon = true"><Icon name="swords" :size="15" /> Sets stratégiques</button>
         <div class="row">
           <button class="btn-line" @click="importInto(emptySel)"><Icon name="download" :size="15" /> Importer un .pk{{ view.generation }}</button>
           <button class="btn-line" :disabled="!clipboard" @click="paste"><Icon name="copy" :size="15" /> Coller</button>
@@ -378,6 +388,8 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
     </div>
 
     <ShowdownDialog :target="cursor" />
+    <SmogonSets v-if="emptyTarget" :empty="emptyTarget" />
+    <TeamsDialog />
   </div>
 </template>
 
@@ -712,6 +724,11 @@ dd.bad {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   gap: 8px;
+}
+
+.btn-line.full {
+  width: 100%;
+  margin-top: 8px;
 }
 
 .btn-line {

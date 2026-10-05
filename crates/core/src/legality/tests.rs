@@ -40,7 +40,8 @@ fn root() -> PathBuf {
 
 fn summary(p: &Path, pk: &Pokemon, game: Game) -> String {
     let r = analyze(pk, game);
-    let issues: Vec<String> = r.checks.iter().filter(|c| c.severity != super::Severity::Valid).map(|c| format!("[{:?}] {} — {}", c.severity, c.title, c.detail)).collect();
+    let issues: Vec<String> =
+        r.checks.iter().filter(|c| c.severity != super::Severity::Valid).map(|c| format!("[{:?}] {} — {}", c.severity, c.title, c.detail)).collect();
     format!("{} → {} ({})\n    {}", p.file_name().unwrap().to_string_lossy(), r.verdict_label, r.origin, issues.join("\n    "))
 }
 
@@ -105,7 +106,15 @@ fn route_201_and_first_routes() {
 }
 
 fn trainer() -> Trainer {
-    Trainer { name: "Thisma".into(), tid: 12345, sid: 54321, display_id: 12345, gender: Gender::Female, money: 0, play_time: PlayTime { hours: 0, minutes: 0, seconds: 0 } }
+    Trainer {
+        name: "Thisma".into(),
+        tid: 12345,
+        sid: 54321,
+        display_id: 12345,
+        gender: Gender::Female,
+        money: 0,
+        play_time: PlayTime { hours: 0, minutes: 0, seconds: 0 },
+    }
 }
 
 #[test]
@@ -126,7 +135,8 @@ fn generate_is_legal_every_generation() {
     for (game, format, species, level) in cases {
         let req = GenerateRequest { species, level, ..Default::default() };
         let out = generate_legal(game, format, &trainer(), &req).unwrap();
-        let bad: Vec<_> = out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
+        let bad: Vec<_> =
+            out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
         assert!(out.success, "{game:?} n°{species} : {bad:?}");
         assert_eq!(out.pokemon.species(), species);
     }
@@ -175,13 +185,30 @@ fn generate_from_database_entries() {
         for (kind, list) in by_kind {
             for e in list {
                 total += 1;
-                let req = GenerateRequest { species: e.species, form: if e.form >= 30 { 0 } else { e.form }, level: e.level_max.max(e.level_min), encounter_index: Some(e.index), ..Default::default() };
+                let req = GenerateRequest {
+                    species: e.species,
+                    form: if e.form >= 30 { 0 } else { e.form },
+                    level: e.level_max.max(e.level_min),
+                    encounter_index: Some(e.index),
+                    ..Default::default()
+                };
                 let out = generate_legal(game, format, &trainer(), &req).unwrap();
                 if !out.success {
-                    let bad: Vec<String> = out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
+                    let bad: Vec<String> = out
+                        .report
+                        .checks
+                        .iter()
+                        .filter(|c| c.severity == super::Severity::Invalid)
+                        .map(|c| format!("{} — {}", c.title, c.detail))
+                        .collect();
                     failures.push(format!("{game:?} {kind:?} n°{} {} : {bad:?}", e.species, e.location_name));
                 } else if !e.egg && out.pokemon.met_location() != e.location {
-                    failures.push(format!("{game:?} {kind:?} n°{} : autre rencontre choisie ({} au lieu de {})", e.species, out.pokemon.met_location(), e.location));
+                    failures.push(format!(
+                        "{game:?} {kind:?} n°{} : autre rencontre choisie ({} au lieu de {})",
+                        e.species,
+                        out.pokemon.met_location(),
+                        e.location
+                    ));
                 }
             }
         }
@@ -280,7 +307,13 @@ fn real_save_check_all() {
                 r.checks.iter().map(|c| format!("{} : {}", c.title, c.detail)).collect::<Vec<_>>()
             );
             for e in super::events::events(4).iter().chain(super::events::events(5)).filter(|e| e.species == pk.species()) {
-                println!("    distribution {:?} niv {} lieu {} {:?}", e.title, e.level_min, e.location, e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone())));
+                println!(
+                    "    distribution {:?} niv {} lieu {} {:?}",
+                    e.title,
+                    e.level_min,
+                    e.location,
+                    e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone()))
+                );
             }
         }
         if r.verdict == Verdict::Illegal {
@@ -335,7 +368,14 @@ fn debug_dump() {
         for e in (4..=7).flat_map(super::events::events).filter(|e| e.species == pk.species()) {
             println!(
                 "    distribution {:?} forme {} niv {} lieu {} versions {:?} talent {:?} chromatique {:?} {:?}",
-                e.title, e.form, e.level_min, e.location, e.versions, e.ability, e.shiny, e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone()))
+                e.title,
+                e.form,
+                e.level_min,
+                e.location,
+                e.versions,
+                e.ability,
+                e.shiny,
+                e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone()))
             );
         }
     }

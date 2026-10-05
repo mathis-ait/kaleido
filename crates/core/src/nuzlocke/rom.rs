@@ -277,12 +277,9 @@ pub(crate) fn group_routes(game: Game, zones: &[(u16, u16)], files: &[Vec<u8>], 
                         e.methods.push(m);
                     }
                 }
-                None => route.encounters.push(Encounter {
-                    species: slot.species,
-                    min_level: slot.min_level,
-                    max_level: slot.max_level,
-                    methods: vec![m],
-                }),
+                None => {
+                    route.encounters.push(Encounter { species: slot.species, min_level: slot.min_level, max_level: slot.max_level, methods: vec![m] })
+                }
             }
         }
     }
@@ -309,8 +306,8 @@ fn story_order(game: Game) -> &'static [u16] {
         // 217, Rive Savoir, Lac Savoir, Forge Fuego, Chemin Rocheux, Grotte Mania, Tunnel Mania,
         // 222, Rivamar, 223, Route Victoire, Ligue, puis l'après-Ligue.
         Game::Platinum => &[
-            16, 76, 17, 18, 59, 46, 19, 47, 20, 48, 70, 9, 21, 65, 22, 50, 23, 24, 53, 25, 30, 29, 73, 77, 28, 11, 52, 68, 27, 26, 5, 33, 7,
-            69, 31, 32, 74, 78, 49, 57, 66, 67, 37, 13, 38, 54, 15, 62, 61, 64, 34, 35, 36, 83, 39, 40, 41, 42, 84, 43, 44, 45, 1,
+            16, 76, 17, 18, 59, 46, 19, 47, 20, 48, 70, 9, 21, 65, 22, 50, 23, 24, 53, 25, 30, 29, 73, 77, 28, 11, 52, 68, 27, 26, 5, 33, 7, 69, 31,
+            32, 74, 78, 49, 57, 66, 67, 37, 13, 38, 54, 15, 62, 61, 64, 34, 35, 36, 83, 39, 40, 41, 42, 84, 43, 44, 45, 1,
         ],
         // Route 1, 2, Ogoesse, Vestiges du Rêve, Route 3, Grotte Parsemille, Forêt d'Empoigne,
         // Route 4, Désert Délassant, Château Enfoui, Route 5, Pont Yoneuve, Port Yoneuve, Hangar

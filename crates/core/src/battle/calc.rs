@@ -376,8 +376,7 @@ pub fn calculate(
     let absorbed = (d.has(ab::WONDER_GUARD) && !super_eff && !(generation <= 4 && move_id == 424))
         || (move_type == FIRE && d.has(ab::FLASH_FIRE))
         || (move_type == WATER && (d.has(ab::WATER_ABSORB) || d.has(ab::DRY_SKIN) || (generation >= 5 && d.has(ab::STORM_DRAIN))))
-        || (move_type == types::ELECTRIC
-            && (d.has(ab::VOLT_ABSORB) || d.has(ab::MOTOR_DRIVE) || (generation >= 5 && d.has(ab::LIGHTNING_ROD))))
+        || (move_type == types::ELECTRIC && (d.has(ab::VOLT_ABSORB) || d.has(ab::MOTOR_DRIVE) || (generation >= 5 && d.has(ab::LIGHTNING_ROD))))
         || (move_type == types::GRASS && generation >= 5 && d.has(ab::SAP_SIPPER))
         || (move_type == GROUND && d.has(ab::LEVITATE) && d.item() != it::IRON_BALL)
         || (mv::SOUND.contains(&move_id) && d.has(ab::SOUNDPROOF))
@@ -445,11 +444,7 @@ pub fn calculate(
         if h == 0 {
             out.power = Some(bp as u16);
         }
-        let rolls = if generation <= 4 {
-            ctx.gen4(bp, &effs, h, &mut labels)
-        } else {
-            ctx.gen5plus(bp, eff_num, eff_den, ate_boost, h, &mut labels)
-        };
+        let rolls = if generation <= 4 { ctx.gen4(bp, &effs, h, &mut labels) } else { ctx.gen5plus(bp, eff_num, eff_den, ate_boost, h, &mut labels) };
         if h == 0 {
             out.modifiers.extend(labels);
         }
@@ -809,9 +804,7 @@ impl Ctx<'_> {
         {
             bp_mods.push(5325);
             labels.push(format!("{} ×1,3", ability_label(a.ability)));
-        } else if (a.has(ab::RECKLESS) && mv::RECKLESS.contains(&self.move_id))
-            || (a.has(ab::IRON_FIST) && mv::PUNCH.contains(&self.move_id))
-        {
+        } else if (a.has(ab::RECKLESS) && mv::RECKLESS.contains(&self.move_id)) || (a.has(ab::IRON_FIST) && mv::PUNCH.contains(&self.move_id)) {
             bp_mods.push(4915);
             labels.push(format!("{} ×1,2", ability_label(a.ability)));
         }
@@ -851,9 +844,7 @@ impl Ctx<'_> {
             let m = if generation >= 7 { 4915 } else { 5325 };
             bp_mods.push(m);
             labels.push(format!("{} ×{}", ability_label(a.ability), if generation >= 7 { "1,2" } else { "1,3" }));
-        } else if (a.has(ab::MEGA_LAUNCHER) && mv::PULSE.contains(&self.move_id))
-            || (a.has(ab::STRONG_JAW) && mv::BITE.contains(&self.move_id))
-        {
+        } else if (a.has(ab::MEGA_LAUNCHER) && mv::PULSE.contains(&self.move_id)) || (a.has(ab::STRONG_JAW) && mv::BITE.contains(&self.move_id)) {
             bp_mods.push(6144);
             labels.push(format!("{} ×1,5", ability_label(a.ability)));
         }
@@ -926,8 +917,7 @@ impl Ctx<'_> {
             df_mods.push(6144);
             labels.push(format!("{} adverse ×1,5", item_label(d.item())));
         }
-        if (d.item() == it::METAL_POWDER && dspecies == 132 && hits_physical)
-            || (d.item() == it::DEEP_SEA_SCALE && dspecies == 366 && !hits_physical)
+        if (d.item() == it::METAL_POWDER && dspecies == 132 && hits_physical) || (d.item() == it::DEEP_SEA_SCALE && dspecies == 366 && !hits_physical)
         {
             df_mods.push(8192);
         }

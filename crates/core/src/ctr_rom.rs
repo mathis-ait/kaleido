@@ -29,8 +29,8 @@ use kaleido_formats::garc::Garc;
 use kaleido_formats::romfs::{self, RomFsSource};
 
 use crate::games::Game;
-use crate::rom::{assemble_species, RomError};
 use crate::pokemon::Species;
+use crate::rom::{assemble_species, RomError};
 use crate::text::gen5::{MsgFile, Variant};
 
 /// Où se trouvent les données dans le RomFS d'un jeu 3DS.

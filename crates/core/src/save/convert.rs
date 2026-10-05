@@ -580,26 +580,47 @@ pub fn problems(p: &Pokemon, game: Game) -> Vec<Problem> {
         out.push(Problem {
             kind: "species",
             id: species,
-            message: format!("{} n'existe pas dans ce jeu (Pokémon n°{species}, le dernier est le n°{})", name(dex::species_name(species), species), dex::max_species(game)),
+            message: format!(
+                "{} n'existe pas dans ce jeu (Pokémon n°{species}, le dernier est le n°{})",
+                name(dex::species_name(species), species),
+                dex::max_species(game)
+            ),
             fixable: false,
         });
         return out;
     }
     let forms = dex::form_names(game, species);
     if p.form() > 0 && !forms.is_empty() && p.form() as usize >= forms.len() {
-        out.push(Problem { kind: "form", id: p.form() as u16, message: format!("la forme n°{} n'existe pas dans ce jeu", p.form()), fixable: false });
+        out.push(Problem {
+            kind: "form", id: p.form() as u16, message: format!("la forme n°{} n'existe pas dans ce jeu", p.form()), fixable: false
+        });
     }
     if p.ability() > dex::max_ability(game) {
-        out.push(Problem { kind: "ability", id: p.ability(), message: format!("le talent {} n'existe pas dans ce jeu", name(dex::ability_name(p.ability()), p.ability())), fixable: false });
+        out.push(Problem {
+            kind: "ability",
+            id: p.ability(),
+            message: format!("le talent {} n'existe pas dans ce jeu", name(dex::ability_name(p.ability()), p.ability())),
+            fixable: false,
+        });
     }
     for m in p.moves() {
         if m > dex::max_move(game) {
-            out.push(Problem { kind: "move", id: m, message: format!("l'attaque {} n'existe pas dans ce jeu", name(dex::move_name(m), m)), fixable: true });
+            out.push(Problem {
+                kind: "move",
+                id: m,
+                message: format!("l'attaque {} n'existe pas dans ce jeu", name(dex::move_name(m), m)),
+                fixable: true,
+            });
         }
     }
     let item = p.held_item();
     if item != 0 && (item > dex::max_item(game) || dex::item_name_in(game, item).is_none()) {
-        out.push(Problem { kind: "item", id: item, message: format!("l'objet {} n'existe pas dans ce jeu", name(dex::item_name(item), item)), fixable: true });
+        out.push(Problem {
+            kind: "item",
+            id: item,
+            message: format!("l'objet {} n'existe pas dans ce jeu", name(dex::item_name(item), item)),
+            fixable: true,
+        });
     }
     out
 }

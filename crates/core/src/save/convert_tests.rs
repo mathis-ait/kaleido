@@ -113,7 +113,12 @@ fn gen4_arceus_loses_its_plate() {
 #[test]
 fn gen5_to_gen6_follows_poke_transporter() {
     let t = trainer();
-    for bytes in [&fixture!("pk5_612_haxorus_party.pk5")[..], fixture!("pk5_546_jersey.pk5"), fixture!("pk5_610_axew.pk5"), fixture!("pk5_550_basculin_party.pk5")] {
+    for bytes in [
+        &fixture!("pk5_612_haxorus_party.pk5")[..],
+        fixture!("pk5_546_jersey.pk5"),
+        fixture!("pk5_610_axew.pk5"),
+        fixture!("pk5_550_basculin_party.pk5"),
+    ] {
         let pk5 = load(PkmFormat::Gen5, bytes);
         let pk6 = pk5_to_pk6(&pk5, Some(&t)).unwrap();
         assert_roundtrip(&pk6);

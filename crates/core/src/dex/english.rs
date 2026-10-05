@@ -41,8 +41,7 @@ impl Lang {
 
 macro_rules! en_list {
     ($name:ident, $file:literal) => {
-        static $name: LazyLock<Vec<&'static str>> =
-            LazyLock::new(|| lines(include_str!(concat!("../../data/pkhex/text/en/", $file))));
+        static $name: LazyLock<Vec<&'static str>> = LazyLock::new(|| lines(include_str!(concat!("../../data/pkhex/text/en/", $file))));
     };
 }
 

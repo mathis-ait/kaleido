@@ -332,7 +332,7 @@ pub fn encrypted_block_order(sv: usize) -> String {
 // Vérifié : PKHeX PokeCrypto.cs (CryptArray : LCRNG 0x41C64E6D / 0x6073, mot ^= graine >> 16 ;
 // Gen 4/5 : blocs avec la somme de contrôle, statistiques avec le PID ; Gen 6/7 : tout avec l'EC).
 fn crypt(data: &mut [u8], mut seed: u32) {
-    for w in data.chunks_exact_mut(2) {
+    for w in data.as_chunks_mut::<2>().0 {
         seed = seed.wrapping_mul(LCRNG_MUL).wrapping_add(LCRNG_ADD);
         let v = u16::from_le_bytes([w[0], w[1]]) ^ (seed >> 16) as u16;
         w.copy_from_slice(&v.to_le_bytes());
@@ -447,11 +447,7 @@ impl Pokemon {
     /// et du nom du dresseur en Gen 6/7).
     pub fn from_bytes(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
-        let encrypted = if format.is_ds() {
-            le_u32(bytes, 0x64) != 0
-        } else {
-            le_u16(bytes, 0x58) != 0 || le_u16(bytes, 0xC8) != 0
-        };
+        let encrypted = if format.is_ds() { le_u32(bytes, 0x64) != 0 } else { le_u16(bytes, 0x58) != 0 || le_u16(bytes, 0xC8) != 0 };
         if encrypted {
             Self::from_encrypted(format, bytes)
         } else {
@@ -501,7 +497,7 @@ impl Pokemon {
 
     pub fn calc_checksum(&self) -> u16 {
         let end = HEADER + 4 * self.format.block_size();
-        self.data[HEADER..end].chunks_exact(2).fold(0u16, |acc, w| acc.wrapping_add(u16::from_le_bytes([w[0], w[1]])))
+        self.data[HEADER..end].as_chunks::<2>().0.iter().fold(0u16, |acc, w| acc.wrapping_add(u16::from_le_bytes([w[0], w[1]])))
     }
 
     pub fn checksum(&self) -> u16 {
@@ -840,7 +836,15 @@ impl Pokemon {
             // Écart : une Ball HGSS (> Cherish Ball) choisie pour un Pokémon d'un autre jeu est
             // gardée dans le champ HGSS au lieu d'être perdue.
             let born_in_hgss = self.is_hgss_origin() && (!self.fateful_encounter() || self.egg_location() != 0);
-            let hgss = if born_in_hgss || ball > CHERISH { if ball <= SPORT { ball } else { POKE } } else { 0 };
+            let hgss = if born_in_hgss || ball > CHERISH {
+                if ball <= SPORT {
+                    ball
+                } else {
+                    POKE
+                }
+            } else {
+                0
+            };
             self.put_u8(G4_BALL_HGSS, hgss);
         } else {
             self.put_u8(at, ball);
@@ -1351,8 +1355,8 @@ pub(super) mod tests {
     fn shuffle_orders_match_official_list() {
         // Liste officielle (Bulbapedia) : ordre des blocs dans les données chiffrées.
         const ORDERS: [&str; 24] = [
-            "ABCD", "ABDC", "ACBD", "ACDB", "ADBC", "ADCB", "BACD", "BADC", "BCAD", "BCDA", "BDAC", "BDCA", "CABD",
-            "CADB", "CBAD", "CBDA", "CDAB", "CDBA", "DABC", "DACB", "DBAC", "DBCA", "DCAB", "DCBA",
+            "ABCD", "ABDC", "ACBD", "ACDB", "ADBC", "ADCB", "BACD", "BADC", "BCAD", "BCDA", "BDAC", "BDCA", "CABD", "CADB", "CBAD", "CBDA", "CDAB",
+            "CDBA", "DABC", "DACB", "DBAC", "DBCA", "DCAB", "DCBA",
         ];
         for (sv, expected) in ORDERS.iter().enumerate() {
             assert_eq!(encrypted_block_order(sv), *expected, "sv = {sv}");

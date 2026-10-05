@@ -30,9 +30,8 @@ use crate::rom::{GameRom, RomError};
 
 /// Légendaires et fabuleux des Gen 1 à 5 (n° national).
 const LEGENDARIES: &[u16] = &[
-    144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 480, 481, 482, 483,
-    484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649,
-    716, 717, 718, 719, 720, 721,
+    144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 480, 481, 482, 483, 484, 485, 486, 487,
+    488, 489, 490, 491, 492, 493, 494, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 716, 717, 718, 719, 720, 721,
 ];
 
 /// Talents jamais attribués au hasard : Garde Mystik, Multitype, Illusion, Mode Transe.
@@ -445,7 +444,7 @@ fn choose_starters(ctx: &Ctx, settings: &Settings, seed: u64, current: [u16; 3])
         }
         StarterMode::Triangle => {
             for (i, t) in [PokeType::Grass, PokeType::Fire, PokeType::Water].into_iter().enumerate() {
-                out[i] = ctx.pick(&mut rng, None, |s| three_stage(s) && ctx.types(s).contains(&t), &out[..i].to_vec());
+                out[i] = ctx.pick(&mut rng, None, |s| three_stage(s) && ctx.types(s).contains(&t), &out[..i]);
             }
         }
         StarterMode::Custom => {
@@ -543,9 +542,8 @@ pub(crate) fn randomize_trainers(
             continue;
         }
         // Type dominant : celui du premier Pokémon (garde le thème des champions).
-        let theme = (settings.trainers == TrainerMode::TypeThemed).then(|| {
-            ctx.types(team.pokemon[0].species).first().copied().unwrap_or_else(|| *types.choose(&mut rng).unwrap())
-        });
+        let theme = (settings.trainers == TrainerMode::TypeThemed)
+            .then(|| ctx.types(team.pokemon[0].species).first().copied().unwrap_or_else(|| *types.choose(&mut rng).unwrap()));
         let mut lines = Vec::new();
         let mut used = Vec::new();
         for p in &mut team.pokemon {

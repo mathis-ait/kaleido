@@ -129,7 +129,10 @@ pub fn pre_evolutions(generation: u8, species: u16, form: u8) -> Vec<EvoLink> {
     }
     // Forme sans entrée propre (motifs de Prismillon, formes de taille…) : on regarde la forme 0,
     // sauf pour les Pokémon dominants (formes « Totem », reçues telles quelles).
-    let totem = matches!((species, form), (20, 2) | (105, 2) | (735, 1) | (738, 1) | (743, 1) | (752, 1) | (754, 1) | (758, 1) | (777, 1) | (778, 2) | (778, 3) | (784, 1));
+    let totem = matches!(
+        (species, form),
+        (20, 2) | (105, 2) | (735, 1) | (738, 1) | (743, 1) | (752, 1) | (754, 1) | (758, 1) | (777, 1) | (778, 2) | (778, 3) | (784, 1)
+    );
     if form != 0 && !totem {
         if let Some(list) = t.get(&(species, 0)) {
             return list.clone();

@@ -92,10 +92,7 @@ fn cache_file<R: Runtime>(app: &AppHandle<R>, generation: u8) -> Result<PathBuf,
 }
 
 fn download(generation: u8) -> Result<Vec<u8>, String> {
-    let response = ureq::get(&format!("{BASE_URL}/gen{generation}.json"))
-        .timeout(Duration::from_secs(20))
-        .call()
-        .map_err(|e| e.to_string())?;
+    let response = ureq::get(&format!("{BASE_URL}/gen{generation}.json")).timeout(Duration::from_secs(20)).call().map_err(|e| e.to_string())?;
     let mut body = Vec::new();
     response.into_reader().take(MAX_DOWNLOAD).read_to_end(&mut body).map_err(|e| e.to_string())?;
     Ok(body)

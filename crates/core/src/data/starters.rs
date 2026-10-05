@@ -50,11 +50,7 @@ fn replace_after(script: &mut [u8], prefix: &[u8], orig: u16, new: u16) -> usize
 pub fn read_bw_gifts(game: &GameRom) -> Result<Vec<u16>, RomError> {
     let narc = Narc::parse(game.rom().file_by_path(BW_SCRIPTS)?)?;
     let script = narc.files.get(BW_GIFT_SCRIPT).ok_or_else(mismatch)?;
-    Ok(script
-        .windows(6)
-        .filter(|w| w[..4] == BW_GIFT_SETVAR)
-        .map(|w| u16::from_le_bytes([w[4], w[5]]))
-        .collect())
+    Ok(script.windows(6).filter(|w| w[..4] == BW_GIFT_SETVAR).map(|w| u16::from_le_bytes([w[4], w[5]])).collect())
 }
 
 fn mismatch() -> RomError {

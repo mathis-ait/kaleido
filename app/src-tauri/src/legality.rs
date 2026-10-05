@@ -70,7 +70,12 @@ pub fn legality_legalize(slot: Slot, state: State<'_, OpenSave>) -> Result<Legal
         if !out.changes.is_empty() {
             s.replace_pokemon(vec![(slot, out.pokemon.clone())])?;
         }
-        Ok(LegalizeResult { view: s.view_slot(slot)?, changes: out.changes, report: legality::analyze(&s.get(slot)?.unwrap_or(out.pokemon), s.game()), success: out.success })
+        Ok(LegalizeResult {
+            view: s.view_slot(slot)?,
+            changes: out.changes,
+            report: legality::analyze(&s.get(slot)?.unwrap_or(out.pokemon), s.game()),
+            success: out.success,
+        })
     })
 }
 
@@ -127,11 +132,18 @@ pub struct GenerateResult {
 /// Crée un Pokémon légal (capture ou éclosion dans ce jeu) dans `slot`, ou dans le premier
 /// emplacement libre des boîtes (à partir de `from_box`).
 #[tauri::command]
-pub fn legality_generate(slot: Option<Slot>, from_box: Option<usize>, request: GenerateRequest, state: State<'_, OpenSave>) -> Result<GenerateResult, String> {
+pub fn legality_generate(
+    slot: Option<Slot>,
+    from_box: Option<usize>,
+    request: GenerateRequest,
+    state: State<'_, OpenSave>,
+) -> Result<GenerateResult, String> {
     state.with(|s| {
         let slot = match slot {
             Some(sl) => sl,
-            None => s.first_empty_box_slot(from_box.unwrap_or(0)).ok_or_else(|| save::SaveError::Invalid("aucun emplacement libre dans les boîtes".into()))?,
+            None => s
+                .first_empty_box_slot(from_box.unwrap_or(0))
+                .ok_or_else(|| save::SaveError::Invalid("aucun emplacement libre dans les boîtes".into()))?,
         };
         let trainer = s.save.trainer();
         let out = legality::generate_legal(s.game(), s.save.format(), &trainer, &request).map_err(save::SaveError::Invalid)?;

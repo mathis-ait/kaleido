@@ -91,12 +91,7 @@ fn any_in(id: u16, ranges: &[RangeInclusive<u16>]) -> bool {
 
 impl ItemCatalog {
     pub(crate) fn new(gen: u8, names: &[String]) -> Self {
-        let unnamed = names
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| n.trim().is_empty() || n.trim() == "???")
-            .map(|(i, _)| i as u16)
-            .collect();
+        let unnamed = names.iter().enumerate().filter(|(_, n)| n.trim().is_empty() || n.trim() == "???").map(|(i, _)| i as u16).collect();
         Self { gen, max: names.len().saturating_sub(1) as u16, unnamed }
     }
 
@@ -123,24 +118,13 @@ impl ItemCatalog {
 
     /// Objets peu utiles (`badItems`) : lettres, paillis, baies sans effet en combat…
     fn is_bad(&self, id: u16) -> bool {
-        let common: &[RangeInclusive<u16>] = &[
-            111..=112,
-            135..=136,
-            225..=225,
-            236..=236,
-            155..=155,
-            274..=274,
-            95..=98,
-            137..=148,
-            159..=183,
-            256..=259,
-            260..=264,
-        ];
+        let common: &[RangeInclusive<u16>] =
+            &[111..=112, 135..=136, 225..=225, 236..=236, 155..=155, 274..=274, 95..=98, 137..=148, 159..=183, 256..=259, 260..=264];
         if any_in(id, common) {
             return true;
         }
         if self.gen == 4 {
-            any_in(id, &[70..=71])
+            (70..=71).contains(&id)
         } else {
             any_in(id, &[571..=571, 575..=575, 72..=75])
         }
@@ -178,8 +162,8 @@ impl ItemCatalog {
             &[2, 3, 5, 7, 9, 11, 12, 18, 19, 23, 28, 34, 37, 39, 41, 43, 46, 47, 49, 50, 62, 69, 79, 80, 82, 84, 85, 87]
         } else {
             &[
-                2, 3, 5, 6, 9, 12, 13, 19, 22, 24, 26, 29, 30, 35, 36, 39, 41, 46, 47, 50, 52, 53, 55, 58, 61, 63, 65, 66, 71, 80, 81, 84, 85,
-                86, 90, 91, 92, 93,
+                2, 3, 5, 6, 9, 12, 13, 19, 22, 24, 26, 29, 30, 35, 36, 39, 41, 46, 47, 50, 52, 53, 55, 58, 61, 63, 65, 66, 71, 80, 81, 84, 85, 86,
+                90, 91, 92, 93,
             ]
         };
         numbers.iter().map(|&n| tm_item(n)).collect()

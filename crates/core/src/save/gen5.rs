@@ -233,5 +233,6 @@ mod tests {
     }
 
     // L'équipe (compteur + 6 × 220 octets) tient dans son bloc de 0x534 octets.
+    #[allow(clippy::assertions_on_constants)] // vérification à la compilation, voulue
     const _: () = assert!(8 + 6 * 220 <= 0x534);
 }

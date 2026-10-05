@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -228,7 +228,12 @@ function readTab(): TabId {
   }
 }
 const tab = ref<TabId>(readTab());
+const tabsEl = ref<HTMLElement | null>(null);
 watch(tab, (t) => {
+  // Garde l'onglet actif visible quand la barre défile (fenêtre étroite).
+  nextTick(() =>
+    tabsEl.value?.querySelector<HTMLElement>(".on")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" }),
+  );
   try {
     localStorage.setItem(TAB_KEY, t);
   } catch {
@@ -488,7 +493,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           <!-- Onglets des réglages (Q / E ou Ctrl+Tab) -->
           <div class="tabbar">
             <kbd class="cap" title="Onglet précédent (Q)" @click="stepTab(-1)">Q</kbd>
-            <nav class="tabs" role="tablist" aria-label="Réglages du randomizer">
+            <nav ref="tabsEl" class="tabs" role="tablist" aria-label="Réglages du randomizer">
               <button
                 v-for="t in TABS"
                 :key="t.id"
@@ -859,7 +864,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
 <style scoped>
 .rando {
-  max-width: 1200px;
+  max-width: 1680px;
   margin: 0 auto;
 }
 
@@ -921,8 +926,8 @@ h3 {
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 380px);
+  gap: 24px;
   align-items: start;
 }
 
@@ -946,19 +951,28 @@ h3 {
 .tabs {
   display: flex;
   flex: 1;
-  flex-wrap: wrap;
+  min-width: 0;
   gap: 4px;
   padding: 4px;
-  border-radius: 22px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Une seule ligne : les onglets se partagent la largeur et défilent si elle manque. */
 .tabs button {
   display: inline-flex;
+  flex: 1 0 auto;
+  justify-content: center;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
+  padding: 8px 14px;
   border: none;
   border-radius: 999px;
   background: transparent;

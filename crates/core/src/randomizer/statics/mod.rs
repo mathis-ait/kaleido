@@ -117,10 +117,7 @@ pub fn list(game: &GameRom) -> Result<Listing, RomError> {
             }
         }
     }
-    let statics = entries
-        .into_iter()
-        .map(|e| StaticEncounter { index: e.index, kind: e.def.kind, species: e.species, levels: e.levels })
-        .collect();
+    let statics = entries.into_iter().map(|e| StaticEncounter { index: e.index, kind: e.def.kind, species: e.species, levels: e.levels }).collect();
     let trades = trades::load(game)?.map(|t| t.list).unwrap_or_default();
     Ok(Listing { statics, trades, notes })
 }
@@ -145,11 +142,8 @@ fn choose(ctx: &Ctx, rng: &mut ChaCha8Rng, mode: StaticMode, old: u16, kind: Kin
     let picked = match mode {
         StaticMode::Unchanged => Some(old),
         StaticMode::SwapLegendaries => {
-            let pool: Vec<u16> = if legendary(old) {
-                all.filter(|&s| legendary(s)).collect()
-            } else {
-                all.filter(|&s| !legendary(s) && hatchable(s)).collect()
-            };
+            let pool: Vec<u16> =
+                if legendary(old) { all.filter(|&s| legendary(s)).collect() } else { all.filter(|&s| !legendary(s) && hatchable(s)).collect() };
             pick_fresh(rng, &pool, used)
         }
         StaticMode::Random => {
@@ -215,7 +209,8 @@ fn randomize_statics(
                 files.set_u16(loc, new);
             }
         }
-        let levels: Vec<u8> = if e.def.kind == Kind::Egg { e.levels.clone() } else { e.levels.iter().map(|&l| modify_level(l, settings.level_modifier)).collect() };
+        let levels: Vec<u8> =
+            if e.def.kind == Kind::Egg { e.levels.clone() } else { e.levels.iter().map(|&l| modify_level(l, settings.level_modifier)).collect() };
         for ((&loc, &old), &lvl) in e.def.levels.iter().zip(&e.levels).zip(&levels) {
             if lvl != old {
                 files.set_u8(loc, lvl);
@@ -331,7 +326,8 @@ mod tests {
         let s = StaticSettings::default();
         assert_eq!(s.mode, StaticMode::Unchanged);
         assert_eq!(s.level_modifier, 0);
-        let parsed: StaticSettings = serde_json::from_str(r#"{"mode":"swap_legendaries","levelModifier":10,"trades":"given_and_requested"}"#).unwrap();
+        let parsed: StaticSettings =
+            serde_json::from_str(r#"{"mode":"swap_legendaries","levelModifier":10,"trades":"given_and_requested"}"#).unwrap();
         assert_eq!(parsed.mode, StaticMode::SwapLegendaries);
         assert_eq!(parsed.level_modifier, 10);
         assert_eq!(parsed.trades, TradeMode::GivenAndRequested);

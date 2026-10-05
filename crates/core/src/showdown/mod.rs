@@ -182,6 +182,14 @@ fn parse_line(set: &mut ShowdownSet, line: &str) {
                 set.happiness = value.parse::<u16>().ok().map(|v| v.min(255) as u8);
                 true
             }
+            // « Gender: M » (équipes exportées par certains outils) : comme « (M) » sur la 1re ligne.
+            "gender" | "sexe" | "genre" => match value.chars().next().map(|c| c.to_ascii_uppercase()) {
+                Some(g @ ('M' | 'F')) => {
+                    set.gender = Some(g);
+                    true
+                }
+                _ => false,
+            },
             "ball" | "pokeball" => {
                 set.ball = Some(value.to_string());
                 true
@@ -257,10 +265,7 @@ pub fn parse_team(text: &str) -> Vec<ShowdownSet> {
 pub fn guess_lang(sets: &[ShowdownSet]) -> Lang {
     dex::guess_lang(sets.iter().flat_map(|s| {
         let species = s.species.split('-').next().unwrap_or("");
-        std::iter::once(species)
-            .chain(s.moves.iter().map(String::as_str))
-            .chain(s.item.as_deref())
-            .chain(s.ability.as_deref())
+        std::iter::once(species).chain(s.moves.iter().map(String::as_str)).chain(s.item.as_deref()).chain(s.ability.as_deref())
     }))
 }
 
@@ -280,9 +285,7 @@ pub fn format_set(set: &ShowdownSet, lang: Lang) -> String {
     let en = lang == Lang::En;
     let mut out = String::new();
     match &set.nickname {
-        Some(n) if !n.is_empty() && dex::normalize_name(n) != dex::normalize_name(&set.species) => {
-            out.push_str(&format!("{n} ({})", set.species))
-        }
+        Some(n) if !n.is_empty() && dex::normalize_name(n) != dex::normalize_name(&set.species) => out.push_str(&format!("{n} ({})", set.species)),
         _ => out.push_str(&set.species),
     }
     if let Some(g) = set.gender {

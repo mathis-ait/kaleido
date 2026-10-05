@@ -71,14 +71,9 @@ impl ItemLayout {
                     hidden: HiddenItems::Arm9Table { offset: hidden, count: 257 },
                 })
             }
-            Game::Black | Game::White => Some(Self {
-                gen: 5,
-                item_names: 54,
-                scripts: "a/0/5/7",
-                ball_script: 864,
-                ball_skip: &[],
-                hidden: HiddenItems::Script(865),
-            }),
+            Game::Black | Game::White => {
+                Some(Self { gen: 5, item_names: 54, scripts: "a/0/5/7", ball_script: 864, ball_skip: &[], hidden: HiddenItems::Script(865) })
+            }
             _ => None,
         }
     }
@@ -140,9 +135,7 @@ fn rd16(d: &[u8], at: usize) -> Option<u16> {
 }
 
 fn wr16(d: &mut [u8], at: usize, v: u16) -> Result<(), RomError> {
-    d.get_mut(at..at + 2)
-        .ok_or_else(|| RomError::Layout(format!("position {at:#X} hors du fichier")))?
-        .copy_from_slice(&v.to_le_bytes());
+    d.get_mut(at..at + 2).ok_or_else(|| RomError::Layout(format!("position {at:#X} hors du fichier")))?.copy_from_slice(&v.to_le_bytes());
     Ok(())
 }
 
@@ -151,8 +144,7 @@ fn wr16(d: &mut [u8], at: usize, v: u16) -> Result<(), RomError> {
 pub(crate) fn script_item_positions(script: &[u8], skip: &[usize], cmd: ScriptCommand) -> Vec<usize> {
     let mut out = Vec::new();
     let mut offset = 0usize;
-    loop {
-        let Some(part1) = rd16(script, offset) else { break };
+    while let Some(part1) = rd16(script, offset) {
         if part1 == SCRIPT_LIST_END {
             break;
         }

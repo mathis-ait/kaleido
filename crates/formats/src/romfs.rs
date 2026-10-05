@@ -101,7 +101,7 @@ pub(crate) fn walk_tables(dirs: &[u8], files: &[u8]) -> Result<Vec<(RomFsEntry, 
     let name = |table: &[u8], at: u32, header: u32| -> Result<String> {
         let len = u32le(slice(table, at + header - 4, 4)?, 0);
         let raw = slice(table, at + header, len)?;
-        let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = raw.as_chunks::<2>().0.iter().map(|&c| u16::from_le_bytes(c)).collect();
         Ok(String::from_utf16_lossy(&units))
     };
 
@@ -271,7 +271,7 @@ pub(crate) mod tests {
 
     fn utf16(s: &str) -> Vec<u8> {
         let mut v: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        while v.len() % 4 != 0 {
+        while !v.len().is_multiple_of(4) {
             v.push(0);
         }
         v
@@ -311,18 +311,7 @@ pub(crate) mod tests {
         let dir_at = LEVEL3_HEADER_SIZE as u32;
         let file_at = dir_at + dirs.len() as u32;
         let data_at = align((file_at as usize + files.len()) as u64, 16) as u32;
-        let fields = [
-            LEVEL3_HEADER_SIZE as u32,
-            dir_at,
-            0,
-            dir_at,
-            dirs.len() as u32,
-            file_at,
-            0,
-            file_at,
-            files.len() as u32,
-            data_at,
-        ];
+        let fields = [LEVEL3_HEADER_SIZE as u32, dir_at, 0, dir_at, dirs.len() as u32, file_at, 0, file_at, files.len() as u32, data_at];
         for (i, v) in fields.iter().enumerate() {
             l3[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }

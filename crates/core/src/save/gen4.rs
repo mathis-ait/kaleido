@@ -186,8 +186,7 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
     // HGSS : boîtes alignées sur 0x1000, boîte courante en 0x12000, noms en 0x12008.
     // Vérifié : PKHeX SAV4Sinnoh.cs (GetBoxOffset = 4 + box·0xFF0, BOX_NAME = 4 + 18·0xFF0)
     // et SAV4HGSS.cs (GetBoxOffset = box·0x1000, BOX_NAME = 0x12008).
-    let (boxes, box_stride, box_names) =
-        if c.hgss { (storage, 0x1000, storage + 0x12008) } else { (storage + 4, 0xFF0, storage + 0x11EE4) };
+    let (boxes, box_stride, box_names) = if c.hgss { (storage, 0x1000, storage + 0x12008) } else { (storage + 4, 0xFF0, storage + 0x11EE4) };
 
     let t = general + c.trainer;
     let layout = Layout {

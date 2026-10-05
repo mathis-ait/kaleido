@@ -14,6 +14,7 @@ pub mod nuzlocke;
 pub mod pokemon;
 pub mod randomizer;
 pub mod rom;
+pub mod romedit;
 pub mod save;
 pub mod saves;
 pub mod showdown;
@@ -23,3 +24,14 @@ pub use ctr_rom::{CtrGameRom, CtrLayout};
 pub use detect::{detect_path, Detection, FileKind};
 pub use games::{Game, Platform};
 pub use rom::{GameRom, RomError};
+
+/// Vraie ROM pour les tests (ignorés si elle est absente) : dossier `KALEIDO_ROMS`,
+/// sinon `~/Documents/NDS & 3DS`.
+#[cfg(test)]
+pub(crate) fn test_rom_path(name: &str) -> std::path::PathBuf {
+    let dir = std::env::var_os("KALEIDO_ROMS").map(std::path::PathBuf::from).unwrap_or_else(|| {
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).unwrap_or_default();
+        std::path::PathBuf::from(home).join("Documents").join("NDS & 3DS")
+    });
+    dir.join(name)
+}

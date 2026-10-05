@@ -136,7 +136,16 @@ impl EncounterKind {
     pub fn is_wild(self) -> bool {
         !matches!(
             self,
-            Self::Static | Self::Roaming | Self::Gift | Self::EggGift | Self::Trade | Self::DreamWorld | Self::DreamRadar | Self::Pokewalker | Self::Egg | Self::Event
+            Self::Static
+                | Self::Roaming
+                | Self::Gift
+                | Self::EggGift
+                | Self::Trade
+                | Self::DreamWorld
+                | Self::DreamRadar
+                | Self::Pokewalker
+                | Self::Egg
+                | Self::Event
         )
     }
 
@@ -358,7 +367,9 @@ impl Encounter {
     }
 
     pub fn is_egg(&self) -> bool {
-        self.kind == EncounterKind::Egg || self.kind == EncounterKind::EggGift || (self.kind == EncounterKind::Event && self.egg_location != 0 && self.location == 0)
+        self.kind == EncounterKind::Egg
+            || self.kind == EncounterKind::EggGift
+            || (self.kind == EncounterKind::Event && self.egg_location != 0 && self.location == 0)
     }
 
     /// Lieu de rencontre attendu une fois le Pokémon reçu (échange sans lieu : lieu d'échange).
@@ -440,13 +451,13 @@ fn gen6_kind(t: u8) -> EncounterKind {
 
 /// Espèces du Safari des Amis (XY), niveau 30 (`EncounterArea6XY.AllFriendSafariSpecies`).
 const FRIEND_SAFARI: &[u16] = &[
-    2, 5, 8, 12, 14, 16, 21, 25, 27, 35, 38, 39, 43, 44, 46, 49, 49, 51, 56, 58, 61, 63, 67, 77, 82, 83, 84, 87, 89, 91, 95, 96, 98, 101, 105,
-    112, 113, 114, 125, 126, 127, 130, 131, 132, 133, 148, 163, 165, 168, 175, 178, 184, 190, 191, 194, 195, 202, 203, 205, 206, 209, 213,
-    214, 215, 215, 216, 218, 219, 221, 222, 224, 225, 227, 231, 235, 236, 247, 262, 267, 268, 274, 281, 284, 286, 290, 294, 297, 299, 302,
-    303, 303, 307, 310, 313, 314, 317, 323, 326, 328, 332, 336, 342, 352, 353, 356, 357, 359, 361, 363, 372, 375, 400, 404, 415, 417, 419,
-    423, 426, 437, 442, 444, 447, 452, 454, 459, 506, 510, 511, 513, 515, 517, 520, 523, 525, 527, 530, 531, 536, 538, 539, 541, 544, 548,
-    551, 556, 557, 561, 569, 572, 575, 578, 581, 586, 587, 596, 597, 600, 608, 611, 614, 618, 619, 621, 623, 624, 627, 629, 636, 651, 654,
-    657, 660, 662, 662, 668, 673, 674, 677, 682, 684, 686, 689, 694, 701, 702, 702, 705, 707, 708, 710, 712, 714,
+    2, 5, 8, 12, 14, 16, 21, 25, 27, 35, 38, 39, 43, 44, 46, 49, 49, 51, 56, 58, 61, 63, 67, 77, 82, 83, 84, 87, 89, 91, 95, 96, 98, 101, 105, 112,
+    113, 114, 125, 126, 127, 130, 131, 132, 133, 148, 163, 165, 168, 175, 178, 184, 190, 191, 194, 195, 202, 203, 205, 206, 209, 213, 214, 215, 215,
+    216, 218, 219, 221, 222, 224, 225, 227, 231, 235, 236, 247, 262, 267, 268, 274, 281, 284, 286, 290, 294, 297, 299, 302, 303, 303, 307, 310, 313,
+    314, 317, 323, 326, 328, 332, 336, 342, 352, 353, 356, 357, 359, 361, 363, 372, 375, 400, 404, 415, 417, 419, 423, 426, 437, 442, 444, 447, 452,
+    454, 459, 506, 510, 511, 513, 515, 517, 520, 523, 525, 527, 530, 531, 536, 538, 539, 541, 544, 548, 551, 556, 557, 561, 569, 572, 575, 578, 581,
+    586, 587, 596, 597, 600, 608, 611, 614, 618, 619, 621, 623, 624, 627, 629, 636, 651, 654, 657, 660, 662, 662, 668, 673, 674, 677, 682, 684, 686,
+    689, 694, 701, 702, 702, 705, 707, 708, 710, 712, 714,
 ];
 
 fn read_areas(data: &[u8], version: u8, generation: u8, out: &mut Vec<Encounter>) {
@@ -701,7 +712,15 @@ fn from_raw(r: Raw) -> Encounter {
         } else if r.ranch {
             names = RANCH_OT.iter().map(|&(l, n)| (l, n.to_string())).collect();
         } else if r.n_sparkle {
-            names = vec![(1, "Ｎ".to_string()), (2, "N".to_string()), (3, "N".to_string()), (4, "N".to_string()), (5, "N".to_string()), (7, "N".to_string()), (8, "N".to_string())];
+            names = vec![
+                (1, "Ｎ".to_string()),
+                (2, "N".to_string()),
+                (3, "N".to_string()),
+                (4, "N".to_string()),
+                (5, "N".to_string()),
+                (7, "N".to_string()),
+                (8, "N".to_string()),
+            ];
         }
         e.trainer = Some(FixedTrainer { tid, sid: r.sid.unwrap_or(0), ot_gender: r.ot_gender, names });
     }

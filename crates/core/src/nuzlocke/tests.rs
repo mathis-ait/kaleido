@@ -1,18 +1,14 @@
 //! Tests du mode Nuzlocke : lecture des vraies ROMs (ignorés si absentes) et bilan
 //! sur une sauvegarde Platine synthétique.
 
-use std::path::Path;
-
 use super::rom::{self, Encounter, Leader, LeaderKind, Route};
 use super::*;
 use crate::save::session::Slot;
 use crate::save::{exp_for_level, GrowthRate, PkmFormat, Pokemon};
 use crate::GameRom;
 
-const ROMS: &str = "C:/Users/Thisma/Documents/NDS & 3DS";
-
 fn open_rom(file: &str) -> Option<GameRom> {
-    let path = Path::new(ROMS).join(file);
+    let path = crate::test_rom_path(file);
     if !path.exists() {
         eprintln!("ROM absente, test ignoré : {}", path.display());
         return None;
@@ -125,7 +121,7 @@ fn white_routes_and_caps() {
     assert_eq!(leader(&info, "Inezia").class_name, "Champion");
     assert_eq!(leader(&info, "Anis").class_name, "Conseil 4");
     assert_eq!(leader(&info, "Inezia").ace_species, 523); // Zéblitz
-    // Blanche : N utilise Reshiram.
+                                                          // Blanche : N utilise Reshiram.
     assert_eq!(leader(&info, "N").ace_species, 643);
     assert_eq!(leader(&info, "Ghetis").ace_species, 635); // Trioxhydre
 }
@@ -137,14 +133,7 @@ fn enc(species: u16) -> Encounter {
 }
 
 fn test_route(name: &str, id: u16, order: u32, species: &[u16]) -> Route {
-    Route {
-        key: name.into(),
-        name: name.into(),
-        location_ids: vec![id],
-        zones: vec![],
-        encounters: species.iter().map(|&s| enc(s)).collect(),
-        order,
-    }
+    Route { key: name.into(), name: name.into(), location_ids: vec![id], zones: vec![], encounters: species.iter().map(|&s| enc(s)).collect(), order }
 }
 
 fn test_leader(kind: LeaderKind, name: &'static str, level: u8) -> Leader {

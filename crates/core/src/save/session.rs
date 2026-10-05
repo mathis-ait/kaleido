@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use super::edit::TrainerPatch;
 use super::{
-    calc_stats, exp_for_level, Gender, GrowthRate, PkmDate, PkmFormat, Pokemon, PokemonSummary, SaveError, SaveFile, SaveVersion, ShinyMode,
-    Trainer, BOX_SLOTS, PARTY_SLOTS,
+    calc_stats, exp_for_level, Gender, GrowthRate, PkmDate, PkmFormat, Pokemon, PokemonSummary, SaveError, SaveFile, SaveVersion, ShinyMode, Trainer,
+    BOX_SLOTS, PARTY_SLOTS,
 };
 use crate::dex::{self, Game};
 use crate::names;
@@ -253,9 +253,9 @@ pub fn view_of(game: Game, slot: Slot, p: &Pokemon) -> SlotView {
         (None, id) => format!("n°{id}"),
     };
     let species = species_data(game, p.species(), p.form());
-    let stats = p.party_stats().or_else(|| {
-        base_stats(game, p.species(), p.form()).map(|b| calc_stats(&b, summary.level, summary.ivs, summary.evs, summary.nature))
-    });
+    let stats = p
+        .party_stats()
+        .or_else(|| base_stats(game, p.species(), p.form()).map(|b| calc_stats(&b, summary.level, summary.ivs, summary.evs, summary.nature)));
     SlotView {
         slot,
         species_name: name_or_id(dex::species_name(summary.species), summary.species),
@@ -886,8 +886,8 @@ impl SaveSession {
     /// Premier emplacement libre des boîtes, en commençant par la boîte `from`.
     pub fn first_empty_box_slot(&self, from: usize) -> Option<Slot> {
         let count = self.save.box_count();
-        (0..count).map(|i| (from + i) % count.max(1)).find_map(|b| {
-            (0..BOX_SLOTS).map(|index| Slot::Box { r#box: b, index }).find(|&slot| matches!(self.get(slot), Ok(None)))
-        })
+        (0..count)
+            .map(|i| (from + i) % count.max(1))
+            .find_map(|b| (0..BOX_SLOTS).map(|index| Slot::Box { r#box: b, index }).find(|&slot| matches!(self.get(slot), Ok(None))))
     }
 }

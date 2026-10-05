@@ -277,10 +277,7 @@ pub struct Report {
 
 /// Le jeu de la ROM correspond-il à la sauvegarde ?
 pub fn compatible(game: Game, version: SaveVersion) -> bool {
-    matches!(
-        (game, version),
-        (Game::Platinum, SaveVersion::Platinum) | (Game::Black | Game::White, SaveVersion::BlackWhite)
-    )
+    matches!((game, version), (Game::Platinum, SaveVersion::Platinum) | (Game::Black | Game::White, SaveVersion::BlackWhite))
 }
 
 /// Données d'un Pokémon utiles au bilan.
@@ -361,11 +358,7 @@ fn read_mons(session: &SaveSession, box_names: &[String]) -> Result<Vec<Mon>, Sa
 pub fn report(rom: &RomInfo, session: &SaveSession, state: &RunState) -> Result<Report, NuzlockeError> {
     let version = session.save.version();
     if !compatible(rom.game, version) {
-        return Err(NuzlockeError::Mismatch(format!(
-            "la ROM ({}) ne correspond pas à la sauvegarde ({})",
-            rom.game.name_fr(),
-            version.label()
-        )));
+        return Err(NuzlockeError::Mismatch(format!("la ROM ({}) ne correspond pas à la sauvegarde ({})", rom.game.name_fr(), version.label())));
     }
     let view = session.view()?;
     let box_names = view.box_names.clone();
@@ -383,8 +376,7 @@ fn compute(
     state: &RunState,
 ) -> Report {
     let rules = &state.rules;
-    let route_of: HashMap<u16, usize> =
-        rom.routes.iter().enumerate().flat_map(|(i, r)| r.location_ids.iter().map(move |&l| (l, i))).collect();
+    let route_of: HashMap<u16, usize> = rom.routes.iter().enumerate().flat_map(|(i, r)| r.location_ids.iter().map(move |&l| (l, i))).collect();
     let starter_families: HashSet<u16> = rom.starters.iter().map(|&s| rom.family_of(s)).collect();
 
     // --- Cimetière et morts.
@@ -500,7 +492,8 @@ fn compute(
                 if manual {
                     "Un Pokémon mort ne doit plus combattre : range-le dans le cimetière.".into()
                 } else {
-                    "Ses PV sont à 0 : en Nuzlocke, un Pokémon K.O. est mort. Range-le dans le cimetière (ou marque-le vivant si c'est une erreur).".into()
+                    "Ses PV sont à 0 : en Nuzlocke, un Pokémon K.O. est mort. Range-le dans le cimetière (ou marque-le vivant si c'est une erreur)."
+                        .into()
                 },
                 v,
             );
@@ -519,7 +512,13 @@ fn compute(
             }
         }
         if rules.nickname_clause && v.origin == Origin::Route && v.catch == Some(CatchKind::Counted) && !v.is_nicknamed {
-            push(Severity::Warning, "nickname", format!("{} n'a pas de surnom", v.species_name), "Clause surnom : chaque Pokémon capturé doit être surnommé.".into(), v);
+            push(
+                Severity::Warning,
+                "nickname",
+                format!("{} n'a pas de surnom", v.species_name),
+                "Clause surnom : chaque Pokémon capturé doit être surnommé.".into(),
+                v,
+            );
         }
         if rules.one_per_route && v.catch == Some(CatchKind::Extra) {
             push(

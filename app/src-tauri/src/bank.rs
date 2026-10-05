@@ -205,7 +205,14 @@ pub struct TransferResult {
 
 /// Sauvegarde → banque. `copy = false` : le Pokémon quitte la sauvegarde.
 #[tauri::command]
-pub fn bank_deposit(from: Slot, to: Option<BankSlot>, copy: bool, app: AppHandle, state: State<'_, OpenBank>, save: State<'_, OpenSave>) -> Result<TransferResult, String> {
+pub fn bank_deposit(
+    from: Slot,
+    to: Option<BankSlot>,
+    copy: bool,
+    app: AppHandle,
+    state: State<'_, OpenBank>,
+    save: State<'_, OpenSave>,
+) -> Result<TransferResult, String> {
     state.with(&app, |b| {
         save.with_open(|open| {
             let (path, s) = open.ok_or("aucune sauvegarde ouverte")?;

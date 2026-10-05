@@ -195,18 +195,18 @@ impl NdsRom {
         }
         let header = NdsHeader::parse(h);
 
-        let fat: Vec<(u32, u32)> = slice(&data, header.fat_offset, header.fat_size)?
-            .chunks_exact(8)
-            .map(|c| (u32le(c, 0), u32le(c, 4)))
-            .collect();
+        let fat: Vec<(u32, u32)> =
+            slice(&data, header.fat_offset, header.fat_size)?.as_chunks::<8>().0.iter().map(|c| (u32le(c, 0), u32le(c, 4))).collect();
         if fat.iter().any(|&(s, e)| s > e || e as usize > data.len()) {
             return Err(FormatError::Invalid("table FAT incohérente"));
         }
 
         let paths = parse_fnt(slice(&data, header.fnt_offset, header.fnt_size)?, fat.len())?;
         let overlays = slice(&data, header.arm9_overlay_offset, header.arm9_overlay_size)?
-            .chunks_exact(OVERLAY_ENTRY_SIZE)
-            .map(Overlay::parse)
+            .as_chunks::<OVERLAY_ENTRY_SIZE>()
+            .0
+            .iter()
+            .map(|c| Overlay::parse(c))
             .collect();
 
         Ok(Self { data, header, fat, paths, overlays, replaced: BTreeMap::new(), arm9_override: None, signature: None })
@@ -239,9 +239,7 @@ impl NdsRom {
     }
 
     pub fn file_by_path(&self, path: &str) -> Result<&[u8]> {
-        self.file_id(path)
-            .and_then(|id| self.file(id))
-            .ok_or_else(|| FormatError::NotFound(path.to_string()))
+        self.file_id(path).and_then(|id| self.file(id)).ok_or_else(|| FormatError::NotFound(path.to_string()))
     }
 
     pub fn replace_file(&mut self, id: u16, data: Vec<u8>) -> Result<()> {
@@ -404,6 +402,90 @@ impl NdsRom {
         self.overlays.iter().find(|o| o.id == id).ok_or_else(|| FormatError::NotFound(format!("overlay {id}")))
     }
 
+    /// Range tous les fichiers dans l'espace libre de la zone DS : entre les structures fixes
+    /// (ARM7, FNT, FAT, bannière…), qui ne bougent pas, et après les données (`tail_start`
+    /// jusqu'à `limit`). Les données hors FAT restent en place. Met à jour `fat` et renvoie
+    /// la fin des données écrites après `tail_start`.
+    /// `starts` : débuts triés de toutes les zones occupées ; `dirty_end` : fin de ce que le
+    /// placement en fin de zone a déjà écrit.
+    fn repack(&self, out: &mut Vec<u8>, fat: &mut [(u32, u32)], starts: &[u32], tail_start: u32, limit: u32, dirty_end: u32) -> Result<u32> {
+        let h = &self.header;
+        // La zone se mesure sur la FAT d'origine ; on range les fichiers selon leur contenu
+        // actuel (un fichier vide à l'origine peut avoir reçu des données).
+        let original: Vec<usize> = (0..self.fat.len()).filter(|&i| self.fat[i].1 > self.fat[i].0).collect();
+        let Some(region_start) = original.iter().map(|&i| self.fat[i].0).min() else { return Ok(tail_start) };
+        let files_end = original.iter().map(|&i| self.fat[i].1).max().unwrap_or(region_start);
+        let files: Vec<usize> = (0..self.fat.len()).filter(|&i| self.file(i as u16).is_some_and(|d| !d.is_empty())).collect();
+        for (i, entry) in fat.iter_mut().enumerate() {
+            if self.file(i as u16).is_none_or(|d| d.is_empty()) {
+                *entry = (self.fat[i].0, self.fat[i].0);
+            }
+        }
+
+        // Espace libre : la zone des fichiers moins les structures fixes, puis la fin de la zone DS.
+        let tables = [h.arm9_offset, h.arm7_offset, h.fnt_offset, h.fat_offset, h.arm9_overlay_offset, h.arm7_overlay_offset, h.banner_offset];
+        let mut fixed: Vec<(u32, u32)> = tables
+            .into_iter()
+            .filter(|&o| o != 0 && o >= region_start && o < files_end)
+            .map(|o| (o, starts.iter().copied().find(|&x| x > o).unwrap_or(files_end).min(files_end)))
+            .collect();
+        fixed.sort_unstable();
+        let mut free: Vec<(u32, u32)> = Vec::new();
+        let mut at = region_start;
+        for (s, e) in fixed {
+            if s > at {
+                free.push((at, s));
+            }
+            at = at.max(e);
+        }
+        if files_end > at {
+            free.push((at, files_end));
+        }
+        free.push((tail_start, limit.max(tail_start)));
+
+        // Alignement des ROMs officielles d'abord ; s'il ne suffit pas, 4 octets : les marges
+        // d'alignement (~300 Kio sur Blanche) redeviennent libres, et NitroFS lit les
+        // fichiers à n'importe quelle position.
+        let (placed, tail_end) = [FILE_ALIGN, 4]
+            .into_iter()
+            .find_map(|a| self.plan_repack(&files, &free, a))
+            .ok_or(FormatError::Invalid("plus de place dans la zone DS de la ROM, même en tassant les fichiers"))?;
+
+        // Efface l'espace libre (anciens fichiers et ajouts en fin de zone), puis écrit.
+        let tail_clear = tail_end.max(dirty_end).max(tail_start);
+        if out.len() < tail_clear as usize {
+            out.resize(tail_clear as usize, 0xFF);
+        }
+        for &(s, e) in &free[..free.len() - 1] {
+            out[s as usize..e as usize].fill(0xFF);
+        }
+        out[tail_start as usize..tail_clear as usize].fill(0xFF);
+        for (&i, &(s, e)) in files.iter().zip(&placed) {
+            out[s as usize..e as usize].copy_from_slice(self.file(i as u16).unwrap_or_default());
+            fat[i] = (s, e);
+        }
+        Ok(tail_end)
+    }
+
+    /// Placement « premier intervalle qui convient », des plus gros fichiers aux plus petits.
+    /// Renvoie l'emplacement de chaque fichier de `files` (même ordre) et la fin du dernier
+    /// intervalle, ou `None` s'ils ne tiennent pas.
+    fn plan_repack(&self, files: &[usize], free: &[(u32, u32)], file_align: u32) -> Option<(Vec<(u32, u32)>, u32)> {
+        let len = |i: usize| self.file(i as u16).map_or(0, |d| d.len()) as u32;
+        let mut by_size: Vec<usize> = (0..files.len()).collect();
+        by_size.sort_by_key(|&k| (std::cmp::Reverse(len(files[k])), files[k]));
+        let mut cursors: Vec<u32> = free.iter().map(|&(s, _)| s).collect();
+        let mut placed = vec![(0, 0); files.len()];
+        for k in by_size {
+            let n = len(files[k]);
+            let slot = free.iter().zip(&cursors).position(|(&(_, end), &cur)| align(cur as u64, file_align as u64) + n as u64 <= end as u64)?;
+            let start = align(cursors[slot] as u64, file_align as u64) as u32;
+            placed[k] = (start, start + n);
+            cursors[slot] = start + n;
+        }
+        Some((placed, *cursors.last()?))
+    }
+
     /// Reconstruit l'image complète de la ROM.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut out = self.data.clone();
@@ -434,10 +516,12 @@ impl NdsRom {
         starts.dedup();
 
         let data_end = self.fat.iter().map(|&(_, e)| e).max().unwrap_or(0).max(h.used_rom_size + RSA_SIGNATURE_SIZE);
-        let mut append = align(data_end as u64, FILE_ALIGN as u64) as u32;
+        let tail_start = align(data_end as u64, FILE_ALIGN as u64) as u32;
+        let mut append = tail_start;
         let limit = if h.ntr_region_end != 0 { h.ntr_region_end } else { u32::MAX };
 
         let mut fat = self.fat.clone();
+        let mut overflow = false;
         for (&id, new) in &self.replaced {
             let (s, e) = fat[id as usize];
             let len = u32::try_from(new.len()).map_err(|_| FormatError::Invalid("fichier trop grand"))?;
@@ -449,10 +533,11 @@ impl NdsRom {
                 s
             } else {
                 let start = append;
-                append = align((start + len) as u64, FILE_ALIGN as u64) as u32;
                 if start + len > limit {
-                    return Err(FormatError::Invalid("plus de place dans la zone DS de la ROM"));
+                    overflow = true;
+                    break;
                 }
+                append = align((start + len) as u64, FILE_ALIGN as u64) as u32;
                 if out.len() < (start + len) as usize {
                     out.resize((start + len) as usize, 0xFF);
                 }
@@ -460,6 +545,12 @@ impl NdsRom {
             };
             out[start as usize..(start + len) as usize].copy_from_slice(new);
             fat[id as usize] = (start, start + len);
+        }
+        if overflow {
+            // Zone DS presque pleine (ROMs « DSi Enhanced ») : chaque fichier déplacé y
+            // laissait un trou. On range tous les fichiers dans l'espace libre, sans trous.
+            let end = self.repack(&mut out, &mut fat, &starts, tail_start, limit, append)?;
+            append = align(end as u64, FILE_ALIGN as u64) as u32;
         }
 
         // FAT, table des overlays, puis en-tête.

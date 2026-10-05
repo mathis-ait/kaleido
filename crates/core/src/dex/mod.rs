@@ -24,19 +24,17 @@ mod tests;
 use serde::Serialize;
 
 pub use english::{
-    ability_name_en, ability_name_lang, ball_name_lang, find_ability, find_ball, find_form, find_item, find_move, find_nature,
-    find_species, find_type, form_names_en, form_names_lang, guess_lang, item_name_en, item_name_lang, move_name_en,
-    move_name_lang, nature_name_en, nature_name_lang, normalize_name, species_name_en, species_name_lang, type_name_en,
-    type_name_lang, Lang,
+    ability_name_en, ability_name_lang, ball_name_lang, find_ability, find_ball, find_form, find_item, find_move, find_nature, find_species,
+    find_type, form_names_en, form_names_lang, guess_lang, item_name_en, item_name_lang, move_name_en, move_name_lang, nature_name_en,
+    nature_name_lang, normalize_name, species_name_en, species_name_lang, type_name_en, type_name_lang, Lang,
 };
 pub use forms::{form_name, form_names};
 pub use moves::{move_info, move_info_in, MoveCategory, MoveInfo};
-pub use personal::{egg_moves, levelup, personal, PersonalInfo};
 pub(crate) use personal::personal_raw;
+pub use personal::{egg_moves, levelup, personal, PersonalInfo};
 pub use text::{
-    ability_name, ability_names, ball_name, ball_names, game_name, game_names, item_name, item_name_in, item_names,
-    location_name, locations, move_name, move_names, nature_name, nature_names, ribbon_name, ribbon_names,
-    species_name, species_names, type_name, type_names,
+    ability_name, ability_names, ball_name, ball_names, game_name, game_names, item_name, item_name_in, item_names, location_name, locations,
+    move_name, move_names, nature_name, nature_names, ribbon_name, ribbon_names, species_name, species_names, type_name, type_names,
 };
 
 /// Groupe de versions dont les données diffèrent (une sauvegarde = un groupe).

@@ -109,8 +109,8 @@ impl Files {
     }
 
     fn overlay_mut(&mut self, game: &GameRom, id: u32) -> Result<&mut Vec<u8>, RomError> {
-        if !self.overlays.contains_key(&id) {
-            self.overlays.insert(id, game.rom().overlay(id)?);
+        if let std::collections::btree_map::Entry::Vacant(e) = self.overlays.entry(id) {
+            e.insert(game.rom().overlay(id)?);
         }
         self.dirty.insert(Part::Overlay(id));
         Ok(self.overlays.get_mut(&id).expect("overlay chargé"))
@@ -227,9 +227,17 @@ impl Files {
         let at = |d: &[u8], p: usize, bytes: &[u8]| d.get(p..p + bytes.len()) == Some(bytes);
         if black {
             // Reshiram (643) chargé depuis une constante, juste après la fin de fonction.
-            for (prefix, tail) in [(&tables::BLACK_BOX_PREFIX1[..], &[0x07, 0xB0, 0xF0, 0xBD, 0xC0, 0x46]), (&tables::BLACK_BOX_PREFIX2[..], &[0x02, 0xB0, 0xF8, 0xBD, 0xC0, 0x46])] {
+            for (prefix, tail) in [
+                (&tables::BLACK_BOX_PREFIX1[..], &[0x07, 0xB0, 0xF0, 0xBD, 0xC0, 0x46]),
+                (&tables::BLACK_BOX_PREFIX2[..], &[0x02, 0xB0, 0xF8, 0xBD, 0xC0, 0x46]),
+            ] {
                 let found = find_unique(ovl, prefix).map(|p| p + prefix.len()).or_else(|| {
-                    unique((0..ovl.len()).filter(|&p| at(ovl, p, tail) && rd16(ovl, p + 6) == Some(643) && rd16(ovl, p + 8) == Some(0)).map(|p| p + 6).collect())
+                    unique(
+                        (0..ovl.len())
+                            .filter(|&p| at(ovl, p, tail) && rd16(ovl, p + 6) == Some(643) && rd16(ovl, p + 8) == Some(0))
+                            .map(|p| p + 6)
+                            .collect(),
+                    )
                 });
                 if let Some(c) = found {
                     if write(ovl, c, &value) {
@@ -240,7 +248,11 @@ impl Files {
         } else {
             // Zekrom (644) obtenu par « mov r1, #161 » puis « lsl r1, r1, #2 ».
             let f1 = find_unique(ovl, &tables::WHITE_BOX_PREFIX1).map(|p| p + tables::WHITE_BOX_PREFIX1.len()).or_else(|| {
-                unique((4..ovl.len()).filter(|&f| at(ovl, f - 4, &[0x00, 0x20, 0x70, 0xBD]) && at(ovl, f + 18, &[0xA1, 0x21]) && at(ovl, f + 26, &[0x89, 0x00])).collect())
+                unique(
+                    (4..ovl.len())
+                        .filter(|&f| at(ovl, f - 4, &[0x00, 0x20, 0x70, 0xBD]) && at(ovl, f + 18, &[0xA1, 0x21]) && at(ovl, f + 26, &[0x89, 0x00]))
+                        .collect(),
+                )
             });
             let f2 = find_unique(ovl, &tables::WHITE_BOX_PREFIX2).map(|p| p + tables::WHITE_BOX_PREFIX2.len()).or_else(|| {
                 unique(
@@ -290,7 +302,8 @@ fn save_overlay(game: &mut GameRom, id: u32, data: &[u8]) -> Result<(), RomError
     if let Some(ovl) = ovl.filter(|o| o.is_compressed() && original.len() == data.len()) {
         if let Some(raw) = game.rom().file(ovl.file_id) {
             let mut raw = raw.to_vec();
-            let in_place = (0..data.len()).filter(|&i| original[i] != data[i]).all(|i| kaleido_formats::lz::blz_patch_byte(&mut raw, i, data[i]).is_ok());
+            let in_place =
+                (0..data.len()).filter(|&i| original[i] != data[i]).all(|i| kaleido_formats::lz::blz_patch_byte(&mut raw, i, data[i]).is_ok());
             if in_place && kaleido_formats::lz::decompress_blz(&raw).ok().as_deref() == Some(data) {
                 game.rom_mut().replace_file(ovl.file_id, raw)?;
                 return Ok(());
@@ -323,6 +336,34 @@ pub(super) fn read_entry(files: &Files, index: usize, def: &Def, count: u16) -> 
         return Err(format!("niveaux incohérents {levels:?}"));
     }
     Ok(Entry { index, def: def.clone(), species, levels })
+}
+
+/// Toutes les rencontres du jeu, et les remarques (emplacements ignorés).
+pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Entry>, Vec<String>) {
+    let mut notes = Vec::new();
+    let mut defs = match game.game {
+        Game::Platinum => tables::platinum(),
+        Game::Black | Game::White => tables::black_white(),
+        _ => Vec::new(),
+    };
+    match game.game {
+        Game::Black | Game::White => match files.bw_roamers() {
+            Ok(r) => defs.extend(r),
+            Err(e) => notes.push(e),
+        },
+        Game::Platinum => {
+            notes.push("vagabonds (Créfadet, Cresselia, oiseaux légendaires) non pris en charge : l'UPR ajoute pour cela du code à l'ARM9".into())
+        }
+        _ => {}
+    }
+    let mut out = Vec::new();
+    for (i, def) in defs.iter().enumerate() {
+        match read_entry(files, i, def, count) {
+            Ok(e) => out.push(e),
+            Err(e) => notes.push(format!("rencontre n°{i} ignorée : {e}")),
+        }
+    }
+    (out, notes)
 }
 
 #[cfg(test)]
@@ -392,30 +433,4 @@ mod tests {
         // Une seconde lecture (ROM déjà corrigée) retrouve la fonction.
         assert_eq!(files.bw_roamers().unwrap().len(), 2);
     }
-}
-
-/// Toutes les rencontres du jeu, et les remarques (emplacements ignorés).
-pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Entry>, Vec<String>) {
-    let mut notes = Vec::new();
-    let mut defs = match game.game {
-        Game::Platinum => tables::platinum(),
-        Game::Black | Game::White => tables::black_white(),
-        _ => Vec::new(),
-    };
-    match game.game {
-        Game::Black | Game::White => match files.bw_roamers() {
-            Ok(r) => defs.extend(r),
-            Err(e) => notes.push(e),
-        },
-        Game::Platinum => notes.push("vagabonds (Créfadet, Cresselia, oiseaux légendaires) non pris en charge : l'UPR ajoute pour cela du code à l'ARM9".into()),
-        _ => {}
-    }
-    let mut out = Vec::new();
-    for (i, def) in defs.iter().enumerate() {
-        match read_entry(files, i, def, count) {
-            Ok(e) => out.push(e),
-            Err(e) => notes.push(format!("rencontre n°{i} ignorée : {e}")),
-        }
-    }
-    (out, notes)
 }

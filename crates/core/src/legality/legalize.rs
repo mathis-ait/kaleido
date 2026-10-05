@@ -253,7 +253,15 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
         800 if form == 3 => 0,
         718 if form == 4 => 0,
         351 | 421 | 648 | 681 | 716 | 746 | 382 | 383 => 0,
-        s if form != 0 && [3, 6, 9, 65, 94, 115, 127, 130, 142, 150, 181, 212, 214, 229, 248, 257, 282, 303, 306, 308, 310, 354, 359, 380, 381, 445, 448, 460, 15, 18, 80, 208, 254, 260, 302, 319, 323, 334, 362, 373, 376, 384, 428, 475, 531, 719].contains(&s) => 0,
+        s if form != 0
+            && [
+                3, 6, 9, 65, 94, 115, 127, 130, 142, 150, 181, 212, 214, 229, 248, 257, 282, 303, 306, 308, 310, 354, 359, 380, 381, 445, 448, 460,
+                15, 18, 80, 208, 254, 260, 302, 319, 323, 334, 362, 373, 376, 384, 428, 475, 531, 719,
+            ]
+            .contains(&s) =>
+        {
+            0
+        }
         _ => form,
     };
     if out_form != form {
@@ -365,11 +373,7 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
     }
 
     // Ball.
-    let ball = if ball_allowed(e, plan.version, wishes.ball) {
-        wishes.ball
-    } else {
-        e.ball.unwrap_or(4)
-    };
+    let ball = if ball_allowed(e, plan.version, wishes.ball) { wishes.ball } else { e.ball.unwrap_or(4) };
     if ball != p.ball() {
         changes.push(format!("Ball : {}", dex::ball_name(ball).unwrap_or("?")));
     }
@@ -428,7 +432,12 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
             }
         }
     } else if origin_gen <= 5 {
-        let wish = PidWish { nature: (origin_gen <= 4).then_some(nature), shiny: Some(shiny), ability_bit: (ability_number != 4).then_some(ability_bit), gender: Some((gender_wish, ratio)) };
+        let wish = PidWish {
+            nature: (origin_gen <= 4).then_some(nature),
+            shiny: Some(shiny),
+            ability_bit: (ability_number != 4).then_some(ability_bit),
+            gender: Some((gender_wish, ratio)),
+        };
         let wild_xor = origin_gen == 5
             && match e.kind {
                 EncounterKind::HiddenGrotto => false,
@@ -741,7 +750,8 @@ fn run(pk: &Pokemon, game: Game, trainer: &Trainer, plans: Vec<Plan>, wishes: Wi
         let ok = report.verdict != Verdict::Illegal;
         #[cfg(test)]
         if std::env::var("KALEIDO_DEBUG_PLANS").is_ok() && !ok {
-            let bad: Vec<String> = report.checks.iter().filter(|c| c.severity == verify::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
+            let bad: Vec<String> =
+                report.checks.iter().filter(|c| c.severity == verify::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
             println!("  essai {:?} n°{} lieu {} : {bad:?}", plan.enc.kind, plan.enc.species, plan.enc.location);
         }
         let better = best.as_ref().is_none_or(|b| report.errors < b.report.errors);

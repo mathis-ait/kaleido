@@ -23,7 +23,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 const BASE_URL: &str = "https://cdn.jsdelivr.net/gh/msikma/pokesprite@master";
 const SHOWDOWN_URL: &str = "https://play.pokemonshowdown.com/sprites";
-const USER_AGENT: &str = concat!("Kaleido/", env!("CARGO_PKG_VERSION"), " (+https://github.com/thisma/kaleido)");
+const USER_AGENT: &str = concat!("Kaleido/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mathis-ait/kaleido)");
 /// Taille maximale acceptée pour un fichier téléchargé.
 const MAX_DOWNLOAD: u64 = 8 * 1024 * 1024;
 /// Extensions des fichiers d'images gardés en cache (et marqueurs « absent »).
@@ -87,10 +87,7 @@ fn slugs(cache: &Path) -> Result<&'static HashMap<u16, String>, String> {
         }
     };
     let entries: HashMap<String, serde_json::Value> = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-    let map = entries
-        .into_iter()
-        .filter_map(|(idx, v)| Some((idx.parse().ok()?, v["slug"]["eng"].as_str()?.to_string())))
-        .collect();
+    let map = entries.into_iter().filter_map(|(idx, v)| Some((idx.parse().ok()?, v["slug"]["eng"].as_str()?.to_string()))).collect();
     Ok(SLUGS.get_or_init(|| map))
 }
 
@@ -232,11 +229,7 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Res
             .header("Cache-Control", "max-age=31536000, immutable")
             .body(data)
             .unwrap(),
-        Err(e) => Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .body(e.into_bytes())
-            .unwrap(),
+        Err(e) => Response::builder().status(StatusCode::NOT_FOUND).header("Content-Type", "text/plain; charset=utf-8").body(e.into_bytes()).unwrap(),
     }
 }
 

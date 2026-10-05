@@ -115,8 +115,8 @@ fn nds_text(game: Game) -> Option<(usize, usize)> {
 /// Classes féminines de Platine (pret/pokeplatinum, `trainer_class_genders.h`) :
 /// elles changent le PID, donc la nature.
 const PT_FEMALE_CLASSES: [u16; 45] = [
-    1, 3, 5, 7, 8, 10, 13, 17, 18, 21, 22, 25, 26, 30, 33, 35, 36, 40, 43, 45, 50, 54, 56, 61, 66, 69, 72, 74, 76, 77, 78, 80, 84, 85, 87,
-    88, 89, 90, 92, 94, 96, 98, 99, 101, 104,
+    1, 3, 5, 7, 8, 10, 13, 17, 18, 21, 22, 25, 26, 30, 33, 35, 36, 40, 43, 45, 50, 54, 56, 61, 66, 69, 72, 74, 76, 77, 78, 80, 84, 85, 87, 88, 89,
+    90, 92, 94, 96, 98, 99, 101, 104,
 ];
 
 /// Rôle d'après la classe de dresseur (identifiants vérifiés sur les ROM :
@@ -179,8 +179,7 @@ impl RomTrainers {
 
     pub fn from_nds(rom: &GameRom) -> Result<Self, RomError> {
         let game = rom.game;
-        let unsupported =
-            || RomError::Unsupported(format!("{} : dresseurs non pris en charge (Platine et Noire/Blanche seulement)", game.name_fr()));
+        let unsupported = || RomError::Unsupported(format!("{} : dresseurs non pris en charge (Platine et Noire/Blanche seulement)", game.name_fr()));
         let paths = DataPaths::for_game(game).ok_or_else(unsupported)?;
         let (names_file, classes_file) = nds_text(game).ok_or_else(unsupported)?;
         let generation = game.generation();
@@ -370,10 +369,7 @@ impl RomTrainers {
             p.moves
         } else {
             notes.push("Attaques : les 4 dernières apprises par niveau (le dresseur n'en a pas de fixées).".into());
-            self.learnsets
-                .get(record)
-                .or_else(|| self.learnsets.get(p.species as usize))
-                .map_or([0; 4], |ls| learnsets::moves_at_level(ls, p.level))
+            self.learnsets.get(record).or_else(|| self.learnsets.get(p.species as usize)).map_or([0; 4], |ls| learnsets::moves_at_level(ls, p.level))
         };
         let friendship = if moves.contains(&super::ids::moves::FRUSTRATION) { 0 } else { 255 };
         let weight = dex::personal(dg, p.species, p.form as u8)

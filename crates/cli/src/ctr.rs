@@ -38,7 +38,8 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     if let Ok(data) = std::fs::read(romfs.join(l.encounters)) {
         let garc = Garc::parse(&data)?;
         let zone = lz::decompress(garc.file(100).ok_or("zone 100 absente")?)?;
-        let slots: Vec<_> = encounters::read(6, &zone).iter().map(|s| format!("{} {}-{}", names[s.species as usize], s.min_level, s.max_level)).collect();
+        let slots: Vec<_> =
+            encounters::read(6, &zone).iter().map(|s| format!("{} {}-{}", names[s.species as usize], s.min_level, s.max_level)).collect();
         println!("Zone 100 relue : {}", slots.join(", "));
     }
     if let (Ok(d), Ok(p)) = (std::fs::read(romfs.join(l.trainer_data)), std::fs::read(romfs.join(l.trainer_pokemon))) {

@@ -229,18 +229,39 @@ pub fn save_lists(state: State<'_, OpenSave>) -> Result<SaveLists, String> {
     let range = |max: u16, name: &dyn Fn(u16) -> Option<&'static str>| -> Vec<Named> {
         (1..=max).filter_map(|i| name(i).filter(|n| !n.is_empty() && *n != "???").map(|n| Named { value: i, label: n.to_string() })).collect()
     };
-    let mut locations: Vec<Named> =
-        dex::locations(game.generation()).into_iter().filter(|(_, n)| !n.is_empty()).map(|(value, n)| Named { value, label: n.to_string() }).collect();
+    let mut locations: Vec<Named> = dex::locations(game.generation())
+        .into_iter()
+        .filter(|(_, n)| !n.is_empty())
+        .map(|(value, n)| Named { value, label: n.to_string() })
+        .collect();
     locations.sort_by(|a, b| (a.value != 0).cmp(&(b.value != 0)).then_with(|| a.label.cmp(&b.label)));
     Ok(SaveLists {
         species: range(dex::max_species(game), &dex::species_name),
         moves: range(dex::max_move(game), &dex::move_name),
-        items: range(dex::max_item(game), &|i| dex::item_name_in(game, i)),
+        items: range(dex::max_item(game), &|i| dex::item_name_in(game, i)).into_iter().map(|n| with_machine_move(game, n)).collect(),
         abilities: range(dex::max_ability(game), &dex::ability_name),
         locations,
         balls: (1..=dex::max_ball(game)).filter_map(|b| dex::ball_name(b).map(|n| Named { value: b as u16, label: n.to_string() })).collect(),
         types: dex::type_names().iter().map(|s| s.to_string()).collect(),
     })
+}
+
+/// « CT01 » devient « CT01 · Mitra-Poing » : l'attaque enseignée par la CT ou la CS.
+fn with_machine_move(game: dex::Game, mut item: Named) -> Named {
+    let (tms, hms) = kaleido_core::legality::learn::machine_moves(game);
+    let label = item.label.as_str();
+    let list = if label.starts_with("CT") || label.starts_with("TM") {
+        tms
+    } else if label.starts_with("CS") || label.starts_with("HM") {
+        hms
+    } else {
+        return item;
+    };
+    let mv = label.get(2..).and_then(|n| n.parse::<usize>().ok()).and_then(|n| list.get(n.checked_sub(1)?)).and_then(|&m| dex::move_name(m));
+    if let Some(mv) = mv {
+        item.label = format!("{label} · {mv}");
+    }
+    item
 }
 
 /// Attaques que l'espèce connaît à ce niveau (4 dernières apprises par niveau).
@@ -317,7 +338,8 @@ pub async fn peek_save(path: PathBuf) -> Result<SavePeek, String> {
         let s = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
         let v = s.view().map_err(|e| e.to_string())?;
         let dex = s.pokedex().unwrap_or_default();
-        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
+        let modified =
+            std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
         Ok(SavePeek {
             file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             path: path.display().to_string(),

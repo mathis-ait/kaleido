@@ -127,7 +127,8 @@ fn shiny_nature_and_ability_keep_other_traits() {
 #[test]
 fn trainer_box_names_and_create() {
     let mut s = SaveSession::open(&gen4::blank(SaveVersion::Platinum, 0, 0)).unwrap();
-    let patch = crate::save::edit::TrainerPatch { name: Some("Aurore".into()), tid: Some(4242), money: Some(123_456), hours: Some(12), ..Default::default() };
+    let patch =
+        crate::save::edit::TrainerPatch { name: Some("Aurore".into()), tid: Some(4242), money: Some(123_456), hours: Some(12), ..Default::default() };
     s.set_trainer(&patch).unwrap();
     s.set_box_name(3, "Légendes").unwrap();
     let v = s.view().unwrap();

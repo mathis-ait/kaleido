@@ -153,11 +153,12 @@ fn gen4_writes_in_active_general_block() {
         inv[0].items = vec![item(68, 3)];
         save.set_inventory(&inv[..1]).unwrap();
         let out = save.to_bytes();
-        let bag = gen4::PARTITION + match v {
-            SaveVersion::DiamondPearl => 0x624,
-            SaveVersion::Platinum => 0x630,
-            _ => 0x644,
-        };
+        let bag = gen4::PARTITION
+            + match v {
+                SaveVersion::DiamondPearl => 0x624,
+                SaveVersion::Platinum => 0x630,
+                _ => 0x644,
+            };
         assert_eq!(&out[bag..bag + 4], &[68, 0, 3, 0], "{v:?}");
         assert_eq!(&out[bag - gen4::PARTITION..bag - gen4::PARTITION + 4], &[0; 4], "{v:?}");
         assert!(SaveFile::from_bytes(&out).unwrap().checksums_valid());

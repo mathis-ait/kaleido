@@ -85,8 +85,8 @@ function formatSize(bytes: number): string {
         <button v-else class="btn btn-primary" disabled :title="randomized ? 'Déjà randomisée : pars de la ROM d\'origine' : 'Pas encore pris en charge par le randomizer'">
           Randomiser
         </button>
-        <button v-if="canEdit" class="btn" @click="openRom(item.path)">Explorer</button>
-        <button v-else class="btn" disabled title="Jeu non identifié">Explorer</button>
+        <button v-if="canEdit" class="btn" @click="openRom(item.path)">Éditer</button>
+        <button v-else class="btn" disabled title="Jeu non identifié">Éditer</button>
       </template>
       <button v-else-if="isSave" class="btn btn-primary" @click="openSave(item.path)">Ouvrir la sauvegarde</button>
     </div>

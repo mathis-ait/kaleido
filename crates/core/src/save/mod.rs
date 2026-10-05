@@ -268,11 +268,7 @@ pub struct SaveFile {
 
 impl SaveFile {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, SaveError> {
-        let (body, trailer) = if bytes.len() == NDS_SAVE_SIZE + DESMUME_FOOTER {
-            bytes.split_at(NDS_SAVE_SIZE)
-        } else {
-            (bytes, &[][..])
-        };
+        let (body, trailer) = if bytes.len() == NDS_SAVE_SIZE + DESMUME_FOOTER { bytes.split_at(NDS_SAVE_SIZE) } else { (bytes, &[][..]) };
         let version = match saves::identify(body).ok_or(SaveError::Unrecognized)? {
             SaveKind::DiamondPearl => SaveVersion::DiamondPearl,
             SaveKind::Platinum => SaveVersion::Platinum,
@@ -623,6 +619,8 @@ pub fn demo_save() -> Result<Vec<u8>, SaveError> {
         if let Some(a) = crate::names::first_ability(species) {
             p.set_ability(a)?;
         }
+        p.set_ball(4);
+        p.set_language(session::LANGUAGE_FR);
         p.set_friendship(70);
         p.refresh_checksum();
         s.save.set_box_slot(0, i, Some(p))?;
@@ -634,8 +632,8 @@ pub fn demo_save() -> Result<Vec<u8>, SaveError> {
 }
 
 #[cfg(test)]
-mod tests;
+mod pkhex_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]
-mod pkhex_tests;
+mod tests;

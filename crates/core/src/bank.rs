@@ -500,7 +500,14 @@ impl Bank {
 
 /// Dépose un Pokémon de la sauvegarde dans la banque. `copy = false` : il quitte la
 /// sauvegarde (une seule étape d'annulation côté sauvegarde).
-pub fn deposit_from_save(bank: &mut Bank, s: &mut SaveSession, from: Slot, to: Option<BankSlot>, copy: bool, save_name: Option<String>) -> Result<BankSlot, BankError> {
+pub fn deposit_from_save(
+    bank: &mut Bank,
+    s: &mut SaveSession,
+    from: Slot,
+    to: Option<BankSlot>,
+    copy: bool,
+    save_name: Option<String>,
+) -> Result<BankSlot, BankError> {
     let p = s.get(from)?.ok_or_else(|| invalid("emplacement vide"))?;
     if !copy && matches!(from, Slot::Party { .. }) && s.save.party_count() <= 1 {
         return Err(invalid("l'équipe doit garder au moins un Pokémon : dépose-le en copie (Maj) ou ajoute d'abord un autre Pokémon à l'équipe"));

@@ -12,8 +12,7 @@ pub(super) fn lines(text: &'static str) -> Vec<&'static str> {
 
 macro_rules! text_list {
     ($name:ident, $file:literal) => {
-        static $name: LazyLock<Vec<&'static str>> =
-            LazyLock::new(|| lines(include_str!(concat!("../../data/pkhex/text/", $file))));
+        static $name: LazyLock<Vec<&'static str>> = LazyLock::new(|| lines(include_str!(concat!("../../data/pkhex/text/", $file))));
     };
 }
 
@@ -119,12 +118,8 @@ pub fn ball_names() -> Vec<&'static str> {
     BALL_ITEMS.iter().map(|&item| ITEMS.get(item as usize).copied().unwrap_or("")).collect()
 }
 
-static RIBBONS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
-    lines(include_str!("../../data/pkhex/text/Ribbons.txt"))
-        .into_iter()
-        .filter_map(|line| line.split_once('\t'))
-        .collect()
-});
+static RIBBONS: LazyLock<Vec<(&'static str, &'static str)>> =
+    LazyLock::new(|| lines(include_str!("../../data/pkhex/text/Ribbons.txt")).into_iter().filter_map(|line| line.split_once('\t')).collect());
 
 /// Nom d'un ruban d'après sa clé PKHeX (`RibbonChampionSinnoh` → « Maître de Sinnoh »).
 pub fn ribbon_name(key: &str) -> Option<&'static str> {
@@ -366,8 +361,5 @@ fn location_ids(generation: u8) -> Vec<u16> {
 /// puis pension et échange, puis le reste par identifiant. L'interface peut trier par nom.
 pub fn locations(generation: u8) -> Vec<(u16, &'static str)> {
     let Some(set) = location_set(generation) else { return Vec::new() };
-    location_ids(generation)
-        .into_iter()
-        .filter_map(|id| if id == 0 { Some((0, "(Aucun)")) } else { set.name(id).map(|n| (id, n)) })
-        .collect()
+    location_ids(generation).into_iter().filter_map(|id| if id == 0 { Some((0, "(Aucun)")) } else { set.name(id).map(|n| (id, n)) }).collect()
 }

@@ -43,12 +43,7 @@ pub(crate) fn u64be(b: &[u8], o: usize) -> u64 {
 
 /// Chaîne ASCII terminée par un zéro (ou remplie d'espaces).
 pub(crate) fn ascii(b: &[u8]) -> String {
-    b.iter()
-        .take_while(|&&c| c != 0)
-        .map(|&c| if c.is_ascii_graphic() || c == b' ' { c as char } else { '?' })
-        .collect::<String>()
-        .trim()
-        .to_string()
+    b.iter().take_while(|&&c| c != 0).map(|&c| if c.is_ascii_graphic() || c == b' ' { c as char } else { '?' }).collect::<String>().trim().to_string()
 }
 
 pub(crate) const fn align(v: u64, a: u64) -> u64 {

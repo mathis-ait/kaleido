@@ -95,7 +95,9 @@ fn read_platinum(d: &[u8]) -> Vec<Slot> {
 }
 
 fn read_bw(d: &[u8]) -> Vec<Slot> {
-    d.chunks_exact(232)
+    d.as_chunks::<232>()
+        .0
+        .iter()
         .enumerate()
         .flat_map(|(season, chunk)| {
             (0..56).filter_map(move |i| {

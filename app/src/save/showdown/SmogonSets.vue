@@ -4,15 +4,24 @@ import Icon from "../../components/Icon.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
 import { notify, saveState } from "../../saveStore";
-import type { SlotView } from "../../types";
+import type { Slot, SlotView } from "../../types";
 import { keyOf } from "../shell";
 import { addSet, applySet, showdownUi, smogonSets, statLine, type SmogonSet, type SmogonSets } from "./api";
 
 /**
  * Fenêtre « Sets compétitifs » : sets conseillés par Smogon pour l'espèce du Pokémon,
- * à appliquer sur lui ou à ajouter comme nouveau Pokémon.
+ * à appliquer sur lui ou à ajouter comme nouveau Pokémon. Depuis une case vide (`empty`),
+ * les sets de l'espèce choisie créent directement le Pokémon dans cette case.
  */
-const props = defineProps<{ p: SlotView }>();
+const props = defineProps<{ p?: SlotView | null; empty?: { species: number; speciesName: string; slot: Slot } | null }>();
+
+/** Pokémon dont on montre les sets (existant ou à créer). */
+const subj = computed(() => {
+  const p = props.p;
+  if (p) return { species: p.species, form: p.form, shiny: p.shiny, speciesName: p.speciesName, formName: p.speciesData?.formName ?? null, name: p.nickname || p.speciesName, isEgg: p.isEgg };
+  const e = props.empty;
+  return { species: e?.species ?? 0, form: 0, shiny: false, speciesName: e?.speciesName ?? "", formName: null, name: e?.speciesName ?? "", isEgg: false };
+});
 
 const data = ref<SmogonSets | null>(null);
 const error = ref<string | null>(null);
@@ -25,7 +34,7 @@ async function load(refresh = false) {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await smogonSets(props.p.species, props.p.form, refresh);
+    data.value = await smogonSets(subj.value.species, subj.value.form, refresh);
     if (!formats.value.some((f) => f.id === format.value)) format.value = "all";
   } catch (e) {
     error.value = String(e);
@@ -36,7 +45,7 @@ async function load(refresh = false) {
 
 // À l'ouverture, et quand l'espèce ou la forme change (le moteur garde les sets en mémoire).
 watch(
-  () => showdownUi.smogon && `${props.p.species}-${props.p.form}`,
+  () => showdownUi.smogon && subj.value.species && `${subj.value.species}-${subj.value.form}`,
   (key) => {
     if (!key) return;
     lastWarnings.value = null;
@@ -57,12 +66,13 @@ const formats = computed(() => {
 
 const shown = computed(() => (data.value?.sets ?? []).filter((s) => format.value === "all" || s.format === format.value));
 const keyOfSet = (s: SmogonSet) => `${s.speciesKey}|${s.format}|${s.name}`;
-const name = computed(() => props.p.nickname || props.p.speciesName);
+const name = computed(() => subj.value.name);
 const fetched = computed(() => (data.value?.fetchedAt ? new Date(data.value.fetchedAt * 1000).toLocaleDateString("fr-FR") : null));
 
 async function apply(s: SmogonSet) {
   busy.value = keyOfSet(s);
   try {
+    if (!props.p) return;
     const warnings = await applySet(props.p.slot, s.set);
     lastWarnings.value = { key: keyOfSet(s), list: warnings };
     notify(`Set « ${s.name} » (${s.formatLabel}) appliqué à ${name.value}`);
@@ -76,11 +86,13 @@ async function apply(s: SmogonSet) {
 async function addNew(s: SmogonSet) {
   busy.value = keyOfSet(s);
   try {
-    const box = saveState.box;
-    const report = await addSet(s.set, { kind: "box", box });
+    const target = props.empty ? { kind: "slot" as const, slot: props.empty.slot } : { kind: "box" as const, box: saveState.box };
+    const report = await addSet(s.set, target);
     const r = report.sets[0];
     if (r?.error) saveState.error = r.error;
-    else lastWarnings.value = { key: keyOfSet(s), list: r?.warnings ?? [] };
+    else if (props.empty) {
+      close();
+    } else lastWarnings.value = { key: keyOfSet(s), list: r?.warnings ?? [] };
   } catch (e) {
     saveState.error = String(e);
   } finally {
@@ -113,10 +125,10 @@ onBeforeUnmount(() => {
       <div v-if="showdownUi.smogon" class="sm-overlay" @pointerdown.self="close">
         <section class="sm-dialog sv-panel" role="dialog" aria-modal="true" aria-label="Sets compétitifs">
           <header class="sm-head">
-            <Sprite :id="p.species" :shiny="p.shiny" :size="48" />
+            <Sprite :id="subj.species" :shiny="subj.shiny" :size="48" />
             <div class="title">
               <h2>Sets compétitifs <Tip term="smogon" /></h2>
-              <small>{{ p.speciesName }}<template v-if="p.speciesData?.formName"> · {{ p.speciesData.formName }}</template> · Gen {{ saveState.view?.generation }}</small>
+              <small>{{ subj.speciesName }}<template v-if="subj.formName"> · {{ subj.formName }}</template> · Gen {{ saveState.view?.generation }}</small>
             </div>
             <span class="grow" />
             <span v-if="fetched" class="chip" :class="{ warn: data?.stale }" :title="data?.stale ? 'Pas de connexion : copie gardée en mémoire' : ''">
@@ -150,7 +162,7 @@ onBeforeUnmount(() => {
             </div>
             <div v-else-if="!shown.length" class="state">
               <Icon name="search" :size="30" />
-              <p>Smogon ne propose pas de set pour {{ p.speciesName }} en Gen {{ saveState.view?.generation }}.</p>
+              <p>Smogon ne propose pas de set pour {{ subj.speciesName }} en Gen {{ saveState.view?.generation }}.</p>
               <p class="dim">Les Pokémon peu utilisés en compétition n'ont souvent pas d'analyse.</p>
             </div>
             <ul v-else class="sets">
@@ -199,16 +211,22 @@ onBeforeUnmount(() => {
                   <li v-for="w in lastWarnings.list" :key="w" class="warn"><Icon name="alert" :size="13" /> {{ w }}</li>
                 </ul>
                 <div class="actions">
-                  <button class="sv-btn" :disabled="!!busy" @click="addNew(s)"><Icon name="plus" :size="14" /> Nouveau Pokémon</button>
-                  <button class="sv-btn solid" :disabled="!!busy || p.isEgg" @click="apply(s)"><Icon name="wand" :size="14" /> Appliquer à {{ name }}</button>
+                  <button class="sv-btn" :class="{ solid: !!empty }" :disabled="!!busy" @click="addNew(s)">
+                    <Icon name="plus" :size="14" /> {{ empty ? "Créer dans la case" : "Nouveau Pokémon" }}
+                  </button>
+                  <button v-if="p" class="sv-btn solid" :disabled="!!busy || p.isEgg" @click="apply(s)"><Icon name="wand" :size="14" /> Appliquer à {{ name }}</button>
                 </div>
               </li>
             </ul>
           </div>
           <footer class="sm-foot">
             <p class="dim small">
-              Sets <Tip term="showdownSet" /> issus des analyses de Smogon University (données pkmn/smogon). « Appliquer » remplace l'objet, le talent, la
-              nature, les EV/IV, les attaques et le niveau ; le dresseur et la rencontre sont gardés. Ctrl+Z pour annuler.
+              Sets <Tip term="showdownSet" /> issus des analyses de Smogon University (données pkmn/smogon).
+              <template v-if="empty">Le Pokémon est créé à ton nom, dans une Poké Ball, avec le set choisi. Ctrl+Z pour annuler.</template>
+              <template v-else>
+                « Appliquer » remplace l'objet, le talent, la nature, les EV/IV, les attaques et le niveau ; le dresseur et la rencontre sont gardés.
+                Ctrl+Z pour annuler.
+              </template>
             </p>
           </footer>
         </section>

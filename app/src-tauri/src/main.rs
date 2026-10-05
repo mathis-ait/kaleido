@@ -8,20 +8,22 @@ use kaleido_core::detect::GameInfo;
 use kaleido_core::pokemon::Species;
 use kaleido_core::randomizer::ctr::LayeredFsTarget;
 use kaleido_core::randomizer::{self, Outcome, PokemonRef, Preset, Settings};
+use kaleido_core::romedit::{self, EditorData, SpeciesData};
 use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-mod play;
-mod emusaves;
-mod nuzlocke;
 mod bank;
-mod gifts;
 mod battle;
+mod emusaves;
+mod gifts;
 mod legality;
+mod nuzlocke;
+mod play;
 mod saves;
 mod showdown;
 mod sprites;
+mod teams;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
 enum Loaded {
@@ -65,7 +67,17 @@ struct RomOverview {
     file_count: usize,
     verified: bool,
     can_randomize: bool,
+    /// Fiches et attaques apprises modifiables par l'éditeur.
+    can_edit: bool,
     species: Vec<Species>,
+}
+
+/// Vrai si les deux chemins désignent le même fichier (casse, `..`, liens : Windows compris).
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// Lance un travail bloquant hors du fil de l'interface.
@@ -102,6 +114,7 @@ async fn open_rom(path: PathBuf, app: AppHandle) -> Result<RomOverview, String> 
                         file_count: game.rom().file_count(),
                         verified: game.layout.verified,
                         can_randomize: randomizer::supports(game),
+                        can_edit: romedit::supports(game),
                         species: game.species().map_err(|e| e.to_string())?,
                     }
                 }
@@ -113,6 +126,7 @@ async fn open_rom(path: PathBuf, app: AppHandle) -> Result<RomOverview, String> 
                     file_count: game.romfs().files().len(),
                     verified: game.layout.verified,
                     can_randomize: randomizer::ctr::supports(game.game),
+                    can_edit: false,
                     species: game.species().map_err(|e| e.to_string())?,
                 },
             })
@@ -141,7 +155,7 @@ async fn preview_starters(path: PathBuf, settings: Settings, seed: u64, app: App
 #[tauri::command]
 async fn randomize_rom(path: PathBuf, settings: Settings, seed: u64, output: PathBuf) -> Result<Outcome, String> {
     blocking(move || {
-        if output == path {
+        if same_file(&output, &path) {
             return Err("choisis un autre fichier : la ROM d'origine ne doit pas être écrasée".into());
         }
         let mut game = GameRom::open(&path).map_err(|e| e.to_string())?;
@@ -175,6 +189,33 @@ async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: Pat
         std::fs::write(output.join(format!("Kaleido {seed} - journal.txt")), &outcome.log).map_err(|e| e.to_string())?;
         let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
         Ok(CtrOutcome { outcome, romfs: show(written.romfs), image: show(written.image) })
+    })
+    .await
+}
+
+/// Données modifiables de la ROM ouverte (DS uniquement pour l'instant).
+#[tauri::command]
+async fn rom_editor_data(path: PathBuf, app: AppHandle) -> Result<EditorData, String> {
+    blocking(move || {
+        app.state::<OpenRom>().with(&path, |loaded| match loaded {
+            Loaded::Nds(game) => romedit::read(game).map_err(|e| e.to_string()),
+            Loaded::Ctr(_) => Err("l'édition des jeux 3DS arrive bientôt".into()),
+        })
+    })
+    .await
+}
+
+/// Écrit une copie de la ROM avec les espèces modifiées. Renvoie le nombre d'espèces changées.
+#[tauri::command]
+async fn rom_editor_save(path: PathBuf, edits: Vec<SpeciesData>, output: PathBuf) -> Result<usize, String> {
+    blocking(move || {
+        if same_file(&output, &path) {
+            return Err("choisis un autre fichier : la ROM d'origine ne doit pas être écrasée".into());
+        }
+        let mut game = GameRom::open(&path).map_err(|e| e.to_string())?;
+        let written = romedit::apply(&mut game, &edits).map_err(|e| e.to_string())?;
+        game.save(&output).map_err(|e| e.to_string())?;
+        Ok(written)
     })
     .await
 }
@@ -217,6 +258,8 @@ fn main() {
             preview_starters,
             randomize_rom,
             randomize_ctr,
+            rom_editor_data,
+            rom_editor_save,
             parse_share_code,
             sprite_cache_info,
             clear_sprite_cache,
@@ -283,6 +326,8 @@ fn main() {
             showdown::showdown_apply,
             showdown::showdown_add_set,
             showdown::smogon_sets,
+            teams::teams_list,
+            teams::teams_get,
             emusaves::emulator_saves,
             gifts::gifts_search,
             gifts::gifts_overview,

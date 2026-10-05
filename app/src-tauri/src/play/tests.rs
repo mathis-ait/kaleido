@@ -213,7 +213,8 @@ fn dsv_conversion() {
 #[test]
 fn mod_install_requires_confirmation_and_keeps_old() {
     let t = Tmp::new("mod");
-    let romfs = t.file("out/000400000011C400/romfs/a/0/1/2", b"new").parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+    let romfs =
+        t.file("out/000400000011C400/romfs/a/0/1/2", b"new").parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
     assert_eq!(title_id_of_romfs(&romfs), Some(0x0004_0000_0011_C400));
     let user = t.0.join("user");
     let tid = 0x0004_0000_0011_C400;

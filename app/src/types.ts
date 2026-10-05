@@ -49,7 +49,36 @@ export interface RomOverview {
   fileCount: number;
   verified: boolean;
   canRandomize: boolean;
+  canEdit: boolean;
   species: Species[];
+}
+
+// Miroir de `kaleido_core::romedit`.
+
+export interface LevelMove {
+  level: number;
+  move: number;
+}
+
+export interface SpeciesEdit {
+  id: number;
+  /** PV, Att, Déf, Atq Spé, Déf Spé, Vit. */
+  stats: number[];
+  /** Index des types dans le jeu (identiques = un seul type). */
+  types: [number, number];
+  /** Talent 1, talent 2, talent caché (0 = aucun). */
+  abilities: [number, number, number];
+  catchRate: number;
+  learnset: LevelMove[];
+}
+
+export interface EditorData {
+  hiddenAbility: boolean;
+  maxLearnset: number;
+  types: { index: number; tag: TypeTag }[];
+  abilities: { id: number; name: string }[];
+  moves: { id: number; name: string }[];
+  species: SpeciesEdit[];
 }
 
 export interface RandomizerSettings {

@@ -11,7 +11,7 @@ const MALE_3DS: u16 = 0xE08E;
 const FEMALE_3DS: u16 = 0xE08F;
 
 fn words(bytes: &[u8]) -> Vec<u16> {
-    bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect()
+    bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect()
 }
 
 /// Décode une chaîne de taille fixe (s'arrête au terminateur).

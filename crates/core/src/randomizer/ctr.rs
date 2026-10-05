@@ -174,16 +174,23 @@ fn load(game: &CtrGameRom, settings: &Settings) -> Result<(Ctx, Garc), RomError>
 
 /// Randomise et écrit sous `out_dir` le dossier LayeredFS et/ou la ROM reconstruite
 /// (`settings.ctr_output`). Renvoie le résultat et les chemins écrits.
-pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Path, target: LayeredFsTarget) -> Result<(Outcome, CtrWritten), RomError> {
+pub fn randomize(
+    game: &CtrGameRom,
+    settings: &Settings,
+    seed: u64,
+    out_dir: &Path,
+    target: LayeredFsTarget,
+) -> Result<(Outcome, CtrWritten), RomError> {
     if !supports(game.game) {
         return Err(unsupported());
     }
     let output = settings.ctr_output;
     // Vérifié avant tout calcul : une ROM complète ne se reconstruit qu'à partir d'une image.
     let image_out = if output.image() {
-        let input = game.romfs().image_path().ok_or_else(|| {
-            RomError::Unsupported("la sortie .3ds demande une ROM (.3ds, .cxi ou .cia déchiffré), pas un dossier extrait".into())
-        })?;
+        let input = game
+            .romfs()
+            .image_path()
+            .ok_or_else(|| RomError::Unsupported("la sortie .3ds demande une ROM (.3ds, .cxi ou .cia déchiffré), pas un dossier extrait".into()))?;
         Some(image_output_path(input, out_dir, seed)?)
     } else {
         None

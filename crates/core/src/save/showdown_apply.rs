@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::session::{apply_patch, max_pp, view_of, PokemonPatch, SaveSession, Slot, SlotView};
-use super::{Gender, Pokemon,SaveError, ShinyMode, BOX_SLOTS, PARTY_SLOTS};
+use super::{Gender, Pokemon, SaveError, ShinyMode, BOX_SLOTS, PARTY_SLOTS};
 use crate::dex::{self, Lang};
 use crate::showdown::{self, ResolvedSet, ShowdownSet};
 
@@ -149,7 +149,8 @@ impl SaveSession {
         let game = self.game();
         let resolved: Vec<ResolvedSet> = sets.iter().map(|s| showdown::resolve(s, game, lang)).collect();
         let mut report = ImportReport { imported: 0, sets: Vec::new(), lang };
-        let entry = |r: &ResolvedSet| ImportedSet { species_name: r.species_name.clone(), slot: None, warnings: r.warnings.clone(), error: r.error.clone() };
+        let entry =
+            |r: &ResolvedSet| ImportedSet { species_name: r.species_name.clone(), slot: None, warnings: r.warnings.clone(), error: r.error.clone() };
         if resolved.iter().all(|r| r.error.is_some()) {
             report.sets = resolved.iter().map(entry).collect();
             return Ok(report);

@@ -718,7 +718,10 @@ impl Gift {
         };
         let mut notes = Vec::new();
         if self.kind == GiftKind::Other {
-            notes.push("Ce contenu (hors Pokémon et objets) n'est pas encore ajouté par Kaleido : le fichier peut être enregistré pour un autre outil.".into());
+            notes.push(
+                "Ce contenu (hors Pokémon et objets) n'est pas encore ajouté par Kaleido : le fichier peut être enregistré pour un autre outil."
+                    .into(),
+            );
         }
         if self.restrict_language != 0 {
             notes.push(format!("Distribution réservée aux jeux en {}.", language_name(self.restrict_language).to_lowercase()));
@@ -770,7 +773,8 @@ impl Gift {
             ability_label: pk.map_or_else(String::new, |p| ability_label(game, p)),
             ivs_label: pk.map_or_else(String::new, ivs_label),
             met_location_name: pk.and_then(|p| dex::location_name(generation, p.met_location).map(str::to_string)),
-            egg_location_name: pk.and_then(|p| (p.egg_location != 0).then(|| dex::location_name(generation, p.egg_location)).flatten().map(str::to_string)),
+            egg_location_name: pk
+                .and_then(|p| (p.egg_location != 0).then(|| dex::location_name(generation, p.egg_location)).flatten().map(str::to_string)),
             language_name: pk.map_or_else(String::new, |p| language_name(p.language).to_string()),
             ribbon_names: pk.map(|p| p.ribbons.iter().filter_map(|k| dex::ribbon_name(k)).collect()).unwrap_or_default(),
             shiny_label: pk.map(|p| p.shiny.label()),
@@ -832,7 +836,9 @@ pub fn compatibility(gift: &Gift, version: SaveVersion) -> Result<(), String> {
     let (g, s) = (gift.generation(), version.generation());
     if g != s {
         return Err(if g > s {
-            format!("Cadeau de la Gen {g} : une sauvegarde de la Gen {s} ne peut pas le recevoir (le format des Pokémon et des objets a changé depuis).")
+            format!(
+                "Cadeau de la Gen {g} : une sauvegarde de la Gen {s} ne peut pas le recevoir (le format des Pokémon et des objets a changé depuis)."
+            )
         } else {
             format!(
                 "Cadeau de la Gen {g} : Kaleido ne l'ajoute qu'à une sauvegarde de la même génération. En jeu, il faudrait le recevoir en Gen {g} puis le transférer (Poké Transfert, Pokémon Bank…)."

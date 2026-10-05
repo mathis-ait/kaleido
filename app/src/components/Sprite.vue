@@ -88,8 +88,11 @@ function onError() {
 </template>
 
 <style scoped>
+/* Une seule cellule de la taille de la boîte : sans elle, `height: 100%` prend la
+   taille naturelle de l'image et les grands modèles animés débordent sur le texte voisin. */
 .sprite {
   display: inline-grid;
+  grid-template: 100% / 100%;
   place-items: center;
   flex-shrink: 0;
 }
@@ -97,6 +100,8 @@ function onError() {
 img {
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   image-rendering: auto;
 }

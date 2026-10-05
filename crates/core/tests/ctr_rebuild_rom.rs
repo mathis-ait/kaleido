@@ -22,7 +22,8 @@ fn find_rom() -> Option<PathBuf> {
     }
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
     let dir = PathBuf::from(home).join("Documents").join("NDS & 3DS");
-    let mut roms: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("3ds"))).collect();
+    let mut roms: Vec<PathBuf> =
+        std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("3ds"))).collect();
     roms.sort();
     roms.into_iter().next()
 }
@@ -53,7 +54,13 @@ fn randomized_rom3ds_matches_layeredfs() {
         assert!(outcome.wild_slots > 0 && outcome.trainer_pokemon > 0);
         let (romfs, image) = (written.romfs.unwrap(), written.image.unwrap());
         assert!(image.extension().is_some_and(|e| e == "3ds"));
-        eprintln!("{} ({} octets), {} fichiers modifiés : {:?}", image.display(), std::fs::metadata(&image).unwrap().len(), written.files.len(), written.files);
+        eprintln!(
+            "{} ({} octets), {} fichiers modifiés : {:?}",
+            image.display(),
+            std::fs::metadata(&image).unwrap().len(),
+            written.files.len(),
+            written.files
+        );
         assert!(written.files.len() >= 5);
 
         let t = Instant::now();

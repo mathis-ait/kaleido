@@ -72,13 +72,11 @@ impl EvolutionInfo {
             }
         }
         let mut stage = vec![0u8; species_count + 1];
-        for s in 1..=species_count {
-            if !has_parent[s] {
-                let mut frontier = vec![(s, 0u8)];
-                while let Some((cur, depth)) = frontier.pop() {
-                    stage[cur] = stage[cur].max(depth);
-                    frontier.extend(targets[cur].iter().map(|&t| (t as usize, depth + 1)).filter(|&(_, d)| d < 4));
-                }
+        for s in (1..=species_count).filter(|&s| !has_parent[s]) {
+            let mut frontier = vec![(s, 0u8)];
+            while let Some((cur, depth)) = frontier.pop() {
+                stage[cur] = stage[cur].max(depth);
+                frontier.extend(targets[cur].iter().map(|&t| (t as usize, depth + 1)).filter(|&(_, d)| d < 4));
             }
         }
         let evolves = targets.iter().map(|t| !t.is_empty()).collect();

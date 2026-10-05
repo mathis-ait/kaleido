@@ -22,14 +22,8 @@ pub enum GrowthRate {
 }
 
 impl GrowthRate {
-    pub const ALL: [GrowthRate; 6] = [
-        GrowthRate::MediumFast,
-        GrowthRate::Erratic,
-        GrowthRate::Fluctuating,
-        GrowthRate::MediumSlow,
-        GrowthRate::Fast,
-        GrowthRate::Slow,
-    ];
+    pub const ALL: [GrowthRate; 6] =
+        [GrowthRate::MediumFast, GrowthRate::Erratic, GrowthRate::Fluctuating, GrowthRate::MediumSlow, GrowthRate::Fast, GrowthRate::Slow];
 
     /// Index tel que stocké dans les fiches « personal » (0 = Moyenne … 5 = Lente).
     pub fn from_index(index: u8) -> Option<Self> {
@@ -84,9 +78,8 @@ pub fn level_from_exp(growth: GrowthRate, exp: u32) -> u8 {
 
 /// Noms français des 25 natures, dans l'ordre des jeux (Hardi = 0 … Bizarre = 24).
 pub const NATURES_FR: [&str; 25] = [
-    "Hardi", "Solo", "Brave", "Rigide", "Mauvais", "Assuré", "Docile", "Relax", "Malin", "Lâche", "Timide", "Pressé",
-    "Sérieux", "Jovial", "Naïf", "Modeste", "Doux", "Discret", "Pudique", "Foufou", "Calme", "Gentil", "Malpoli",
-    "Prudent", "Bizarre",
+    "Hardi", "Solo", "Brave", "Rigide", "Mauvais", "Assuré", "Docile", "Relax", "Malin", "Lâche", "Timide", "Pressé", "Sérieux", "Jovial", "Naïf",
+    "Modeste", "Doux", "Discret", "Pudique", "Foufou", "Calme", "Gentil", "Malpoli", "Prudent", "Bizarre",
 ];
 
 /// Nom français d'une nature (« ? » si l'index est invalide).

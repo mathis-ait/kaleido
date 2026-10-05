@@ -199,8 +199,8 @@ pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError
         let mut raw = vec![0u8; kaleido_formats::nds::HEADER_SIZE];
         r.rewind().map_err(FormatError::from)?;
         r.read_exact(&mut raw).map_err(FormatError::from)?;
-        if let Some(tag) = kaleido_formats::nds::read_signature(r, &raw)?
-            .and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok())
+        if let Some(tag) =
+            kaleido_formats::nds::read_signature(r, &raw)?.and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok())
         {
             d.detail("Randomisée par", format!("Kaleido {}", tag.version));
             d.detail("Seed", tag.seed.to_string());
@@ -262,9 +262,7 @@ fn from_ctr(img: &CtrImage) -> Detection {
         Some(ncch) => {
             d.detail("Code produit", &ncch.product_code);
             if ncch.encrypted {
-                d.warnings.push(
-                    "ROM chiffrée : déchiffre-la d'abord (Godmode9 ou l'outil de ton émulateur).".into(),
-                );
+                d.warnings.push("ROM chiffrée : déchiffre-la d'abord (Godmode9 ou l'outil de ton émulateur).".into());
             }
         }
         None => d.warnings.push("Contenu du CIA chiffré ou illisible.".into()),
@@ -299,11 +297,7 @@ fn from_save(kind: saves::SaveKind, data: &[u8]) -> Detection {
 /// Dossier extrait d'un jeu 3DS (comme pour pk3DS) : `romfs/` + `exheader.bin`.
 fn detect_dump_dir(dir: &Path) -> std::io::Result<Detection> {
     // L'utilisateur peut aussi déposer directement le dossier `romfs`.
-    let root = if dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs")) {
-        dir.parent().unwrap_or(dir)
-    } else {
-        dir
-    };
+    let root = if dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs")) { dir.parent().unwrap_or(dir) } else { dir };
 
     if !root.join("romfs").is_dir() {
         let mut d = Detection::new(FileKind::Unknown, "Dossier non reconnu");

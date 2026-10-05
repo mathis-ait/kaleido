@@ -90,7 +90,7 @@ fn main() -> ExitCode {
             );
             Ok(())
         }),
-        ["hex", rom, path, n] =>n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
+        ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["info3ds", rom] => ctr::info(&ctr::open(rom)),
         ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
         ["ls3ds", rom, filter] => ctr::ls(&ctr::open(rom), filter),
@@ -262,6 +262,9 @@ fn find(rom: &str, archive: &str, needle: &str) -> CliResult {
     Ok(())
 }
 
+/// Codes bruts d'une chaîne, son réencodage et le texte lu.
+type Reencoded<E> = (Vec<u16>, Result<Vec<u16>, E>, String);
+
 fn text_check(rom: &str, archive: &str) -> CliResult {
     let TextArchive { gen, files } = text_archive(rom, archive)?;
     let variant = Variant::for_generation(gen);
@@ -271,7 +274,7 @@ fn text_check(rom: &str, archive: &str) -> CliResult {
 
     for (n, file) in files.iter().enumerate() {
         // (codes bruts, réencodage) pour chaque chaîne du fichier.
-        let (rewritten, pairs): (Vec<u8>, Vec<(Vec<u16>, Result<Vec<u16>, _>, String)>) = if gen == 4 {
+        let (rewritten, pairs): (Vec<u8>, Vec<Reencoded<_>>) = if gen == 4 {
             let m = gen4::MsgFile::parse(file)?;
             let pairs = m.entries.iter().map(|c| {
                 let s = gen4::decode(c);
@@ -332,7 +335,7 @@ fn text_check(rom: &str, archive: &str) -> CliResult {
         println!("Fichiers identiques après lecture et réécriture des chaînes : {roundtrip_ok}/{single_block}");
     }
     let mut unknown: Vec<_> = unknown.into_iter().collect();
-    unknown.sort_by(|a, b| b.1.cmp(&a.1));
+    unknown.sort_by_key(|u| std::cmp::Reverse(u.1));
     println!("Caractères inconnus : {} distincts", unknown.len());
     for (code, count) in unknown.iter().take(40) {
         println!("    {code} × {count}");
@@ -436,9 +439,7 @@ fn tms(path: &str, species: u16) -> CliResult {
     let names = game.text_file(game.layout.species_names)?;
     let move_data = Narc::parse(game.rom().file_by_path(machines::move_data_path(game.game).ok_or("données d'attaques inconnues")?)?)?.files;
     let move_name = |m: u16| moves.get(m as usize).cloned().unwrap_or_else(|| format!("#{m}"));
-    let move_type = |m: u16| {
-        move_data.get(m as usize).and_then(|d| machines::move_info(gen, d)).and_then(|i| i.kind).map_or("?", |t| t.name_fr())
-    };
+    let move_type = |m: u16| move_data.get(m as usize).and_then(|d| machines::move_info(gen, d)).and_then(|i| i.kind).map_or("?", |t| t.name_fr());
     let arm9 = game.rom().arm9_decompressed()?;
     let m = machines::read_from(&arm9, &spec)?;
     let palettes = machines::palette_slots(&arm9, &spec);

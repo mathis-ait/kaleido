@@ -35,7 +35,8 @@ fn convert(gift: &Gift) -> Option<Encounter> {
     }
     let generation = gift.generation();
     // Gen 5 : les restrictions de version de la base servent à la création, pas à la vérification.
-    let versions = if generation != 5 && pk.origin_game == 0 && !gift.games.is_empty() { gift.games.clone() } else { versions_for(generation, pk.origin_game) };
+    let versions =
+        if generation != 5 && pk.origin_game == 0 && !gift.games.is_empty() { gift.games.clone() } else { versions_for(generation, pk.origin_game) };
     let level = pk.level.max(1);
     let met = if pk.met_level != 0 { pk.met_level } else { level };
     let location = if pk.egg { 0 } else { pk.met_location };
@@ -90,7 +91,8 @@ fn build(generation: u8) -> Vec<Encounter> {
     gifts::database().iter().filter(|g| g.generation() == generation).filter_map(convert).collect()
 }
 
-static EVENTS: [LazyLock<Vec<Encounter>>; 4] = [LazyLock::new(|| build(4)), LazyLock::new(|| build(5)), LazyLock::new(|| build(6)), LazyLock::new(|| build(7))];
+static EVENTS: [LazyLock<Vec<Encounter>>; 4] =
+    [LazyLock::new(|| build(4)), LazyLock::new(|| build(5)), LazyLock::new(|| build(6)), LazyLock::new(|| build(7))];
 
 /// Distributions d'une génération.
 pub fn events(generation: u8) -> &'static [Encounter] {
