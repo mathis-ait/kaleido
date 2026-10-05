@@ -19,6 +19,10 @@ kaleido-core = { path = "crates/core" }
 [profile.dev.package.kaleido-formats]
 opt-level = 2
 
+# SHA-256 de RomFS de plusieurs Go (reconstruction des images 3DS).
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.dev.package.kaleido-core]
 opt-level = 2
 

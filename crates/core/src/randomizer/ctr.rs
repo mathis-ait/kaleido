@@ -1,6 +1,8 @@
-//! Randomizer 3DS (Rubis Oméga / Saphir Alpha) : mêmes réglages que sur DS, mais
-//! le résultat est un dossier LayeredFS (seuls les fichiers modifiés sont écrits),
-//! à utiliser avec Luma3DS sur console ou dans le dossier « mods » d'un émulateur.
+//! Randomizer 3DS (Rubis Oméga / Saphir Alpha) : mêmes réglages que sur DS. Le
+//! résultat est un dossier LayeredFS (seuls les fichiers modifiés sont écrits),
+//! à utiliser avec Luma3DS sur console ou dans le dossier « mods » d'un émulateur,
+//! et/ou une ROM `.3ds` déchiffrée complète, reconstruite avec ces fichiers
+//! (`kaleido_formats::ctr_build`), à ouvrir directement dans un émulateur.
 //!
 //! Starters : comme l'Universal Pokémon Randomizer (Gen6RomHandler.setStarters), on
 //! modifie la table des dons de `DllField.cro` et l'écran de choix de
@@ -102,6 +104,44 @@ pub enum LayeredFsTarget {
     Emulator,
 }
 
+/// Ce que produit le randomizer 3DS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CtrOutput {
+    /// Dossier LayeredFS : seuls les fichiers modifiés (léger, la ROM reste intacte).
+    #[default]
+    LayeredFs,
+    /// ROM complète déchiffrée (`.3ds`, ou `.cxi` pour une entrée `.cxi` / `.cia`).
+    Rom3ds,
+    /// Les deux.
+    Both,
+}
+
+impl CtrOutput {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn layeredfs(self) -> bool {
+        self != Self::Rom3ds
+    }
+
+    pub fn image(self) -> bool {
+        self != Self::LayeredFs
+    }
+}
+
+/// Fichiers produits par [`randomize`].
+#[derive(Debug, Clone, Default)]
+pub struct CtrWritten {
+    /// Dossier `romfs` du LayeredFS.
+    pub romfs: Option<PathBuf>,
+    /// ROM reconstruite.
+    pub image: Option<PathBuf>,
+    /// Chemins (dans le RomFS) des fichiers modifiés.
+    pub files: Vec<String>,
+}
+
 pub fn supports(game: Game) -> bool {
     matches!(game, Game::OmegaRuby | Game::AlphaSapphire)
 }
@@ -132,12 +172,22 @@ fn load(game: &CtrGameRom, settings: &Settings) -> Result<(Ctx, Garc), RomError>
     Ok((Ctx::new(src, settings)?, personal))
 }
 
-/// Randomise et écrit les fichiers modifiés sous `out_dir`. Renvoie le résultat et
-/// le dossier `romfs` créé.
-pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Path, target: LayeredFsTarget) -> Result<(Outcome, PathBuf), RomError> {
+/// Randomise et écrit sous `out_dir` le dossier LayeredFS et/ou la ROM reconstruite
+/// (`settings.ctr_output`). Renvoie le résultat et les chemins écrits.
+pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Path, target: LayeredFsTarget) -> Result<(Outcome, CtrWritten), RomError> {
     if !supports(game.game) {
         return Err(unsupported());
     }
+    let output = settings.ctr_output;
+    // Vérifié avant tout calcul : une ROM complète ne se reconstruit qu'à partir d'une image.
+    let image_out = if output.image() {
+        let input = game.romfs().image_path().ok_or_else(|| {
+            RomError::Unsupported("la sortie .3ds demande une ROM (.3ds, .cxi ou .cia déchiffré), pas un dossier extrait".into())
+        })?;
+        Some(image_output_path(input, out_dir, seed)?)
+    } else {
+        None
+    };
     let l = game.layout;
     let (mut ctx, mut personal) = load(game, settings)?;
     let code = share_code(seed, settings);
@@ -257,10 +307,48 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
         files.push((l.trainer_pokemon.to_string(), trpoke_garc.to_bytes()));
     }
 
-    let romfs = write(out_dir, game.title_id(), target, &files)?;
+    let mut written = CtrWritten { files: files.iter().map(|(p, _)| p.clone()).collect(), ..Default::default() };
+    if output.layeredfs() {
+        written.romfs = Some(write(out_dir, game.title_id(), target, &files)?);
+    }
+    if let (Some(dest), Some(input)) = (image_out, game.romfs().image_path()) {
+        let report = write_image(input, &dest, &files)?;
+        let _ = writeln!(log, "== ROM complète ==");
+        let _ = writeln!(log, "{} ({} octets, {} fichiers remplacés dans le RomFS)", dest.display(), report.size, report.replaced);
+        written.image = Some(dest);
+    }
     let starters = starters.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect();
     let outcome = Outcome { seed, share_code: code, starters, wild_slots, trainer_pokemon, log };
-    Ok((outcome, romfs))
+    Ok((outcome, written))
+}
+
+/// `<out_dir>/<nom de la ROM> - Kaleido <seed>.3ds` (`.cxi` si l'entrée n'est pas une CCI).
+fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Result<PathBuf, RomError> {
+    let mut r = std::io::BufReader::new(std::fs::File::open(input).map_err(kaleido_formats::FormatError::from)?);
+    let img = kaleido_formats::ctr::CtrImage::probe(&mut r)?.ok_or_else(|| RomError::Unsupported("ce n'est pas une ROM 3DS".into()))?;
+    let stem = input.file_stem().map_or_else(|| "ROM".into(), |s| s.to_string_lossy().into_owned());
+    let ext = kaleido_formats::ctr_build::output_extension(img.container);
+    Ok(out_dir.join(format!("{stem} - Kaleido {seed}.{ext}")))
+}
+
+/// Reconstruit la ROM avec les fichiers modifiés, puis relit chacun d'eux dans
+/// l'image écrite. En cas d'échec, le fichier incomplet est supprimé.
+fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
+    use kaleido_formats::romfs::RomFsSource;
+    let refs: Vec<(&str, &[u8])> = files.iter().map(|(p, d)| (p.as_str(), d.as_slice())).collect();
+    let result = kaleido_formats::ctr_build::rebuild_image(input, dest, &refs).map_err(RomError::from).and_then(|report| {
+        let rebuilt = RomFsSource::open(dest)?;
+        for (path, data) in files {
+            if rebuilt.read(path)? != *data {
+                return Err(RomError::Layout(format!("relecture de {path} dans la ROM reconstruite : contenu différent")));
+            }
+        }
+        Ok(report)
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(dest);
+    }
+    result
 }
 
 /// Écrit les fichiers sous `<out>/luma/titles/<TID>/romfs` ou `<out>/<TID>/romfs`.
