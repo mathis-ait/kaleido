@@ -9,6 +9,9 @@ import BoxesPage from "../save/BoxesPage.vue";
 import PokemonPage from "../save/PokemonPage.vue";
 import ToolsPage from "../save/ToolsPage.vue";
 import ManagerPage from "../save/ManagerPage.vue";
+import LiveSyncBadge from "../play/LiveSyncBadge.vue";
+import PlayGuide from "../play/PlayGuide.vue";
+import SyncBanner from "../play/SyncBanner.vue";
 import { goTo, history, openSave, SAVE_PAGES, saveState, writeSave, type SavePage } from "../saveStore";
 import { keyOf, shell, typing } from "../save/shell";
 
@@ -131,6 +134,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
       </div>
       <div class="status">
         <template v-if="view">
+          <LiveSyncBadge />
           <button class="icon-btn" :disabled="!view.canUndo" title="Annuler (Ctrl+Z)" @click="history(false)"><Icon name="undo" /></button>
           <button class="icon-btn" :disabled="!view.canRedo" title="Rétablir (Ctrl+Y)" @click="history(true)"><Icon name="redo" /></button>
           <button
@@ -154,6 +158,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
         <Icon name="alert" :size="16" /> {{ saveState.error }}
         <button class="x" aria-label="Fermer" @click="saveState.error = null"><Icon name="x" :size="14" /></button>
       </div>
+      <SyncBanner />
       <div v-if="view?.needsResign && saveState.page !== 'home'" class="banner warn">
         <Icon name="shield-alert" :size="16" /> Soleil / Lune : la sauvegarde modifiée devra être re-signée (par exemple avec PKHeX) avant d'être
         chargée sur console. <Tip term="memecrypto" />
@@ -165,6 +170,8 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
         <component :is="pages[saveState.page]" :key="saveState.page" @open="pickSave" @save-as="saveAs" />
       </Transition>
     </main>
+
+    <PlayGuide />
 
     <Transition name="toast">
       <div v-if="saveState.notice" class="toast" role="status"><Icon name="check" :size="16" /> {{ saveState.notice }}</div>

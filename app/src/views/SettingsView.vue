@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import Sprite from "../components/Sprite.vue";
+import EmulatorSettings from "../play/EmulatorSettings.vue";
 import { THEMES, currentTheme } from "../theme";
 
 interface CacheInfo {
@@ -60,6 +61,9 @@ onMounted(refresh);
       </div>
       <button class="btn" @click="clearCache">Vider le cache</button>
     </div>
+
+    <h2>Émulateurs</h2>
+    <EmulatorSettings />
   </section>
 </template>
 

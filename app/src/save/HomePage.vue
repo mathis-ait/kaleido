@@ -5,6 +5,8 @@ import Sprite from "../components/Sprite.vue";
 import { nav } from "../nav";
 import { closeSave, editPokemon, goTo, history, saveState, writeSave } from "../saveStore";
 import { useShell } from "./shell";
+import LiveSyncBadge from "../play/LiveSyncBadge.vue";
+import { playOpenSave, sendToGame } from "../play/play";
 
 const emit = defineEmits<{ open: []; "save-as": [] }>();
 
@@ -169,6 +171,8 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   { icon: "folder-open", label: "Ouvrir une sauvegarde (Ctrl+O)", run: () => emit("open"), tone: "#ff7a6b" },
   { icon: "save", label: "Enregistrer (Ctrl+S)", run: () => writeSave() },
   { icon: "upload", label: "Enregistrer sous…", run: () => emit("save-as"), tone: "#ffc65c" },
+  { icon: "play", label: "Jouer : lancer le jeu avec cette sauvegarde", run: () => playOpenSave(), tone: "#5ce0a0" },
+  { icon: "send", label: "Envoyer au jeu (ferme le jeu avant)", run: () => sendToGame(), tone: "#5ad1ff" },
   { icon: "grid", label: "Boîtes (Ctrl+1)", run: () => goTo("boxes"), tone: "#7fb2ff" },
   { icon: "undo", label: "Annuler (Ctrl+Z)", run: () => history(false), tone: "#7ef0b0" },
   { icon: "settings", label: "Apparence de Kaleido", run: () => (nav.view = "settings") },
@@ -197,6 +201,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
         </button>
       </div>
       <div class="corner">
+        <LiveSyncBadge :send="false" />
         <span class="game">{{ view.game }}</span>
         <Icon name="save" :size="20" :class="{ dirty: saveState.dirty }" />
         <span class="clock">{{ time }}</span>
