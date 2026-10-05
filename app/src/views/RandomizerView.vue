@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -7,10 +7,23 @@ import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
+import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
-import { RANDOMIZABLE, isKaleidoRom, isRom, type CtrOutcome, type Outcome, type PokemonRef, type RandomizerSettings } from "../types";
+import {
+  RANDOMIZABLE,
+  isKaleidoRom,
+  isRom,
+  type CompatMode,
+  type CtrOutcome,
+  type ItemSettings,
+  type Outcome,
+  type PokemonRef,
+  type Preset,
+  type RandomizerSettings,
+  type StaticSettings,
+} from "../types";
 
 /** Réglages par défaut : une randomisation « classique », à ajuster librement. */
 const defaults = (): RandomizerSettings => ({
@@ -45,6 +58,7 @@ const defaults = (): RandomizerSettings => ({
     levelupSanity: true,
   },
   statics: { mode: "unchanged", levelModifier: 0, trades: "unchanged", tradeRandomItems: false, tradeRandomIvs: false },
+  ctrOutput: "layered_fs",
   items: {
     fieldItems: "unchanged",
     banBadFieldItems: true,
@@ -110,14 +124,236 @@ const selected = computed(() => roms.value.find((r) => r.path === romPath.value)
 const isCtr = computed(() => selected.value?.platform === "3ds");
 const target = ref<"luma" | "emulator">("luma");
 const lastWasCtr = ref(false);
+/** 3DS : jeu d'origine à lancer avec le mod (bouton « Jouer »). */
+const playBase = ref<string | null>(null);
+/** Fichiers produits par la dernière génération 3DS (dossier LayeredFS et/ou ROM). */
+const ctrResult = ref<CtrOutcome | null>(null);
 /** Les starters sont cachés par défaut pour garder la surprise. */
 const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
 onMounted(async () => {
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
+  presets.value = await invoke<Preset[]>("randomizer_presets").catch(() => []);
   speciesNames.value = (await invoke<{ species: string[] }>("name_lists")).species;
 });
+
+// --- Options des choix exclusifs (partagées entre les onglets et le résumé)
+
+type Opt<T extends string> = { value: T; label: string; hint?: string };
+
+const STARTER_OPTS: Opt<RandomizerSettings["starters"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "random", label: "Aléatoires" },
+  { value: "three_stage", label: "Trio évolutif", hint: "Pokémon de base avec deux évolutions" },
+  { value: "triangle", label: "Plante · Feu · Eau", hint: "Trio évolutif qui garde le triangle des types" },
+  { value: "custom", label: "Je choisis", hint: "Tape le nom des trois Pokémon de ton choix" },
+];
+const WILD_OPTS: Opt<RandomizerSettings["wild"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "random", label: "Totalement aléatoires" },
+  { value: "area", label: "Par zone", hint: "Dans une zone, chaque espèce est remplacée par une même nouvelle espèce" },
+  { value: "global", label: "Global", hint: "Une espèce devient la même partout dans le jeu" },
+];
+const TRAINER_OPTS: Opt<RandomizerSettings["trainers"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "random", label: "Aléatoires" },
+  { value: "type_themed", label: "Thématiques", hint: "Chaque dresseur garde un type dominant (champions compris)" },
+];
+const STATS_OPTS: Opt<RandomizerSettings["stats"]>[] = [
+  { value: "unchanged", label: "Statistiques inchangées" },
+  { value: "shuffle", label: "Mélangées", hint: "Les 6 statistiques sont permutées, le total ne change pas" },
+  { value: "random", label: "Redistribuées", hint: "Nouvelle répartition du même total" },
+];
+const CATCH_OPTS: Opt<RandomizerSettings["catchRate"]>[] = [
+  { value: "unchanged", label: "Normale" },
+  { value: "doubled", label: "Facile (×2)" },
+  { value: "max", label: "Garantie", hint: "Taux de capture maximal pour toutes les espèces" },
+];
+const TM_COMPAT_OPTS: Opt<CompatMode>[] = [
+  { value: "unchanged", label: "Normale" },
+  { value: "random_prefer_type", label: "Aléatoire (selon le type)" },
+  { value: "random", label: "Aléatoire" },
+  { value: "full", label: "Toutes les CT pour tous" },
+];
+const TUTOR_COMPAT_OPTS: Opt<CompatMode>[] = [
+  { value: "unchanged", label: "Normale" },
+  { value: "random_prefer_type", label: "Aléatoire (selon le type)" },
+  { value: "full", label: "Tout pour tous" },
+];
+const FIELD_OPTS: Opt<ItemSettings["fieldItems"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "shuffle", label: "Mélangés", hint: "Les mêmes objets, à d'autres endroits" },
+  { value: "random", label: "Aléatoires" },
+  { value: "random_even", label: "Aléatoires équilibrés", hint: "Chaque objet sort une fois avant toute répétition" },
+];
+const SHOP_OPTS: Opt<ItemSettings["shops"]>[] = [
+  { value: "unchanged", label: "Inchangées" },
+  { value: "shuffle", label: "Mélangées" },
+  { value: "random", label: "Aléatoires", hint: "Les comptoirs principaux et les boutiques de CT ne changent pas" },
+];
+const STATIC_OPTS: Opt<StaticSettings["mode"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "swap_legendaries", label: "Légendaire contre légendaire", hint: "Un légendaire devient un autre légendaire, un Pokémon ordinaire un autre ordinaire" },
+  { value: "similar_strength", label: "Puissance similaire" },
+  { value: "random", label: "Aléatoires" },
+];
+const TRADE_OPTS: Opt<StaticSettings["trades"]>[] = [
+  { value: "unchanged", label: "Inchangés" },
+  { value: "given", label: "Pokémon reçu aléatoire", hint: "Le Pokémon demandé reste le même" },
+  { value: "given_and_requested", label: "Reçu et demandé aléatoires" },
+];
+
+// --- Onglets des réglages
+
+type TabId = "general" | "pokemon" | "starters" | "wild" | "trainers" | "moves" | "items" | "statics" | "shiny";
+const TABS: { id: TabId; label: string; intro: string }[] = [
+  { id: "general", label: "Général", intro: "Préréglages, sortie et résumé de tout ce qui change par rapport à une randomisation classique." },
+  { id: "pokemon", label: "Pokémon", intro: "Ce qui change pour toutes les espèces : statistiques, types, talents, évolutions et attaques apprises." },
+  { id: "starters", label: "Starters", intro: "Les trois Pokémon proposés au début de l'aventure." },
+  { id: "wild", label: "Sauvages", intro: "Les Pokémon rencontrés dans les hautes herbes, les grottes et sur l'eau." },
+  { id: "trainers", label: "Dresseurs", intro: "Les équipes des dresseurs, champions d'arène et Conseil 4 compris." },
+  { id: "moves", label: "Attaques & CT", intro: "Le contenu des CT, les maîtres des capacités et qui peut les apprendre." },
+  { id: "items", label: "Objets", intro: "Les objets ramassés par terre et le stock des boutiques." },
+  { id: "statics", label: "Fixes & échanges", intro: "Les Pokémon rencontrés à un endroit précis, les dons et les échanges en jeu." },
+  { id: "shiny", label: "Chromatiques", intro: "La probabilité de croiser un Pokémon chromatique ✨." },
+];
+const TAB_KEY = "kaleido.randomizer.tab";
+function readTab(): TabId {
+  try {
+    const t = localStorage.getItem(TAB_KEY);
+    return TABS.some((x) => x.id === t) ? (t as TabId) : "general";
+  } catch {
+    return "general";
+  }
+}
+const tab = ref<TabId>(readTab());
+watch(tab, (t) => {
+  try {
+    localStorage.setItem(TAB_KEY, t);
+  } catch {
+    /* stockage indisponible : l'onglet ne sera simplement pas mémorisé */
+  }
+});
+const currentTab = computed(() => TABS.find((t) => t.id === tab.value) ?? TABS[0]);
+function stepTab(delta: number) {
+  const i = TABS.findIndex((t) => t.id === tab.value);
+  tab.value = TABS[(i + delta + TABS.length) % TABS.length].id;
+}
+
+/** Q / E ou Ctrl+Tab (Maj pour reculer) changent d'onglet, sauf pendant la saisie de texte. */
+function onKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || showLog.value) return;
+  if (e.key === "Tab" && e.ctrlKey) {
+    e.preventDefault();
+    stepTab(e.shiftKey ? -1 : 1);
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  const textField =
+    !!t &&
+    (t.isContentEditable ||
+      t.tagName === "TEXTAREA" ||
+      t.tagName === "SELECT" ||
+      (t.tagName === "INPUT" && !["checkbox", "radio", "range", "button"].includes((t as HTMLInputElement).type)));
+  if (textField) return;
+  const k = e.key.toLowerCase();
+  if (k === "q" || k === "e") {
+    e.preventDefault();
+    stepTab(k === "q" ? -1 : 1);
+  }
+}
+onMounted(() => window.addEventListener("keydown", onKey));
+onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+
+// --- Résumé : chaque option différente des réglages par défaut, en français courant
+
+const DEFAULTS = defaults();
+const lab = <T extends string>(opts: Opt<T>[], v: T) => opts.find((o) => o.value === v)?.label ?? v;
+interface Change {
+  tab: TabId;
+  text: string;
+}
+const changes = computed<Change[]>(() => {
+  const s = settings;
+  const d = DEFAULTS;
+  const out: Change[] = [];
+  const add = (tab: TabId, changed: boolean, text: string) => {
+    if (changed) out.push({ tab, text });
+  };
+  const flag = (tab: TabId, label: string, v: boolean, dv: boolean) => add(tab, v !== dv, `${label} : ${v ? "oui" : "non"}`);
+  const pct = (p: number) => `${p >= 0 ? "+" : ""}${p} %`;
+
+  add("pokemon", s.stats !== d.stats, `Statistiques : ${lab(STATS_OPTS, s.stats).toLowerCase()}`);
+  flag("pokemon", "Types aléatoires", s.randomTypes, d.randomTypes);
+  flag("pokemon", "Talents aléatoires", s.randomAbilities, d.randomAbilities);
+  flag("pokemon", "Sans légendaires", s.noLegendaries, d.noLegendaries);
+  flag("pokemon", "Évolutions sans échange", s.easyEvolutions, d.easyEvolutions);
+  flag("pokemon", "Attaques apprises aléatoires", s.randomMovesets, d.randomMovesets);
+  add("pokemon", s.catchRate !== d.catchRate, `Capture : ${lab(CATCH_OPTS, s.catchRate).toLowerCase()}`);
+
+  const chosen = s.starters === "custom" ? customNames.value.filter((n) => n.trim()).join(", ") : "";
+  add("starters", s.starters !== d.starters, `Starters : ${lab(STARTER_OPTS, s.starters).toLowerCase()}${chosen ? ` (${chosen})` : ""}`);
+
+  add("wild", s.wild !== d.wild, `Pokémon sauvages : ${lab(WILD_OPTS, s.wild).toLowerCase()}`);
+  flag("wild", "Sauvages de puissance similaire", s.wildSimilarStrength, d.wildSimilarStrength);
+  add("wild", s.wildLevelPercent !== d.wildLevelPercent, `Niveaux des sauvages : ${levelLabel(s.wildLevelPercent)}`);
+
+  add("trainers", s.trainers !== d.trainers, `Dresseurs : ${lab(TRAINER_OPTS, s.trainers).toLowerCase()}`);
+  flag("trainers", "Dresseurs de puissance similaire", s.trainersSimilarStrength, d.trainersSimilarStrength);
+  add("trainers", s.trainerLevelPercent !== d.trainerLevelPercent, `Niveaux des dresseurs : ${levelLabel(s.trainerLevelPercent)}`);
+  flag("trainers", "Pokémon des dresseurs évolués", s.trainerEvolutions, d.trainerEvolutions);
+  flag("trainers", "IV des dresseurs au maximum", s.trainerMaxIvs, d.trainerMaxIvs);
+
+  const m = s.moves;
+  const dm = d.moves;
+  flag("moves", "CT aléatoires", m.randomTms, dm.randomTms);
+  flag("moves", "Maîtres des capacités aléatoires", m.randomTutors, dm.randomTutors);
+  flag("moves", "Garder les attaques de terrain", m.keepFieldMoves, dm.keepFieldMoves);
+  flag("moves", "Sans Sonicboom / Draco-Rage", m.noGameBreaking, dm.noGameBreaking);
+  add("moves", m.goodDamagingPercent !== dm.goodDamagingPercent, `Attaques offensives garanties : ${m.goodDamagingPercent} %`);
+  add("moves", m.tmCompat !== dm.tmCompat, `Compatibilité CT : ${lab(TM_COMPAT_OPTS, m.tmCompat).toLowerCase()}`);
+  add("moves", m.tutorCompat !== dm.tutorCompat, `Maîtres des capacités : ${lab(TUTOR_COMPAT_OPTS, m.tutorCompat).toLowerCase()}`);
+  flag("moves", "Toutes les CS pour tous", m.fullHmCompat, dm.fullHmCompat);
+  flag("moves", "Les évolutions héritent des CT", m.followEvolutions, dm.followEvolutions);
+  flag("moves", "Garder les CT des attaques apprises", m.levelupSanity, dm.levelupSanity);
+
+  const it = s.items;
+  const di = d.items;
+  add("items", it.fieldItems !== di.fieldItems, `Objets au sol : ${lab(FIELD_OPTS, it.fieldItems).toLowerCase()}`);
+  add("items", it.shops !== di.shops, `Boutiques : ${lab(SHOP_OPTS, it.shops).toLowerCase()}`);
+  flag("items", "Pas d'objets inutiles", it.banBadFieldItems, di.banBadFieldItems);
+  flag("items", "Pas d'objets inutiles en boutique", it.banBadShopItems, di.banBadShopItems);
+  flag("items", "Pas d'objets ordinaires en boutique", it.banRegularShopItems, di.banRegularShopItems);
+  flag("items", "Pierres d'évolution en vente", it.guaranteeEvolutionItems, di.guaranteeEvolutionItems);
+  flag("items", "Objets X en vente", it.guaranteeXItems, di.guaranteeXItems);
+  flag("items", "Pas d'objets trop forts en boutique", it.banOpShopItems, di.banOpShopItems);
+  flag("items", "Sans Super Bonbon", it.noRareCandy, di.noRareCandy);
+  flag("items", "Sans Master Ball", it.noMasterBall, di.noMasterBall);
+
+  const st = s.statics;
+  const ds = d.statics;
+  add("statics", st.mode !== ds.mode, `Pokémon fixes et dons : ${lab(STATIC_OPTS, st.mode).toLowerCase()}`);
+  add("statics", st.levelModifier !== ds.levelModifier, `Niveaux des Pokémon fixes : ${pct(st.levelModifier)}`);
+  add("statics", st.trades !== ds.trades, `Échanges : ${lab(TRADE_OPTS, st.trades).toLowerCase()}`);
+  flag("statics", "Objets tenus aléatoires (échanges)", st.tradeRandomItems, ds.tradeRandomItems);
+  flag("statics", "IV aléatoires (échanges)", st.tradeRandomIvs, ds.tradeRandomIvs);
+
+  add("shiny", s.shinyOdds !== d.shinyOdds, `Chromatiques : ${shinyLabel.value}`);
+  return out;
+});
+const changeCount = (id: TabId) => changes.value.filter((c) => c.tab === id).length;
+const modifs = (n: number) => `${n} modif${n > 1 ? "s" : ""}`;
+const tabLabel = (id: TabId) => TABS.find((t) => t.id === id)?.label ?? id;
+
+// --- Préréglages (fournis par le moteur)
+
+const presets = ref<Preset[]>([]);
+function applyPreset(p: Preset) {
+  Object.assign(settings, JSON.parse(JSON.stringify(p.settings)) as RandomizerSettings);
+  customNames.value = ["", "", ""];
+}
 
 // Aperçu des starters, recalculé quand la ROM, la seed ou les réglages changent.
 let previewTimer: number | undefined;
@@ -187,8 +423,9 @@ async function generate() {
 
 /** 3DS : les fichiers modifiés sont écrits dans un dossier LayeredFS. */
 async function generateCtr() {
-  const output = await open({ directory: true, title: "Choisis le dossier où créer le mod" });
+  const output = await open({ directory: true, title: settings.ctrOutput === "layered_fs" ? "Choisis le dossier où créer le mod" : "Choisis le dossier où créer la ROM" });
   if (typeof output !== "string" || !selected.value) return;
+  playBase.value = selected.value.path;
   running.value = true;
   runError.value = null;
   outcome.value = null;
@@ -201,7 +438,8 @@ async function generateCtr() {
       target: target.value,
     });
     outcome.value = res;
-    outputPath.value = res.romfs;
+    ctrResult.value = res;
+    outputPath.value = res.image ?? res.romfs;
     lastWasCtr.value = true;
   } catch (e) {
     runError.value = String(e);
@@ -247,33 +485,138 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
       <div class="layout">
         <div class="options">
+          <!-- Onglets des réglages (Q / E ou Ctrl+Tab) -->
+          <div class="tabbar">
+            <kbd class="cap" title="Onglet précédent (Q)" @click="stepTab(-1)">Q</kbd>
+            <nav class="tabs" role="tablist" aria-label="Réglages du randomizer">
+              <button
+                v-for="t in TABS"
+                :key="t.id"
+                role="tab"
+                :aria-selected="tab === t.id"
+                :class="{ on: tab === t.id }"
+                @click="tab = t.id"
+              >
+                {{ t.label }}
+                <span v-if="t.id !== 'general' && changeCount(t.id)" class="badge" :title="`${modifs(changeCount(t.id))} par rapport aux réglages par défaut`">
+                  {{ modifs(changeCount(t.id)) }}
+                </span>
+              </button>
+            </nav>
+            <kbd class="cap" title="Onglet suivant (E)" @click="stepTab(1)">E</kbd>
+          </div>
+          <p class="tab-intro">{{ currentTab.intro }}</p>
+
+          <!-- Général : préréglages, sortie 3DS, résumé -->
+          <template v-if="tab === 'general'">
           <div v-if="isCtr" class="section panel">
             <h3>Sortie 3DS</h3>
-            <Segmented
-              v-model="target"
-              :options="[
-                { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
-                { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
-              ]"
-            />
-            <p class="dim note">
-              Seuls les fichiers modifiés sont écrits : ta ROM d'origine n'est jamais touchée. Sur console, active
+            <div class="row first">
+              <span class="row-label">
+                Format
+                <Tip title="LayeredFS" text="LayeredFS : un dossier de mod léger, ta ROM reste intacte. Seuls les fichiers modifiés sont écrits ; Luma3DS ou l'émulateur les charge à la place des originaux." />
+                <Tip
+                  title="Fichier .3ds"
+                  text="Fichier .3ds : une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde (~2 Go). Elle est déchiffrée et ses signatures ne sont plus valides : parfait pour un émulateur. Sur une vraie console, il faut la convertir en CIA (par ex. « Build CIA from file » dans GodMode9) puis l'installer avec FBI sous Luma3DS — ou plus simplement utiliser la sortie LayeredFS."
+                />
+              </span>
+              <Segmented
+                v-model="settings.ctrOutput"
+                :options="[
+                  { value: 'layered_fs', label: 'LayeredFS', hint: 'Un dossier de mod léger, ta ROM reste intacte' },
+                  { value: 'rom3ds', label: 'Fichier .3ds', hint: 'Une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde (~2 Go)' },
+                  { value: 'both', label: 'Les deux' },
+                ]"
+              />
+            </div>
+            <div v-if="settings.ctrOutput !== 'rom3ds'" class="row">
+              <span class="row-label">Dossier pour</span>
+              <Segmented
+                v-model="target"
+                :options="[
+                  { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
+                  { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
+                ]"
+              />
+            </div>
+            <p v-if="settings.ctrOutput !== 'rom3ds'" class="dim note">
+              LayeredFS : seuls les fichiers modifiés sont écrits, ta ROM d'origine n'est jamais touchée. Sur console, active
               « Enable game patching » dans la configuration de Luma3DS.
+            </p>
+            <p v-if="settings.ctrOutput !== 'layered_fs'" class="dim note">
+              Le .3ds créé est une copie complète et déchiffrée de ta ROM (environ sa taille, compte quelques secondes) : il se lance
+              tel quel dans un émulateur. Sur console, convertis-le en CIA et installe-le, ou préfère LayeredFS.
             </p>
           </div>
 
-          <div class="section panel">
+            <div v-if="presets.length" class="section panel">
+              <h3>
+                Préréglages
+                <Tip title="Préréglages" text="Remplace tous les réglages par une combinaison toute prête. Tu peux ensuite ajuster chaque option dans les onglets." />
+              </h3>
+              <div class="presets">
+                <button v-for="p in presets" :key="p.id" class="preset" @click="applyPreset(p)">
+                  <strong>{{ p.name }}</strong>
+                  <small>{{ p.description }}</small>
+                </button>
+              </div>
+            </div>
+
+            <div class="section panel">
+              <div class="summary-head">
+                <h3>Résumé <span class="dim count">{{ changes.length ? modifs(changes.length) : "réglages par défaut" }}</span></h3>
+                <button v-if="changes.length" class="btn small" @click="reset">Tout réinitialiser</button>
+              </div>
+              <p v-if="!changes.length" class="dim note">
+                Rien n'a été modifié : starters Plante · Feu · Eau, sauvages par zone et dresseurs aléatoires de puissance
+                similaire. Parcours les onglets pour personnaliser ta partie.
+              </p>
+              <ul v-else class="summary">
+                <li v-for="(c, i) in changes" :key="i">
+                  <button class="summary-tab" :title="`Aller à l'onglet ${tabLabel(c.tab)}`" @click="tab = c.tab">{{ tabLabel(c.tab) }}</button>
+                  <span>{{ c.text }}</span>
+                </li>
+              </ul>
+            </div>
+          </template>
+
+          <!-- Pokémon : statistiques, types, talents, évolutions -->
+          <template v-else-if="tab === 'pokemon'">
+            <div class="section panel">
+              <h3>Statistiques, types et talents</h3>
+              <Segmented v-model="settings.stats" :options="STATS_OPTS" />
+              <div class="row">
+                <Toggle v-model="settings.randomTypes" label="Types aléatoires" hint="Une famille d'évolution garde les mêmes types" />
+                <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" hint="Chaque espèce reçoit des talents tirés au sort. Garde Mystik, Multitype, Illusion et Mode Transe ne sont jamais attribués." />
+                <Toggle v-model="settings.noLegendaries" label="Sans légendaires" hint="Aucun légendaire ni fabuleux n'est tiré au sort pour remplacer un autre Pokémon." />
+              </div>
+            </div>
+
+            <div class="section panel">
+              <h3>Évolutions, attaques et capture</h3>
+              <div class="row first">
+                <Toggle
+                  v-model="settings.easyEvolutions"
+                  label="Évolutions sans échange"
+                  hint="Les évolutions par échange se font au niveau 37, ou avec l'objet habituel (Peau Métal…)"
+                />
+                <Toggle
+                  v-model="settings.randomMovesets"
+                  label="Attaques apprises aléatoires"
+                  hint="Chaque Pokémon garde sa première attaque, les suivantes sont tirées au hasard"
+                />
+              </div>
+              <div class="row">
+                <span class="row-label">Capture</span>
+                <Segmented v-model="settings.catchRate" :options="CATCH_OPTS" />
+              </div>
+            </div>
+          </template>
+
+          <!-- Starters -->
+          <div v-else-if="tab === 'starters'" class="section panel">
             <h3>Starters</h3>
-            <Segmented
-              v-model="settings.starters"
-              :options="[
-                { value: 'unchanged', label: 'Inchangés' },
-                { value: 'random', label: 'Aléatoires' },
-                { value: 'three_stage', label: 'Trio évolutif', hint: 'Pokémon de base avec deux évolutions' },
-                { value: 'triangle', label: 'Plante · Feu · Eau', hint: 'Trio évolutif qui garde le triangle des types' },
-                { value: 'custom', label: 'Je choisis', hint: 'Tape le nom des trois Pokémon de ton choix' },
-              ]"
-            />
+            <Segmented v-model="settings.starters" :options="STARTER_OPTS" />
             <div v-if="settings.starters === 'custom'" class="custom-starters">
               <label v-for="(_, i) in customNames" :key="i">
                 <Sprite v-if="settings.customStarters[i]" :id="settings.customStarters[i]" :size="44" />
@@ -289,19 +632,13 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <option v-for="n in speciesNames.slice(1, speciesCount + 1)" :key="n" :value="n" />
               </datalist>
             </div>
+            <p class="dim note">L'aperçu à droite se met à jour avec la seed : coche « Voir » pour découvrir tes starters.</p>
           </div>
 
-          <div class="section panel">
+          <!-- Pokémon sauvages -->
+          <div v-else-if="tab === 'wild'" class="section panel">
             <h3>Pokémon sauvages</h3>
-            <Segmented
-              v-model="settings.wild"
-              :options="[
-                { value: 'unchanged', label: 'Inchangés' },
-                { value: 'random', label: 'Totalement aléatoires' },
-                { value: 'area', label: 'Par zone', hint: 'Dans une zone, chaque espèce est remplacée par une même nouvelle espèce' },
-                { value: 'global', label: 'Global', hint: 'Une espèce devient la même partout dans le jeu' },
-              ]"
-            />
+            <Segmented v-model="settings.wild" :options="WILD_OPTS" />
             <div class="row">
               <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" hint="Un Pokémon sauvage est remplacé par une espèce de force comparable (total des statistiques de base proche) : pas de Dracolosse sur la Route 1." />
               <label class="slider">
@@ -311,16 +648,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
-          <div class="section panel">
+          <!-- Dresseurs -->
+          <div v-else-if="tab === 'trainers'" class="section panel">
             <h3>Dresseurs</h3>
-            <Segmented
-              v-model="settings.trainers"
-              :options="[
-                { value: 'unchanged', label: 'Inchangés' },
-                { value: 'random', label: 'Aléatoires' },
-                { value: 'type_themed', label: 'Thématiques', hint: 'Chaque dresseur garde un type dominant (champions compris)' },
-              ]"
-            />
+            <Segmented v-model="settings.trainers" :options="TRAINER_OPTS" />
             <div class="row">
               <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" hint="Chaque Pokémon des dresseurs est remplacé par une espèce de force comparable, pour garder la difficulté d'origine." />
               <label class="slider">
@@ -338,49 +669,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
-          <div class="section panel">
-            <h3>Pokémon</h3>
-            <Segmented
-              v-model="settings.stats"
-              :options="[
-                { value: 'unchanged', label: 'Statistiques inchangées' },
-                { value: 'shuffle', label: 'Mélangées', hint: 'Les 6 statistiques sont permutées, le total ne change pas' },
-                { value: 'random', label: 'Redistribuées', hint: 'Nouvelle répartition du même total' },
-              ]"
-            />
-            <div class="row">
-              <Toggle v-model="settings.randomTypes" label="Types aléatoires" hint="Une famille d'évolution garde les mêmes types" />
-              <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" hint="Chaque espèce reçoit des talents tirés au sort. Garde Mystik, Multitype, Illusion et Mode Transe ne sont jamais attribués." />
-              <Toggle v-model="settings.noLegendaries" label="Sans légendaires" hint="Aucun légendaire ni fabuleux n'est tiré au sort pour remplacer un autre Pokémon." />
-            </div>
-            <div class="row">
-              <Toggle
-                v-model="settings.easyEvolutions"
-                label="Évolutions sans échange"
-                hint="Les évolutions par échange se font au niveau 37, ou avec l'objet habituel (Peau Métal…)"
-              />
-              <Toggle
-                v-model="settings.randomMovesets"
-                label="Attaques apprises aléatoires"
-                hint="Chaque Pokémon garde sa première attaque, les suivantes sont tirées au hasard"
-              />
-            </div>
-            <div class="row">
-              <span class="row-label">Capture</span>
-              <Segmented
-                v-model="settings.catchRate"
-                :options="[
-                  { value: 'unchanged', label: 'Normale' },
-                  { value: 'doubled', label: 'Facile (×2)' },
-                  { value: 'max', label: 'Garantie', hint: 'Taux de capture maximal pour toutes les espèces' },
-                ]"
-              />
-            </div>
-          </div>
-
-          <div class="section panel">
+          <!-- CT & capacités -->
+          <div v-else-if="tab === 'moves'" class="section panel">
             <h3>CT &amp; capacités <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row">
+            <div class="row first">
               <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" hint="Les CS ne changent jamais" />
               <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine uniquement" />
               <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" hint="Tunnel, Flash… restent à leur place" />
@@ -388,26 +680,11 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
             <div class="row">
               <span class="row-label">Compatibilité CT</span>
-              <Segmented
-                v-model="settings.moves.tmCompat"
-                :options="[
-                  { value: 'unchanged', label: 'Normale' },
-                  { value: 'random_prefer_type', label: 'Aléatoire (selon le type)' },
-                  { value: 'random', label: 'Aléatoire' },
-                  { value: 'full', label: 'Toutes les CT pour tous' },
-                ]"
-              />
+              <Segmented v-model="settings.moves.tmCompat" :options="TM_COMPAT_OPTS" />
             </div>
             <div class="row">
               <span class="row-label">Maîtres des capacités</span>
-              <Segmented
-                v-model="settings.moves.tutorCompat"
-                :options="[
-                  { value: 'unchanged', label: 'Normale' },
-                  { value: 'random_prefer_type', label: 'Aléatoire (selon le type)' },
-                  { value: 'full', label: 'Tout pour tous' },
-                ]"
-              />
+              <Segmented v-model="settings.moves.tutorCompat" :options="TUTOR_COMPAT_OPTS" />
             </div>
             <div class="row">
               <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" hint="Pratique pour ne jamais être bloqué" />
@@ -416,30 +693,16 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
-          <div class="section panel">
+          <!-- Objets & boutiques -->
+          <div v-else-if="tab === 'items'" class="section panel">
             <h3>Objets &amp; boutiques <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row">
+            <div class="row first">
               <span class="row-label">Objets au sol</span>
-              <Segmented
-                v-model="settings.items.fieldItems"
-                :options="[
-                  { value: 'unchanged', label: 'Inchangés' },
-                  { value: 'shuffle', label: 'Mélangés', hint: 'Les mêmes objets, à d\'autres endroits' },
-                  { value: 'random', label: 'Aléatoires' },
-                  { value: 'random_even', label: 'Aléatoires équilibrés', hint: 'Chaque objet sort une fois avant toute répétition' },
-                ]"
-              />
+              <Segmented v-model="settings.items.fieldItems" :options="FIELD_OPTS" />
             </div>
             <div class="row">
               <span class="row-label">Boutiques</span>
-              <Segmented
-                v-model="settings.items.shops"
-                :options="[
-                  { value: 'unchanged', label: 'Inchangées' },
-                  { value: 'shuffle', label: 'Mélangées' },
-                  { value: 'random', label: 'Aléatoires', hint: 'Les comptoirs principaux et les boutiques de CT ne changent pas' },
-                ]"
-              />
+              <Segmented v-model="settings.items.shops" :options="SHOP_OPTS" />
             </div>
             <div class="row">
               <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" hint="Lettres, Fertilisants, Baies sans effet…" />
@@ -452,19 +715,12 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <p class="dim note">Objets clés et CS ne bougent jamais ; une CT est toujours remplacée par une CT.</p>
           </div>
 
-          <div class="section panel">
+          <!-- Pokémon fixes & échanges -->
+          <div v-else-if="tab === 'statics'" class="section panel">
             <h3>Pokémon fixes &amp; échanges <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row">
+            <div class="row first">
               <span class="row-label">Fixes et dons <Tip title="Pokémon fixes et dons" text="Les Pokémon qu'on rencontre à un endroit précis (légendaires, Ronflex qui bloque la route…) et ceux qu'on reçoit en cadeau (fossiles, œufs, starters secondaires)." /></span>
-              <Segmented
-                v-model="settings.statics.mode"
-                :options="[
-                  { value: 'unchanged', label: 'Inchangés' },
-                  { value: 'swap_legendaries', label: 'Légendaire contre légendaire', hint: 'Un légendaire devient un autre légendaire, un Pokémon ordinaire un autre ordinaire' },
-                  { value: 'similar_strength', label: 'Puissance similaire' },
-                  { value: 'random', label: 'Aléatoires' },
-                ]"
-              />
+              <Segmented v-model="settings.statics.mode" :options="STATIC_OPTS" />
             </div>
             <div v-if="settings.statics.mode !== 'unchanged'" class="row">
               <label class="slider">
@@ -475,14 +731,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
             <div class="row">
               <span class="row-label">Échanges <Tip title="Échanges en jeu" text="Les Pokémon que des personnages proposent d'échanger contre l'un des tiens (par exemple Kéké le Chétiflor dans Platine)." /></span>
-              <Segmented
-                v-model="settings.statics.trades"
-                :options="[
-                  { value: 'unchanged', label: 'Inchangés' },
-                  { value: 'given', label: 'Pokémon reçu aléatoire', hint: 'Le Pokémon demandé reste le même' },
-                  { value: 'given_and_requested', label: 'Reçu et demandé aléatoires' },
-                ]"
-              />
+              <Segmented v-model="settings.statics.trades" :options="TRADE_OPTS" />
             </div>
             <div v-if="settings.statics.trades !== 'unchanged'" class="row">
               <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" hint="Le Pokémon reçu tient un objet tiré au sort." />
@@ -490,9 +739,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
-          <div class="section panel">
+          <!-- Chromatiques -->
+          <div v-else-if="tab === 'shiny'" class="section panel">
             <h3>Chromatiques ✨</h3>
-            <div class="row shiny-row">
+            <div class="row shiny-row first">
               <label class="shiny-input">
                 1 chance sur
                 <input v-model.number="settings.shinyOdds" class="input" type="number" min="1" max="65536" :disabled="isCtr" />
@@ -527,7 +777,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div class="starters">
               <div v-for="(p, i) in preview" :key="`${p.id}-${i}`" class="starter" :class="{ hidden: !showStarters }">
                 <template v-if="showStarters">
-                  <Sprite :id="p.id" :size="88" />
+                  <Sprite :id="p.id" variant="model" :size="88" />
                   <span>{{ p.name }}</span>
                 </template>
                 <template v-else>
@@ -555,8 +805,13 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
+          <button class="recap" :title="changes.map((c) => c.text).join('\n') || 'Réglages par défaut'" @click="tab = 'general'">
+            <span>{{ changes.length ? `${modifs(changes.length)} par rapport aux réglages par défaut` : "Réglages par défaut" }}</span>
+            <small>Voir le résumé</small>
+          </button>
+
           <button class="btn btn-primary generate" :disabled="!selected || !supported(selected.game?.id) || running" @click="generate">
-            {{ running ? "Génération…" : isCtr ? "Générer le mod 3DS" : "Générer la ROM" }}
+            {{ running ? "Génération…" : !isCtr ? "Générer la ROM" : settings.ctrOutput === "layered_fs" ? "Générer le mod 3DS" : "Générer la ROM 3DS" }}
           </button>
 
           <div v-if="runError" class="panel card error">{{ runError }}</div>
@@ -565,13 +820,25 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div v-if="outcome" class="panel card done">
               <h3>✨ {{ lastWasCtr ? "Mod prêt !" : "ROM prête !" }}</h3>
               <p class="dim">{{ outcome.wildSlots }} Pokémon sauvages et {{ outcome.trainerPokemon }} Pokémon de dresseurs modifiés.</p>
-              <p v-if="lastWasCtr" class="dim note">
-                {{ target === "luma" ? "Copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma." : "Place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
-              </p>
+              <template v-if="lastWasCtr && ctrResult">
+                <p v-if="ctrResult.image" class="dim note">
+                  ROM : <code class="path">{{ ctrResult.image }}</code><br />
+                  Ouvre-la directement dans Azahar ou Citra (fichier déchiffré, pour émulateur).
+                </p>
+                <p v-if="ctrResult.romfs" class="dim note">
+                  LayeredFS : <code class="path">{{ ctrResult.romfs }}</code><br />
+                  {{ target === "luma" ? "Copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma." : "Place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
+                </p>
+              </template>
               <div class="done-actions">
                 <button v-if="outputPath" class="btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
                 <button class="btn" @click="showLog = true">Voir le journal</button>
               </div>
+              <PlayPanel
+                :platform="lastWasCtr ? '3ds' : 'nds'"
+                :rom="lastWasCtr ? (ctrResult?.image ?? playBase) : outputPath"
+                :mod-romfs="lastWasCtr && !ctrResult?.image ? (ctrResult?.romfs ?? null) : null"
+              />
             </div>
           </Transition>
         </aside>
@@ -669,12 +936,202 @@ h3 {
   padding: 18px 20px;
 }
 
+/* Barre d'onglets façon éditeur de sauvegardes : pastille blanche, halo cyan. */
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tabs button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.tabs button.on {
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 60%, transparent);
+}
+
+.badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-2) 30%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tabs button.on .badge {
+  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  color: var(--bg);
+}
+
+.cap {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+  font: 700 11px/1 var(--font);
+  cursor: pointer;
+}
+
+.tab-intro {
+  margin: -2px 4px 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.preset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.preset:hover {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.preset small {
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-head h3 {
+  margin: 0;
+}
+
+.count {
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn.small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.summary li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.summary-tab {
+  flex: none;
+  min-width: 118px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.summary-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.recap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.recap small {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.recap:hover {
+  border-color: var(--accent);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 24px;
   margin-top: 14px;
+}
+
+.row.first {
+  margin-top: 4px;
 }
 
 .slider {
@@ -914,6 +1371,15 @@ h3 {
 
 .done h3 {
   font-size: 18px;
+}
+
+.row.first {
+  margin-top: 4px;
+}
+
+.note .path {
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .done-actions {

@@ -112,6 +112,12 @@ cargo test --workspace --exclude kaleido-app
 
 Les icônes viennent de [pokesprite](https://github.com/msikma/pokesprite) (MIT), téléchargées
 la première fois qu'elles s'affichent puis gardées en cache dans le dossier de l'application.
+Les autres styles (Réglages → « Style des Pokémon » : 3D animés, pixel animés façon Noir et Blanc,
+artwork HOME, et leurs images fixes `dex/` et `gen5/` quand les animations sont réduites) viennent
+des sprites de [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/) et de ses contributeurs ;
+ils ne sont pas inclus dans le dépôt, seulement téléchargés à la demande et mis en cache de la même
+façon. La table des noms Showdown et de l'ordre des formes (`app/src-tauri/src/showdown_ids.txt`)
+est générée depuis `data/pokedex.json` de [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) (MIT).
 Les noms français embarqués (`crates/core/data/noms-fr.json`) sont extraits d'une ROM avec
 `kaleido export-names`. Pokémon © Nintendo, Game Freak, The Pokémon Company.
 
@@ -120,6 +126,12 @@ attaques apprises, lieux de rencontre Gen 4 à 7) viennent des ressources de
 [PKHeX](https://github.com/kwsch/PKHeX) de kwsch (GPLv3), voir `crates/core/data/pkhex/README.md`.
 La puissance, la précision et la catégorie des attaques viennent de
 [PokeAPI](https://github.com/PokeAPI/pokeapi) (BSD-3-Clause).
+
+Import / export Showdown (`crates/core/src/showdown/`) : format d'équipe de
+[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) (MIT) et `ShowdownSet` de PKHeX (GPLv3),
+noms anglais tirés de PKHeX. Les sets compétitifs viennent des analyses de
+[Smogon University](https://www.smogon.com), au format JSON de [pkmn/smogon](https://github.com/pkmn/smogon)
+(`data.pkmn.cc`, MIT), téléchargés à la demande puis gardés en cache pour le hors-ligne.
 
 ## Licence
 

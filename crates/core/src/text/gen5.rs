@@ -76,6 +76,9 @@ impl Variant {
 
 const SPECIAL_LOOKALIKES: [u16; 2] = [0x2642, 0x2640];
 
+/// Début d'une chaîne compressée (Gen 5), comme en Gen 4.
+const COMPRESSED: u16 = 0xF100;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     /// Codes déchiffrés, terminateur compris.
@@ -276,6 +279,19 @@ pub fn decode_with(codes: &[u16], variant: Variant) -> String {
         if c == variant.newline() {
             out.push('\n');
             continue;
+        }
+        if variant == Variant::Gen5 && c == COMPRESSED {
+            // Chaîne compressée (noms des dresseurs de Noire/Blanche) : caractères sur 9 bits.
+            for code in super::unpack_9bit(&codes[i..], 16) {
+                match special.iter().find(|(s, _)| *s == code) {
+                    Some(&(_, ch)) => out.push(ch),
+                    None => match char::from_u32(code as u32) {
+                        Some(ch) if !ch.is_control() => out.push(ch),
+                        _ => push_escape(&mut out, "X", &[code]),
+                    },
+                }
+            }
+            break;
         }
         if c == variant.command() {
             // Gen 5 : commande, nombre d'arguments, arguments.

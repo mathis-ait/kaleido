@@ -116,7 +116,7 @@ pub fn decode(codes: &[u16]) -> String {
                 i += 2 + argc;
             }
             COMPRESSED => {
-                for code in unpack_9bit(&codes[i..]) {
+                for code in unpack_9bit(&codes[i..], 15) {
                     push_char(&mut out, code);
                 }
                 break;

@@ -22,9 +22,15 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
 
     let settings = crate::load_settings(preset)?;
     let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
-    let (outcome, romfs) = randomizer::ctr::randomize(&game, &settings, seed, Path::new(out), LayeredFsTarget::Luma)?;
-    println!("{} emplacements sauvages, {} Pokémon de dresseurs → {}", outcome.wild_slots, outcome.trainer_pokemon, romfs.display());
+    let (outcome, written) = randomizer::ctr::randomize(&game, &settings, seed, Path::new(out), LayeredFsTarget::Luma)?;
+    println!("{} emplacements sauvages, {} Pokémon de dresseurs", outcome.wild_slots, outcome.trainer_pokemon);
     std::fs::write(format!("{out}/journal.txt"), &outcome.log)?;
+    if let Some(image) = &written.image {
+        println!("ROM complète → {}", image.display());
+    }
+    // Sortie « .3ds » seule (réglage `ctrOutput` d'un fichier JSON) : pas de dossier à relire.
+    let Some(romfs) = written.romfs else { return Ok(()) };
+    println!("LayeredFS → {}", romfs.display());
 
     // Relecture : une zone et un dresseur, depuis les fichiers écrits.
     let names = game.text_file(game.layout.species_names)?;

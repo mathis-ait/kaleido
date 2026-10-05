@@ -25,11 +25,16 @@ const LARGE: usize = 1007;
 /// Noms des formes de l'espèce dans le jeu (index = numéro de forme).
 /// Vide si l'espèce n'a pas de forme alternative.
 pub fn form_names(game: Game, species: u16) -> Vec<String> {
+    form_names_from(game, species, forms_list(), type_names())
+}
+
+/// Même logique avec d'autres listes de noms (formes et types), par exemple en anglais.
+pub(super) fn form_names_from(game: Game, species: u16, forms: &[&str], types: &[&str]) -> Vec<String> {
     if species == 0 || species > max_species(game) {
         return Vec::new();
     }
-    let f = |i: usize| forms_list().get(i).copied().unwrap_or("").to_string();
-    let t = |i: usize| type_names().get(i).copied().unwrap_or("").to_string();
+    let f = |i: usize| forms.get(i).copied().unwrap_or("").to_string();
+    let t = |i: usize| types.get(i).copied().unwrap_or("").to_string();
     let range = |a: usize, b: usize| (a..=b).map(f).collect::<Vec<_>>();
     let with = |first: String, rest: Vec<String>| std::iter::once(first).chain(rest).collect::<Vec<_>>();
     let generation = game.generation();

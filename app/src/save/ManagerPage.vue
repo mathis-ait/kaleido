@@ -6,7 +6,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
 import { library } from "../library";
-import { openSave, recentSaves, saveState } from "../saveStore";
+import { goTo, openSave, recentSaves, saveState } from "../saveStore";
 import type { Gender } from "../types";
 import { useShell } from "./shell";
 
@@ -35,6 +35,8 @@ const loading = ref(false);
 const search = ref("");
 const genFilter = ref<number | null>(null);
 const selected = ref<string | null>(null);
+/** Émulateur qui utilise chaque sauvegarde détectée automatiquement. */
+const emulatorOf = ref<Record<string, string>>({});
 
 function readFolder() {
   try {
@@ -66,6 +68,11 @@ async function refresh() {
   }
   if (saveState.path) paths.add(saveState.path);
   recentSaves().forEach((p) => paths.add(p));
+  // Sauvegardes rangées par les émulateurs (Azahar, Citra, melonDS, DeSmuME) et à côté des ROMs.
+  const romDirs = [...new Set(library.items.filter((d) => d.kind !== "save").map((d) => d.path.replace(/[\\/][^\\/]*$/, "")))];
+  const fromEmus = await invoke<{ path: string; emulator: string; game: string | null }[]>("emulator_saves", { romDirs }).catch(() => []);
+  emulatorOf.value = Object.fromEntries(fromEmus.map((s) => [s.path, s.emulator]));
+  fromEmus.forEach((s) => paths.add(s.path));
   const results = await Promise.all(
     [...paths].map((path) =>
       invoke<Peek>("peek_save", { path }).catch(() => {
@@ -151,6 +158,7 @@ useShell(() => ({
       <button class="sv-btn" @click="refresh"><Icon name="refresh" :size="15" /> Actualiser</button>
       <button class="sv-btn" @click="chooseFolder"><Icon name="folder" :size="15" /> {{ folder ? "Changer de dossier" : "Choisir un dossier" }}</button>
       <button v-if="folder" class="sv-btn" title="Ouvrir le dossier dans l'explorateur" @click="openPath(folder)"><Icon name="folder-open" :size="15" /></button>
+      <button class="sv-btn" title="Banque Kaleido : PC commun à toutes tes sauvegardes" @click="goTo('bank')"><Icon name="bank" :size="15" /> Banque</button>
     </div>
     <p v-if="folder" class="sv-help">Dossier : {{ folder }}</p>
 
@@ -186,6 +194,7 @@ useShell(() => ({
                 <strong>{{ s.game.replace("Pokémon ", "") }}</strong>
                 <span v-if="isOpen(s)" class="chip on">Ouverte</span>
                 <span class="chip">Gen {{ s.generation }}</span>
+                <span v-if="emulatorOf[s.path]" class="chip emu" :title="`Trouvée automatiquement chez ${emulatorOf[s.path]} : ${s.path}`">{{ emulatorOf[s.path] }}</span>
               </div>
               <div class="who">
                 <span :class="s.trainer.gender">{{ s.trainer.gender === "female" ? "♀" : "♂" }}</span>
@@ -336,6 +345,11 @@ section h3 {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.chip.emu {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .chip.on {

@@ -100,6 +100,11 @@ pub struct Settings {
     /// Pokémon fixes, dons et échanges en jeu.
     #[serde(default)]
     pub statics: super::statics::StaticSettings,
+    /// 3DS : dossier LayeredFS, ROM `.3ds` complète, ou les deux. Absent des anciens
+    /// codes de partage (valeur par défaut : LayeredFS) et omis quand il vaut la valeur
+    /// par défaut, pour que les codes restent identiques.
+    #[serde(default, skip_serializing_if = "super::ctr::CtrOutput::is_default")]
+    pub ctr_output: super::ctr::CtrOutput,
 }
 
 impl Default for Settings {
@@ -115,6 +120,7 @@ impl Default for Settings {
             moves: Default::default(),
             items: Default::default(),
             statics: Default::default(),
+            ctr_output: Default::default(),
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,
@@ -217,5 +223,23 @@ mod tests {
         let code = share_code(42, &settings);
         assert_eq!(parse_share_code(&code), Some((42, settings)));
         assert_eq!(parse_share_code("n'importe quoi"), None);
+    }
+
+    #[test]
+    fn ctr_output_compat() {
+        use crate::randomizer::ctr::CtrOutput;
+        // Un ancien code (sans `ctrOutput`) donne la sortie LayeredFS, et le code par
+        // défaut ne change pas.
+        let old = share_code(7, &Settings::default());
+        assert!(!old.is_empty());
+        let json = serde_json::to_string(&Settings::default()).unwrap();
+        assert!(!json.contains("ctrOutput"));
+        assert_eq!(parse_share_code(&old).unwrap().1.ctr_output, CtrOutput::LayeredFs);
+
+        let both = Settings { ctr_output: CtrOutput::Both, ..Settings::default() };
+        assert!(serde_json::to_string(&both).unwrap().contains("\"ctrOutput\":\"both\""));
+        assert_eq!(parse_share_code(&share_code(7, &both)), Some((7, both)));
+        let rom: Settings = serde_json::from_str(r#"{"ctrOutput":"rom3ds"}"#).unwrap();
+        assert_eq!(rom.ctr_output, CtrOutput::Rom3ds);
     }
 }

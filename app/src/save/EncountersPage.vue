@@ -206,6 +206,7 @@ useShell(() => ({
                 <Tip :term="kindTerm(e)" />
                 <span class="lvl">{{ levelText(e) }}</span>
               </div>
+              <div v-if="e.title" class="versions">« {{ e.title }} »</div>
               <div class="place"><Icon name="map" :size="14" /> {{ e.locationName }}</div>
               <div class="versions">{{ e.versionNames.join(" · ") }}<template v-if="e.formName"> · {{ e.formName }}</template></div>
               <div class="badges">

@@ -1,17 +1,22 @@
 //! Cœur de Kaleido : connaissance des jeux, détection des fichiers, textes et données.
 
+pub mod bank;
+pub mod battle;
 pub mod ctr_rom;
 pub mod data;
 pub mod detect;
 pub mod dex;
 pub mod games;
+pub mod gifts;
 pub mod legality;
 pub mod names;
+pub mod nuzlocke;
 pub mod pokemon;
 pub mod randomizer;
 pub mod rom;
 pub mod save;
 pub mod saves;
+pub mod showdown;
 pub mod text;
 
 pub use ctr_rom::{CtrGameRom, CtrLayout};

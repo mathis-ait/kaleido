@@ -21,6 +21,7 @@
 //! Le Pokédex est géré par [`pokedex`].
 
 pub mod checksum;
+pub mod convert;
 pub mod edit;
 mod gen4;
 mod gen5;
@@ -28,9 +29,11 @@ mod gen6;
 mod gen7;
 mod inventory;
 mod memecrypto;
+mod origin;
 pub mod pkm;
 pub mod pokedex;
 pub mod session;
+pub mod showdown_apply;
 pub mod stats;
 mod strings;
 
@@ -39,6 +42,7 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 pub use inventory::{InventoryItem, Pouch, PouchKind};
+pub use origin::TrainerOrigin;
 pub use pkm::{Gender, PkmDate, PkmError, PkmFormat, Pokemon, PokemonSummary, ShinyMode};
 pub use stats::{calc_stats, exp_for_level, level_from_exp, nature_name, GrowthRate, NATURES_FR};
 
@@ -347,6 +351,28 @@ impl SaveFile {
             gender: if rd_u8(d, t.gender) == 0 { Gender::Male } else { Gender::Female },
             money: rd_u32(d, t.money),
             play_time: PlayTime { hours: rd_u16(d, t.hours), minutes: rd_u8(d, t.minutes), seconds: rd_u8(d, t.seconds) },
+        }
+    }
+
+    /// Badges d'arène obtenus (un bit par badge), Gen 4 et 5 seulement.
+    /// PKHeX : SAV4 `Badges = General[Trainer1 + 0x1A]` (argent en Trainer1 + 0x14) ;
+    /// Misc5 `Badges = Data[0x04]` (argent en 0x00). Pour HGSS, badges de Johto.
+    pub fn badges(&self) -> Option<u8> {
+        self.badges_offset().map(|at| rd_u8(&self.data, at))
+    }
+
+    pub fn set_badges(&mut self, bits: u8) {
+        if let Some(b) = self.badges_offset().and_then(|at| self.data.get_mut(at)) {
+            *b = bits;
+        }
+    }
+
+    fn badges_offset(&self) -> Option<usize> {
+        let money = self.layout.trainer.money;
+        match self.generation() {
+            4 => Some(money + 6),
+            5 => Some(money + 4),
+            _ => None,
         }
     }
 

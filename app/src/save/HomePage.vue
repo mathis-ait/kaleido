@@ -5,6 +5,9 @@ import Sprite from "../components/Sprite.vue";
 import { nav } from "../nav";
 import { closeSave, editPokemon, goTo, history, saveState, writeSave } from "../saveStore";
 import { useShell } from "./shell";
+import LiveSyncBadge from "../play/LiveSyncBadge.vue";
+import { playOpenSave, sendToGame } from "../play/play";
+import { bankState, loadBankInfo } from "../bankStore";
 
 const emit = defineEmits<{ open: []; "save-as": [] }>();
 
@@ -70,6 +73,24 @@ const tiles = computed<Tile[]>(() => [
     go: () => goTo("tools", "dex"),
   },
   {
+    id: "nuzlocke",
+    title: "Nuzlocke",
+    sub: "Routes, morts, niveau maximum",
+    band: "Suivre un défi Nuzlocke avec la ROM (randomisée) de ta partie",
+    icon: "swords",
+    gradient: "linear-gradient(150deg, #ff7b7b, #c2365a 55%, #7a1f4a)",
+    go: () => goTo("nuzlocke"),
+  },
+  {
+    id: "battle",
+    title: "Combat",
+    sub: "Préparer un combat contre un dresseur",
+    band: "Dégâts, K.O. et Vitesse de ton équipe contre les dresseurs de la ROM (randomisée ou non)",
+    icon: "swords",
+    gradient: "linear-gradient(150deg, #ff7a6b, #e0457b 55%, #9d2f8f)",
+    go: () => goTo("battle"),
+  },
+  {
     id: "manager",
     title: "Sauvegardes",
     sub: "Toutes tes parties",
@@ -99,20 +120,20 @@ const tiles = computed<Tile[]>(() => [
   {
     id: "gifts",
     title: "Cadeaux mystère",
-    sub: "Bientôt",
-    band: "Distributions d'événements (en préparation)",
+    sub: "Distributions Gen 4 à 7",
+    band: "Recevoir les Pokémon et objets des événements officiels, ouvrir ou enregistrer des cartes cadeau",
     icon: "gift",
     gradient: "linear-gradient(150deg, #ffb36b, #f0703a)",
-    soon: true,
+    go: () => goTo("gifts"),
   },
   {
     id: "bank",
     title: "Banque",
-    sub: "Bientôt",
-    band: "Transférer des Pokémon d'un jeu à l'autre (en préparation)",
+    sub: bankState.info ? `${bankState.info.count} Pokémon à l'abri` : "PC commun à tes sauvegardes",
+    band: "Ranger tes Pokémon hors des sauvegardes et les transférer vers un jeu plus récent",
     icon: "bank",
     gradient: "linear-gradient(150deg, #9db4ff, #5a6fe0)",
-    soon: true,
+    go: () => goTo("bank"),
   },
 ]);
 
@@ -152,7 +173,10 @@ function onKey(e: KeyboardEvent) {
   e.preventDefault();
 }
 
-onMounted(() => window.addEventListener("keydown", onKey));
+onMounted(() => {
+  window.addEventListener("keydown", onKey);
+  loadBankInfo();
+});
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 
 useShell(() => ({
@@ -169,6 +193,8 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   { icon: "folder-open", label: "Ouvrir une sauvegarde (Ctrl+O)", run: () => emit("open"), tone: "#ff7a6b" },
   { icon: "save", label: "Enregistrer (Ctrl+S)", run: () => writeSave() },
   { icon: "upload", label: "Enregistrer sous…", run: () => emit("save-as"), tone: "#ffc65c" },
+  { icon: "play", label: "Jouer : lancer le jeu avec cette sauvegarde", run: () => playOpenSave(), tone: "#5ce0a0" },
+  { icon: "send", label: "Envoyer au jeu (ferme le jeu avant)", run: () => sendToGame(), tone: "#5ad1ff" },
   { icon: "grid", label: "Boîtes (Ctrl+1)", run: () => goTo("boxes"), tone: "#7fb2ff" },
   { icon: "undo", label: "Annuler (Ctrl+Z)", run: () => history(false), tone: "#7ef0b0" },
   { icon: "settings", label: "Apparence de Kaleido", run: () => (nav.view = "settings") },
@@ -197,6 +223,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
         </button>
       </div>
       <div class="corner">
+        <LiveSyncBadge :send="false" />
         <span class="game">{{ view.game }}</span>
         <Icon name="save" :size="20" :class="{ dirty: saveState.dirty }" />
         <span class="clock">{{ time }}</span>
@@ -225,7 +252,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
         >
           <div class="art">
             <template v-if="tile.id === 'pokemon' && lead">
-              <Sprite :id="lead.species" :shiny="lead.shiny" :size="150" />
+              <Sprite :id="lead.species" :shiny="lead.shiny" :form="lead.form" :gender="lead.gender" variant="model" :size="150" />
             </template>
             <div v-else-if="tile.id === 'boxes'" class="mini">
               <span v-for="p in boxPreview" :key="JSON.stringify(p!.slot)"><Sprite :id="p!.species" :shiny="p!.shiny" :size="52" /></span>

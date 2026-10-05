@@ -12,6 +12,7 @@
 //!
 //! Tout est embarqué dans le binaire et décodé à la demande (`LazyLock`).
 
+mod english;
 mod forms;
 mod moves;
 mod personal;
@@ -22,6 +23,12 @@ mod tests;
 
 use serde::Serialize;
 
+pub use english::{
+    ability_name_en, ability_name_lang, ball_name_lang, find_ability, find_ball, find_form, find_item, find_move, find_nature,
+    find_species, find_type, form_names_en, form_names_lang, guess_lang, item_name_en, item_name_lang, move_name_en,
+    move_name_lang, nature_name_en, nature_name_lang, normalize_name, species_name_en, species_name_lang, type_name_en,
+    type_name_lang, Lang,
+};
 pub use forms::{form_name, form_names};
 pub use moves::{move_info, move_info_in, MoveCategory, MoveInfo};
 pub use personal::{egg_moves, levelup, personal, PersonalInfo};

@@ -80,6 +80,7 @@ export interface EncounterEntry {
   trainer?: string;
   fateful: boolean;
   egg: boolean;
+  title?: string;
 }
 
 export interface SpeciesEncounters {
@@ -136,6 +137,10 @@ export const CHECK_TERMS: Record<string, string> = {
   "vc-species": "virtualConsole",
   "vc-language": "virtualConsole",
   "vc-contest": "virtualConsole",
+  "vc-ivs": "virtualConsole",
+  "event-none": "fateful",
+  "event-language": "fateful",
+  "event-ec": "ec",
 };
 
 /** Rapports en cache, par Pokémon (clé = données affichées : toute modification invalide). */

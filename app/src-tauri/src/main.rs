@@ -12,8 +12,15 @@ use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+mod play;
+mod emusaves;
+mod nuzlocke;
+mod bank;
+mod gifts;
+mod battle;
 mod legality;
 mod saves;
+mod showdown;
 mod sprites;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
@@ -152,17 +159,22 @@ async fn randomize_rom(path: PathBuf, settings: Settings, seed: u64, output: Pat
 struct CtrOutcome {
     #[serde(flatten)]
     outcome: Outcome,
-    romfs: String,
+    /// Dossier `romfs` du LayeredFS (si demandé).
+    romfs: Option<String>,
+    /// ROM `.3ds` / `.cxi` reconstruite (si demandée).
+    image: Option<String>,
 }
 
-/// Randomise un jeu 3DS vers un dossier LayeredFS (+ journal).
+/// Randomise un jeu 3DS vers un dossier LayeredFS et/ou une ROM complète (+ journal),
+/// selon `settings.ctr_output`.
 #[tauri::command]
 async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: PathBuf, target: LayeredFsTarget) -> Result<CtrOutcome, String> {
     blocking(move || {
         let game = CtrGameRom::open(&path).map_err(|e| e.to_string())?;
-        let (outcome, romfs) = randomizer::ctr::randomize(&game, &settings, seed, &output, target).map_err(|e| e.to_string())?;
+        let (outcome, written) = randomizer::ctr::randomize(&game, &settings, seed, &output, target).map_err(|e| e.to_string())?;
         std::fs::write(output.join(format!("Kaleido {seed} - journal.txt")), &outcome.log).map_err(|e| e.to_string())?;
-        Ok(CtrOutcome { outcome, romfs: romfs.display().to_string() })
+        let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
+        Ok(CtrOutcome { outcome, romfs: show(written.romfs), image: show(written.image) })
     })
     .await
 }
@@ -188,6 +200,11 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(OpenRom::default())
         .manage(saves::OpenSave::default())
+        .manage(play::SaveWatch::default())
+        .manage(nuzlocke::RomCache::default())
+        .manage(bank::OpenBank::default())
+        .manage(gifts::GiftFiles::default())
+        .manage(battle::LinkedRom::default())
         .register_asynchronous_uri_scheme_protocol("sprite", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
@@ -230,6 +247,54 @@ fn main() {
             saves::save_dex_all,
             saves::peek_save,
             saves::name_lists,
+            play::emulators_list,
+            play::emulators_save,
+            play::emulator_test,
+            play::play_plan,
+            play::play_rom,
+            play::play_backup,
+            play::play_temp_save,
+            play::play_install_save,
+            play::play_find_rom,
+            play::watch_save,
+            play::unwatch_save,
+            play::watch_save_resync,
+            nuzlocke::nuzlocke_view,
+            nuzlocke::nuzlocke_set_state,
+            nuzlocke::nuzlocke_link_rom,
+            bank::bank_info,
+            bank::bank_set_path,
+            bank::bank_box,
+            bank::bank_box_compat,
+            bank::bank_detail,
+            bank::bank_search,
+            bank::bank_move,
+            bank::bank_delete,
+            bank::bank_add_box,
+            bank::bank_rename_box,
+            bank::bank_delete_box,
+            bank::bank_import,
+            bank::bank_export,
+            bank::bank_deposit,
+            bank::bank_withdraw,
+            showdown::showdown_preview,
+            showdown::showdown_import,
+            showdown::showdown_export,
+            showdown::showdown_apply,
+            showdown::showdown_add_set,
+            showdown::smogon_sets,
+            emusaves::emulator_saves,
+            gifts::gifts_search,
+            gifts::gifts_overview,
+            gifts::gifts_details,
+            gifts::gifts_add,
+            gifts::gifts_export,
+            gifts::gifts_import,
+            battle::battle_link_rom,
+            battle::battle_linked,
+            battle::battle_unlink,
+            battle::battle_matrix,
+            battle::battle_duel,
             legality::legality_check,
             legality::legality_check_all,
             legality::legality_legalize,

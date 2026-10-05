@@ -23,6 +23,8 @@ import {
 import type { Slot, SlotView } from "../types";
 import { BALLS, genderSymbol, NATURES } from "./refdata";
 import { useShell } from "./shell";
+import { openShowdown } from "./showdown/api";
+import ShowdownDialog from "./showdown/ShowdownDialog.vue";
 
 const view = computed(() => saveState.view!);
 const boxCount = computed(() => view.value.boxNames.length);
@@ -252,6 +254,9 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
             @click="loadBox(i)"
           />
         </div>
+        <button class="sv-btn" title="Importer ou exporter une équipe au format Pokémon Showdown (Ctrl+I)" @click="openShowdown()">
+          <Icon name="swords" :size="15" /> Showdown
+        </button>
       </header>
       <div class="grid">
         <button
@@ -371,6 +376,8 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
       <Sprite :id="ghost.species" :shiny="ghost.shiny" :size="84" />
       <span v-if="ghost.mode !== 'move'" class="mode">{{ ghost.mode === "copy" ? "Copier" : "Écraser" }}</span>
     </div>
+
+    <ShowdownDialog :target="cursor" />
   </div>
 </template>
 
