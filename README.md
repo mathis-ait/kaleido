@@ -17,7 +17,7 @@ Inspirations : [Universal Pokémon Randomizer ZX](https://github.com/Ajarmar/uni
 | Pokédex (éditeur de ROM, lecture) | Platine, Noire, Blanche, Rubis Oméga, Saphir Alpha (vérifiés) ; autres jeux DS/3DS « non vérifiés » | ✓ |
 | Randomizer → ROM `.nds` | Platine, Noire, Blanche | ✓ starters, sauvages, dresseurs, types, stats, talents |
 | Randomizer → mod LayeredFS (Luma3DS ou émulateur) | Rubis Oméga, Saphir Alpha | ✓ sauvages, dresseurs, types, stats, talents (starters inchangés) |
-| Éditeur de sauvegardes | Gen 4 à 7 | Expérimental : formats non vérifiés sur de vraies parties |
+| Éditeur de sauvegardes (interface façon TidalHeX) | Gen 4 à 7 | ✓ boîtes, fiche complète, dresseur, sac, Pokédex, noms des boîtes, vérifications ; vérifié sur le code de PKHeX et sur une vraie sauvegarde Soleil/Lune (signature recalculée) ; Gen 4 à 6 sans vraie sauvegarde de test |
 | Switch | Let's Go, Épée, Bouclier, Légendes Arceus | Plus tard |
 
 Aucune ROM randomisée n'a encore été testée en jeu : la validation porte sur la relecture
@@ -102,8 +102,10 @@ cargo test --workspace --exclude kaleido-app
    Formats 3DS : RomFS, GARC, textes Gen 6/7, Pokédex Gen 6/7 (vérifié sur ROSA) ✓
 2. **Randomizer DS** : Platine, Noire, Blanche ✓ — à faire : HGSS, Noire 2 / Blanche 2 (ROMs nécessaires)
 3. **Randomizer 3DS** : ROSA ✓ (LayeredFS) — à faire : starters (module `.cro` signé), XY, SL, USUL
-4. **Éditeur de sauvegardes** Gen 4 à 7 ✓ (expérimental) — à faire : validation sur de vraies sauvegardes,
-   signature des sauvegardes Soleil / Lune
+4. **Éditeur de sauvegardes** Gen 4 à 7 ✓ — accueil à tuiles, boîtes (glisser, Maj = copier, Alt = écraser,
+   annuler / rétablir), fiche Pokémon en 6 onglets, dresseur, sac, Pokédex, gestionnaire de sauvegardes,
+   signature Soleil / Lune. À faire : rubans, souvenirs, Cadeaux mystère, base des rencontres et légalité
+   complète, banque de Pokémon entre jeux (façon PKForge), Gen 1 à 3 et Switch
 5. **Switch**, sur le modèle de pkNX
 
 ## Sprites

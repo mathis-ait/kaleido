@@ -121,7 +121,16 @@ const strip = ref<HTMLElement | null>(null);
 const focused = computed(() => tiles.value[focus.value]);
 
 function scrollToFocus() {
-  nextTick(() => strip.value?.querySelector<HTMLElement>(`[data-i="${focus.value}"]`)?.scrollIntoView({ inline: "nearest", behavior: "smooth", block: "nearest" }));
+  // Défilement horizontal de la bande seulement (scrollIntoView ferait défiler toute la page).
+  nextTick(() => {
+    const s = strip.value;
+    const el = s?.querySelector<HTMLElement>(`[data-i="${focus.value}"]`);
+    if (!s || !el) return;
+    const left = el.offsetLeft - 48;
+    const right = el.offsetLeft + el.offsetWidth + 48 - s.clientWidth;
+    if (s.scrollLeft > left) s.scrollTo({ left, behavior: "smooth" });
+    else if (s.scrollLeft < right) s.scrollTo({ left: right, behavior: "smooth" });
+  });
 }
 
 function move(d: number) {
@@ -338,6 +347,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
 }
 
 .strip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 22px;

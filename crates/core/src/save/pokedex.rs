@@ -28,7 +28,7 @@ use serde::Serialize;
 use super::{rd_u8, SaveError, SaveFile, SaveVersion};
 
 /// État d'une espèce dans le Pokédex.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DexEntry {
     pub species: u16,

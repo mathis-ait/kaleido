@@ -63,7 +63,7 @@ const learnset = ref<{ levelup: [number, number][]; egg: number[] } | null>(null
 watch(
   () => [props.p.species, props.p.form],
   async () => {
-    learnset.value = await invoke("save_learnset", { species: props.p.species, form: props.p.form }).catch(() => null);
+    learnset.value = await invoke<{ levelup: [number, number][]; egg: number[] }>("save_learnset", { species: props.p.species, form: props.p.form }).catch(() => null);
   },
   { immediate: true },
 );

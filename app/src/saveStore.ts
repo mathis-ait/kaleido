@@ -80,6 +80,7 @@ export async function openSave(path: string) {
   saveState.loading = false;
   if (!view) return;
   Object.assign(saveState, { path, view, box: 0, dirty: false, notice: null, page: "home", tool: null });
+  rememberSave(path);
   await loadBox(0);
   saveState.selected = view.party[0] ?? null;
   loadLists();
@@ -210,4 +211,24 @@ export function goTo(page: SavePage, tool: SaveTool | null = null) {
 export function editPokemon(p: SlotView) {
   saveState.selected = p;
   goTo("pokemon");
+}
+
+const RECENT_KEY = "kaleido.recentSaves";
+
+/** Sauvegardes ouvertes récemment (les plus récentes d'abord). */
+export function recentSaves(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function rememberSave(path: string) {
+  try {
+    const list = [path, ...recentSaves().filter((p) => p !== path)].slice(0, 30);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+    /* stockage indisponible : liste non mémorisée */
+  }
 }

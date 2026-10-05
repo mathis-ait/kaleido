@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import "../save/form.css";
 import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
 import HomePage from "../save/HomePage.vue";
@@ -177,7 +178,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
         </button>
         <span class="hint">{{ shell.hint }}</span>
       </div>
-      <button v-if="view" class="home" :class="{ on: saveState.page === 'home' }" title="Accueil (Ctrl+H)" @click="goTo('home')">
+      <button v-if="view" class="home-btn" :class="{ on: saveState.page === 'home' }" title="Accueil (Ctrl+H)" @click="goTo('home')">
         <Icon name="home" :size="22" />
       </button>
       <div class="right">
@@ -412,7 +413,8 @@ kbd {
 
 .right {
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .hint {
@@ -448,7 +450,7 @@ kbd {
   cursor: default;
 }
 
-.home {
+.home-btn {
   display: grid;
   place-items: center;
   width: 48px;
@@ -459,8 +461,8 @@ kbd {
   transition: background 0.15s;
 }
 
-.home:hover,
-.home.on {
+.home-btn:hover,
+.home-btn.on {
   background: color-mix(in srgb, var(--text) 16%, transparent);
 }
 

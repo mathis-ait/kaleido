@@ -38,7 +38,7 @@ const slots = computed(() => {
   const out: { n: number; label: string; id: number }[] = [];
   if (!d) return out;
   out.push({ n: 1, label: d.abilityNames[0] || "Talent 1", id: d.abilities[0] });
-  if (d.abilities[1] && d.abilities[1] !== d.abilities[0]) out.push({ n: 2, label: d.abilityNames[1], id: d.abilities[1] });
+  if (d.abilities[1] && (d.abilities[1] !== d.abilities[0] || props.p.abilityNumber === 2)) out.push({ n: 2, label: d.abilityNames[1], id: d.abilities[1] });
   if (gen.value >= 5 && d.abilities[2]) out.push({ n: 4, label: `${d.abilityNames[2]} (caché)`, id: d.abilities[2] });
   return out;
 });
@@ -138,7 +138,7 @@ const languages = computed(() => LANGUAGES.filter((l) => !l.since || gen.value >
       <span class="sv-label">Talent <Tip term="ability" /> <Tip v-if="gen >= 5" term="hiddenAbility" /></span>
       <div class="sv-row">
         <div v-if="slots.length" class="sv-seg">
-          <button v-for="s in slots" :key="s.n" :class="{ on: p.abilityNumber === s.n && p.ability === s.id }" @click="setSlot(s)">{{ s.label }}</button>
+          <button v-for="s in slots" :key="s.n" :class="{ on: p.abilityNumber === s.n }" @click="setSlot(s)">{{ s.label }}</button>
         </div>
         <div class="other">
           <Combo v-model="ability" :options="abilityOptions" placeholder="Autre talent…" />

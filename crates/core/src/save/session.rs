@@ -855,3 +855,23 @@ pub fn gender_from_pid(ratio: u8, pid: u32) -> Gender {
         _ => Gender::Male,
     }
 }
+
+impl SaveSession {
+    pub fn pokedex(&self) -> Result<Vec<super::pokedex::DexEntry>, SaveError> {
+        self.save.pokedex()
+    }
+
+    /// Modifie plusieurs entrées du Pokédex en une seule étape d'historique.
+    pub fn set_dex(&mut self, entries: &[super::pokedex::DexEntry]) -> Result<(), SaveError> {
+        self.mutate(|s| {
+            for e in entries {
+                s.save.set_dex_entry(e.species, e.seen, e.caught)?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn dex_set_all(&mut self, seen: bool, caught: bool) -> Result<(), SaveError> {
+        self.mutate(|s| s.save.dex_set_all(seen, caught))
+    }
+}

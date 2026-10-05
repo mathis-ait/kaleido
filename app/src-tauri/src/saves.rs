@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use kaleido_core::save::edit::TrainerPatch;
+use kaleido_core::save::pokedex::DexEntry;
 use kaleido_core::save::session::{self, PokemonPatch, SaveSession, SaveView, Slot, SlotView};
 use kaleido_core::{dex, names, save};
 use serde::Serialize;
@@ -254,4 +255,71 @@ pub fn save_learnset(species: u16, form: u8, state: State<'_, OpenSave>) -> Resu
 pub struct Learnset {
     levelup: Vec<(u16, u8)>,
     egg: Vec<u16>,
+}
+
+#[tauri::command]
+pub fn save_dex(state: State<'_, OpenSave>) -> Result<Vec<DexEntry>, String> {
+    state.with(|s| s.pokedex())
+}
+
+#[tauri::command]
+pub fn save_set_dex(entries: Vec<DexEntry>, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        s.set_dex(&entries)?;
+        s.view()
+    })
+}
+
+#[tauri::command]
+pub fn save_dex_all(seen: bool, caught: bool, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        s.dex_set_all(seen, caught)?;
+        s.view()
+    })
+}
+
+/// Aperçu d'une sauvegarde pour le gestionnaire (sans l'ouvrir dans l'éditeur).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePeek {
+    path: String,
+    file_name: String,
+    game: &'static str,
+    version: save::SaveVersion,
+    generation: u8,
+    trainer: save::Trainer,
+    party: Vec<(u16, bool)>,
+    caught: usize,
+    seen: usize,
+    dex_max: u16,
+    stored: usize,
+    /// Dernière modification du fichier (secondes depuis 1970).
+    modified: Option<u64>,
+}
+
+#[tauri::command]
+pub async fn peek_save(path: PathBuf) -> Result<SavePeek, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
+        let s = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+        let v = s.view().map_err(|e| e.to_string())?;
+        let dex = s.pokedex().unwrap_or_default();
+        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
+        Ok(SavePeek {
+            file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            path: path.display().to_string(),
+            game: v.game,
+            version: v.version,
+            generation: v.generation,
+            party: v.party.iter().map(|p| (p.summary.species, p.summary.shiny)).collect(),
+            caught: dex.iter().filter(|e| e.caught).count(),
+            seen: dex.iter().filter(|e| e.seen).count(),
+            dex_max: s.save.dex_max_species(),
+            stored: v.box_fill.iter().sum(),
+            trainer: v.trainer,
+            modified,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

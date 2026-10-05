@@ -224,6 +224,10 @@ fn main() {
             saves::save_lists,
             saves::save_suggest_moves,
             saves::save_learnset,
+            saves::save_dex,
+            saves::save_set_dex,
+            saves::save_dex_all,
+            saves::peek_save,
             saves::name_lists
         ])
         .run(tauri::generate_context!())

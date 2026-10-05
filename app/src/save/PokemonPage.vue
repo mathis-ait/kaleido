@@ -96,7 +96,6 @@ useShell(() => ({
     ? [
         { key: ",", cap: "<", label: "Précédent", run: () => stepPokemon(-1) },
         { key: ".", cap: ">", label: "Suivant", run: () => stepPokemon(1) },
-        { key: "x", cap: "X", label: "Exporter", run: exportIt },
         { key: "y", cap: "Y", label: "Vérifications", run: () => (showReport.value = !showReport.value) },
         { key: "Ctrl+Tab", cap: "Ctrl+Tab", label: "Onglet suivant", run: () => goTab(1) },
       ]
