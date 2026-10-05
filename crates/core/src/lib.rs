@@ -4,6 +4,7 @@ pub mod detect;
 pub mod games;
 pub mod pokemon;
 pub mod rom;
+pub mod save;
 pub mod saves;
 pub mod text;
 
