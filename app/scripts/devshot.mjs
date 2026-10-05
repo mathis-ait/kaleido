@@ -3,7 +3,9 @@
 //
 // Usage : node scripts/devshot.mjs "<code JS à exécuter>" [capture.png] [attente ms]
 
-const [code = "", out, wait = "1500"] = process.argv.slice(2);
+// `@fichier.js` : lit le code à exécuter depuis un fichier (évite les soucis de guillemets du shell).
+const [rawCode = "", out, wait = "1500"] = process.argv.slice(2);
+const code = rawCode.startsWith("@") ? (await import("node:fs")).readFileSync(rawCode.slice(1), "utf8") : rawCode;
 
 const targets = await (await fetch("http://127.0.0.1:9222/json")).json();
 const page = targets.find((t) => t.type === "page");

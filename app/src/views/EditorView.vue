@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import Sprite from "../components/Sprite.vue";
+import StatRadar from "../components/StatRadar.vue";
 import TypeBadge from "../components/TypeBadge.vue";
 import { editor, openRom } from "../editor";
 import { library } from "../library";
@@ -58,6 +59,13 @@ function sortBy(key: SortKey) {
     sortDesc.value = key !== "id" && key !== "name";
   }
 }
+
+const detail = ref<Species | null>(null);
+/** Pokémon voisin dans la liste filtrée et triée. */
+const neighbour = (step: number) => {
+  const i = rows.value.findIndex((p) => p.id === detail.value?.id);
+  return i < 0 ? null : (rows.value[i + step] ?? null);
+};
 
 const arrow = (key: SortKey) => (sortKey.value === key ? (sortDesc.value ? "↓" : "↑") : "");
 /** Couleur de la barre : rouge → jaune → vert → cyan selon la valeur. */
@@ -125,7 +133,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
           <button class="num" @click="sortBy('total')">Total {{ arrow("total") }}</button>
           <span>Talents</span>
         </div>
-        <div v-for="p in rows" :key="p.id" class="row">
+        <div v-for="p in rows" :key="p.id" class="row clickable" :class="{ selected: detail?.id === p.id }" @click="detail = p">
           <span class="id">#{{ String(p.id).padStart(3, "0") }}</span>
           <strong class="name"><Sprite :id="p.id" :size="60" class="icon" />{{ p.name }}</strong>
           <span class="types"><TypeBadge v-for="t in p.types" :key="t.key" :type="t" /></span>
@@ -142,6 +150,36 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
           </span>
         </div>
       </div>
+
+      <!-- Fiche détaillée -->
+      <Transition name="drawer">
+        <aside v-if="detail" class="detail panel" @keydown.esc="detail = null">
+          <button class="close" aria-label="Fermer" @click="detail = null">×</button>
+          <div class="halo">
+            <Sprite :id="detail.id" :size="170" />
+          </div>
+          <span class="id">#{{ String(detail.id).padStart(3, "0") }}</span>
+          <h2>{{ detail.name }}</h2>
+          <div class="types"><TypeBadge v-for="t in detail.types" :key="t.key" :type="t" /></div>
+          <StatRadar :stats="detail.baseStats" :size="230" />
+          <dl>
+            <dt>Total</dt>
+            <dd>{{ detail.total }}</dd>
+            <dt>Talents</dt>
+            <dd>{{ detail.abilities.join(" / ") || "—" }}</dd>
+            <template v-if="detail.hiddenAbility">
+              <dt>Talent caché</dt>
+              <dd>{{ detail.hiddenAbility }}</dd>
+            </template>
+            <dt>Taux de capture</dt>
+            <dd>{{ detail.catchRate }}</dd>
+          </dl>
+          <div class="nav-buttons">
+            <button class="btn" :disabled="!neighbour(-1)" @click="detail = neighbour(-1)">‹ Précédent</button>
+            <button class="btn" :disabled="!neighbour(1)" @click="detail = neighbour(1)">Suivant ›</button>
+          </div>
+        </aside>
+      </Transition>
     </template>
   </section>
 </template>
@@ -407,5 +445,93 @@ h1 {
 .abilities em {
   font-style: normal;
   color: var(--accent-2);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.row.selected {
+  background: var(--panel-hover);
+  box-shadow: inset 3px 0 0 var(--accent-2);
+}
+
+.detail {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  bottom: 24px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 340px;
+  padding: 24px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(20px);
+}
+
+.detail .close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--panel-hover);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.halo {
+  display: grid;
+  place-items: center;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 30%, transparent), transparent 70%);
+  border: 2px solid color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.detail h2 {
+  font-size: 26px;
+}
+
+.detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  width: 100%;
+  margin: 4px 0 0;
+}
+
+.detail dt {
+  color: var(--text-dim);
+}
+
+.detail dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s;
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(40px);
+  opacity: 0;
 }
 </style>

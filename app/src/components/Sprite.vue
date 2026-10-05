@@ -9,13 +9,27 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 const props = withDefaults(defineProps<{ id: number; shiny?: boolean; size?: number }>(), { shiny: false, size: 68 });
 
 const failed = ref(false);
-const src = computed(() => convertFileSrc(`${props.id}${props.shiny ? "-shiny" : ""}.png`, "sprite"));
-watch(src, () => (failed.value = false));
+const attempt = ref(0);
+const base = computed(() => convertFileSrc(`${props.id}${props.shiny ? "-shiny" : ""}.png`, "sprite"));
+// Le paramètre `r` force un nouvel essai après un échec réseau passager.
+const src = computed(() => (attempt.value ? `${base.value}?r=${attempt.value}` : base.value));
+watch(base, () => {
+  failed.value = false;
+  attempt.value = 0;
+});
+
+function onError() {
+  if (attempt.value < 2) {
+    setTimeout(() => attempt.value++, 1500 * (attempt.value + 1));
+  } else {
+    failed.value = true;
+  }
+}
 </script>
 
 <template>
   <span class="sprite" :style="{ width: `${size}px`, height: `${Math.round((size * 56) / 68)}px` }">
-    <img v-if="!failed" :src="src" alt="" loading="lazy" draggable="false" @error="failed = true" />
+    <img v-if="!failed" :src="src" alt="" loading="lazy" draggable="false" @error="onError" />
     <svg v-else viewBox="0 0 24 24" class="fallback" aria-hidden="true">
       <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" />
       <path d="M3 12h6a3 3 0 0 0 6 0h6" fill="none" stroke="currentColor" stroke-width="1.5" />

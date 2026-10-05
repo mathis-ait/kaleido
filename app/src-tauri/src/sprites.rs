@@ -34,26 +34,26 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 /// Correspondance n° national → nom de fichier pokesprite (« mr-mime »…),
 /// lue une seule fois depuis `data/pokemon.json` (mise en cache sur le disque).
 fn slugs(cache: &Path) -> Result<&'static HashMap<u16, String>, String> {
-    static SLUGS: OnceLock<Result<HashMap<u16, String>, String>> = OnceLock::new();
-    SLUGS
-        .get_or_init(|| {
-            let path = cache.join("pokemon.json");
-            let json = match fs::read(&path) {
-                Ok(data) => data,
-                Err(_) => {
-                    let data = download(&format!("{BASE_URL}/data/pokemon.json"))?;
-                    fs::write(&path, &data).map_err(|e| e.to_string())?;
-                    data
-                }
-            };
-            let entries: HashMap<String, serde_json::Value> = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-            Ok(entries
-                .into_iter()
-                .filter_map(|(idx, v)| Some((idx.parse().ok()?, v["slug"]["eng"].as_str()?.to_string())))
-                .collect())
-        })
-        .as_ref()
-        .map_err(Clone::clone)
+    // Seul un succès est mémorisé : un échec (hors ligne) sera retenté à la demande suivante.
+    static SLUGS: OnceLock<HashMap<u16, String>> = OnceLock::new();
+    if let Some(map) = SLUGS.get() {
+        return Ok(map);
+    }
+    let path = cache.join("pokemon.json");
+    let json = match fs::read(&path) {
+        Ok(data) => data,
+        Err(_) => {
+            let data = download(&format!("{BASE_URL}/data/pokemon.json"))?;
+            fs::write(&path, &data).map_err(|e| e.to_string())?;
+            data
+        }
+    };
+    let entries: HashMap<String, serde_json::Value> = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+    let map = entries
+        .into_iter()
+        .filter_map(|(idx, v)| Some((idx.parse().ok()?, v["slug"]["eng"].as_str()?.to_string())))
+        .collect();
+    Ok(SLUGS.get_or_init(|| map))
 }
 
 /// `"025-shiny.png"` → (25, true).
