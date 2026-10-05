@@ -17,6 +17,7 @@ mod emusaves;
 mod nuzlocke;
 mod bank;
 mod gifts;
+mod battle;
 mod saves;
 mod showdown;
 mod sprites;
@@ -202,6 +203,7 @@ fn main() {
         .manage(nuzlocke::RomCache::default())
         .manage(bank::OpenBank::default())
         .manage(gifts::GiftFiles::default())
+        .manage(battle::LinkedRom::default())
         .register_asynchronous_uri_scheme_protocol("sprite", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
@@ -286,7 +288,12 @@ fn main() {
             gifts::gifts_details,
             gifts::gifts_add,
             gifts::gifts_export,
-            gifts::gifts_import
+            gifts::gifts_import,
+            battle::battle_link_rom,
+            battle::battle_linked,
+            battle::battle_unlink,
+            battle::battle_matrix,
+            battle::battle_duel
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

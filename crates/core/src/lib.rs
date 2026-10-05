@@ -1,6 +1,7 @@
 //! Cœur de Kaleido : connaissance des jeux, détection des fichiers, textes et données.
 
 pub mod bank;
+pub mod battle;
 pub mod ctr_rom;
 pub mod data;
 pub mod detect;

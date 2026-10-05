@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { nav } from "./nav";
 import type { Named, PokemonPatch, Pouch, SaveLists, SaveView, Slot, SlotView, TrainerPatch } from "./types";
 
-export type SavePage = "home" | "boxes" | "pokemon" | "tools" | "gifts" | "nuzlocke" | "manager" | "bank";
+export type SavePage = "home" | "boxes" | "pokemon" | "tools" | "gifts" | "nuzlocke" | "manager" | "bank" | "battle";
 export type SaveTool = "trainer" | "items" | "dex" | "boxes" | "checks";
 
 /** Pages de l'éditeur, dans l'ordre des onglets (Q / E pour passer de l'une à l'autre). */
@@ -15,6 +15,7 @@ export const SAVE_PAGES: { id: SavePage; label: string; icon: string }[] = [
   { id: "gifts", label: "Cadeaux", icon: "gift" },
   { id: "manager", label: "Sauvegardes", icon: "folder" },
   { id: "bank", label: "Banque", icon: "bank" },
+  { id: "battle", label: "Combat", icon: "swords" },
 ];
 
 /** Sauvegarde ouverte dans l'éditeur. */
