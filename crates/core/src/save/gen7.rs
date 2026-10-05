@@ -2,23 +2,27 @@
 //!
 //! Même table des blocs que la Gen 6 (voir [`super::gen6`]), mais CRC16 inversé.
 //!
-//! Offsets (de mémoire de `SaveBlockAccessor7SM/USUM` de PKHeX, **non vérifiés**) :
+//! Offsets (vérifiés sur `SaveBlockAccessor7SM/USUM` de PKHeX, et sur la sauvegarde
+//! SL `SM Project 802.main` de ses tests) :
 //!
-//! | | Dresseur (bloc 3) | Équipe (4) | Divers (9, argent +0x4) | Noms des boîtes (13) | Boîtes (14) | Temps de jeu (16) |
-//! |---|---|---|---|---|---|---|
-//! | SL | 0x1200 | 0x1400 | 0x4000 | 0x4800 | 0x4E00 | 0x40C00 |
-//! | USUL | 0x1400 | 0x1600 | 0x4400 | 0x4C00 | 0x5200 | 0x41000 |
+//! | | Dresseur (bloc 3) | Équipe (4) | Pokédex (6) | Divers (9, argent +0x4) | Noms des boîtes (13) | Boîtes (14) | Temps de jeu (16) |
+//! |---|---|---|---|---|---|---|---|
+//! | SL | 0x1200 | 0x1400 | 0x2A00 | 0x4000 | 0x4800 | 0x4E00 | 0x40C00 |
+//! | USUL | 0x1400 | 0x1600 | 0x2C00 | 0x4400 | 0x4C00 | 0x5200 | 0x41000 |
 //!
-//! Dresseur Gen 7 : TID +0, SID +2, sexe +5, nom +0x38. 32 boîtes.
+//! Dresseur Gen 7 : TID +0, SID +2, sexe +5, langue +0x35, nom +0x38. 32 boîtes.
 //!
-//! **Signature MemeCrypto non gérée** : le jeu vérifie une signature RSA du
-//! SHA-256 de la table des blocs, que Kaleido ne sait pas recalculer (clé privée
-//! non disponible). Une sauvegarde modifiée doit être re-signée par PKHeX avant
-//! d'être utilisée en jeu.
+//! **Signature MemeCrypto** : le jeu vérifie une signature RSA du SHA-256 de la
+//! table des blocs (bloc 36). Comme PKHeX, Kaleido la recalcule à l'écriture
+//! (voir [`super::memecrypto`]).
 
 use super::gen6::{ctr_layout, CtrOffsets};
 use super::{Layout, PkmFormat, SaveError, SaveVersion};
 
+// Vérifié : PKHeX SaveBlockAccessor7SM.cs / SaveBlockAccessor7USUM.cs (blocs 3, 4, 6, 9, 13,
+// 14, 16), SAV7.cs (PartyCount = Data[Party + 6·260], BoxCount = 32), MyStatus7.cs (TID +0,
+// SID +2, Gender +5, Language +0x35, OT +0x38 sur 0x1A octets), Misc7.cs (Money +0x4),
+// BoxLayout7.cs (noms de 0x22 octets), PlayTime6 réutilisé pour le bloc 16.
 pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
     if version == SaveVersion::UltraSunUltraMoon {
         CtrOffsets {
@@ -30,6 +34,8 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             box_names: 0x4C00,
             boxes: 0x5200,
             box_count: 32,
+            language: 0x1400 + 0x35,
+            dex: (0x2C00, 0xF78),
         }
     } else {
         CtrOffsets {
@@ -41,17 +47,14 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             box_names: 0x4800,
             boxes: 0x4E00,
             box_count: 32,
+            language: 0x1200 + 0x35,
+            dex: (0x2A00, 0xF78),
         }
     }
 }
 
 pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<String>), SaveError> {
-    let (layout, mut warnings) = ctr_layout(PkmFormat::Gen7, data, &offsets(version), true)?;
-    warnings.push(
-        "Soleil/Lune : la signature MemeCrypto n'est pas recalculée. Re-signe la sauvegarde avec PKHeX avant de l'utiliser en jeu."
-            .into(),
-    );
-    Ok((layout, warnings))
+    ctr_layout(PkmFormat::Gen7, data, &offsets(version), true)
 }
 
 /// Tailles des blocs 0 à 16 (Soleil/Lune d'après PKHeX ; Ultra-Soleil/Ultra-Lune
@@ -60,7 +63,7 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
 pub(super) fn synthetic_lengths(version: SaveVersion) -> Vec<usize> {
     if version == SaveVersion::UltraSunUltraMoon {
         vec![
-            0xE28, 0x7C, 0x14, 0xC0, 0x61C, 0xE00, 0x1080, 0x228, 0x104, 0x200, 0x7C, 0x4, 0x58, 0x5E6, 0x36600, 0x572C,
+            0xE28, 0x7C, 0x14, 0xC0, 0x61C, 0xE00, 0xF78, 0x228, 0x30C, 0x1FC, 0x4C, 0x4, 0x58, 0x5E6, 0x36600, 0x572C,
             0x8,
         ]
     } else {
@@ -82,6 +85,7 @@ mod tests {
             let o = super::offsets(version);
             assert_eq!(offsets[3], o.status, "{version:?}");
             assert_eq!(offsets[4], o.party, "{version:?}");
+            assert_eq!(offsets[6], o.dex.0, "{version:?}");
             assert_eq!(offsets[9] + 4, o.money, "{version:?}");
             assert_eq!(offsets[13], o.box_names, "{version:?}");
             assert_eq!(offsets[14], o.boxes, "{version:?}");

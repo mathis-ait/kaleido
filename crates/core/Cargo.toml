@@ -13,6 +13,10 @@ rand_chacha = "0.3"
 base64 = "0.22"
 thiserror.workspace = true
 kaleido-formats.workspace = true
+sha1 = "0.10"
+sha2 = "0.10"
+aes = "0.8"
+num-bigint = "0.4"
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -10,23 +10,24 @@
 //! - **Gen 5** : CRC16-CCITT de chaque bloc modifiable, recopié dans la table des
 //!   sommes de contrôle, elle-même protégée par un CRC ;
 //! - **Gen 6/7** : table des blocs en fin de fichier (signature « BEEF »), CRC16-CCITT
-//!   (Gen 6) ou CRC16 inversé (Gen 7) de **tous** les blocs.
+//!   (Gen 6) ou CRC16 inversé (Gen 7) de **tous** les blocs ;
+//! - **Gen 7** : en plus, signature « MemeCrypto » de la table des blocs (SHA-256 +
+//!   AES + RSA, clé connue), recalculée comme le fait PKHeX ([`memecrypto`]).
 //!
-//! **Limite Gen 7** : Soleil/Lune et Ultra-Soleil/Ultra-Lune signent aussi la table
-//! des blocs (SHA-256 + RSA « MemeCrypto »). Cette signature n'est pas recalculée :
-//! une sauvegarde SL/USUL modifiée doit être re-signée (par exemple avec PKHeX) avant
-//! d'être chargée par le jeu. Voir [`SaveFile::needs_resign`].
-//!
-//! Tous les offsets viennent de la mémoire de PKHeX et n'ont **pas** été vérifiés sur
-//! de vraies sauvegardes (aucune disponible) : ils sont testés sur des sauvegardes
-//! synthétiques seulement. Chaque module de génération détaille ses points fragiles.
+//! Les offsets, écrits à l'origine de mémoire, ont été vérifiés un par un sur le code
+//! source de PKHeX (commentaires « Vérifié : PKHeX … »). Seule la Gen 7 a aussi été
+//! testée sur une vraie sauvegarde (Soleil/Lune, fournie avec les tests de PKHeX) ;
+//! les Pokémon des quatre formats l'ont été sur de vrais fichiers `.pk4` à `.pk7`.
+//! Le Pokédex est géré par [`pokedex`].
 
 pub mod checksum;
 mod gen4;
 mod gen5;
 mod gen6;
 mod gen7;
+mod memecrypto;
 pub mod pkm;
+pub mod pokedex;
 pub mod session;
 pub mod stats;
 mod strings;
@@ -174,6 +175,8 @@ struct TrainerLayout {
     tid: usize,
     sid: usize,
     gender: usize,
+    /// Langue de la partie (identifiant `LanguageID` de PKHeX : 1 = japonais, 2 = anglais, 3 = français…).
+    language: usize,
     money: usize,
     hours: usize,
     minutes: usize,
@@ -195,14 +198,16 @@ struct Layout {
     box_names: usize,
     box_name_stride: usize,
     box_name_max: usize,
+    /// Début des données du Pokédex (voir [`pokedex`]).
+    dex: usize,
     checks: Checks,
 }
 
 #[derive(Debug, Clone)]
 enum Checks {
-    Gen4(Vec<gen4::FooterBlock>),
+    Gen4(gen4::Gen4Checks),
     Gen5(gen5::NdsChecks),
-    Ctr { blocks: Vec<gen6::CtrBlock>, invert: bool },
+    Ctr { blocks: Vec<gen6::CtrBlock>, gen7: bool },
 }
 
 impl Checks {
@@ -210,7 +215,7 @@ impl Checks {
         match self {
             Checks::Gen4(blocks) => gen4::fix(data, blocks),
             Checks::Gen5(table) => gen5::fix(data, table),
-            Checks::Ctr { blocks, invert } => gen6::fix(data, blocks, *invert),
+            Checks::Ctr { blocks, gen7 } => gen6::fix(data, blocks, *gen7),
         }
     }
 
@@ -218,7 +223,7 @@ impl Checks {
         match self {
             Checks::Gen4(blocks) => gen4::verify(data, blocks),
             Checks::Gen5(table) => gen5::verify(data, table),
-            Checks::Ctr { blocks, invert } => gen6::verify(data, blocks, *invert),
+            Checks::Ctr { blocks, gen7 } => gen6::verify(data, blocks, *gen7),
         }
     }
 }
@@ -308,10 +313,10 @@ impl SaveFile {
         &self.warnings
     }
 
-    /// `true` pour Soleil/Lune et Ultra-Soleil/Ultra-Lune : après modification, la
-    /// signature MemeCrypto doit être recalculée par un outil externe (non implémenté).
+    /// Toujours `false` : la signature MemeCrypto de Soleil/Lune et Ultra-Soleil/Ultra-Lune
+    /// est recalculée par [`Self::to_bytes`] (portage de PKHeX). Conservé pour l'interface.
     pub fn needs_resign(&self) -> bool {
-        self.generation() == 7
+        false
     }
 
     /// Sommes de contrôle des données actuelles (avant correction par [`Self::to_bytes`]).
@@ -601,3 +606,5 @@ pub fn demo_save() -> Result<Vec<u8>, SaveError> {
 mod tests;
 #[cfg(test)]
 mod session_tests;
+#[cfg(test)]
+mod pkhex_tests;
