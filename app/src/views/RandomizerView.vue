@@ -7,6 +7,7 @@ import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
+import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -122,6 +123,8 @@ const selected = computed(() => roms.value.find((r) => r.path === romPath.value)
 const isCtr = computed(() => selected.value?.platform === "3ds");
 const target = ref<"luma" | "emulator">("luma");
 const lastWasCtr = ref(false);
+/** 3DS : jeu d'origine à lancer avec le mod (bouton « Jouer »). */
+const playBase = ref<string | null>(null);
 /** Les starters sont cachés par défaut pour garder la surprise. */
 const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
@@ -419,6 +422,7 @@ async function generate() {
 async function generateCtr() {
   const output = await open({ directory: true, title: "Choisis le dossier où créer le mod" });
   if (typeof output !== "string" || !selected.value) return;
+  playBase.value = selected.value.path;
   running.value = true;
   runError.value = null;
   outcome.value = null;
@@ -794,6 +798,11 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <button v-if="outputPath" class="btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
                 <button class="btn" @click="showLog = true">Voir le journal</button>
               </div>
+              <PlayPanel
+                :platform="lastWasCtr ? '3ds' : 'nds'"
+                :rom="lastWasCtr ? playBase : outputPath"
+                :mod-romfs="lastWasCtr ? outputPath : null"
+              />
             </div>
           </Transition>
         </aside>

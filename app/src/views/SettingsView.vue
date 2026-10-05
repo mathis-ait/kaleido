@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Toggle from "../components/Toggle.vue";
+import EmulatorSettings from "../play/EmulatorSettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
 
@@ -128,6 +129,9 @@ onMounted(refresh);
       </div>
       <button class="btn" @click="clearCache">Vider le cache</button>
     </div>
+
+    <h2>Émulateurs</h2>
+    <EmulatorSettings />
   </section>
 </template>
 
