@@ -204,15 +204,16 @@ fn gen7_sun_moon() {
     let (bytes, _) = gen6::blank(0x6BE00, &gen7::synthetic_lengths(SaveVersion::SunMoon));
     let save = roundtrip(bytes, SaveVersion::SunMoon);
     assert_eq!(save.box_count(), 32);
-    assert!(save.needs_resign());
-    assert_eq!(save.warnings().len(), 1, "{:?}", save.warnings());
+    // La signature MemeCrypto est recalculée : plus besoin de PKHeX.
+    assert!(!save.needs_resign());
+    assert!(save.warnings().is_empty(), "{:?}", save.warnings());
 }
 
 #[test]
 fn gen7_ultra_sun_moon() {
     let (bytes, _) = gen6::blank(0x6CC00, &gen7::synthetic_lengths(SaveVersion::UltraSunUltraMoon));
     let save = roundtrip(bytes, SaveVersion::UltraSunUltraMoon);
-    assert_eq!(save.warnings().len(), 1, "{:?}", save.warnings());
+    assert!(save.warnings().is_empty(), "{:?}", save.warnings());
 }
 
 #[test]

@@ -62,6 +62,8 @@ pub fn effective_size(len: u64) -> u64 {
     }
 }
 
+// Vérifié : PKHeX Saves/Util/SaveUtil.cs (SIZE_G6XY, SIZE_G6ORAS, SIZE_G7SM, SIZE_G7USUM,
+// SIZE_G4RAW = SIZE_G5RAW = 0x80000).
 pub fn identify(data: &[u8]) -> Option<SaveKind> {
     match effective_size(data.len() as u64) {
         0x65600 => Some(SaveKind::XY),
@@ -73,17 +75,29 @@ pub fn identify(data: &[u8]) -> Option<SaveKind> {
     }
 }
 
+/// Date du SDK écrite dans le pied de chaque bloc Gen 4 (`SAV4.MAGIC_JAPAN_INTL`).
+pub const GEN4_MAGIC_INTL: u32 = 0x2006_0623;
+/// Variante des versions coréennes (`SAV4.MAGIC_KOREAN`).
+pub const GEN4_MAGIC_KOREAN: u32 = 0x2007_0903;
+
+/// Pied du bloc général : taille du bloc à `fin − 0xC`, puis date du SDK à `fin − 0x8`.
+// Vérifié : PKHeX Saves/Util/SaveUtil.cs (IsValidGeneralFooter2, ordre DP → Pt → HGSS).
 fn identify_gen4(data: &[u8]) -> Option<SaveKind> {
     const GENERAL_SIZES: [(usize, SaveKind); 3] = [
         (0xC100, SaveKind::DiamondPearl),
         (0xCF2C, SaveKind::Platinum),
         (0xF628, SaveKind::HeartGoldSoulSilver),
     ];
-    // Deux copies de la sauvegarde : l'une peut être vide sur une partie récente.
-    for partition in [0, 0x40000] {
+    let rd = |at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
+    // PKHeX ne regarde que la 2e partition (la première sauvegarde du jeu y est
+    // écrite) ; on accepte aussi la 1re, pour les fichiers dont la copie de secours
+    // est vide.
+    for partition in [0x40000, 0] {
         for (size, kind) in GENERAL_SIZES {
-            let at = partition + size - 0xC;
-            if u32::from_le_bytes(data[at..at + 4].try_into().unwrap()) == size as u32 {
+            let end = partition + size;
+            // Correction (PKHeX) : la date du SDK doit aussi correspondre, sinon une
+            // sauvegarde Gen 5 dont un mot vaut par hasard la taille passerait pour Gen 4.
+            if rd(end - 0xC) == size as u32 && matches!(rd(end - 0x8), GEN4_MAGIC_INTL | GEN4_MAGIC_KOREAN) {
                 return Some(kind);
             }
         }
@@ -106,6 +120,11 @@ mod tests {
         let mut data = vec![0u8; NDS_SAVE_SIZE + DESMUME_FOOTER];
         let at = 0x40000 + 0xCF2C - 0xC;
         data[at..at + 4].copy_from_slice(&0xCF2Cu32.to_le_bytes());
+        // Taille seule : pas assez (date du SDK absente).
+        assert_eq!(identify(&data), Some(SaveKind::Gen5));
+        data[at + 4..at + 8].copy_from_slice(&GEN4_MAGIC_INTL.to_le_bytes());
+        assert_eq!(identify(&data), Some(SaveKind::Platinum));
+        data[at + 4..at + 8].copy_from_slice(&GEN4_MAGIC_KOREAN.to_le_bytes());
         assert_eq!(identify(&data), Some(SaveKind::Platinum));
     }
 

@@ -17,9 +17,9 @@
 //!
 //! La somme de contrôle est la somme des mots de 16 bits des quatre blocs déchiffrés.
 //!
-//! **Offsets repris de mémoire de PKHeX, non vérifiés sur de vrais fichiers** (le
-//! chiffrement, lui, est validé par des tests aller-retour et par l'ordre officiel
-//! des 24 permutations). Les points les plus fragiles sont signalés « non vérifié ».
+//! Offsets vérifiés sur le code de PKHeX (`PK4.cs` à `PK7.cs`, `G4PKM.cs`, `G6PKM.cs`,
+//! `PokeCrypto.cs`) et contrôlés sur de vrais fichiers `.pk4` à `.pk7` ainsi que sur la
+//! sauvegarde Soleil/Lune des tests de PKHeX (voir `pkhex_tests.rs`).
 
 use serde::Serialize;
 
@@ -190,6 +190,11 @@ struct Ofs {
     stats: usize,
 }
 
+// Vérifié : PKHeX PKM/PK4.cs, PK5.cs, Shared/G4PKM.cs (Ability 0x15, octet 0x40 = rencontre fatidique /
+// sexe / forme, EV 0x18, attaques 0x28, PP 0x30, PP Plus 0x34, IV32 0x38, surnom 0x48 sur 22 octets,
+// OT 0x68 sur 16 octets, EggLocationDP 0x7E, MetLocationDP 0x80, BallDPPt 0x83, MetLevel / sexe du DO
+// 0x84, Version 0x5F, Language 0x17, Status_Condition 0x88, Stat_Level 0x8C, PV 0x8E, stats 0x90) ;
+// contrôlé sur de vrais .pk4 / .pk5 des tests de PKHeX.
 const OFS_DS: Ofs = Ofs {
     ability: 0x15,
     flags: 0x40,
@@ -214,6 +219,11 @@ const OFS_DS: Ofs = Ofs {
     stats: 0x90,
 };
 
+// Vérifié : PKHeX PKM/PK6.cs, PK7.cs, Shared/G6PKM.cs (Ability 0x14, octet 0x1D, EV 0x1E, surnom
+// 0x40 sur 26 octets, attaques 0x5A, PP 0x62, PP Plus 0x66, IV32 0x74, OT 0xB0 sur 26 octets,
+// EggLocation 0xD8, MetLocation 0xDA, Ball 0xDC, MetLevel / sexe du DO 0xDD, Version 0xDF,
+// Language 0xE3, Status_Condition 0xE8, Stat_Level 0xEC, PV 0xF0, stats 0xF2) ; contrôlé sur de
+// vrais .pk6 / .pk7 et sur les boîtes de la sauvegarde SL des tests de PKHeX.
 const OFS_3DS: Ofs = Ofs {
     ability: 0x14,
     flags: 0x1D,
@@ -239,6 +249,10 @@ const OFS_3DS: Ofs = Ofs {
 };
 
 // Champs propres à une génération.
+// Vérifié : PKHeX PK4.cs (EggLocationExtended 0x44, MetLocationExtended 0x46, BallHGSS 0x86),
+// PK5.cs (Nature 0x41, HiddenAbility bit 0 de 0x42), PK6.cs / PK7.cs (PID 0x18, Nature 0x1C,
+// AbilityNumber 0x15, CurrentHandler 0x93, HandlingTrainerFriendship 0xA2,
+// OriginalTrainerFriendship 0xCA), PK4.cs / PK5.cs (OriginalTrainerFriendship 0x14).
 const G4_EGG_LOCATION_PT: usize = 0x44;
 const G4_MET_LOCATION_PT: usize = 0x46;
 const G4_BALL_HGSS: usize = 0x86;
@@ -252,6 +266,7 @@ const G67_CURRENT_HANDLER: usize = 0x93;
 const G67_OT_FRIENDSHIP: usize = 0xCA;
 const G45_FRIENDSHIP: usize = 0x14;
 
+// Vérifié : PKHeX PK4.cs etc. (EV et statistiques : PV, Att, Déf, Vit, Atq Spé, Déf Spé).
 /// Ordre des statistiques dans les jeux : PV, Att, Déf, Vit, Atq Spé, Déf Spé.
 /// `KALEIDO_FROM_GAME[i]` = index jeu de la statistique Kaleido `i`.
 const KALEIDO_FROM_GAME: [usize; 6] = [0, 1, 2, 4, 5, 3];
@@ -270,6 +285,8 @@ fn to_game_order<T: Copy + Default>(kaleido: [T; 6]) -> [T; 6] {
 
 /// Position chiffrée de chaque bloc A, B, C, D pour les 24 valeurs de mélange
 /// (`BlockPosition` de PKHeX) : bloc clair `k` = bloc chiffré `BLOCK_POSITION[sv][k]`.
+// Vérifié : PKHeX PKM/Util/PokeCrypto.cs (BlockPosition ; sv = (clé >> 13) & 31, les valeurs
+// 24 à 31 y sont des copies de 0 à 7, d'où le `% 24`).
 pub const BLOCK_POSITION: [[u8; 4]; 24] = [
     [0, 1, 2, 3],
     [0, 1, 3, 2],
@@ -312,6 +329,8 @@ pub fn encrypted_block_order(sv: usize) -> String {
     order.iter().collect()
 }
 
+// Vérifié : PKHeX PokeCrypto.cs (CryptArray : LCRNG 0x41C64E6D / 0x6073, mot ^= graine >> 16 ;
+// Gen 4/5 : blocs avec la somme de contrôle, statistiques avec le PID ; Gen 6/7 : tout avec l'EC).
 fn crypt(data: &mut [u8], mut seed: u32) {
     for w in data.chunks_exact_mut(2) {
         seed = seed.wrapping_mul(LCRNG_MUL).wrapping_add(LCRNG_ADD);
@@ -606,8 +625,14 @@ impl Pokemon {
         match self.format {
             PkmFormat::Gen4 => 1 << (self.pid() & 1),
             PkmFormat::Gen5 if self.u8(G5_HIDDEN_ABILITY) & 1 != 0 => 4,
-            PkmFormat::Gen5 => 1 << ((self.pid() >> 16) & 1),
-            PkmFormat::Gen6 | PkmFormat::Gen7 => self.u8(G67_ABILITY_NUMBER),
+            // Correction (PKHeX PKM.PIDAbility) : le bit 16 du PID ne compte que pour un Pokémon
+            // né en Gen 5 (Blanche 20, Noire 21, Blanche 2 22, Noire 2 23) ; un Pokémon
+            // transféré depuis la Gen 3/4 garde le bit 0.
+            PkmFormat::Gen5 if (20..=23).contains(&self.version()) => 1 << ((self.pid() >> 16) & 1),
+            PkmFormat::Gen5 => 1 << (self.pid() & 1),
+            PkmFormat::Gen6 => self.u8(G67_ABILITY_NUMBER),
+            // Correction (PKHeX PK7.AbilityNumber) : seuls les 3 bits de poids faible comptent.
+            PkmFormat::Gen7 => self.u8(G67_ABILITY_NUMBER) & 7,
         }
     }
 
@@ -790,14 +815,13 @@ impl Pokemon {
 
     // --- Rencontre.
 
-    /// Poké Ball. Gen 4 : la Ball HGSS (0x86, non vérifié) prime sur celle de DP/Pt (0x83).
+    /// Poké Ball. Gen 4 : la plus grande des Balls HGSS (0x86) et DP/Pt (0x83).
     pub fn ball(&self) -> u8 {
         let main = self.u8(self.format.ofs().ball);
         if self.format == PkmFormat::Gen4 {
-            match self.u8(G4_BALL_HGSS) {
-                0 => main,
-                hgss => hgss,
-            }
+            // Correction (PKHeX G4PKM.Ball : Math.Max(BallHGSS, BallDPPt)) : on prenait la Ball
+            // HGSS dès qu'elle était non nulle, même plus petite.
+            main.max(self.u8(G4_BALL_HGSS))
         } else {
             main
         }
@@ -808,12 +832,44 @@ impl Pokemon {
         let at = self.format.ofs().ball;
         if self.format == PkmFormat::Gen4 {
             const CHERISH: u8 = 16;
+            const SPORT: u8 = 24;
             const POKE: u8 = 4;
             self.put_u8(at, if ball <= CHERISH { ball } else { POKE });
-            self.put_u8(G4_BALL_HGSS, if ball > CHERISH { ball } else { 0 });
+            // Correction (PKHeX G4PKM.Ball) : un Pokémon né dans HGSS (hors cadeau sans œuf)
+            // a toujours sa Ball dans le champ HGSS, même une Ball de DP/Pt ; les autres y ont 0.
+            // Écart : une Ball HGSS (> Cherish Ball) choisie pour un Pokémon d'un autre jeu est
+            // gardée dans le champ HGSS au lieu d'être perdue.
+            let born_in_hgss = self.is_hgss_origin() && (!self.fateful_encounter() || self.egg_location() != 0);
+            let hgss = if born_in_hgss || ball > CHERISH { if ball <= SPORT { ball } else { POKE } } else { 0 };
+            self.put_u8(G4_BALL_HGSS, hgss);
         } else {
             self.put_u8(at, ball);
         }
+    }
+
+    /// Gen 4 : version d'origine HeartGold (7) ou SoulSilver (8).
+    fn is_hgss_origin(&self) -> bool {
+        matches!(self.version(), 7 | 8)
+    }
+
+    /// Gen 4 : écrit un lieu (rencontre ou éclosion) comme `G4PKM.MetLocation` /
+    /// `EggLocation` de PKHeX : un lieu propre à Platine/HGSS (112 à 1999, 2011 à 2999)
+    /// met « Lieu lointain » (3002) dans le champ DP ; sinon le champ Pt/HGSS ne reçoit
+    /// la valeur que pour un Pokémon venant de Platine ou HGSS.
+    fn set_location_gen4(&mut self, dp_at: usize, ext_at: usize, v: u16) {
+        const FARAWAY: u16 = 3002;
+        let pt_hgss_only = (112..2000).contains(&v) || (2011..3000).contains(&v);
+        let (dp, ext) = if v == 0 {
+            (0, 0)
+        } else if pt_hgss_only {
+            (FARAWAY, v)
+        } else if matches!(self.version(), 7 | 8 | 12) {
+            (v, v)
+        } else {
+            (v, 0)
+        };
+        self.put_u16(dp_at, dp);
+        self.put_u16(ext_at, ext);
     }
 
     /// Lieu de rencontre. Gen 4 : le champ Platine/HGSS (0x46) prime sur celui de DP (0x80).
@@ -829,12 +885,15 @@ impl Pokemon {
         }
     }
 
-    /// Gen 4 : écrit la même valeur dans les deux champs (PKHeX remplace la valeur DP par
-    /// « Lieu lointain » pour les lieux inconnus de DP ; non géré ici).
+    /// Gen 4 : voir `set_location_gen4`.
+    // Correction (PKHeX G4PKM.MetLocation) : on écrivait la même valeur dans les deux champs,
+    // ce qui donnait un lieu inconnu de DP dans le champ DP. (Cas Gen 3 / Parc des Amis de
+    // PKHeX non repris : le champ Pt/HGSS n'est alors rempli que pour Pt/HGSS.)
     pub fn set_met_location(&mut self, v: u16) {
-        self.put_u16(self.format.ofs().met_location, v);
         if self.format == PkmFormat::Gen4 {
-            self.put_u16(G4_MET_LOCATION_PT, v);
+            self.set_location_gen4(self.format.ofs().met_location, G4_MET_LOCATION_PT, v);
+        } else {
+            self.put_u16(self.format.ofs().met_location, v);
         }
     }
 
@@ -850,10 +909,12 @@ impl Pokemon {
         }
     }
 
+    // Correction (PKHeX G4PKM.EggLocation) : même règle que le lieu de rencontre.
     pub fn set_egg_location(&mut self, v: u16) {
-        self.put_u16(self.format.ofs().egg_location, v);
         if self.format == PkmFormat::Gen4 {
-            self.put_u16(G4_EGG_LOCATION_PT, v);
+            self.set_location_gen4(self.format.ofs().egg_location, G4_EGG_LOCATION_PT, v);
+        } else {
+            self.put_u16(self.format.ofs().egg_location, v);
         }
     }
 
@@ -1194,7 +1255,9 @@ impl Pokemon {
         let tsv = (self.tid() ^ self.sid()) as u32;
         let threshold = self.format.shiny_threshold();
         let mut low_byte = old & 0xFF;
-        if let (PkmFormat::Gen4, Some(slot)) = (self.format, ability_slot) {
+        // Emplacement du talent : bit 16 du PID pour un Pokémon né en Gen 5, bit 0 sinon.
+        let high_bit = self.format == PkmFormat::Gen5 && (20..=23).contains(&self.version());
+        if let (false, Some(slot)) = (high_bit, ability_slot) {
             low_byte = (low_byte & !1) | slot as u32;
         }
         let mut seed = old ^ 0x5EED_CAFE;
@@ -1216,7 +1279,7 @@ impl Pokemon {
                     continue;
                 }
             }
-            if let (PkmFormat::Gen5, Some(slot)) = (self.format, ability_slot) {
+            if let (true, Some(slot)) = (high_bit, ability_slot) {
                 if (pid >> 16) & 1 != slot as u32 {
                     continue;
                 }
