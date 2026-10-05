@@ -5,12 +5,12 @@
 //! starters est donc identique au résultat final, et changer une option ne
 //! bouleverse pas les autres parties.
 
+pub mod ctr;
 pub mod settings;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use kaleido_formats::narc::Narc;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -28,6 +28,7 @@ use crate::rom::{GameRom, RomError};
 const LEGENDARIES: &[u16] = &[
     144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 480, 481, 482, 483,
     484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649,
+    716, 717, 718, 719, 720, 721,
 ];
 
 /// Talents jamais attribués au hasard : Garde Mystik, Multitype, Illusion, Mode Transe.
@@ -65,38 +66,62 @@ pub fn supports(game: &GameRom) -> bool {
 }
 
 /// Contexte partagé : données lues une fois et mises à jour au fil des étapes.
-struct Ctx {
+/// Indépendant de la console : les fichiers sont déjà extraits (NARC ou GARC).
+pub(crate) struct Ctx {
     gen: u8,
     count: u16,
     names: Vec<String>,
-    personal: Narc,
+    /// Fiche « personal » de chaque espèce (index = n° national).
+    personal: Vec<Vec<u8>>,
     evo: EvolutionInfo,
     learnsets: Vec<Learnset>,
     no_legendaries: bool,
     max_ability: u16,
 }
 
+/// Fichiers bruts nécessaires pour construire le contexte.
+pub(crate) struct Sources<'a> {
+    pub gen: u8,
+    pub count: u16,
+    pub names: Vec<String>,
+    pub personal: Vec<Vec<u8>>,
+    pub evolutions: &'a [Vec<u8>],
+    pub learnsets: &'a [Vec<u8>],
+    pub max_ability: u16,
+}
+
 impl Ctx {
-    fn load(game: &GameRom, paths: &DataPaths, settings: &Settings) -> Result<Self, RomError> {
-        let gen = game.generation();
-        let count = game.layout.species_count;
-        let names = game.text_file(game.layout.species_names)?;
-        let personal = game.narc(game.layout.personal)?;
-        let evo_tables: Vec<_> = game.narc(paths.evolutions)?.files.iter().map(|f| evolutions::read(f)).collect();
-        let learnsets = game.narc(paths.learnsets)?.files.iter().map(|f| learnsets::read(gen, f)).collect();
-        if names.len() <= count as usize || personal.files.len() <= count as usize {
+    pub(crate) fn new(src: Sources, settings: &Settings) -> Result<Self, RomError> {
+        let count = src.count as usize;
+        if src.names.len() <= count || src.personal.len() <= count {
             return Err(RomError::Layout("données d'espèces incomplètes".into()));
         }
+        let evo_tables: Vec<_> = src.evolutions.iter().map(|f| evolutions::read(f)).collect();
         Ok(Self {
-            gen,
-            count,
-            names,
-            personal,
-            evo: EvolutionInfo::build(&evo_tables, count as usize),
-            learnsets,
+            gen: src.gen,
+            count: src.count,
+            names: src.names,
+            personal: src.personal,
+            evo: EvolutionInfo::build(&evo_tables, count),
+            learnsets: src.learnsets.iter().map(|f| learnsets::read(src.gen, f)).collect(),
             no_legendaries: settings.no_legendaries,
-            max_ability: paths.max_ability,
+            max_ability: src.max_ability,
         })
+    }
+
+    fn load(game: &GameRom, paths: &DataPaths, settings: &Settings) -> Result<Self, RomError> {
+        let evolutions = game.narc(paths.evolutions)?.files;
+        let learnsets = game.narc(paths.learnsets)?.files;
+        let src = Sources {
+            gen: game.generation(),
+            count: game.layout.species_count,
+            names: game.text_file(game.layout.species_names)?,
+            personal: game.narc(game.layout.personal)?.files,
+            evolutions: &evolutions,
+            learnsets: &learnsets,
+            max_ability: paths.max_ability,
+        };
+        Self::new(src, settings)
     }
 
     fn name(&self, id: u16) -> &str {
@@ -104,7 +129,7 @@ impl Ctx {
     }
 
     fn personal(&self, id: u16) -> Personal {
-        Personal { generation: self.gen, data: self.personal.files[id as usize].clone() }
+        Personal { generation: self.gen, data: self.personal[id as usize].clone() }
     }
 
     fn bst(&self, id: u16) -> u16 {
@@ -164,7 +189,9 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
 
     // 1. Fiches des espèces (types, statistiques, talents).
     if apply_personal(&mut ctx, settings, seed, &mut log) {
-        game.replace_narc(game.layout.personal, &ctx.personal)?;
+        let mut narc = game.narc(game.layout.personal)?;
+        narc.files = ctx.personal.clone();
+        game.replace_narc(game.layout.personal, &narc)?;
     }
 
     // 2. Starters.
@@ -182,7 +209,7 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     // 3. Pokémon sauvages.
     let wild_slots = if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {
         let mut narc = game.narc(paths.encounters)?;
-        let n = randomize_wild(&ctx, settings, seed, &mut narc, &mut log);
+        let n = randomize_wild(&ctx, settings, seed, &mut narc.files, &mut log);
         game.replace_narc(paths.encounters, &narc)?;
         n
     } else {
@@ -194,7 +221,7 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
         let mut trdata = game.narc(paths.trainer_data)?;
         let mut trpoke = game.narc(paths.trainer_pokemon)?;
         let moves = game.text_file(paths.move_names)?;
-        let n = randomize_trainers(&ctx, settings, seed, &mut trdata, &mut trpoke, &moves, &mut log);
+        let n = randomize_trainers(&ctx, settings, seed, &mut trdata.files, &mut trpoke.files, &moves, &mut log);
         game.replace_narc(paths.trainer_data, &trdata)?;
         game.replace_narc(paths.trainer_pokemon, &trpoke)?;
         n
@@ -222,7 +249,7 @@ fn all_types(gen: u8) -> Vec<PokeType> {
 }
 
 /// Types, statistiques et talents. Renvoie `true` si quelque chose a changé.
-fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut String) -> bool {
+pub(crate) fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut String) -> bool {
     let changed = settings.random_types || settings.stats != StatsMode::Unchanged || settings.random_abilities;
     if !changed {
         return false;
@@ -239,7 +266,7 @@ fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut Strin
             let t2 = if rng.gen_bool(0.5) { *types.choose(&mut rng).unwrap() } else { t1 };
             let mut family = vec![base];
             while let Some(s) = family.pop() {
-                let d = &mut ctx.personal.files[s];
+                let d = &mut ctx.personal[s];
                 d[6] = type_index(gen, t1);
                 d[7] = type_index(gen, t2);
                 family.extend(ctx.evo.targets[s].iter().map(|&t| t as usize));
@@ -250,7 +277,7 @@ fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut Strin
     if settings.stats != StatsMode::Unchanged {
         let mut rng = rng_for(seed, "stats");
         for s in (1..=count).filter(|&s| s as u16 != SHEDINJA) {
-            let d = &mut ctx.personal.files[s];
+            let d = &mut ctx.personal[s];
             let mut stats: Vec<u8> = d[0..6].to_vec();
             match settings.stats {
                 StatsMode::Shuffle => stats.shuffle(&mut rng),
@@ -266,7 +293,7 @@ fn apply_personal(ctx: &mut Ctx, settings: &Settings, seed: u64, log: &mut Strin
         let pool: Vec<u16> = (1..=ctx.max_ability).filter(|a| !BANNED_ABILITIES.contains(a)).collect();
         let slots = if gen <= 4 { 0x16..0x18 } else { 0x18..0x1B };
         for s in 1..=count {
-            let d = &mut ctx.personal.files[s];
+            let d = &mut ctx.personal[s];
             let mut used: Vec<u16> = Vec::new();
             for at in slots.clone() {
                 if d[at] == 0 && at != slots.start {
@@ -355,7 +382,7 @@ fn scale_level(level: u16, percent: u16) -> u16 {
     ((level as u32 * percent as u32 + 50) / 100).clamp(1, 100) as u16
 }
 
-fn randomize_wild(ctx: &Ctx, settings: &Settings, seed: u64, narc: &mut Narc, log: &mut String) -> usize {
+pub(crate) fn randomize_wild(ctx: &Ctx, settings: &Settings, seed: u64, files: &mut [Vec<u8>], log: &mut String) -> usize {
     let mut rng = rng_for(seed, "wild");
     let similar = settings.wild_similar_strength;
     let factor = settings.wild_level_percent as f32 / 100.0;
@@ -375,7 +402,7 @@ fn randomize_wild(ctx: &Ctx, settings: &Settings, seed: u64, narc: &mut Narc, lo
 
     let _ = writeln!(log, "== Pokémon sauvages ==");
     let mut total = 0;
-    for (zone, file) in narc.files.iter_mut().enumerate() {
+    for (zone, file) in files.iter_mut().enumerate() {
         let slots = encounters::read(ctx.gen, file);
         if slots.is_empty() {
             continue;
@@ -413,12 +440,12 @@ fn randomize_wild(ctx: &Ctx, settings: &Settings, seed: u64, narc: &mut Narc, lo
     total
 }
 
-fn randomize_trainers(
+pub(crate) fn randomize_trainers(
     ctx: &Ctx,
     settings: &Settings,
     seed: u64,
-    trdata: &mut Narc,
-    trpoke: &mut Narc,
+    trdata: &mut [Vec<u8>],
+    trpoke: &mut [Vec<u8>],
     move_names: &[String],
     log: &mut String,
 ) -> usize {
@@ -427,9 +454,9 @@ fn randomize_trainers(
     let mut total = 0;
     let _ = writeln!(log, "== Dresseurs ==");
 
-    let count = trdata.files.len().min(trpoke.files.len());
+    let count = trdata.len().min(trpoke.len());
     for i in 1..count {
-        let Some(mut team) = trainers::read_team(ctx.gen, &trdata.files[i], &trpoke.files[i]) else { continue };
+        let Some(mut team) = trainers::read_team(ctx.gen, &trdata[i], &trpoke[i]) else { continue };
         if team.pokemon.is_empty() {
             continue;
         }
@@ -461,7 +488,7 @@ fn randomize_trainers(
             lines.push(line);
             total += 1;
         }
-        trpoke.files[i] = trainers::write_team(ctx.gen, &team, &mut trdata.files[i]);
+        trpoke[i] = trainers::write_team(ctx.gen, &team, &mut trdata[i]);
         let theme_label = theme.map(|t| format!(" (type {})", t.name_fr())).unwrap_or_default();
         let _ = writeln!(log, "Dresseur n°{i}{theme_label} : {}", lines.join(" ; "));
     }

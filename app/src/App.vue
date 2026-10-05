@@ -1,28 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import Sidebar from "./components/Sidebar.vue";
 import DropOverlay from "./components/DropOverlay.vue";
 import HomeView from "./views/HomeView.vue";
 import EditorView from "./views/EditorView.vue";
-import PlaceholderView from "./views/PlaceholderView.vue";
 import RandomizerView from "./views/RandomizerView.vue";
+import SavesView from "./views/SavesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { addPaths } from "./library";
 import { nav } from "./nav";
 
 const dragging = ref(false);
-
-const upcoming = {
-  saves: {
-    title: "Sauvegardes",
-    phase: "Phase 4",
-    description: "Ouvre ta sauvegarde Gen 4 à 7 : boîtes, équipe, dresseur, objets.",
-    features: ["Grille de boîtes avec glisser-déposer", "Édition complète d'un Pokémon", "Import / export de Pokémon individuels"],
-  },
-} as const;
-
-const placeholder = computed(() => (nav.view in upcoming ? upcoming[nav.view as keyof typeof upcoming] : null));
 
 // Déposer un fichier fonctionne partout dans la fenêtre, quelle que soit la vue.
 let unlisten: (() => void) | undefined;
@@ -51,8 +40,8 @@ onUnmounted(() => unlisten?.());
         <HomeView v-if="nav.view === 'home'" key="home" />
         <EditorView v-else-if="nav.view === 'editor'" key="editor" />
         <RandomizerView v-else-if="nav.view === 'randomizer'" key="randomizer" />
+        <SavesView v-else-if="nav.view === 'saves'" key="saves" />
         <SettingsView v-else-if="nav.view === 'settings'" key="settings" />
-        <PlaceholderView v-else-if="placeholder" :key="nav.view" v-bind="placeholder" />
       </Transition>
     </main>
     <DropOverlay :visible="dragging" />

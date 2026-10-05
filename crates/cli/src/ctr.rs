@@ -15,6 +15,82 @@ pub fn open(path: &str) -> RomFsSource {
     })
 }
 
+/// Randomise un jeu 3DS vers un dossier LayeredFS, puis relit les fichiers écrits.
+pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
+    use kaleido_core::data::{encounters, trainers};
+    use kaleido_core::randomizer::{self, ctr::LayeredFsTarget};
+
+    let settings = randomizer::presets().into_iter().find(|p| p.id == preset).ok_or("préréglage inconnu")?.settings;
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let (outcome, romfs) = randomizer::ctr::randomize(&game, &settings, seed, Path::new(out), LayeredFsTarget::Luma)?;
+    println!("{} emplacements sauvages, {} Pokémon de dresseurs → {}", outcome.wild_slots, outcome.trainer_pokemon, romfs.display());
+    std::fs::write(format!("{out}/journal.txt"), &outcome.log)?;
+
+    // Relecture : une zone et un dresseur, depuis les fichiers écrits.
+    let names = game.text_file(game.layout.species_names)?;
+    let l = game.layout;
+    if let Ok(data) = std::fs::read(romfs.join(l.encounters)) {
+        let garc = Garc::parse(&data)?;
+        let zone = lz::decompress(garc.file(100).ok_or("zone 100 absente")?)?;
+        let slots: Vec<_> = encounters::read(6, &zone).iter().map(|s| format!("{} {}-{}", names[s.species as usize], s.min_level, s.max_level)).collect();
+        println!("Zone 100 relue : {}", slots.join(", "));
+    }
+    if let (Ok(d), Ok(p)) = (std::fs::read(romfs.join(l.trainer_data)), std::fs::read(romfs.join(l.trainer_pokemon))) {
+        let (d, p) = (Garc::parse(&d)?, Garc::parse(&p)?);
+        let team = trainers::read_team(6, d.file(561).unwrap_or_default(), p.file(561).unwrap_or_default()).ok_or("dresseur 561 illisible")?;
+        let list: Vec<_> = team.pokemon.iter().map(|t| format!("{} niv. {} {:?}", names[t.species as usize], t.level, t.moves)).collect();
+        println!("Dresseur 561 relu : {}", list.join(" ; "));
+    }
+    Ok(())
+}
+
+/// Exporte les noms français et les données de base des espèces (Gen 6) vers un
+/// JSON embarqué par `kaleido_core::names` (utile pour afficher une sauvegarde sans ROM).
+pub fn export_names(path: &str, out: &str) -> CliResult {
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let l = game.layout;
+    let count = l.species_count as usize;
+    let species: Vec<String> = game.text_file(l.species_names)?.into_iter().take(count + 1).collect();
+    let personal = game.garc(l.personal)?;
+    let record = |i: usize| personal.file(i).map(<[u8]>::to_vec).unwrap_or_default();
+    let base_stats: Vec<[u8; 6]> = (0..=count).map(|i| record(i).get(..6).and_then(|s| s.try_into().ok()).unwrap_or([0; 6])).collect();
+    let growth: Vec<u8> = (0..=count).map(|i| record(i).get(0x15).copied().unwrap_or(0)).collect();
+    let ability_ids: Vec<u8> = (0..=count).map(|i| record(i).get(0x18).copied().unwrap_or(0)).collect();
+    let json = format!(
+        "{{\"source\":{},\"species\":{},\"moves\":{},\"abilities\":{},\"items\":{},\"growth\":{:?},\"baseStats\":{:?},\"abilityIds\":{:?}}}",
+        json_str(game.game.name_fr()),
+        json_list(&species),
+        json_list(&game.text_file(l.move_names)?),
+        json_list(&game.text_file(l.ability_names)?),
+        json_list(&game.text_file(l.item_names)?),
+        growth,
+        base_stats,
+        ability_ids
+    );
+    std::fs::write(out, json)?;
+    println!("{} espèces exportées vers {out}", species.len() - 1);
+    Ok(())
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn json_list(items: &[String]) -> String {
+    format!("[{}]", items.iter().map(|s| json_str(s)).collect::<Vec<_>>().join(","))
+}
+
 pub fn info(rom: &RomFsSource) -> CliResult {
     match rom.title_id() {
         Some(id) => println!("Title ID   : {id:016X}"),

@@ -8,7 +8,8 @@ import Sprite from "../components/Sprite.vue";
 import Toggle from "../components/Toggle.vue";
 import { library } from "../library";
 import { nav } from "../nav";
-import { RANDOMIZABLE, type Outcome, type PokemonRef, type Preset, type RandomizerSettings } from "../types";
+import { open } from "@tauri-apps/plugin-dialog";
+import { RANDOMIZABLE, isRom, type CtrOutcome, type Outcome, type PokemonRef, type Preset, type RandomizerSettings } from "../types";
 
 const presets = ref<Preset[]>([]);
 const activePreset = ref<string | null>("equilibre");
@@ -39,8 +40,11 @@ const outputPath = ref<string | null>(null);
 const runError = ref<string | null>(null);
 const showLog = ref(false);
 
-const roms = computed(() => library.items.filter((d) => d.kind === "nds_rom" && d.game));
+const roms = computed(() => library.items.filter(isRom));
 const selected = computed(() => roms.value.find((r) => r.path === romPath.value) ?? null);
+const isCtr = computed(() => selected.value?.platform === "3ds");
+const target = ref<"luma" | "emulator">("luma");
+const lastWasCtr = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
 onMounted(async () => {
@@ -78,7 +82,7 @@ watch(
 async function refreshPreview() {
   preview.value = [];
   previewError.value = null;
-  if (!romPath.value || !supported(selected.value?.game?.id)) return;
+  if (!romPath.value || !supported(selected.value?.game?.id) || isCtr.value) return;
   try {
     preview.value = await invoke<PokemonRef[]>("preview_starters", { path: romPath.value, settings: { ...settings }, seed: seed.value });
   } catch (e) {
@@ -108,6 +112,7 @@ async function importCode() {
 
 async function generate() {
   if (!selected.value) return;
+  if (isCtr.value) return generateCtr();
   const base = selected.value.path.replace(/\.nds$/i, "");
   const output = await save({
     title: "Enregistrer la ROM randomisée",
@@ -121,6 +126,32 @@ async function generate() {
   try {
     outcome.value = await invoke<Outcome>("randomize_rom", { path: selected.value.path, settings: { ...settings }, seed: seed.value, output });
     outputPath.value = output;
+    lastWasCtr.value = false;
+  } catch (e) {
+    runError.value = String(e);
+  } finally {
+    running.value = false;
+  }
+}
+
+/** 3DS : les fichiers modifiés sont écrits dans un dossier LayeredFS. */
+async function generateCtr() {
+  const output = await open({ directory: true, title: "Choisis le dossier où créer le mod" });
+  if (typeof output !== "string" || !selected.value) return;
+  running.value = true;
+  runError.value = null;
+  outcome.value = null;
+  try {
+    const res = await invoke<CtrOutcome>("randomize_ctr", {
+      path: selected.value.path,
+      settings: { ...settings },
+      seed: seed.value,
+      output,
+      target: target.value,
+    });
+    outcome.value = res;
+    outputPath.value = res.romfs;
+    lastWasCtr.value = true;
   } catch (e) {
     runError.value = String(e);
   } finally {
@@ -170,7 +201,22 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </button>
           </div>
 
-          <div class="section panel">
+          <div v-if="isCtr" class="section panel">
+            <h3>Sortie 3DS</h3>
+            <Segmented
+              v-model="target"
+              :options="[
+                { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
+                { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
+              ]"
+            />
+            <p class="dim note">
+              Seuls les fichiers modifiés sont écrits : ta ROM d'origine n'est jamais touchée. Les starters restent
+              ceux du jeu sur 3DS pour l'instant.
+            </p>
+          </div>
+
+          <div v-else class="section panel">
             <h3>Starters</h3>
             <Segmented
               v-model="settings.starters"
@@ -249,7 +295,8 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <Sprite :id="p.id" :size="88" />
                 <span>{{ p.name }}</span>
               </div>
-              <p v-if="!preview.length && !previewError" class="dim">Choisis une ROM compatible.</p>
+              <p v-if="isCtr" class="dim">Sur 3DS, tu gardes les starters du jeu (Arcko, Poussifeu, Gobou).</p>
+              <p v-else-if="!preview.length && !previewError" class="dim">Choisis une ROM compatible.</p>
               <p v-if="previewError" class="error-text">{{ previewError }}</p>
             </div>
           </div>
@@ -270,15 +317,18 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <button class="btn btn-primary generate" :disabled="!selected || !supported(selected.game?.id) || running" @click="generate">
-            {{ running ? "Génération…" : "Générer la ROM" }}
+            {{ running ? "Génération…" : isCtr ? "Générer le mod 3DS" : "Générer la ROM" }}
           </button>
 
           <div v-if="runError" class="panel card error">{{ runError }}</div>
 
           <Transition name="pop">
             <div v-if="outcome" class="panel card done">
-              <h3>✨ ROM prête !</h3>
+              <h3>✨ {{ lastWasCtr ? "Mod prêt !" : "ROM prête !" }}</h3>
               <p class="dim">{{ outcome.wildSlots }} Pokémon sauvages et {{ outcome.trainerPokemon }} Pokémon de dresseurs modifiés.</p>
+              <p v-if="lastWasCtr" class="dim note">
+                {{ target === "luma" ? "Copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma." : "Place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
+              </p>
               <div class="done-actions">
                 <button v-if="outputPath" class="btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
                 <button class="btn" @click="showLog = true">Voir le journal</button>
@@ -524,6 +574,12 @@ h3 {
 .error,
 .error-text {
   color: var(--danger);
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .done h3 {

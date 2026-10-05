@@ -6,7 +6,7 @@ import TypeBadge from "../components/TypeBadge.vue";
 import { editor, openRom } from "../editor";
 import { library } from "../library";
 import { nav } from "../nav";
-import type { BaseStats, PokeTypeKey, Species } from "../types";
+import { isRom, type BaseStats, type PokeTypeKey, type Species } from "../types";
 
 const query = ref("");
 const typeFilter = ref<PokeTypeKey | "">("");
@@ -23,7 +23,7 @@ const STATS: { key: keyof BaseStats; label: string }[] = [
   { key: "speed", label: "Vit" },
 ];
 
-const openableRoms = computed(() => library.items.filter((d) => d.kind === "nds_rom" && d.game));
+const openableRoms = computed(() => library.items.filter(isRom));
 
 const types = computed(() => {
   const seen = new Map<PokeTypeKey, string>();
@@ -77,7 +77,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
     <!-- Aucune ROM ouverte -->
     <template v-if="!editor.overview && !editor.loadingPath">
       <h1>Éditeur de ROM</h1>
-      <p class="lead">Explore les données d'un jeu DS : Pokédex, statistiques, types et talents.</p>
+      <p class="lead">Explore les données d'un jeu DS ou 3DS : Pokédex, statistiques, types et talents.</p>
 
       <div v-if="editor.error" class="error">{{ editor.error }}</div>
 
@@ -89,7 +89,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
         </button>
       </div>
       <div v-else class="empty panel">
-        <p>Aucune ROM DS dans la bibliothèque.</p>
+        <p>Aucune ROM DS ou 3DS dans la bibliothèque.</p>
         <button class="btn btn-primary" @click="nav.view = 'home'">Ajouter une ROM</button>
       </div>
     </template>
@@ -129,7 +129,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
           <button @click="sortBy('id')">N° {{ arrow("id") }}</button>
           <button @click="sortBy('name')">Nom {{ arrow("name") }}</button>
           <span>Types</span>
-          <button v-for="s in STATS" :key="s.key" class="num" @click="sortBy(s.key)">{{ s.label }} {{ arrow(s.key) }}</button>
+          <button v-for="s in STATS" :key="s.key" @click="sortBy(s.key)">{{ s.label }} {{ arrow(s.key) }}</button>
           <button class="num" @click="sortBy('total')">Total {{ arrow("total") }}</button>
           <span>Talents</span>
         </div>
@@ -398,25 +398,22 @@ h1 {
   gap: 4px;
 }
 
-/* Valeur en clair à gauche, jauge fine à droite : le texte ne passe jamais sur la couleur. */
+/* Valeur en clair, jauge fine dessous sur toute la largeur : le texte ne passe jamais sur la couleur. */
 .stat {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 8px;
 }
 
 .val {
-  width: 26px;
-  flex-shrink: 0;
   font-size: 13px;
   font-weight: 600;
-  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .track {
-  flex: 1;
-  height: 6px;
+  height: 5px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--text) 14%, transparent);
   overflow: hidden;

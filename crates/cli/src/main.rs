@@ -67,6 +67,13 @@ fn main() -> ExitCode {
         ["bytes3ds", rom, pattern] => ctr::search_bytes(&ctr::open(rom), pattern, ""),
         ["bytes3ds", rom, pattern, filter] => ctr::search_bytes(&ctr::open(rom), pattern, filter),
         ["species3ds", rom] => ctr::species(rom),
+        ["export-names", rom, out] => ctr::export_names(rom, out),
+        ["demo-save", out] => kaleido_core::save::demo_save().map_err(Into::into).and_then(|b| std::fs::write(out, b).map_err(Into::into)),
+        ["save", path] => std::fs::read(path)
+            .map_err(Into::into)
+            .and_then(|b| kaleido_core::save::SaveFile::from_bytes(&b).map_err(Into::into))
+            .map(|s| println!("{}", kaleido_core::save::describe(&s))),
+        ["randomize3ds", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| ctr::randomize(rom, preset, s, out)),
         ["textdiff", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text_diff(rom, archive, n)),
         _ => {
             eprintln!("{USAGE}");

@@ -11,11 +11,17 @@ Inspirations : [Universal Pokémon Randomizer ZX](https://github.com/Ajarmar/uni
 
 ## Jeux visés
 
-| Plateforme | Jeux | État |
+| Fonction | Jeux pris en charge | État |
 |---|---|---|
-| Nintendo DS | Diamant, Perle, Platine, Or HeartGold, Argent SoulSilver, Noire, Blanche, Noire 2, Blanche 2 | Détection ✓ |
-| Nintendo 3DS | X, Y, Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil, Ultra-Lune | Détection ✓ |
+| Détection (ROM, dossier extrait, sauvegarde) | DS Gen 4/5, 3DS Gen 6/7 | ✓ |
+| Pokédex (éditeur de ROM, lecture) | Platine, Noire, Blanche, Rubis Oméga, Saphir Alpha (vérifiés) ; autres jeux DS/3DS « non vérifiés » | ✓ |
+| Randomizer → ROM `.nds` | Platine, Noire, Blanche | ✓ starters, sauvages, dresseurs, types, stats, talents |
+| Randomizer → mod LayeredFS (Luma3DS ou émulateur) | Rubis Oméga, Saphir Alpha | ✓ sauvages, dresseurs, types, stats, talents (starters inchangés) |
+| Éditeur de sauvegardes | Gen 4 à 7 | Expérimental : formats non vérifiés sur de vraies parties |
 | Switch | Let's Go, Épée, Bouclier, Légendes Arceus | Plus tard |
+
+Aucune ROM randomisée n'a encore été testée en jeu : la validation porte sur la relecture
+complète des fichiers produits (voir plus bas).
 
 ## Architecture
 
@@ -94,10 +100,18 @@ cargo test --workspace --exclude kaleido-app
 0. **Socle** : bibliothèque, glisser-déposer, détection des fichiers, thèmes ✓
 1. **Formats DS** : NitroFS, NARC, LZ, textes Gen 4/5, Pokédex dans l'éditeur ✓
    Formats 3DS : RomFS, GARC, textes Gen 6/7, Pokédex Gen 6/7 (vérifié sur ROSA) ✓
-2. **Randomizer DS** : Platine et HGSS, puis Noire/Blanche 1 et 2
-3. **Randomizer 3DS** : XY, ROSA, SL, USUL, avec sortie LayeredFS
-4. **Éditeur de sauvegardes** Gen 4 à 7
+2. **Randomizer DS** : Platine, Noire, Blanche ✓ — à faire : HGSS, Noire 2 / Blanche 2 (ROMs nécessaires)
+3. **Randomizer 3DS** : ROSA ✓ (LayeredFS) — à faire : starters (module `.cro` signé), XY, SL, USUL
+4. **Éditeur de sauvegardes** Gen 4 à 7 ✓ (expérimental) — à faire : validation sur de vraies sauvegardes,
+   signature des sauvegardes Soleil / Lune
 5. **Switch**, sur le modèle de pkNX
+
+## Sprites
+
+Les icônes viennent de [pokesprite](https://github.com/msikma/pokesprite) (MIT), téléchargées
+la première fois qu'elles s'affichent puis gardées en cache dans le dossier de l'application.
+Les noms français embarqués (`crates/core/data/noms-fr.json`) sont extraits d'une ROM avec
+`kaleido export-names`. Pokémon © Nintendo, Game Freak, The Pokémon Company.
 
 ## Licence
 

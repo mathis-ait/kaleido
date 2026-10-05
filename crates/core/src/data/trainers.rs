@@ -42,10 +42,19 @@ fn entry_size(flags: u8) -> usize {
     8 + if flags & FLAG_ITEM != 0 { 2 } else { 0 } + if flags & FLAG_MOVES != 0 { 8 } else { 0 }
 }
 
+/// Position du nombre de Pokémon dans trdata (Rubis Oméga / Saphir Alpha : fiche de 0x18 octets).
+fn count_offset(generation: u8) -> usize {
+    if generation >= 6 {
+        7
+    } else {
+        3
+    }
+}
+
 /// Lit l'équipe d'un dresseur à partir de sa fiche et de son fichier trpoke.
 pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
     let flags = *trdata.first()?;
-    let count = *trdata.get(3)? as usize;
+    let count = *trdata.get(count_offset(generation))? as usize;
     let size = entry_size(flags);
     let mut pokemon = Vec::with_capacity(count);
     for i in 0..count {
@@ -59,6 +68,12 @@ pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
             form = raw >> 10;
             at = 6;
             extra = u16_at(e, size - 2);
+        } else if generation >= 6 {
+            level = u16_at(e, 2);
+            species = u16_at(e, 4);
+            form = u16_at(e, 6);
+            extra = 0;
+            at = 8;
         } else {
             level = e[2] as u16;
             extra = e[3] as u16;
@@ -85,7 +100,7 @@ pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
 /// Réécrit le fichier trpoke ; met à jour les drapeaux et le nombre dans trdata.
 pub fn write_team(generation: u8, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
     trdata[0] = team.flags;
-    trdata[3] = team.pokemon.len() as u8;
+    trdata[count_offset(generation)] = team.pokemon.len() as u8;
     let size = entry_size(team.flags);
     let mut out = Vec::with_capacity(size * team.pokemon.len());
     for p in &team.pokemon {
@@ -98,6 +113,11 @@ pub fn write_team(generation: u8, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
             put_u16(&mut e, 4, (p.species & 0x03FF) | (p.form << 10));
             at = 6;
             put_u16(&mut e, size - 2, p.extra);
+        } else if generation >= 6 {
+            put_u16(&mut e, 2, p.level);
+            put_u16(&mut e, 4, p.species);
+            put_u16(&mut e, 6, p.form);
+            at = 8;
         } else {
             e[2] = p.level.min(255) as u8;
             e[3] = p.extra as u8;

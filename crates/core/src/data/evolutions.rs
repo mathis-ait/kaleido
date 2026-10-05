@@ -1,5 +1,5 @@
-//! Évolutions : 7 entrées de 6 octets (méthode u16, paramètre u16, espèce u16),
-//! identique en Gen 4 et 5.
+//! Évolutions : entrées de 6 octets (méthode u16, paramètre u16, espèce u16),
+//! 7 en Gen 4 / 5, 8 en Gen 6.
 
 use super::u16_at;
 
@@ -11,7 +11,7 @@ pub struct Evolution {
 }
 
 pub fn read(d: &[u8]) -> Vec<Evolution> {
-    (0..7)
+    (0..(d.len() / 6).min(8))
         .filter_map(|i| {
             let at = i * 6;
             let e = d.get(at..at + 6)?;

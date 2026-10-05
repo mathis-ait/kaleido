@@ -179,7 +179,7 @@ pub(super) fn verify(data: &[u8], blocks: &[FooterBlock]) -> Vec<BlockCheck> {
 
 /// Sauvegarde vierge synthétique : pieds valides dans les deux partitions, la
 /// partition `newer_general` / `newer_storage` (0 ou 1) ayant le compteur le plus haut.
-#[cfg(test)]
+/// Sert aux tests et à la sauvegarde de démonstration.
 pub(super) fn blank(version: SaveVersion, newer_general: usize, newer_storage: usize) -> Vec<u8> {
     let c = consts(version);
     let mut d = vec![0u8; 2 * PARTITION];

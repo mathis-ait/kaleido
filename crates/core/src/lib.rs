@@ -4,6 +4,7 @@ pub mod ctr_rom;
 pub mod data;
 pub mod detect;
 pub mod games;
+pub mod names;
 pub mod pokemon;
 pub mod randomizer;
 pub mod rom;

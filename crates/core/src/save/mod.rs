@@ -27,6 +27,7 @@ mod gen5;
 mod gen6;
 mod gen7;
 pub mod pkm;
+pub mod session;
 pub mod stats;
 mod strings;
 
@@ -127,6 +128,9 @@ pub enum SaveError {
     MissingPartyStats,
     #[error(transparent)]
     Pkm(#[from] PkmError),
+    /// Opération refusée par l'éditeur (message destiné à l'utilisateur).
+    #[error("{0}")]
+    Invalid(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -548,5 +552,52 @@ fn describe_pokemon(pk: &Pokemon) -> String {
     )
 }
 
+/// Sauvegarde Platine **synthétique** remplie de quelques Pokémon, pour essayer
+/// l'éditeur sans vraie partie (outil de développement : `kaleido demo-save`).
+#[doc(hidden)]
+pub fn demo_save() -> Result<Vec<u8>, SaveError> {
+    use session::{SaveSession, Slot};
+    let mut s = SaveSession::open(&gen4::blank(SaveVersion::Platinum, 0, 0))?;
+    let team: [(u16, u8, [u16; 4]); 12] = [
+        (445, 62, [337, 89, 200, 14]),
+        (448, 55, [396, 94, 245, 182]),
+        (392, 48, [53, 7, 183, 370]),
+        (25, 40, [85, 98, 86, 21]),
+        (6, 70, [53, 19, 337, 89]),
+        (149, 80, [200, 245, 57, 63]),
+        (94, 58, [247, 94, 85, 109]),
+        (133, 15, [33, 39, 28, 98]),
+        (143, 45, [34, 156, 214, 89]),
+        (130, 50, [127, 242, 349, 89]),
+        (448, 30, [396, 98, 182, 245]),
+        (493, 100, [449, 63, 105, 248]),
+    ];
+    for (i, &(species, level, moves)) in team.iter().enumerate() {
+        let mut p = Pokemon::blank(PkmFormat::Gen4);
+        p.set_species(species);
+        // PID aux deux moitiés égales avec TID/SID nuls : chromatique pour le 4ᵉ.
+        p.set_pid(if i == 3 { 0x1A2B_1A2B } else { 0x0101_0000u32.wrapping_mul(i as u32 + 7) ^ 0x5A3C });
+        let growth = crate::names::growth_rate(species).unwrap_or(GrowthRate::MediumFast);
+        p.set_exp(exp_for_level(growth, level));
+        p.set_moves(moves);
+        p.set_ivs([31, (i as u8 * 7) % 32, 20, 31, 25, (i as u8 * 3) % 32])?;
+        p.set_nickname(crate::names::species(species).unwrap_or("?"))?;
+        p.set_ot_name("Kaleido")?;
+        // Talent : premier talent de l'espèce, d'après les données embarquées (Gen 6).
+        if let Some(a) = crate::names::first_ability(species) {
+            p.set_ability(a)?;
+        }
+        p.set_friendship(70);
+        p.refresh_checksum();
+        s.save.set_box_slot(0, i, Some(p))?;
+    }
+    for i in 0..3 {
+        s.move_pokemon(Slot::Box { r#box: 0, index: i }, Slot::Party { index: i })?;
+    }
+    Ok(s.to_bytes())
+}
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod session_tests;

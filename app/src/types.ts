@@ -88,7 +88,83 @@ export interface Outcome {
 }
 
 /** Jeux pris en charge par le randomizer. */
-export const RANDOMIZABLE = ["platinum", "black", "white"];
+export const RANDOMIZABLE = ["platinum", "black", "white", "omega_ruby", "alpha_sapphire"];
+
+/** Fichiers ouvrables dans l'éditeur et le randomizer (ROM DS, ROM 3DS, dossier 3DS). */
+export const isRom = (d: Detection) => ["nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
+
+export interface CtrOutcome extends Outcome {
+  romfs: string;
+}
+
+// --- Éditeur de sauvegardes (miroir de `kaleido_core::save::session`).
+
+export type Slot = { kind: "party"; index: number } | { kind: "box"; box: number; index: number };
+
+export interface SlotView {
+  slot: Slot;
+  species: number;
+  form: number;
+  nickname: string;
+  isNicknamed: boolean;
+  isEgg: boolean;
+  level: number;
+  levelEstimated: boolean;
+  exp: number;
+  shiny: boolean;
+  gender: "male" | "female" | "genderless";
+  nature: number;
+  natureName: string;
+  ability: number;
+  heldItem: number;
+  moves: number[];
+  /** PV, Att, Déf, Atq Spé, Déf Spé, Vit */
+  ivs: number[];
+  evs: number[];
+  otName: string;
+  tid: number;
+  sid: number;
+  ball: number;
+  friendship: number;
+  pid: number;
+  checksumValid: boolean;
+  speciesName: string;
+  abilityName: string;
+  itemName: string | null;
+  moveNames: string[];
+  stats: number[] | null;
+}
+
+export interface Trainer {
+  name: string;
+  tid: number;
+  sid: number;
+  displayId: string;
+  gender: string;
+  money: number;
+  playTime: { hours: number; minutes: number; seconds: number };
+}
+
+export interface SaveView {
+  game: string;
+  generation: number;
+  trainer: Trainer;
+  boxNames: string[];
+  party: SlotView[];
+  warnings: string[];
+  needsResign: boolean;
+  checksumsValid: boolean;
+}
+
+export interface PokemonPatch {
+  nickname?: string;
+  level?: number;
+  heldItem?: number;
+  moves?: number[];
+  ivs?: number[];
+  evs?: number[];
+  friendship?: number;
+}
 
 export interface Detail {
   label: string;

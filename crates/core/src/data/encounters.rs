@@ -28,13 +28,39 @@ pub(crate) enum SlotKind {
     U16Form,
 }
 
-/// Lit tous les emplacements non vides d'un fichier de zone.
+/// Lit tous les emplacements non vides d'un fichier de zone (décompressé).
 pub fn read(generation: u8, data: &[u8]) -> Vec<Slot> {
-    if generation <= 4 {
-        read_platinum(data)
-    } else {
-        read_bw(data)
+    match generation {
+        ..=4 => read_platinum(data),
+        5 => read_bw(data),
+        _ => read_oras(data),
     }
+}
+
+/// Rubis Oméga / Saphir Alpha : fichier de zone « ZO » ; la section 4 (offset u32
+/// en 0x10) commence par 14 octets de taux, puis 61 emplacements au format Gen 5
+/// (herbe 12, hautes herbes 12, spéciaux 3, Surf 5, Éclate-Roc 5, cannes 3×3, hordes 3×5).
+pub const ORAS_RATES: usize = 0x0E;
+pub const ORAS_SLOTS: usize = 61;
+
+pub fn oras_section(d: &[u8]) -> Option<std::ops::Range<usize>> {
+    if d.len() < 0x14 || &d[..2] != b"ZO" {
+        return None;
+    }
+    let start = u32::from_le_bytes(d[0x10..0x14].try_into().unwrap()) as usize;
+    let end = start + ORAS_RATES + ORAS_SLOTS * 4;
+    (end <= d.len()).then_some(start..end)
+}
+
+fn read_oras(d: &[u8]) -> Vec<Slot> {
+    let Some(section) = oras_section(d) else { return Vec::new() };
+    (0..ORAS_SLOTS)
+        .filter_map(|i| {
+            let at = section.start + ORAS_RATES + i * 4;
+            let species = u16_at(d, at) & 0x07FF;
+            (species != 0).then_some(Slot { offset: at, species, min_level: d[at + 2], max_level: d[at + 3], kind: SlotKind::U16Form })
+        })
+        .collect()
 }
 
 fn read_platinum(d: &[u8]) -> Vec<Slot> {
