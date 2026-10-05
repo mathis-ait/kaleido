@@ -14,7 +14,7 @@ export interface GameInfo {
 
 export type PokeTypeKey =
   | "normal" | "fighting" | "flying" | "poison" | "ground" | "rock" | "bug" | "ghost" | "steel"
-  | "mystery" | "fire" | "water" | "grass" | "electric" | "psychic" | "ice" | "dragon" | "dark";
+  | "mystery" | "fire" | "water" | "grass" | "electric" | "psychic" | "ice" | "dragon" | "dark" | "fairy";
 
 export interface TypeTag {
   key: PokeTypeKey;
@@ -48,8 +48,47 @@ export interface RomOverview {
   gameCode: string;
   fileCount: number;
   verified: boolean;
+  canRandomize: boolean;
   species: Species[];
 }
+
+export interface RandomizerSettings {
+  starters: "unchanged" | "random" | "three_stage" | "triangle";
+  wild: "unchanged" | "random" | "area" | "global";
+  wildSimilarStrength: boolean;
+  wildLevelPercent: number;
+  trainers: "unchanged" | "random" | "type_themed";
+  trainersSimilarStrength: boolean;
+  trainerLevelPercent: number;
+  stats: "unchanged" | "shuffle" | "random";
+  randomTypes: boolean;
+  randomAbilities: boolean;
+  noLegendaries: boolean;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  description: string;
+  settings: RandomizerSettings;
+}
+
+export interface PokemonRef {
+  id: number;
+  name: string;
+}
+
+export interface Outcome {
+  seed: number;
+  shareCode: string;
+  starters: PokemonRef[];
+  wildSlots: number;
+  trainerPokemon: number;
+  log: string;
+}
+
+/** Jeux pris en charge par le randomizer. */
+export const RANDOMIZABLE = ["platinum", "black", "white"];
 
 export interface Detail {
   label: string;

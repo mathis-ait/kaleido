@@ -86,12 +86,27 @@ impl GameRom {
         &self.rom
     }
 
+    pub fn rom_mut(&mut self) -> &mut NdsRom {
+        &mut self.rom
+    }
+
     pub fn generation(&self) -> u8 {
         self.game.generation()
     }
 
-    fn narc(&self, path: &str) -> Result<Narc, RomError> {
+    pub fn narc(&self, path: &str) -> Result<Narc, RomError> {
         Ok(Narc::parse(self.rom.file_by_path(path)?)?)
+    }
+
+    pub fn replace_narc(&mut self, path: &str, narc: &Narc) -> Result<(), RomError> {
+        Ok(self.rom.replace_file_by_path(path, narc.to_bytes())?)
+    }
+
+    /// Écrit la ROM complète (avec les fichiers modifiés) sur le disque.
+    pub fn save(&self, path: &Path) -> Result<(), RomError> {
+        let bytes = self.rom.to_bytes()?;
+        std::fs::write(path, bytes).map_err(FormatError::from)?;
+        Ok(())
     }
 
     /// Toutes les chaînes d'un fichier de l'archive de textes principale.

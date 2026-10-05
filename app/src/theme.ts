@@ -8,6 +8,7 @@ export interface Theme {
 }
 
 export const THEMES: Theme[] = [
+  { id: "lagon", name: "Lagon", description: "Bleu océan et verre dépoli, façon console de salon", swatch: ["#1f7fe0", "#ffffff", "#7fe7ff", "#0b3f8c"] },
   { id: "nuit", name: "Prisme Nuit", description: "Sombre, reflets de kaléidoscope", swatch: ["#0c0e1a", "#8b5cf6", "#22d3ee", "#f472b6"] },
   { id: "jour", name: "Prisme Jour", description: "Clair et lumineux", swatch: ["#f5f6fb", "#7c3aed", "#0891b2", "#db2777"] },
   { id: "ds", name: "Console DS", description: "Gris argent et bleu Nintendo DS", swatch: ["#d9dde3", "#2f6fd6", "#5aa0ff", "#1d2a3a"] },

@@ -6,6 +6,7 @@ import DropOverlay from "./components/DropOverlay.vue";
 import HomeView from "./views/HomeView.vue";
 import EditorView from "./views/EditorView.vue";
 import PlaceholderView from "./views/PlaceholderView.vue";
+import RandomizerView from "./views/RandomizerView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { addPaths } from "./library";
 import { nav } from "./nav";
@@ -13,12 +14,6 @@ import { nav } from "./nav";
 const dragging = ref(false);
 
 const upcoming = {
-  randomizer: {
-    title: "Randomizer",
-    phase: "Phases 2 et 3",
-    description: "Mélange starters, Pokémon sauvages, dresseurs et statistiques, avec une seed partageable.",
-    features: ["Préréglages en un clic : Équilibré, Chaos, Nuzlocke, Monotype", "Aperçu des starters avant de générer", "Export .nds ou dossier LayeredFS pour la 3DS"],
-  },
   saves: {
     title: "Sauvegardes",
     phase: "Phase 4",
@@ -55,6 +50,7 @@ onUnmounted(() => unlisten?.());
       <Transition name="view" mode="out-in">
         <HomeView v-if="nav.view === 'home'" key="home" />
         <EditorView v-else-if="nav.view === 'editor'" key="editor" />
+        <RandomizerView v-else-if="nav.view === 'randomizer'" key="randomizer" />
         <SettingsView v-else-if="nav.view === 'settings'" key="settings" />
         <PlaceholderView v-else-if="placeholder" :key="nav.view" v-bind="placeholder" />
       </Transition>

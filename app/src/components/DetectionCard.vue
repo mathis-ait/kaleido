@@ -2,7 +2,8 @@
 import { computed } from "vue";
 import { openRom } from "../editor";
 import { removeItem } from "../library";
-import type { Detection, FileKind } from "../types";
+import { nav } from "../nav";
+import { RANDOMIZABLE, type Detection, type FileKind } from "../types";
 
 const props = defineProps<{ item: Detection }>();
 
@@ -18,6 +19,12 @@ const platformLabel = computed(() => (props.item.platform === "nds" ? "DS" : pro
 const isRom = computed(() => ["nds_rom", "ctr_rom", "ctr_dump"].includes(props.item.kind) && props.item.game !== null);
 const isSave = computed(() => props.item.kind === "save");
 const canEdit = computed(() => props.item.kind === "nds_rom" && props.item.game !== null);
+const canRandomize = computed(() => canEdit.value && RANDOMIZABLE.includes(props.item.game?.id ?? ""));
+
+function randomize() {
+  nav.randomizerRom = props.item.path;
+  nav.view = "randomizer";
+}
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return "—";
@@ -54,7 +61,8 @@ function formatSize(bytes: number): string {
 
     <div class="actions">
       <template v-if="isRom">
-        <button class="btn btn-primary" disabled title="Arrive en phase 2">Randomiser</button>
+        <button v-if="canRandomize" class="btn btn-primary" @click="randomize">Randomiser</button>
+        <button v-else class="btn btn-primary" disabled title="Pas encore pris en charge par le randomizer">Randomiser</button>
         <button v-if="canEdit" class="btn" @click="openRom(item.path)">Explorer</button>
         <button v-else class="btn" disabled title="Jeux 3DS : arrive en phase 3">Explorer</button>
       </template>

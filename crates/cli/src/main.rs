@@ -22,7 +22,10 @@ Commandes :
   text      <rom> <archive> <n°>        Affiche un fichier de texte
   find      <rom> <archive> <texte>     Cherche un texte dans toute une archive
   textcheck <rom> <archive>             Vérifie déchiffrement, décodage et réencodage
-  species   <rom>                       Pokédex : types, statistiques, talents";
+  species   <rom>                       Pokédex : types, statistiques, talents
+  hex       <rom> <archive> <n°>        Vidage hexadécimal d'une entrée NARC
+  randomize <rom> <préréglage> <seed> <sortie.nds>   Randomise (equilibre, nuzlocke, chaos, defi)
+  starters  <rom>                       Starters actuels";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -35,6 +38,10 @@ fn main() -> ExitCode {
         ["find", rom, archive, needle] => find(&open(rom), archive, needle),
         ["textcheck", rom, archive] => text_check(&open(rom), archive),
         ["species", rom] => species(rom),
+        ["randomize", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| randomize(rom, preset, s, out)),
+        ["starters", rom] => starters(rom),
+        ["search", rom, values] => search(&open(rom), values),
+        ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["textdiff", rom, archive, n] => n.parse().map_err(Into::into).and_then(|n| text_diff(&open(rom), archive, n)),
         _ => {
             eprintln!("{USAGE}");
@@ -263,6 +270,82 @@ fn species(path: &str) -> CliResult {
             b.speed,
             s.total
         );
+    }
+    Ok(())
+}
+
+fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
+    use kaleido_core::randomizer;
+    let settings = randomizer::presets().into_iter().find(|p| p.id == preset).ok_or("préréglage inconnu")?.settings;
+    let mut game = kaleido_core::GameRom::open(Path::new(path))?;
+    let outcome = randomizer::randomize(&mut game, &settings, seed)?;
+    game.save(Path::new(out))?;
+    let names: Vec<_> = outcome.starters.iter().map(|s| s.name.as_str()).collect();
+    println!("Starters : {}", names.join(", "));
+    println!("{} emplacements sauvages, {} Pokémon de dresseurs", outcome.wild_slots, outcome.trainer_pokemon);
+    println!("Code : {}", outcome.share_code);
+    std::fs::write(format!("{out}.log.txt"), &outcome.log)?;
+    Ok(())
+}
+
+fn starters(path: &str) -> CliResult {
+    let game = kaleido_core::GameRom::open(Path::new(path))?;
+    let loc = kaleido_core::data::DataPaths::for_game(game.game).ok_or("jeu non pris en charge")?.starters;
+    let ids = kaleido_core::data::starters::read(&game, loc)?;
+    let names = game.text_file(game.layout.species_names)?;
+    for id in ids {
+        println!("{id:3} {}", names[id as usize]);
+    }
+    Ok(())
+}
+
+/// Cherche une suite de valeurs (u16 consécutifs, puis u32 consécutifs, puis
+/// u16 proches à moins de 64 octets) dans l'ARM9, les overlays et les NARC.
+fn search(rom: &NdsRom, values: &str) -> CliResult {
+    let wanted: Vec<u32> = values.split(',').map(str::parse).collect::<Result<_, _>>()?;
+    let as_u16: Vec<u8> = wanted.iter().flat_map(|v| (*v as u16).to_le_bytes()).collect();
+    let as_u32: Vec<u8> = wanted.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let mut sources: Vec<(String, Vec<u8>)> = vec![("arm9".into(), rom.arm9().to_vec())];
+    for o in rom.overlays() {
+        sources.push((format!("overlay {}", o.id), rom.overlay(o.id)?));
+    }
+    for (id, path) in rom.files() {
+        let data = rom.file(id).unwrap_or_default();
+        if Narc::is_narc(data) {
+            if let Ok(n) = Narc::parse(data) {
+                sources.extend(n.files.into_iter().enumerate().map(|(i, f)| (format!("{path}[{i}]"), f)));
+            }
+        }
+    }
+
+    for (name, data) in &sources {
+        for (label, needle) in [("u16", &as_u16), ("u32", &as_u32)] {
+            for at in data.windows(needle.len()).enumerate().filter(|(_, w)| w == needle).map(|(i, _)| i) {
+                println!("{name} @ {at:#X} ({label} consécutifs)");
+            }
+        }
+        // Valeurs dispersées (ex. arguments de commandes de script).
+        let first = (wanted[0] as u16).to_le_bytes();
+        for at in data.windows(2).enumerate().filter(|(_, w)| *w == first).map(|(i, _)| i) {
+            let window = &data[at..(at + 64).min(data.len())];
+            let all = wanted[1..].iter().all(|v| window.windows(2).any(|w| w == (*v as u16).to_le_bytes()));
+            if all && !data[at..].starts_with(&as_u16) {
+                println!("{name} @ {at:#X} (proches)");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hex_entry(rom: &NdsRom, path: &str, n: usize) -> CliResult {
+    let narc = Narc::parse(rom.file_by_path(path)?)?;
+    let data = narc.files.get(n).ok_or("numéro hors de l'archive")?;
+    println!("{} fichiers, entrée {n} : {} octets", narc.files.len(), data.len());
+    for (i, row) in data.chunks(16).enumerate() {
+        let hex: Vec<String> = row.iter().map(|b| format!("{b:02X}")).collect();
+        let words: Vec<String> = row.chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_le_bytes([c[0], c[1]]).to_string()).collect();
+        println!("{:04X}  {:<48} | {}", i * 16, hex.join(" "), words.join(" "));
     }
     Ok(())
 }

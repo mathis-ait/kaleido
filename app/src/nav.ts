@@ -2,4 +2,8 @@ import { reactive } from "vue";
 import type { ViewId } from "./types";
 
 /** Vue affichée, accessible depuis n'importe quel composant. */
-export const nav = reactive({ view: "home" as ViewId });
+export const nav = reactive({
+  view: "home" as ViewId,
+  /** ROM à présélectionner en ouvrant le randomizer. */
+  randomizerRom: null as string | null,
+});

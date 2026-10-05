@@ -1,11 +1,30 @@
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import Sprite from "../components/Sprite.vue";
 import { THEMES, currentTheme } from "../theme";
+
+interface CacheInfo {
+  files: number;
+  bytes: number;
+  path: string;
+}
+
+const cache = ref<CacheInfo | null>(null);
+const refresh = async () => (cache.value = await invoke<CacheInfo>("sprite_cache_info").catch(() => null));
+
+async function clearCache() {
+  await invoke("clear_sprite_cache");
+  await refresh();
+}
+
+onMounted(refresh);
 </script>
 
 <template>
   <section class="settings">
     <h1>Apparence</h1>
-    <p class="lead">Choisis l'ambiance de Kaleido. D'autres thèmes arriveront plus tard.</p>
+    <p class="lead">Choisis l'ambiance de Kaleido.</p>
 
     <div class="themes">
       <button
@@ -22,6 +41,25 @@ import { THEMES, currentTheme } from "../theme";
         <small>{{ t.description }}</small>
       </button>
     </div>
+
+    <h2>Sprites</h2>
+    <div class="sprites panel">
+      <div class="demo">
+        <Sprite :id="25" :size="68" />
+        <Sprite :id="6" shiny :size="68" />
+        <Sprite :id="445" :size="68" />
+        <Sprite :id="700" :size="68" />
+      </div>
+      <div class="sprite-text">
+        <p>
+          Les icônes sont téléchargées la première fois qu'elles s'affichent, puis gardées sur ton disque :
+          elles restent disponibles hors ligne.
+        </p>
+        <p v-if="cache" class="dim">{{ cache.files }} sprites en cache · {{ (cache.bytes / 1024).toFixed(0) }} Ko</p>
+        <p class="dim credit">Icônes : pokesprite (licence MIT). Pokémon © Nintendo, Game Freak, The Pokémon Company.</p>
+      </div>
+      <button class="btn" @click="clearCache">Vider le cache</button>
+    </div>
   </section>
 </template>
 
@@ -35,6 +73,11 @@ h1 {
   font-size: 34px;
 }
 
+h2 {
+  margin-top: 40px;
+  font-size: 22px;
+}
+
 .lead {
   color: var(--text-dim);
   font-size: 16px;
@@ -42,7 +85,7 @@ h1 {
 
 .themes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 16px;
   margin-top: 24px;
 }
@@ -83,7 +126,32 @@ h1 {
   border-radius: 50%;
 }
 
-small {
+small,
+.dim {
   color: var(--text-dim);
+}
+
+.sprites {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 14px;
+  padding: 18px 20px;
+}
+
+.demo {
+  display: flex;
+}
+
+.sprite-text {
+  flex: 1;
+}
+
+.sprite-text p {
+  margin: 0 0 6px;
+}
+
+.credit {
+  font-size: 12px;
 }
 </style>

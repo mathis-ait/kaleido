@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import Sprite from "../components/Sprite.vue";
 import TypeBadge from "../components/TypeBadge.vue";
 import { editor, openRom } from "../editor";
 import { library } from "../library";
@@ -126,11 +127,13 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
         </div>
         <div v-for="p in rows" :key="p.id" class="row">
           <span class="id">#{{ String(p.id).padStart(3, "0") }}</span>
-          <strong class="name">{{ p.name }}</strong>
+          <strong class="name"><Sprite :id="p.id" :size="60" class="icon" />{{ p.name }}</strong>
           <span class="types"><TypeBadge v-for="t in p.types" :key="t.key" :type="t" /></span>
           <span v-for="s in STATS" :key="s.key" class="stat">
-            <span class="bar" :style="{ width: `${Math.min(100, (p.baseStats[s.key] / 180) * 100)}%`, background: `hsl(${statHue(p.baseStats[s.key])} 75% 52%)` }" />
             <span class="val">{{ p.baseStats[s.key] }}</span>
+            <span class="track">
+              <span class="fill" :style="{ width: `${Math.min(100, (p.baseStats[s.key] / 180) * 100)}%`, background: `hsl(${statHue(p.baseStats[s.key])} 80% 55%)` }" />
+            </span>
           </span>
           <span class="num total">{{ p.total }}</span>
           <span class="abilities">
@@ -246,14 +249,17 @@ h1 {
 
 .toolbar {
   position: sticky;
-  top: -36px;
+  top: -26px;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 20px 0 14px;
-  padding: 10px 0;
-  background: var(--bg);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(16px);
 }
 
 .search,
@@ -261,7 +267,7 @@ h1 {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--surface);
   color: var(--text);
   font: inherit;
   outline: none;
@@ -289,10 +295,11 @@ h1 {
 
 .row {
   display: grid;
-  grid-template-columns: 56px minmax(120px, 1.1fr) 170px repeat(6, minmax(64px, 0.6fr)) 56px minmax(180px, 1.4fr);
+  grid-template-columns: 48px minmax(150px, 1.2fr) 140px repeat(6, minmax(50px, 0.5fr)) 44px minmax(150px, 1.4fr);
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  min-height: 46px;
+  padding: 4px 10px;
   border-radius: 8px;
 }
 
@@ -327,32 +334,60 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Les icônes pokesprite ont beaucoup de marge transparente : on les laisse déborder de la ligne. */
+.name .icon {
+  margin: -14px -4px -10px -12px;
+}
+
+.types {
+  flex-wrap: wrap;
+}
+
+.type {
+  min-width: 0;
+}
+
 .types {
   display: flex;
   gap: 4px;
 }
 
+/* Valeur en clair à gauche, jauge fine à droite : le texte ne passe jamais sur la couleur. */
 .stat {
-  position: relative;
-  height: 20px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  overflow: hidden;
-}
-
-.bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  opacity: 0.55;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .val {
-  position: relative;
-  padding-left: 6px;
-  font-size: 12px;
+  width: 26px;
+  flex-shrink: 0;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 20px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
 }
 
 .num {
