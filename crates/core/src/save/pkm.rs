@@ -129,7 +129,7 @@ impl std::fmt::Display for PkmFormat {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Gender {
     Male,
@@ -986,6 +986,245 @@ impl Pokemon {
             pid: self.pid(),
             checksum_valid: self.checksum_valid(),
         }
+    }
+}
+
+// --- Champs de la fiche complète (offsets vérifiés : PKHeX PK4.cs, PK5.cs, PK6.cs, PK7.cs).
+
+const G45_MARKINGS: usize = 0x16;
+const G45_EGG_DATE: usize = 0x78;
+const G45_MET_DATE: usize = 0x7B;
+const G45_POKERUS: usize = 0x82;
+const G6_MARKINGS: usize = 0x2A;
+const G7_MARKINGS: usize = 0x16;
+const G67_POKERUS: usize = 0x2B;
+const G67_EGG_DATE: usize = 0xD1;
+const G67_MET_DATE: usize = 0xD4;
+
+/// Façon de rendre un Pokémon chromatique (raccourcis de l'éditeur de PKHeX).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShinyMode {
+    /// Retire le chromatique (nouveau PID).
+    None,
+    /// Chromatique « étoile » (nouveau PID, nature, sexe et talent conservés).
+    Star,
+    /// Chromatique « carré » : XOR nul.
+    Square,
+    /// Garde le PID et change l'ID secret : préserve la corrélation PID/IV des Gen 3 à 5.
+    KeepPid,
+}
+
+/// Date de rencontre ou d'éclosion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct PkmDate {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+}
+
+/// Générateur pseudo-aléatoire déterministe pour chercher un PID.
+fn next_seed(seed: &mut u32) -> u32 {
+    *seed = seed.wrapping_mul(LCRNG_MUL).wrapping_add(LCRNG_ADD);
+    *seed
+}
+
+impl Pokemon {
+    /// Marquages (cercle, triangle, carré, cœur, étoile, losange) : 0 = aucun,
+    /// 1 = bleu (ou présent avant la Gen 7), 2 = rouge (Gen 7).
+    pub fn markings(&self) -> [u8; 6] {
+        match self.format {
+            PkmFormat::Gen7 => {
+                let v = self.u16(G7_MARKINGS);
+                std::array::from_fn(|i| ((v >> (2 * i)) & 3) as u8)
+            }
+            f => {
+                let v = self.u8(if f == PkmFormat::Gen6 { G6_MARKINGS } else { G45_MARKINGS });
+                std::array::from_fn(|i| (v >> i) & 1)
+            }
+        }
+    }
+
+    pub fn set_markings(&mut self, marks: [u8; 6]) {
+        match self.format {
+            PkmFormat::Gen7 => {
+                let v = marks.iter().enumerate().fold(0u16, |acc, (i, &m)| acc | ((m.min(2) as u16) << (2 * i)));
+                self.put_u16(G7_MARKINGS, v);
+            }
+            f => {
+                let v = marks.iter().enumerate().fold(0u8, |acc, (i, &m)| acc | (((m != 0) as u8) << i));
+                self.put_u8(if f == PkmFormat::Gen6 { G6_MARKINGS } else { G45_MARKINGS }, v);
+            }
+        }
+    }
+
+    fn pokerus_offset(&self) -> usize {
+        if self.format.is_ds() {
+            G45_POKERUS
+        } else {
+            G67_POKERUS
+        }
+    }
+
+    /// Pokérus : (souche 0-15, jours restants 0-15). Souche non nulle et 0 jour = guéri.
+    pub fn pokerus(&self) -> (u8, u8) {
+        let v = self.u8(self.pokerus_offset());
+        (v >> 4, v & 0xF)
+    }
+
+    pub fn set_pokerus(&mut self, strain: u8, days: u8) {
+        self.put_u8(self.pokerus_offset(), (strain & 0xF) << 4 | (days & 0xF));
+    }
+
+    fn read_date(&self, at: usize) -> Option<PkmDate> {
+        let (y, m, d) = (self.u8(at), self.u8(at + 1), self.u8(at + 2));
+        (m != 0 && d != 0).then_some(PkmDate { year: 2000 + y as u16, month: m, day: d })
+    }
+
+    fn write_date(&mut self, at: usize, date: Option<PkmDate>) {
+        let (y, m, d) = date.map_or((0, 0, 0), |d| (d.year.saturating_sub(2000).min(255) as u8, d.month, d.day));
+        self.put_u8(at, y);
+        self.put_u8(at + 1, m);
+        self.put_u8(at + 2, d);
+    }
+
+    pub fn met_date(&self) -> Option<PkmDate> {
+        self.read_date(if self.format.is_ds() { G45_MET_DATE } else { G67_MET_DATE })
+    }
+
+    pub fn set_met_date(&mut self, date: Option<PkmDate>) {
+        self.write_date(if self.format.is_ds() { G45_MET_DATE } else { G67_MET_DATE }, date);
+    }
+
+    pub fn egg_date(&self) -> Option<PkmDate> {
+        self.read_date(if self.format.is_ds() { G45_EGG_DATE } else { G67_EGG_DATE })
+    }
+
+    pub fn set_egg_date(&mut self, date: Option<PkmDate>) {
+        self.write_date(if self.format.is_ds() { G45_EGG_DATE } else { G67_EGG_DATE }, date);
+    }
+
+    /// Choisit l'emplacement de talent (1, 2 ou 4 = caché). Le numéro de talent
+    /// lui-même doit être écrit à part ([`Self::set_ability`]).
+    /// Gen 4 : pas de talent caché, l'emplacement vient du bit 0 du PID (PID recalculé).
+    /// Gen 5 : drapeau « talent caché », sinon bit 16 du PID (PID recalculé).
+    pub fn set_ability_number(&mut self, n: u8) -> Result<(), PkmError> {
+        if !matches!(n, 1 | 2 | 4) || (n == 4 && self.format == PkmFormat::Gen4) {
+            return Err(PkmError::OutOfRange { field: "emplacement de talent", value: n as u32 });
+        }
+        match self.format {
+            PkmFormat::Gen6 => self.put_u8(G67_ABILITY_NUMBER, n),
+            PkmFormat::Gen7 => {
+                let v = self.u8(G67_ABILITY_NUMBER);
+                self.put_u8(G67_ABILITY_NUMBER, (v & !7) | n);
+            }
+            PkmFormat::Gen5 => {
+                let v = self.u8(G5_HIDDEN_ABILITY);
+                self.put_u8(G5_HIDDEN_ABILITY, (v & !1) | (n == 4) as u8);
+                if n != 4 && self.ability_number() != n {
+                    self.reroll_pid(Some(self.is_shiny()), None, Some(n - 1));
+                }
+            }
+            PkmFormat::Gen4 => {
+                if self.ability_number() != n {
+                    self.reroll_pid(Some(self.is_shiny()), Some(self.nature()), Some(n - 1));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Gen 4 : la nature vient du PID, qui est recalculé (chromatique, sexe et talent conservés).
+    /// Autres générations : octet de nature.
+    pub fn set_nature_any(&mut self, nature: u8) -> Result<(), PkmError> {
+        if nature >= 25 {
+            return Err(PkmError::OutOfRange { field: "nature", value: nature as u32 });
+        }
+        if self.format == PkmFormat::Gen4 {
+            if self.nature() != nature {
+                let slot = (self.ability_number() == 2) as u8;
+                self.reroll_pid(Some(self.is_shiny()), Some(nature), Some(slot));
+            }
+            Ok(())
+        } else {
+            self.set_nature(nature)
+        }
+    }
+
+    /// Rend le Pokémon chromatique ou non (voir [`ShinyMode`]).
+    pub fn set_shiny(&mut self, mode: ShinyMode) {
+        let gen4_nature = (self.format == PkmFormat::Gen4).then(|| self.nature());
+        let slot = match self.format {
+            PkmFormat::Gen4 | PkmFormat::Gen5 if self.ability_number() != 4 => Some((self.ability_number() == 2) as u8),
+            _ => None,
+        };
+        match mode {
+            ShinyMode::KeepPid => {
+                let pid = self.pid();
+                let sid = self.tid() ^ (pid >> 16) as u16 ^ (pid & 0xFFFF) as u16;
+                self.set_sid(sid);
+            }
+            ShinyMode::Square => {
+                // XOR nul impossible avec ces contraintes (Gen 5) : chromatique ordinaire.
+                if !self.reroll_pid_inner(true, Some(0), gen4_nature, slot) {
+                    self.reroll_pid_inner(true, None, gen4_nature, slot);
+                }
+            }
+            ShinyMode::Star => {
+                if !self.is_shiny() {
+                    self.reroll_pid(Some(true), gen4_nature, slot);
+                }
+            }
+            ShinyMode::None => {
+                if self.is_shiny() {
+                    self.reroll_pid(Some(false), gen4_nature, slot);
+                }
+            }
+        }
+    }
+
+    fn reroll_pid(&mut self, shiny: Option<bool>, nature: Option<u8>, ability_slot: Option<u8>) {
+        self.reroll_pid_inner(shiny == Some(true), None, nature, ability_slot);
+    }
+
+    /// Cherche un nouveau PID qui garde l'octet bas (sexe en Gen 3 à 5), et respecte
+    /// chromatique / nature (Gen 4) / emplacement de talent (bit 0 en Gen 4, bit 16 en Gen 5).
+    fn reroll_pid_inner(&mut self, shiny: bool, xor: Option<u32>, nature: Option<u8>, ability_slot: Option<u8>) -> bool {
+        let old = self.pid();
+        let tsv = (self.tid() ^ self.sid()) as u32;
+        let threshold = self.format.shiny_threshold();
+        let mut low_byte = old & 0xFF;
+        if let (PkmFormat::Gen4, Some(slot)) = (self.format, ability_slot) {
+            low_byte = (low_byte & !1) | slot as u32;
+        }
+        let mut seed = old ^ 0x5EED_CAFE;
+        for _ in 0..1 << 22 {
+            let r = next_seed(&mut seed);
+            let low = ((r >> 16) & 0xFF00) | low_byte;
+            let high = if shiny {
+                let x = xor.unwrap_or((r >> 8) % threshold);
+                tsv ^ low ^ x
+            } else {
+                next_seed(&mut seed) >> 16
+            };
+            let pid = high << 16 | low;
+            if !shiny && (tsv ^ high ^ low) < threshold {
+                continue;
+            }
+            if let Some(n) = nature {
+                if (pid % 25) as u8 != n {
+                    continue;
+                }
+            }
+            if let (PkmFormat::Gen5, Some(slot)) = (self.format, ability_slot) {
+                if (pid >> 16) & 1 != slot as u32 {
+                    continue;
+                }
+            }
+            self.set_pid(pid);
+            return true;
+        }
+        false
     }
 }
 

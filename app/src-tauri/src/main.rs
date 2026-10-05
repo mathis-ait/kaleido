@@ -211,6 +211,13 @@ fn main() {
             saves::save_export_pokemon,
             saves::save_import_pokemon,
             saves::save_write,
+            saves::save_history,
+            saves::save_copy,
+            saves::save_create,
+            saves::save_all,
+            saves::save_set_trainer,
+            saves::save_set_box_name,
+            saves::save_path,
             saves::name_lists
         ])
         .run(tauri::generate_context!())

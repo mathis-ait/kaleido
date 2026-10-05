@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use kaleido_core::save::edit::TrainerPatch;
 use kaleido_core::save::session::{PokemonPatch, SaveSession, SaveView, Slot, SlotView};
 use kaleido_core::{names, save};
 use serde::Serialize;
@@ -105,4 +106,62 @@ pub struct NameLists {
 #[tauri::command]
 pub fn name_lists() -> NameLists {
     NameLists { species: names::all_species(), moves: names::all_moves(), items: names::all_items() }
+}
+
+/// Annule (`redo = false`) ou rétablit la dernière modification.
+#[tauri::command]
+pub fn save_history(redo: bool, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        if redo {
+            s.redo();
+        } else {
+            s.undo();
+        }
+        s.view()
+    })
+}
+
+/// Copie (`overwrite = false`) ou déplace en écrasant la cible (`overwrite = true`).
+#[tauri::command]
+pub fn save_copy(from: Slot, to: Slot, overwrite: bool, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        if overwrite {
+            s.overwrite_pokemon(from, to)?;
+        } else {
+            s.clone_pokemon(from, to)?;
+        }
+        s.view()
+    })
+}
+
+#[tauri::command]
+pub fn save_create(slot: Slot, species: u16, level: u8, state: State<'_, OpenSave>) -> Result<SlotView, String> {
+    state.with(|s| s.create(slot, species, level))
+}
+
+#[tauri::command]
+pub fn save_all(state: State<'_, OpenSave>) -> Result<Vec<SlotView>, String> {
+    state.with(|s| s.all())
+}
+
+#[tauri::command]
+pub fn save_set_trainer(patch: TrainerPatch, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        s.set_trainer(&patch)?;
+        s.view()
+    })
+}
+
+#[tauri::command]
+pub fn save_set_box_name(index: usize, name: String, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        s.set_box_name(index, &name)?;
+        s.view()
+    })
+}
+
+/// Chemin de la sauvegarde ouverte.
+#[tauri::command]
+pub fn save_path(state: State<'_, OpenSave>) -> Result<Option<String>, String> {
+    Ok(state.0.lock().map_err(|e| e.to_string())?.as_ref().map(|(p, _)| p.display().to_string()))
 }

@@ -22,6 +22,7 @@
 //! synthétiques seulement. Chaque module de génération détaille ses points fragiles.
 
 pub mod checksum;
+pub mod edit;
 mod gen4;
 mod gen5;
 mod gen6;
@@ -35,7 +36,7 @@ use std::fmt::Write as _;
 
 use serde::Serialize;
 
-pub use pkm::{Gender, PkmError, PkmFormat, Pokemon, PokemonSummary};
+pub use pkm::{Gender, PkmDate, PkmError, PkmFormat, Pokemon, PokemonSummary, ShinyMode};
 pub use stats::{calc_stats, exp_for_level, level_from_exp, nature_name, GrowthRate, NATURES_FR};
 
 use crate::saves::{self, SaveKind, DESMUME_FOOTER, NDS_SAVE_SIZE};
