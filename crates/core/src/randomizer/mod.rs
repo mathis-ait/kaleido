@@ -10,6 +10,7 @@ mod extras;
 pub mod items;
 pub mod moves;
 pub mod settings;
+pub mod statics;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -225,6 +226,7 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
         }
         let _ = writeln!(log);
     }
+    statics::apply(game, &ctx, &settings.statics, seed, &mut log)?; // Pokémon fixes, dons et échanges
 
     // 3. Évolutions et attaques apprises (avant les dresseurs, qui s'en servent).
     if settings.easy_evolutions {

@@ -63,6 +63,7 @@ export interface RandomizerSettings {
   shinyOdds: number;
   moves: MoveSettings;
   items: ItemSettings;
+  statics: StaticSettings;
   wild: "unchanged" | "random" | "area" | "global";
   wildSimilarStrength: boolean;
   wildLevelPercent: number;
@@ -363,4 +364,13 @@ export interface SaveLists {
   locations: Named[];
   balls: Named[];
   types: string[];
+}
+
+export interface StaticSettings {
+  mode: "unchanged" | "swap_legendaries" | "similar_strength" | "random";
+  /** Variation des niveaux en % (−50 à +50). */
+  levelModifier: number;
+  trades: "unchanged" | "given" | "given_and_requested";
+  tradeRandomItems: boolean;
+  tradeRandomIvs: boolean;
 }

@@ -97,6 +97,9 @@ pub struct Settings {
     /// Objets ramassables et boutiques.
     #[serde(default)]
     pub items: super::items::ItemSettings,
+    /// Pokémon fixes, dons et échanges en jeu.
+    #[serde(default)]
+    pub statics: super::statics::StaticSettings,
 }
 
 impl Default for Settings {
@@ -111,6 +114,7 @@ impl Default for Settings {
             shiny_odds: 8192,
             moves: Default::default(),
             items: Default::default(),
+            statics: Default::default(),
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,

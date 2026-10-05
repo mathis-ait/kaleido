@@ -5,6 +5,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
+import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import { library } from "../library";
 import { nav } from "../nav";
@@ -43,6 +44,7 @@ const defaults = (): RandomizerSettings => ({
     followEvolutions: true,
     levelupSanity: true,
   },
+  statics: { mode: "unchanged", levelModifier: 0, trades: "unchanged", tradeRandomItems: false, tradeRandomIvs: false },
   items: {
     fieldItems: "unchanged",
     banBadFieldItems: true,
@@ -301,7 +303,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               ]"
             />
             <div class="row">
-              <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" />
+              <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" hint="Un Pokémon sauvage est remplacé par une espèce de force comparable (total des statistiques de base proche) : pas de Dracolosse sur la Route 1." />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.wildLevelPercent) }}</strong>
                 <input v-model.number="settings.wildLevelPercent" type="range" min="50" max="200" step="5" />
@@ -320,7 +322,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               ]"
             />
             <div class="row">
-              <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" />
+              <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" hint="Chaque Pokémon des dresseurs est remplacé par une espèce de force comparable, pour garder la difficulté d'origine." />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.trainerLevelPercent) }}</strong>
                 <input v-model.number="settings.trainerLevelPercent" type="range" min="50" max="200" step="5" />
@@ -348,8 +350,8 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             />
             <div class="row">
               <Toggle v-model="settings.randomTypes" label="Types aléatoires" hint="Une famille d'évolution garde les mêmes types" />
-              <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" />
-              <Toggle v-model="settings.noLegendaries" label="Sans légendaires" />
+              <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" hint="Chaque espèce reçoit des talents tirés au sort. Garde Mystik, Multitype, Illusion et Mode Transe ne sont jamais attribués." />
+              <Toggle v-model="settings.noLegendaries" label="Sans légendaires" hint="Aucun légendaire ni fabuleux n'est tiré au sort pour remplacer un autre Pokémon." />
             </div>
             <div class="row">
               <Toggle
@@ -382,7 +384,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" hint="Les CS ne changent jamais" />
               <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine uniquement" />
               <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" hint="Tunnel, Flash… restent à leur place" />
-              <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" />
+              <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" hint="Ces attaques infligent des dégâts fixes (20 et 40 PV) : très fortes en début de partie, elles cassent l'équilibre." />
             </div>
             <div class="row">
               <span class="row-label">Compatibilité CT</span>
@@ -409,8 +411,8 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
             <div class="row">
               <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" hint="Pratique pour ne jamais être bloqué" />
-              <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" />
-              <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" />
+              <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" hint="Une évolution garde les compatibilités CT de sa forme précédente (plus logique : Dracaufeu sait tout ce que savait Salamèche)." />
+              <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" hint="Si un Pokémon apprend une attaque par niveau, il reste compatible avec la CT de cette attaque." />
             </div>
           </div>
 
@@ -441,13 +443,51 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
             <div class="row">
               <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" hint="Lettres, Fertilisants, Baies sans effet…" />
-              <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" />
-              <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" />
+              <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" hint="Les Pierres Feu, Eau, Foudre… et autres objets d'évolution sont toujours achetables quelque part, pour ne pas bloquer une évolution." />
+              <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" hint="Les objets X (Attaque +, Défense +, Vitesse +, Précision +…) augmentent une statistique pendant un combat. Cette option les garde en vente dans les boutiques après randomisation, pratique contre les combats difficiles." />
               <Toggle v-model="settings.items.banOpShopItems" label="Pas d'objets trop forts en boutique" hint="Super Bonbon, Pépites, Œuf Chance…" />
-              <Toggle v-model="settings.items.noRareCandy" label="Sans Super Bonbon" />
-              <Toggle v-model="settings.items.noMasterBall" label="Sans Master Ball" />
+              <Toggle v-model="settings.items.noRareCandy" label="Sans Super Bonbon" hint="Le Super Bonbon (un niveau gratuit) n'apparaît ni au sol ni en boutique." />
+              <Toggle v-model="settings.items.noMasterBall" label="Sans Master Ball" hint="La Master Ball (capture garantie) n'apparaît pas dans les objets randomisés." />
             </div>
             <p class="dim note">Objets clés et CS ne bougent jamais ; une CT est toujours remplacée par une CT.</p>
+          </div>
+
+          <div class="section panel">
+            <h3>Pokémon fixes &amp; échanges <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
+            <div class="row">
+              <span class="row-label">Fixes et dons <Tip title="Pokémon fixes et dons" text="Les Pokémon qu'on rencontre à un endroit précis (légendaires, Ronflex qui bloque la route…) et ceux qu'on reçoit en cadeau (fossiles, œufs, starters secondaires)." /></span>
+              <Segmented
+                v-model="settings.statics.mode"
+                :options="[
+                  { value: 'unchanged', label: 'Inchangés' },
+                  { value: 'swap_legendaries', label: 'Légendaire contre légendaire', hint: 'Un légendaire devient un autre légendaire, un Pokémon ordinaire un autre ordinaire' },
+                  { value: 'similar_strength', label: 'Puissance similaire' },
+                  { value: 'random', label: 'Aléatoires' },
+                ]"
+              />
+            </div>
+            <div v-if="settings.statics.mode !== 'unchanged'" class="row">
+              <label class="slider">
+                Niveaux <strong>{{ settings.statics.levelModifier >= 0 ? "+" : "" }}{{ settings.statics.levelModifier }} %</strong>
+                <input v-model.number="settings.statics.levelModifier" type="range" min="-50" max="50" step="5" />
+              </label>
+              <Tip title="Niveau des Pokémon fixes" text="Augmente ou baisse le niveau de ces rencontres (les œufs ne changent pas). +20 % : un légendaire niveau 70 passe niveau 84." />
+            </div>
+            <div class="row">
+              <span class="row-label">Échanges <Tip title="Échanges en jeu" text="Les Pokémon que des personnages proposent d'échanger contre l'un des tiens (par exemple Kéké le Chétiflor dans Platine)." /></span>
+              <Segmented
+                v-model="settings.statics.trades"
+                :options="[
+                  { value: 'unchanged', label: 'Inchangés' },
+                  { value: 'given', label: 'Pokémon reçu aléatoire', hint: 'Le Pokémon demandé reste le même' },
+                  { value: 'given_and_requested', label: 'Reçu et demandé aléatoires' },
+                ]"
+              />
+            </div>
+            <div v-if="settings.statics.trades !== 'unchanged'" class="row">
+              <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" hint="Le Pokémon reçu tient un objet tiré au sort." />
+              <Toggle v-model="settings.statics.tradeRandomIvs" label="IV aléatoires" hint="Les IV (le « potentiel génétique ») du Pokémon reçu sont tirés au sort au lieu d'être fixés par le jeu." />
+            </div>
           </div>
 
           <div class="section panel">

@@ -1,16 +1,21 @@
 <script setup lang="ts">
+import Tip from "./Tip.vue";
+
+/** Interrupteur ; `hint` ajoute une bulle « i » qui explique l'option. */
 defineProps<{ label: string; hint?: string }>();
 const model = defineModel<boolean>({ required: true });
 </script>
 
 <template>
-  <label class="toggle" :title="hint">
-    <input v-model="model" type="checkbox" />
-    <span class="track"><span class="thumb" /></span>
-    <span class="label">{{ label }}</span>
-  </label>
+  <span class="toggle-wrap">
+    <label class="toggle">
+      <input v-model="model" type="checkbox" />
+      <span class="track"><span class="thumb" /></span>
+      <span class="label">{{ label }}</span>
+    </label>
+    <Tip v-if="hint" :title="label" :text="hint" />
+  </span>
 </template>
-
 <style scoped>
 .toggle {
   display: inline-flex;
@@ -61,5 +66,13 @@ input:focus-visible + .track {
 
 .label {
   font-size: 14px;
+}
+</style>
+
+<style scoped>
+.toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 </style>
