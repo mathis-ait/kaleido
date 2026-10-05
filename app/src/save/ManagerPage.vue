@@ -6,7 +6,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
 import { library } from "../library";
-import { openSave, recentSaves, saveState } from "../saveStore";
+import { goTo, openSave, recentSaves, saveState } from "../saveStore";
 import type { Gender } from "../types";
 import { useShell } from "./shell";
 
@@ -151,6 +151,7 @@ useShell(() => ({
       <button class="sv-btn" @click="refresh"><Icon name="refresh" :size="15" /> Actualiser</button>
       <button class="sv-btn" @click="chooseFolder"><Icon name="folder" :size="15" /> {{ folder ? "Changer de dossier" : "Choisir un dossier" }}</button>
       <button v-if="folder" class="sv-btn" title="Ouvrir le dossier dans l'explorateur" @click="openPath(folder)"><Icon name="folder-open" :size="15" /></button>
+      <button class="sv-btn" title="Banque Kaleido : PC commun à toutes tes sauvegardes" @click="goTo('bank')"><Icon name="bank" :size="15" /> Banque</button>
     </div>
     <p v-if="folder" class="sv-help">Dossier : {{ folder }}</p>
 

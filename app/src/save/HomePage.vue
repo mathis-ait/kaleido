@@ -5,6 +5,7 @@ import Sprite from "../components/Sprite.vue";
 import { nav } from "../nav";
 import { closeSave, editPokemon, goTo, history, saveState, writeSave } from "../saveStore";
 import { useShell } from "./shell";
+import { bankState, loadBankInfo } from "../bankStore";
 
 const emit = defineEmits<{ open: []; "save-as": [] }>();
 
@@ -108,11 +109,11 @@ const tiles = computed<Tile[]>(() => [
   {
     id: "bank",
     title: "Banque",
-    sub: "Bientôt",
-    band: "Transférer des Pokémon d'un jeu à l'autre (en préparation)",
+    sub: bankState.info ? `${bankState.info.count} Pokémon à l'abri` : "PC commun à tes sauvegardes",
+    band: "Ranger tes Pokémon hors des sauvegardes et les transférer vers un jeu plus récent",
     icon: "bank",
     gradient: "linear-gradient(150deg, #9db4ff, #5a6fe0)",
-    soon: true,
+    go: () => goTo("bank"),
   },
 ]);
 
@@ -152,7 +153,10 @@ function onKey(e: KeyboardEvent) {
   e.preventDefault();
 }
 
-onMounted(() => window.addEventListener("keydown", onKey));
+onMounted(() => {
+  window.addEventListener("keydown", onKey);
+  loadBankInfo();
+});
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 
 useShell(() => ({
