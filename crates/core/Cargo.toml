@@ -1,0 +1,11 @@
+[package]
+name = "kaleido-core"
+description = "Modèle de données Pokémon, base des jeux et détection des fichiers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+kaleido-formats.workspace = true

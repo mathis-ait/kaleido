@@ -1,0 +1,13 @@
+/target
+node_modules/
+/app/dist
+/app/src-tauri/gen
+
+# Jamais de ROMs ni de sauvegardes dans le dépôt
+*.nds
+*.3ds
+*.cci
+*.cia
+*.cxi
+*.sav
+*.dsv

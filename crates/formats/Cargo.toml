@@ -1,0 +1,10 @@
+[package]
+name = "kaleido-formats"
+description = "Formats de fichiers Nintendo DS / 3DS (en-têtes, conteneurs, archives)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
