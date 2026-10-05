@@ -61,6 +61,8 @@ export interface RandomizerSettings {
   trainerEvolutions: boolean;
   trainerMaxIvs: boolean;
   shinyOdds: number;
+  moves: MoveSettings;
+  items: ItemSettings;
   wild: "unchanged" | "random" | "area" | "global";
   wildSimilarStrength: boolean;
   wildLevelPercent: number;
@@ -71,6 +73,34 @@ export interface RandomizerSettings {
   randomTypes: boolean;
   randomAbilities: boolean;
   noLegendaries: boolean;
+}
+
+export type CompatMode = "unchanged" | "random" | "random_prefer_type" | "full";
+
+export interface MoveSettings {
+  randomTms: boolean;
+  randomTutors: boolean;
+  noGameBreaking: boolean;
+  keepFieldMoves: boolean;
+  goodDamagingPercent: number;
+  tmCompat: CompatMode;
+  fullHmCompat: boolean;
+  tutorCompat: CompatMode;
+  followEvolutions: boolean;
+  levelupSanity: boolean;
+}
+
+export interface ItemSettings {
+  fieldItems: "unchanged" | "shuffle" | "random" | "random_even";
+  banBadFieldItems: boolean;
+  shops: "unchanged" | "shuffle" | "random";
+  banBadShopItems: boolean;
+  banRegularShopItems: boolean;
+  banOpShopItems: boolean;
+  guaranteeEvolutionItems: boolean;
+  guaranteeXItems: boolean;
+  noRareCandy: boolean;
+  noMasterBall: boolean;
 }
 
 export interface Preset {

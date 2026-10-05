@@ -31,6 +31,30 @@ const defaults = (): RandomizerSettings => ({
   easyEvolutions: true,
   randomMovesets: false,
   shinyOdds: 8192,
+  moves: {
+    randomTms: false,
+    randomTutors: false,
+    noGameBreaking: true,
+    keepFieldMoves: true,
+    goodDamagingPercent: 0,
+    tmCompat: "unchanged",
+    fullHmCompat: false,
+    tutorCompat: "unchanged",
+    followEvolutions: true,
+    levelupSanity: true,
+  },
+  items: {
+    fieldItems: "unchanged",
+    banBadFieldItems: true,
+    shops: "unchanged",
+    banBadShopItems: true,
+    banRegularShopItems: false,
+    banOpShopItems: false,
+    guaranteeEvolutionItems: true,
+    guaranteeXItems: false,
+    noRareCandy: false,
+    noMasterBall: false,
+  },
 });
 const settings = reactive<RandomizerSettings>(defaults());
 const reset = () => {
@@ -350,6 +374,80 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 ]"
               />
             </div>
+          </div>
+
+          <div class="section panel">
+            <h3>CT &amp; capacités <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
+            <div class="row">
+              <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" hint="Les CS ne changent jamais" />
+              <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine uniquement" />
+              <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" hint="Tunnel, Flash… restent à leur place" />
+              <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" />
+            </div>
+            <div class="row">
+              <span class="row-label">Compatibilité CT</span>
+              <Segmented
+                v-model="settings.moves.tmCompat"
+                :options="[
+                  { value: 'unchanged', label: 'Normale' },
+                  { value: 'random_prefer_type', label: 'Aléatoire (selon le type)' },
+                  { value: 'random', label: 'Aléatoire' },
+                  { value: 'full', label: 'Toutes les CT pour tous' },
+                ]"
+              />
+            </div>
+            <div class="row">
+              <span class="row-label">Maîtres des capacités</span>
+              <Segmented
+                v-model="settings.moves.tutorCompat"
+                :options="[
+                  { value: 'unchanged', label: 'Normale' },
+                  { value: 'random_prefer_type', label: 'Aléatoire (selon le type)' },
+                  { value: 'full', label: 'Tout pour tous' },
+                ]"
+              />
+            </div>
+            <div class="row">
+              <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" hint="Pratique pour ne jamais être bloqué" />
+              <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" />
+              <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" />
+            </div>
+          </div>
+
+          <div class="section panel">
+            <h3>Objets &amp; boutiques <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
+            <div class="row">
+              <span class="row-label">Objets au sol</span>
+              <Segmented
+                v-model="settings.items.fieldItems"
+                :options="[
+                  { value: 'unchanged', label: 'Inchangés' },
+                  { value: 'shuffle', label: 'Mélangés', hint: 'Les mêmes objets, à d\'autres endroits' },
+                  { value: 'random', label: 'Aléatoires' },
+                  { value: 'random_even', label: 'Aléatoires équilibrés', hint: 'Chaque objet sort une fois avant toute répétition' },
+                ]"
+              />
+            </div>
+            <div class="row">
+              <span class="row-label">Boutiques</span>
+              <Segmented
+                v-model="settings.items.shops"
+                :options="[
+                  { value: 'unchanged', label: 'Inchangées' },
+                  { value: 'shuffle', label: 'Mélangées' },
+                  { value: 'random', label: 'Aléatoires', hint: 'Les comptoirs principaux et les boutiques de CT ne changent pas' },
+                ]"
+              />
+            </div>
+            <div class="row">
+              <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" hint="Lettres, Fertilisants, Baies sans effet…" />
+              <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" />
+              <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" />
+              <Toggle v-model="settings.items.banOpShopItems" label="Pas d'objets trop forts en boutique" hint="Super Bonbon, Pépites, Œuf Chance…" />
+              <Toggle v-model="settings.items.noRareCandy" label="Sans Super Bonbon" />
+              <Toggle v-model="settings.items.noMasterBall" label="Sans Master Ball" />
+            </div>
+            <p class="dim note">Objets clés et CS ne bougent jamais ; une CT est toujours remplacée par une CT.</p>
           </div>
 
           <div class="section panel">
@@ -741,6 +839,13 @@ h3 {
   color: var(--warn);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.soon {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .row-label {
