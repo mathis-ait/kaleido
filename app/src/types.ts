@@ -74,6 +74,8 @@ export interface RandomizerSettings {
   randomTypes: boolean;
   randomAbilities: boolean;
   noLegendaries: boolean;
+  /** 3DS uniquement (absent des anciens codes de partage : LayeredFS). */
+  ctrOutput: CtrOutput;
 }
 
 export type CompatMode = "unchanged" | "random" | "random_prefer_type" | "full";
@@ -132,8 +134,14 @@ export const RANDOMIZABLE = ["platinum", "black", "white", "omega_ruby", "alpha_
 export const isRom = (d: Detection) => ["nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
 
 export interface CtrOutcome extends Outcome {
-  romfs: string;
+  /** Dossier `romfs` du LayeredFS, si demandé. */
+  romfs: string | null;
+  /** ROM `.3ds` (ou `.cxi`) reconstruite, si demandée. */
+  image: string | null;
 }
+
+/** Sortie du randomizer 3DS : dossier LayeredFS, ROM complète ou les deux. */
+export type CtrOutput = "layered_fs" | "rom3ds" | "both";
 
 // --- Éditeur de sauvegardes (miroir de `kaleido_core::save::session`).
 

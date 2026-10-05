@@ -151,17 +151,22 @@ async fn randomize_rom(path: PathBuf, settings: Settings, seed: u64, output: Pat
 struct CtrOutcome {
     #[serde(flatten)]
     outcome: Outcome,
-    romfs: String,
+    /// Dossier `romfs` du LayeredFS (si demandé).
+    romfs: Option<String>,
+    /// ROM `.3ds` / `.cxi` reconstruite (si demandée).
+    image: Option<String>,
 }
 
-/// Randomise un jeu 3DS vers un dossier LayeredFS (+ journal).
+/// Randomise un jeu 3DS vers un dossier LayeredFS et/ou une ROM complète (+ journal),
+/// selon `settings.ctr_output`.
 #[tauri::command]
 async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: PathBuf, target: LayeredFsTarget) -> Result<CtrOutcome, String> {
     blocking(move || {
         let game = CtrGameRom::open(&path).map_err(|e| e.to_string())?;
-        let (outcome, romfs) = randomizer::ctr::randomize(&game, &settings, seed, &output, target).map_err(|e| e.to_string())?;
+        let (outcome, written) = randomizer::ctr::randomize(&game, &settings, seed, &output, target).map_err(|e| e.to_string())?;
         std::fs::write(output.join(format!("Kaleido {seed} - journal.txt")), &outcome.log).map_err(|e| e.to_string())?;
-        Ok(CtrOutcome { outcome, romfs: romfs.display().to_string() })
+        let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
+        Ok(CtrOutcome { outcome, romfs: show(written.romfs), image: show(written.image) })
     })
     .await
 }

@@ -45,6 +45,7 @@ const defaults = (): RandomizerSettings => ({
     levelupSanity: true,
   },
   statics: { mode: "unchanged", levelModifier: 0, trades: "unchanged", tradeRandomItems: false, tradeRandomIvs: false },
+  ctrOutput: "layered_fs",
   items: {
     fieldItems: "unchanged",
     banBadFieldItems: true,
@@ -110,6 +111,8 @@ const selected = computed(() => roms.value.find((r) => r.path === romPath.value)
 const isCtr = computed(() => selected.value?.platform === "3ds");
 const target = ref<"luma" | "emulator">("luma");
 const lastWasCtr = ref(false);
+/** Fichiers produits par la dernière génération 3DS (dossier LayeredFS et/ou ROM). */
+const ctrResult = ref<CtrOutcome | null>(null);
 /** Les starters sont cachés par défaut pour garder la surprise. */
 const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
@@ -187,7 +190,7 @@ async function generate() {
 
 /** 3DS : les fichiers modifiés sont écrits dans un dossier LayeredFS. */
 async function generateCtr() {
-  const output = await open({ directory: true, title: "Choisis le dossier où créer le mod" });
+  const output = await open({ directory: true, title: settings.ctrOutput === "layered_fs" ? "Choisis le dossier où créer le mod" : "Choisis le dossier où créer la ROM" });
   if (typeof output !== "string" || !selected.value) return;
   running.value = true;
   runError.value = null;
@@ -201,7 +204,8 @@ async function generateCtr() {
       target: target.value,
     });
     outcome.value = res;
-    outputPath.value = res.romfs;
+    ctrResult.value = res;
+    outputPath.value = res.image ?? res.romfs;
     lastWasCtr.value = true;
   } catch (e) {
     runError.value = String(e);
@@ -249,16 +253,41 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
         <div class="options">
           <div v-if="isCtr" class="section panel">
             <h3>Sortie 3DS</h3>
-            <Segmented
-              v-model="target"
-              :options="[
-                { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
-                { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
-              ]"
-            />
-            <p class="dim note">
-              Seuls les fichiers modifiés sont écrits : ta ROM d'origine n'est jamais touchée. Sur console, active
+            <div class="row first">
+              <span class="row-label">
+                Format
+                <Tip title="LayeredFS" text="LayeredFS : un dossier de mod léger, ta ROM reste intacte. Seuls les fichiers modifiés sont écrits ; Luma3DS ou l'émulateur les charge à la place des originaux." />
+                <Tip
+                  title="Fichier .3ds"
+                  text="Fichier .3ds : une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde (~2 Go). Elle est déchiffrée et ses signatures ne sont plus valides : parfait pour un émulateur. Sur une vraie console, il faut la convertir en CIA (par ex. « Build CIA from file » dans GodMode9) puis l'installer avec FBI sous Luma3DS — ou plus simplement utiliser la sortie LayeredFS."
+                />
+              </span>
+              <Segmented
+                v-model="settings.ctrOutput"
+                :options="[
+                  { value: 'layered_fs', label: 'LayeredFS', hint: 'Un dossier de mod léger, ta ROM reste intacte' },
+                  { value: 'rom3ds', label: 'Fichier .3ds', hint: 'Une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde (~2 Go)' },
+                  { value: 'both', label: 'Les deux' },
+                ]"
+              />
+            </div>
+            <div v-if="settings.ctrOutput !== 'rom3ds'" class="row">
+              <span class="row-label">Dossier pour</span>
+              <Segmented
+                v-model="target"
+                :options="[
+                  { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
+                  { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
+                ]"
+              />
+            </div>
+            <p v-if="settings.ctrOutput !== 'rom3ds'" class="dim note">
+              LayeredFS : seuls les fichiers modifiés sont écrits, ta ROM d'origine n'est jamais touchée. Sur console, active
               « Enable game patching » dans la configuration de Luma3DS.
+            </p>
+            <p v-if="settings.ctrOutput !== 'layered_fs'" class="dim note">
+              Le .3ds créé est une copie complète et déchiffrée de ta ROM (environ sa taille, compte quelques secondes) : il se lance
+              tel quel dans un émulateur. Sur console, convertis-le en CIA et installe-le, ou préfère LayeredFS.
             </p>
           </div>
 
@@ -556,7 +585,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <button class="btn btn-primary generate" :disabled="!selected || !supported(selected.game?.id) || running" @click="generate">
-            {{ running ? "Génération…" : isCtr ? "Générer le mod 3DS" : "Générer la ROM" }}
+            {{ running ? "Génération…" : !isCtr ? "Générer la ROM" : settings.ctrOutput === "layered_fs" ? "Générer le mod 3DS" : "Générer la ROM 3DS" }}
           </button>
 
           <div v-if="runError" class="panel card error">{{ runError }}</div>
@@ -565,9 +594,16 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div v-if="outcome" class="panel card done">
               <h3>✨ {{ lastWasCtr ? "Mod prêt !" : "ROM prête !" }}</h3>
               <p class="dim">{{ outcome.wildSlots }} Pokémon sauvages et {{ outcome.trainerPokemon }} Pokémon de dresseurs modifiés.</p>
-              <p v-if="lastWasCtr" class="dim note">
-                {{ target === "luma" ? "Copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma." : "Place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
-              </p>
+              <template v-if="lastWasCtr && ctrResult">
+                <p v-if="ctrResult.image" class="dim note">
+                  ROM : <code class="path">{{ ctrResult.image }}</code><br />
+                  Ouvre-la directement dans Azahar ou Citra (fichier déchiffré, pour émulateur).
+                </p>
+                <p v-if="ctrResult.romfs" class="dim note">
+                  LayeredFS : <code class="path">{{ ctrResult.romfs }}</code><br />
+                  {{ target === "luma" ? "Copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma." : "Place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
+                </p>
+              </template>
               <div class="done-actions">
                 <button v-if="outputPath" class="btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
                 <button class="btn" @click="showLog = true">Voir le journal</button>
@@ -914,6 +950,15 @@ h3 {
 
 .done h3 {
   font-size: 18px;
+}
+
+.row.first {
+  margin-top: 4px;
+}
+
+.note .path {
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .done-actions {

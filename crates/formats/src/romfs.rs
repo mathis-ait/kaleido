@@ -65,7 +65,7 @@ impl<R: Read + Seek> RomFsImage<R> {
         }
         let dirs = read_at(&mut r, level3 + dir_meta_at, dir_meta_len)?;
         let file_meta = read_at(&mut r, level3 + file_meta_at, file_meta_len)?;
-        let files = walk_tables(&dirs, &file_meta)?;
+        let files: Vec<RomFsEntry> = walk_tables(&dirs, &file_meta)?.into_iter().map(|(e, _)| e).collect();
         if files.iter().any(|f| data_at + f.offset + f.size > level3_size) {
             return Err(FormatError::Invalid("fichier du RomFS hors des données"));
         }
@@ -90,12 +90,13 @@ impl<R: Read + Seek> RomFsImage<R> {
     }
 }
 
-fn normalize(path: &str) -> &str {
+pub(crate) fn normalize(path: &str) -> &str {
     path.trim_start_matches(['/', '\\'])
 }
 
 /// Parcourt les tables de métadonnées du niveau 3 à partir du dossier racine.
-fn walk_tables(dirs: &[u8], files: &[u8]) -> Result<Vec<RomFsEntry>> {
+/// Renvoie chaque fichier avec la position de son entrée dans la table des fichiers.
+pub(crate) fn walk_tables(dirs: &[u8], files: &[u8]) -> Result<Vec<(RomFsEntry, u32)>> {
     const BAD: FormatError = FormatError::Invalid("métadonnées du RomFS incohérentes");
     let name = |table: &[u8], at: u32, header: u32| -> Result<String> {
         let len = u32le(slice(table, at + header - 4, 4)?, 0);
@@ -119,7 +120,7 @@ fn walk_tables(dirs: &[u8], files: &[u8]) -> Result<Vec<RomFsEntry>> {
         while file != NONE {
             let f = slice(files, file, 0x20)?;
             let path = format!("{prefix}{}", name(files, file, 0x20)?);
-            out.push(RomFsEntry { path, offset: u64le(f, 0x08), size: u64le(f, 0x10) });
+            out.push((RomFsEntry { path, offset: u64le(f, 0x08), size: u64le(f, 0x10) }, file));
             if out.len() > MAX_ENTRIES {
                 return Err(BAD);
             }
@@ -145,7 +146,7 @@ fn walk_tables(dirs: &[u8], files: &[u8]) -> Result<Vec<RomFsEntry>> {
 /// RomFS d'un jeu 3DS, quelle que soit sa provenance.
 pub enum RomFsSource {
     /// Image de jeu (`.3ds`, `.cci`, `.cxi`, `.cia` déchiffré).
-    Image { title_id: u64, romfs: RomFsImage<BufReader<File>> },
+    Image { title_id: u64, path: PathBuf, romfs: RomFsImage<BufReader<File>> },
     /// Dossier extrait (`romfs/` à côté de `exheader.bin`).
     Dir { title_id: Option<u64>, root: PathBuf, files: Vec<RomFsEntry> },
 }
@@ -165,7 +166,15 @@ impl RomFsSource {
         if ncch.romfs_size == 0 || ncch.romfs_offset + ncch.romfs_size > stream_len(&mut r)? {
             return Err(FormatError::Invalid("RomFS absent ou tronqué"));
         }
-        Ok(Self::Image { title_id: img.title_id, romfs: RomFsImage::open(r, ncch.romfs_offset)? })
+        Ok(Self::Image { title_id: img.title_id, path: path.to_path_buf(), romfs: RomFsImage::open(r, ncch.romfs_offset)? })
+    }
+
+    /// Chemin de l'image de jeu (`None` pour un dossier extrait).
+    pub fn image_path(&self) -> Option<&Path> {
+        match self {
+            Self::Image { path, .. } => Some(path),
+            Self::Dir { .. } => None,
+        }
     }
 
     fn open_dir(dir: &Path) -> Result<Self> {
@@ -330,7 +339,10 @@ pub(crate) mod tests {
         ivfc[4..8].copy_from_slice(&0x10000u32.to_le_bytes());
         ivfc[0x08..0x0C].copy_from_slice(&0x20u32.to_le_bytes());
         ivfc[0x44..0x4C].copy_from_slice(&(l3.len() as u64).to_le_bytes());
-        ivfc[0x4C..0x50].copy_from_slice(&7u32.to_le_bytes()); // blocs de 0x80
+        // Blocs de 0x80 pour les trois niveaux (les tailles des niveaux 1 et 2 sont recalculées à la reconstruction).
+        for at in [0x1C, 0x34, 0x4C] {
+            ivfc[at..at + 4].copy_from_slice(&7u32.to_le_bytes());
+        }
         out.extend(ivfc);
         out.resize(prefix + 0x80, 0);
         out.extend(l3);
