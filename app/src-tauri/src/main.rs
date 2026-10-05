@@ -13,6 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod play;
+mod emusaves;
 mod nuzlocke;
 mod bank;
 mod saves;
@@ -271,7 +272,8 @@ fn main() {
             showdown::showdown_export,
             showdown::showdown_apply,
             showdown::showdown_add_set,
-            showdown::smogon_sets
+            showdown::smogon_sets,
+            emusaves::emulator_saves
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

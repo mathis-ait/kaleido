@@ -277,7 +277,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("emulators.json"))
 }
 
-fn load_config(app: &AppHandle) -> PlayConfig {
+pub(crate) fn load_config(app: &AppHandle) -> PlayConfig {
     config_path(app).ok().and_then(|p| fs::read(p).ok()).and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default()
 }
 
