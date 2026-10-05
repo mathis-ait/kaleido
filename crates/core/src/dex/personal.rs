@@ -105,6 +105,22 @@ impl PersonalInfo {
             self.form_stats_index as usize + form as usize - 1
         }
     }
+
+    /// Lit une fiche brute d'une ROM du jeu (même disposition que les tables de PKHeX ;
+    /// en Gen 4, les types restent dans l'ordre de la ROM, avec « ??? » en 9).
+    pub fn from_rom(game: Game, data: &[u8]) -> Option<Self> {
+        if data.len() < 0x28 {
+            return None;
+        }
+        let mut d = data.to_vec();
+        d.resize(d.len().max(0x2C), 0);
+        Some(Self::parse(game, &d))
+    }
+
+    /// Indice de la fiche d'une forme dans la table complète (voir `form_index`).
+    pub fn record_index(&self, species: u16, form: u8) -> usize {
+        self.form_index(species, form)
+    }
 }
 
 struct Table {

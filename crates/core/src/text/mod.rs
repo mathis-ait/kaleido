@@ -45,13 +45,17 @@ fn parse_escape(s: &str) -> Result<(&str, Vec<u16>, usize), TextError> {
 }
 
 /// Décode une chaîne compressée « 9 bits » (code `0xF100`) : les caractères sont
-/// empaquetés par 9 bits dans les mots suivants, `0x1FF` termine.
-fn unpack_9bit(words: &[u16]) -> Vec<u16> {
+/// empaquetés par 9 bits dans les `word_bits` bits de poids faible des mots
+/// suivants, `0x1FF` termine. Gen 4 : 15 bits (le bit 15 n'est pas utilisé ;
+/// vérifié sur les noms des dresseurs de Platine, fichier 618) ; Gen 5 : 16 bits
+/// (noms des dresseurs de Blanche, fichier 190).
+fn unpack_9bit(words: &[u16], word_bits: u32) -> Vec<u16> {
     let mut out = Vec::new();
+    let mask = (1u32 << word_bits) - 1;
     let (mut container, mut bits) = (0u32, 0u32);
     for &w in words {
-        container |= (w as u32) << bits;
-        bits += 16;
+        container |= (w as u32 & mask) << bits;
+        bits += word_bits;
         while bits >= 9 {
             let c = (container & 0x1FF) as u16;
             if c == 0x1FF {
