@@ -62,7 +62,7 @@ pas encore vérifiés sur une vraie ROM : ils sont marqués « Non vérifié » 
 
 ## Installation
 
-1. Télécharge l'installateur `Kaleido_x64-setup.exe` dans les [Releases](https://github.com/mathis-ait/kaleido/releases),
+1. Télécharge l'installateur `Kaleido_<version>_x64-setup.exe` dans les [Releases](https://github.com/mathis-ait/kaleido/releases),
    ou [compile-le toi-même](#développement).
 2. Lance Kaleido et glisse une ROM (`.nds`, `.3ds`, `.cia`, dossier extrait) ou une sauvegarde dans la fenêtre.
 3. Kaleido reconnaît le jeu, la langue et la révision, et propose ce qu'il peut faire avec.
