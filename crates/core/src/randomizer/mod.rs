@@ -7,6 +7,7 @@
 
 pub mod ctr;
 mod extras;
+pub mod moves;
 pub mod settings;
 
 use std::collections::HashMap;
@@ -236,6 +237,7 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
         extras::random_movesets(&mut ctx, &mut narc.files, max_move, seed, &mut log);
         game.replace_narc(paths.learnsets, &narc)?;
     }
+    moves::apply(game, &mut ctx, &settings.moves, seed, &mut log)?;
 
     // 4. Pokémon sauvages.
     let wild_slots = if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {

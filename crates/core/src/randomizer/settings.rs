@@ -91,6 +91,9 @@ pub struct Settings {
     pub trainer_max_ivs: bool,
     /// Chromatiques : « 1 chance sur N » (8192 = normal ; ≥ 257 ; 1 = tous). DS seulement.
     pub shiny_odds: u32,
+    /// CT/CS et donneurs de capacités.
+    #[serde(default)]
+    pub moves: super::moves::MoveSettings,
 }
 
 impl Default for Settings {
@@ -103,6 +106,7 @@ impl Default for Settings {
             trainer_evolutions: false,
             trainer_max_ivs: false,
             shiny_odds: 8192,
+            moves: Default::default(),
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,
