@@ -6,6 +6,7 @@ pub mod detect;
 pub mod dex;
 pub mod games;
 pub mod names;
+pub mod nuzlocke;
 pub mod pokemon;
 pub mod randomizer;
 pub mod rom;

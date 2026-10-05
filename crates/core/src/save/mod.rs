@@ -350,6 +350,28 @@ impl SaveFile {
         }
     }
 
+    /// Badges d'arène obtenus (un bit par badge), Gen 4 et 5 seulement.
+    /// PKHeX : SAV4 `Badges = General[Trainer1 + 0x1A]` (argent en Trainer1 + 0x14) ;
+    /// Misc5 `Badges = Data[0x04]` (argent en 0x00). Pour HGSS, badges de Johto.
+    pub fn badges(&self) -> Option<u8> {
+        self.badges_offset().map(|at| rd_u8(&self.data, at))
+    }
+
+    pub fn set_badges(&mut self, bits: u8) {
+        if let Some(b) = self.badges_offset().and_then(|at| self.data.get_mut(at)) {
+            *b = bits;
+        }
+    }
+
+    fn badges_offset(&self) -> Option<usize> {
+        let money = self.layout.trainer.money;
+        match self.generation() {
+            4 => Some(money + 6),
+            5 => Some(money + 4),
+            _ => None,
+        }
+    }
+
     // --- Boîtes.
 
     pub fn box_count(&self) -> usize {

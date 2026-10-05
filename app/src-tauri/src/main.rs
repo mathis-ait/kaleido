@@ -13,6 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod play;
+mod nuzlocke;
 mod saves;
 mod sprites;
 
@@ -189,6 +190,7 @@ fn main() {
         .manage(OpenRom::default())
         .manage(saves::OpenSave::default())
         .manage(play::SaveWatch::default())
+        .manage(nuzlocke::RomCache::default())
         .register_asynchronous_uri_scheme_protocol("sprite", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
@@ -242,7 +244,10 @@ fn main() {
             play::play_find_rom,
             play::watch_save,
             play::unwatch_save,
-            play::watch_save_resync
+            play::watch_save_resync,
+            nuzlocke::nuzlocke_view,
+            nuzlocke::nuzlocke_set_state,
+            nuzlocke::nuzlocke_link_rom
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");
