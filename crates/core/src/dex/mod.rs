@@ -25,6 +25,7 @@ use serde::Serialize;
 pub use forms::{form_name, form_names};
 pub use moves::{move_info, move_info_in, MoveCategory, MoveInfo};
 pub use personal::{egg_moves, levelup, personal, PersonalInfo};
+pub(crate) use personal::personal_raw;
 pub use text::{
     ability_name, ability_names, ball_name, ball_names, game_name, game_names, item_name, item_name_in, item_names,
     location_name, locations, move_name, move_names, nature_name, nature_names, ribbon_name, ribbon_names,

@@ -12,6 +12,7 @@ use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+mod legality;
 mod saves;
 mod sprites;
 
@@ -228,7 +229,13 @@ fn main() {
             saves::save_set_dex,
             saves::save_dex_all,
             saves::peek_save,
-            saves::name_lists
+            saves::name_lists,
+            legality::legality_check,
+            legality::legality_check_all,
+            legality::legality_legalize,
+            legality::legality_legalize_all,
+            legality::legality_generate,
+            legality::encounter_database
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

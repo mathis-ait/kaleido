@@ -144,6 +144,14 @@ pub fn personal(game: Game, species: u16, form: u8) -> Option<PersonalInfo> {
     entry(game, table_index(game, species, form)?)
 }
 
+/// Octets bruts de la fiche (bits des CT/CS et des donneurs de capacités, lus par la
+/// vérification de légalité), et son indice dans la table.
+pub(crate) fn personal_raw(game: Game, species: u16, form: u8) -> Option<(usize, &'static [u8])> {
+    let index = table_index(game, species, form)?;
+    let table = &PERSONAL[game.index()];
+    Some((index, table.data.get(index * table.size..(index + 1) * table.size)?))
+}
+
 /// Tables « BinLinker16 » de PKHeX : identifiant sur 2 octets, nombre d'entrées sur 2 octets,
 /// puis les décalages (u16) de début de chaque entrée, la suivante en marquant la fin.
 fn binlinker16(data: &[u8]) -> Vec<&[u8]> {

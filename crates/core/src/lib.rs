@@ -5,6 +5,7 @@ pub mod data;
 pub mod detect;
 pub mod dex;
 pub mod games;
+pub mod legality;
 pub mod names;
 pub mod pokemon;
 pub mod randomizer;

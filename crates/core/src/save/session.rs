@@ -875,3 +875,19 @@ impl SaveSession {
         self.mutate(|s| s.save.dex_set_all(seen, caught))
     }
 }
+
+impl SaveSession {
+    /// Écrit plusieurs Pokémon en une seule étape d'historique (« Rendre légal »,
+    /// « Tout rendre légal », création d'un Pokémon légal). Renvoie les emplacements utilisés.
+    pub fn replace_pokemon(&mut self, items: Vec<(Slot, Pokemon)>) -> Result<Vec<Slot>, SaveError> {
+        self.mutate(|s| items.into_iter().map(|(slot, p)| s.put(slot, p)).collect())
+    }
+
+    /// Premier emplacement libre des boîtes, en commençant par la boîte `from`.
+    pub fn first_empty_box_slot(&self, from: usize) -> Option<Slot> {
+        let count = self.save.box_count();
+        (0..count).map(|i| (from + i) % count.max(1)).find_map(|b| {
+            (0..BOX_SLOTS).map(|index| Slot::Box { r#box: b, index }).find(|&slot| matches!(self.get(slot), Ok(None)))
+        })
+    }
+}
