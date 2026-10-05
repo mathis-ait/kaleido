@@ -342,7 +342,7 @@ impl SaveSession {
 
     /// Applique une modification ; en cas d'erreur la sauvegarde est restaurée telle
     /// quelle, sinon l'état précédent rejoint l'historique.
-    fn mutate<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, SaveError>) -> Result<T, SaveError> {
+    pub(crate) fn mutate<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, SaveError>) -> Result<T, SaveError> {
         let before = self.save.clone();
         match f(self) {
             Ok(v) => {
@@ -441,7 +441,7 @@ impl SaveSession {
 
     /// Écrit un Pokémon dans un emplacement ; dans l'équipe, un emplacement libre
     /// devient la fin de l'équipe. Renvoie l'emplacement réellement utilisé.
-    fn put(&mut self, slot: Slot, p: Pokemon) -> Result<Slot, SaveError> {
+    pub(crate) fn put(&mut self, slot: Slot, p: Pokemon) -> Result<Slot, SaveError> {
         let slot = match slot {
             Slot::Party { index } if index >= self.save.party_count() => {
                 let count = self.save.party_count();
@@ -547,7 +547,7 @@ impl SaveSession {
         self.view_slot(slot)
     }
 
-    fn new_pokemon(&self, species: u16, level: u8) -> Result<Pokemon, SaveError> {
+    pub(crate) fn new_pokemon(&self, species: u16, level: u8) -> Result<Pokemon, SaveError> {
         let format = self.save.format();
         let t = self.save.trainer();
         let level = level.clamp(1, 100);
@@ -664,7 +664,7 @@ pub fn today() -> PkmDate {
     PkmDate { year, month, day }
 }
 
-fn apply_patch(game: Game, mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveError> {
+pub(crate) fn apply_patch(game: Game, mut p: Pokemon, patch: &PokemonPatch) -> Result<Pokemon, SaveError> {
     if let Some(species) = patch.species {
         if dex::species_name(species).is_none() || species > dex::max_species(game) {
             return Err(SaveError::Invalid(format!("l'espèce n°{species} n'existe pas dans ce jeu")));

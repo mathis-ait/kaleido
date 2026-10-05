@@ -31,6 +31,7 @@ mod memecrypto;
 pub mod pkm;
 pub mod pokedex;
 pub mod session;
+pub mod showdown_apply;
 pub mod stats;
 mod strings;
 

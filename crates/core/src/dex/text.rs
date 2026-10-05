@@ -108,7 +108,7 @@ pub fn game_names() -> &'static [&'static str] {
 }
 
 /// Objet correspondant à chaque Ball (index = valeur stockée dans le Pokémon), jusqu'à l'Ultra Ball (Gen 7).
-const BALL_ITEMS: [u16; 27] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 492, 493, 494, 495, 496, 497, 498, 499, 576, 851];
+pub(super) const BALL_ITEMS: [u16; 27] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 492, 493, 494, 495, 496, 497, 498, 499, 576, 851];
 
 pub fn ball_name(ball: u8) -> Option<&'static str> {
     BALL_ITEMS.get(ball as usize).and_then(|&item| item_name(item))
