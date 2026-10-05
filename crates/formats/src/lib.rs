@@ -5,6 +5,8 @@
 //! tout passe par `Read + Seek` et on ne lit que les octets nécessaires.
 
 pub mod ctr;
+pub mod lz;
+pub mod narc;
 pub mod nds;
 mod util;
 
@@ -16,6 +18,8 @@ pub enum FormatError {
     Io(#[from] std::io::Error),
     #[error("format invalide : {0}")]
     Invalid(&'static str),
+    #[error("introuvable : {0}")]
+    NotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, FormatError>;

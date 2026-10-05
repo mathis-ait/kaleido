@@ -15,6 +15,12 @@ pub(crate) fn read_at<R: Read + Seek>(r: &mut R, offset: u64, len: usize) -> std
     Ok(buf)
 }
 
+/// Sous-tranche vérifiée : erreur au lieu de panique si elle dépasse.
+pub(crate) fn slice(data: &[u8], offset: u32, len: u32) -> crate::Result<&[u8]> {
+    let (start, len) = (offset as usize, len as usize);
+    data.get(start..start + len).ok_or(crate::FormatError::Invalid("zone hors du fichier"))
+}
+
 pub(crate) fn u16le(b: &[u8], o: usize) -> u16 {
     u16::from_le_bytes([b[o], b[o + 1]])
 }

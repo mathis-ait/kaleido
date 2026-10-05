@@ -1,0 +1,14 @@
+[package]
+name = "kaleido-cli"
+description = "Outil en ligne de commande pour inspecter et vérifier les ROMs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kaleido"
+path = "src/main.rs"
+
+[dependencies]
+kaleido-formats.workspace = true
+kaleido-core.workspace = true
