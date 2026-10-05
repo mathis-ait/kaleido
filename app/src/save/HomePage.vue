@@ -70,6 +70,15 @@ const tiles = computed<Tile[]>(() => [
     go: () => goTo("tools", "dex"),
   },
   {
+    id: "battle",
+    title: "Combat",
+    sub: "Préparer un combat contre un dresseur",
+    band: "Dégâts, K.O. et Vitesse de ton équipe contre les dresseurs de la ROM (randomisée ou non)",
+    icon: "swords",
+    gradient: "linear-gradient(150deg, #ff7a6b, #e0457b 55%, #9d2f8f)",
+    go: () => goTo("battle"),
+  },
+  {
     id: "manager",
     title: "Sauvegardes",
     sub: "Toutes tes parties",
