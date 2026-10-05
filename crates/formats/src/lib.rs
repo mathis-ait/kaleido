@@ -5,9 +5,11 @@
 //! tout passe par `Read + Seek` et on ne lit que les octets nécessaires.
 
 pub mod ctr;
+pub mod garc;
 pub mod lz;
 pub mod narc;
 pub mod nds;
+pub mod romfs;
 mod util;
 
 pub use util::stream_len;

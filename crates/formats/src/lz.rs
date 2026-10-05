@@ -143,6 +143,119 @@ pub fn compress_lz10(src: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Bloc LZ11 probable (utilisé par les jeux 3DS dans certaines entrées GARC).
+pub fn is_lz11(d: &[u8]) -> bool {
+    d.first() == Some(&0x11) && d.len() >= 4
+}
+
+/// Compression LZ11 (fenêtre 4 Kio, copies de 3 à 65 808 octets). Les
+/// correspondances sont cherchées par chaînes de hachage, ce qui reste rapide
+/// sur des fichiers de plusieurs Mo.
+pub fn compress_lz11(src: &[u8]) -> Vec<u8> {
+    const WINDOW: usize = 0x1000;
+    const MAX_LEN: usize = 0x10110;
+
+    let mut out = vec![0x11];
+    // Une taille nulle sur 3 octets annonce l'en-tête étendu : on l'utilise aussi pour un fichier vide.
+    if (1..=0xFF_FFFF).contains(&src.len()) {
+        out.extend(&(src.len() as u32).to_le_bytes()[..3]);
+    } else {
+        out.extend([0, 0, 0]);
+        out.extend((src.len() as u32).to_le_bytes());
+    }
+
+    let mut finder = MatchFinder::new(src.len());
+    let mut pos = 0;
+    while pos < src.len() {
+        let flag_at = out.len();
+        out.push(0);
+        for bit in (0..8).rev() {
+            if pos >= src.len() {
+                break;
+            }
+            let (len, disp) = finder.longest(src, pos, WINDOW, MAX_LEN);
+            if len < 3 {
+                out.push(src[pos]);
+                finder.insert(src, pos);
+                pos += 1;
+                continue;
+            }
+            out[flag_at] |= 1 << bit;
+            let d = disp - 1;
+            let low = (d & 0xFF) as u8;
+            let high = (d >> 8) as u8;
+            if len <= 0x10 {
+                out.extend([((len - 1) << 4) as u8 | high, low]);
+            } else if len <= 0x110 {
+                let l = len - 0x11;
+                out.extend([(l >> 4) as u8, ((l & 0xF) << 4) as u8 | high, low]);
+            } else {
+                let l = len - 0x111;
+                out.extend([0x10 | (l >> 12) as u8, (l >> 4) as u8, ((l & 0xF) << 4) as u8 | high, low]);
+            }
+            for p in pos..pos + len {
+                finder.insert(src, p);
+            }
+            pos += len;
+        }
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+    out
+}
+
+/// Recherche de correspondances par hachage des 3 octets suivants.
+struct MatchFinder {
+    head: Vec<u32>,
+    prev: Vec<u32>,
+}
+
+impl MatchFinder {
+    const BITS: u32 = 15;
+    const NONE: u32 = u32::MAX;
+    const MAX_CHAIN: usize = 256;
+
+    fn new(len: usize) -> Self {
+        Self { head: vec![Self::NONE; 1 << Self::BITS], prev: vec![Self::NONE; len] }
+    }
+
+    fn hash(src: &[u8], pos: usize) -> Option<usize> {
+        let b = src.get(pos..pos + 3)?;
+        let v = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
+        Some((v.wrapping_mul(2_654_435_761) >> (32 - Self::BITS)) as usize)
+    }
+
+    fn insert(&mut self, src: &[u8], pos: usize) {
+        if let Some(h) = Self::hash(src, pos) {
+            self.prev[pos] = self.head[h];
+            self.head[h] = pos as u32;
+        }
+    }
+
+    fn longest(&self, src: &[u8], pos: usize, window: usize, max_len: usize) -> (usize, usize) {
+        let Some(h) = Self::hash(src, pos) else { return (0, 0) };
+        let max_len = max_len.min(src.len() - pos);
+        let mut best = (0, 0);
+        let mut cand = self.head[h];
+        for _ in 0..Self::MAX_CHAIN {
+            if cand == Self::NONE || pos - cand as usize > window {
+                break;
+            }
+            let start = cand as usize;
+            let len = src[start..].iter().zip(&src[pos..pos + max_len]).take_while(|(a, b)| a == b).count();
+            if len > best.0 {
+                best = (len, pos - start);
+                if len == max_len {
+                    break;
+                }
+            }
+            cand = self.prev[start];
+        }
+        best
+    }
+}
+
 fn longest_match(src: &[u8], pos: usize, window: usize, max_len: usize) -> (usize, usize) {
     let max_len = max_len.min(src.len() - pos);
     let mut best = (0, 0);
@@ -241,6 +354,19 @@ mod tests {
         d.extend([(len >> 4) as u8, ((len & 0xF) << 4) as u8, 0x00]);
         d.extend([0x20, 0x00]);
         assert_eq!(decompress(&d).unwrap(), vec![b'a'; 0x24]);
+    }
+
+    #[test]
+    fn lz11_roundtrip_all_lengths() {
+        let mut src: Vec<u8> = b"Salameche Reptincel Dracaufeu ".repeat(40);
+        src.extend(vec![0xAB; 0x200]); // copie longue (forme 0 et forme 1)
+        src.extend(vec![0xCD; 0x12000]);
+        src.extend((0..=255u8).cycle().take(5000));
+        let packed = compress_lz11(&src);
+        assert!(is_lz11(&packed) && packed.len() < src.len() / 10);
+        assert_eq!(decompress(&packed).unwrap(), src);
+        assert_eq!(decompress(&compress_lz11(b"ab")).unwrap(), b"ab");
+        assert_eq!(decompress(&compress_lz11(&[])).unwrap(), b"");
     }
 
     #[test]
