@@ -113,6 +113,12 @@ la première fois qu'elles s'affichent puis gardées en cache dans le dossier de
 Les noms français embarqués (`crates/core/data/noms-fr.json`) sont extraits d'une ROM avec
 `kaleido export-names`. Pokémon © Nintendo, Game Freak, The Pokémon Company.
 
+Les données de l'éditeur de sauvegardes (`crates/core/src/dex/` : noms français, fiches des espèces,
+attaques apprises, lieux de rencontre Gen 4 à 7) viennent des ressources de
+[PKHeX](https://github.com/kwsch/PKHeX) de kwsch (GPLv3), voir `crates/core/data/pkhex/README.md`.
+La puissance, la précision et la catégorie des attaques viennent de
+[PokeAPI](https://github.com/PokeAPI/pokeapi) (BSD-3-Clause).
+
 ## Licence
 
 GPL-3.0-or-later, comme les projets dont Kaleido s'inspire.

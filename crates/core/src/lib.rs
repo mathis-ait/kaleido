@@ -3,6 +3,7 @@
 pub mod ctr_rom;
 pub mod data;
 pub mod detect;
+pub mod dex;
 pub mod games;
 pub mod names;
 pub mod pokemon;
