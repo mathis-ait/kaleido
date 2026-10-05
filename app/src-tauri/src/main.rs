@@ -117,7 +117,7 @@ async fn preview_starters(path: PathBuf, settings: Settings, seed: u64, app: App
     blocking(move || {
         app.state::<OpenRom>().with(&path, |loaded| match loaded {
             Loaded::Nds(game) => randomizer::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
-            Loaded::Ctr(_) => Ok(Vec::new()),
+            Loaded::Ctr(game) => randomizer::ctr::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
         })
     })
     .await

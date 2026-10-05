@@ -375,6 +375,11 @@ fn starters(path: &str) -> CliResult {
     for id in ids {
         println!("{id:3} {}", names[id as usize]);
     }
+    if loc == kaleido_core::data::starters::StarterLocation::BlackWhite {
+        let gifts = kaleido_core::data::starters::read_bw_gifts(&game)?;
+        let list: Vec<_> = gifts.iter().map(|&g| names.get(g as usize).cloned().unwrap_or_else(|| g.to_string())).collect();
+        println!("Donnés par le script 782 : {}", list.join(", "));
+    }
     Ok(())
 }
 

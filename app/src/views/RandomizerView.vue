@@ -45,6 +45,8 @@ const selected = computed(() => roms.value.find((r) => r.path === romPath.value)
 const isCtr = computed(() => selected.value?.platform === "3ds");
 const target = ref<"luma" | "emulator">("luma");
 const lastWasCtr = ref(false);
+/** Les starters sont cachés par défaut pour garder la surprise. */
+const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
 onMounted(async () => {
@@ -82,7 +84,7 @@ watch(
 async function refreshPreview() {
   preview.value = [];
   previewError.value = null;
-  if (!romPath.value || !supported(selected.value?.game?.id) || isCtr.value) return;
+  if (!romPath.value || !supported(selected.value?.game?.id)) return;
   try {
     preview.value = await invoke<PokemonRef[]>("preview_starters", { path: romPath.value, settings: { ...settings }, seed: seed.value });
   } catch (e) {
@@ -211,12 +213,12 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               ]"
             />
             <p class="dim note">
-              Seuls les fichiers modifiés sont écrits : ta ROM d'origine n'est jamais touchée. Les starters restent
-              ceux du jeu sur 3DS pour l'instant.
+              Seuls les fichiers modifiés sont écrits : ta ROM d'origine n'est jamais touchée. Sur console, active
+              « Enable game patching » dans la configuration de Luma3DS.
             </p>
           </div>
 
-          <div v-else class="section panel">
+          <div class="section panel">
             <h3>Starters</h3>
             <Segmented
               v-model="settings.starters"
@@ -289,14 +291,22 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
         <!-- Colonne de droite : aperçu et génération -->
         <aside class="side">
           <div class="panel card">
-            <h3>Tes starters</h3>
+            <div class="card-head">
+              <h3>Tes starters</h3>
+              <Toggle v-if="preview.length" v-model="showStarters" label="Voir" hint="Les starters restent cachés pour garder la surprise" />
+            </div>
             <div class="starters">
-              <div v-for="(p, i) in preview" :key="`${p.id}-${i}`" class="starter">
-                <Sprite :id="p.id" :size="88" />
-                <span>{{ p.name }}</span>
+              <div v-for="(p, i) in preview" :key="`${p.id}-${i}`" class="starter" :class="{ hidden: !showStarters }">
+                <template v-if="showStarters">
+                  <Sprite :id="p.id" :size="88" />
+                  <span>{{ p.name }}</span>
+                </template>
+                <template v-else>
+                  <span class="mystery" aria-label="Starter caché">?</span>
+                  <span>Surprise</span>
+                </template>
               </div>
-              <p v-if="isCtr" class="dim">Sur 3DS, tu gardes les starters du jeu (Arcko, Poussifeu, Gobou).</p>
-              <p v-else-if="!preview.length && !previewError" class="dim">Choisis une ROM compatible.</p>
+              <p v-if="!preview.length && !previewError" class="dim">Choisis une ROM compatible.</p>
               <p v-if="previewError" class="error-text">{{ previewError }}</p>
             </div>
           </div>
@@ -508,6 +518,37 @@ h3 {
   font-size: 13px;
   font-weight: 600;
   animation: rise 0.35s ease both;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-head h3 {
+  margin: 0;
+}
+
+/* Starter caché : une Poké Ball stylisée à la place du sprite. */
+.mystery {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 12px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--text) 70%, transparent);
+  background: linear-gradient(to bottom, #e3463f 0 46%, color-mix(in srgb, var(--text) 70%, transparent) 46% 54%, #f2f2f2 54%);
+  color: #1d1d1d;
+  font-size: 22px;
+  font-weight: 800;
+  text-shadow: 0 0 6px #fff;
+}
+
+.starter.hidden span:last-child {
+  color: var(--text-dim);
 }
 
 .starter:nth-child(2) {

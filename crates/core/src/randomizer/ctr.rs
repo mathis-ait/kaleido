@@ -2,8 +2,10 @@
 //! le résultat est un dossier LayeredFS (seuls les fichiers modifiés sont écrits),
 //! à utiliser avec Luma3DS sur console ou dans le dossier « mods » d'un émulateur.
 //!
-//! Les starters ne sont pas modifiés : ils sont définis dans un module `.cro`
-//! dont la signature (static.crr) devrait aussi être mise à jour.
+//! Starters : comme l'Universal Pokémon Randomizer (Gen6RomHandler.setStarters), on
+//! modifie la table des dons de `DllField.cro` et l'écran de choix de
+//! `DllPoke3Select.cro`, sans toucher à `static.crr` : Luma3DS (patch des jeux activé)
+//! et les émulateurs ne vérifient pas ces signatures.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -20,6 +22,74 @@ use crate::rom::RomError;
 
 /// Plus grand identifiant de talent de Rubis Oméga / Saphir Alpha.
 const ORAS_MAX_ABILITY: u16 = 191;
+
+/// Starters de Rubis Oméga / Saphir Alpha (valeurs de l'Universal Pokémon Randomizer).
+const GIFT_CRO: &str = "DllField.cro";
+const GIFT_TABLE: usize = 0xF906C;
+const GIFT_SIZE: usize = 0x24;
+const DISPLAY_CRO: &str = "DllPoke3Select.cro";
+/// u16 donnant la position de la table d'affichage dans DllPoke3Select.cro.
+const DISPLAY_POINTER: usize = 0xB8;
+const DISPLAY_SIZE: usize = 0x54;
+const ORIGINAL_STARTERS: [u16; 3] = [252, 255, 258];
+/// Textes « Pokémon de type … » de l'écran de choix (lignes 1 à 3).
+const STARTER_TEXT_FILE: usize = 77;
+
+fn u16_at(d: &[u8], at: usize) -> Option<u16> {
+    d.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]))
+}
+
+/// Aperçu des starters, sans rien écrire.
+pub fn preview_starters(game: &CtrGameRom, settings: &Settings, seed: u64) -> Result<Vec<super::PokemonRef>, RomError> {
+    if !supports(game.game) {
+        return Err(unsupported());
+    }
+    let (mut ctx, _) = load(game, settings)?;
+    apply_personal(&mut ctx, settings, seed, &mut String::new());
+    let chosen = super::choose_starters(&ctx, settings, seed, ORIGINAL_STARTERS);
+    Ok(chosen.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect())
+}
+
+/// Écrit les starters dans les deux modules `.cro` et le texte de l'écran de choix.
+fn write_starters(game: &CtrGameRom, ctx: &Ctx, starters: [u16; 3], files: &mut Vec<(String, Vec<u8>)>) -> Result<(), RomError> {
+    let bad = || RomError::Layout("emplacement des starters inattendu (révision du jeu différente ?)".into());
+    let mut gift = game.romfs().read(GIFT_CRO)?;
+    let mut display = game.romfs().read(DISPLAY_CRO)?;
+    let display_table = u16_at(&display, DISPLAY_POINTER).ok_or_else(bad)? as usize;
+
+    for (i, &s) in starters.iter().enumerate() {
+        let g = GIFT_TABLE + i * GIFT_SIZE;
+        let d = display_table + i * DISPLAY_SIZE;
+        if u16_at(&gift, g) != Some(ORIGINAL_STARTERS[i]) || u16_at(&display, d) != Some(ORIGINAL_STARTERS[i]) {
+            return Err(bad());
+        }
+        gift[g..g + 2].copy_from_slice(&s.to_le_bytes());
+        gift[g + 4] = 0; // forme
+        display[d..d + 2].copy_from_slice(&s.to_le_bytes());
+        display[d + 2] = 0;
+    }
+    files.push((GIFT_CRO.to_string(), gift));
+    files.push((DISPLAY_CRO.to_string(), display));
+
+    // Texte en français : « Pokémon de type {type} » puis le nom (variable du jeu).
+    let l = game.layout;
+    let mut garc = game.garc(l.text)?;
+    if let Some(data) = garc.file(STARTER_TEXT_FILE).map(<[u8]>::to_vec) {
+        use crate::text::gen5::{MsgFile, Variant};
+        let mut msg = MsgFile::parse_with(&data, Variant::Gen6)?;
+        let mut lines = msg.strings();
+        for (i, &s) in starters.iter().enumerate() {
+            let type_name = ctx.types(s).first().map_or("Normal", |t| t.name_fr());
+            if let Some(line) = lines.get_mut(i + 1) {
+                *line = format!("Pokémon de type {type_name}\n{{VAR:0101,0000}}");
+            }
+        }
+        msg.set_strings(&lines)?;
+        garc.set_file(STARTER_TEXT_FILE, msg.to_bytes())?;
+        files.push((l.text.to_string(), garc.to_bytes()));
+    }
+    Ok(())
+}
 
 /// Destination du dossier LayeredFS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -75,8 +145,7 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
     let _ = writeln!(log, "Kaleido — journal de randomisation (3DS)");
     let _ = writeln!(log, "Jeu : {} ({:016X})", game.game.name_fr(), game.title_id());
     let _ = writeln!(log, "Seed : {seed}");
-    let _ = writeln!(log, "Code de partage : {code}");
-    let _ = writeln!(log, "Starters : inchangés (pas encore pris en charge sur 3DS)\n");
+    let _ = writeln!(log, "Code de partage : {code}\n");
 
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
@@ -95,7 +164,18 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
         files.push((l.personal.to_string(), personal.to_bytes()));
     }
 
-    // 2. Pokémon sauvages : fichiers de zone compressés en LZ11 + copie concaténée « EN ».
+    // 2. Starters.
+    let starters = super::choose_starters(&ctx, settings, seed, ORIGINAL_STARTERS);
+    if starters != ORIGINAL_STARTERS {
+        write_starters(game, &ctx, starters, &mut files)?;
+        let _ = writeln!(log, "== Starters ==");
+        for (old, new) in ORIGINAL_STARTERS.iter().zip(starters) {
+            let _ = writeln!(log, "{} → {}", ctx.name(*old), ctx.name(new));
+        }
+        let _ = writeln!(log);
+    }
+
+    // 3. Pokémon sauvages : fichiers de zone compressés en LZ11 + copie concaténée « EN ».
     let mut wild_slots = 0;
     if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {
         let mut garc = game.garc(l.encounters)?;
@@ -139,7 +219,7 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
         files.push((l.encounters.to_string(), garc.to_bytes()));
     }
 
-    // 3. Dresseurs.
+    // 4. Dresseurs.
     let mut trainer_pokemon = 0;
     if settings.trainers != TrainerMode::Unchanged || settings.trainer_level_percent != 100 {
         let mut trdata_garc = game.garc(l.trainer_data)?;
@@ -157,7 +237,8 @@ pub fn randomize(game: &CtrGameRom, settings: &Settings, seed: u64, out_dir: &Pa
     }
 
     let romfs = write(out_dir, game.title_id(), target, &files)?;
-    let outcome = Outcome { seed, share_code: code, starters: Vec::new(), wild_slots, trainer_pokemon, log };
+    let starters = starters.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect();
+    let outcome = Outcome { seed, share_code: code, starters, wild_slots, trainer_pokemon, log };
     Ok((outcome, romfs))
 }
 

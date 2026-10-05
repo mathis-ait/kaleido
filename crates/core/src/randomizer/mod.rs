@@ -198,7 +198,11 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     let current = starters::read(game, paths.starters)?;
     let chosen = choose_starters(&ctx, settings, seed, current);
     if chosen != current {
-        starters::write(game, paths.starters, chosen)?;
+        let labels = chosen.map(|s| {
+            let type_name = ctx.types(s).first().map_or("Normal", |t| t.name_fr()).to_string();
+            (type_name, ctx.name(s).to_string())
+        });
+        starters::write(game, paths.starters, chosen, &labels)?;
         let _ = writeln!(log, "== Starters ==");
         for (old, new) in current.iter().zip(chosen) {
             let _ = writeln!(log, "{} → {}", ctx.name(*old), ctx.name(new));
