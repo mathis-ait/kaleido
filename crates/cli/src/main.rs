@@ -42,7 +42,8 @@ Outils DS :
   hex       <rom> <archive> <n°>        Vidage hexadécimal d'une entrée NARC
   search    <rom> <v1,v2,…>             Cherche une suite de valeurs (u16/u32)
   randomize <rom> <préréglage> <seed> <sortie.nds>   Randomise (equilibre, nuzlocke, chaos, defi)
-  starters  <rom>                       Starters actuels";
+  starters  <rom>                       Starters actuels
+  statics   <rom>                       Pokémon fixes, dons et échanges en jeu";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,6 +58,7 @@ fn main() -> ExitCode {
         ["species", rom] => species(rom),
         ["randomize", rom, preset, seed, out] => seed.parse().map_err(Into::into).and_then(|s| randomize(rom, preset, s, out)),
         ["starters", rom] => starters(rom),
+        ["statics", rom] => statics(rom),
         ["search", rom, values] => search(&open(rom), values),
         ["shinyscan", rom] => shiny_scan(&open(rom)),
         ["shiny", rom, mult, out] => mult.parse().map_err(Into::into).and_then(|m: u16| {
@@ -82,7 +84,7 @@ fn main() -> ExitCode {
             );
             Ok(())
         }),
-        ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
+        ["hex", rom, path, n] =>n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["info3ds", rom] => ctr::info(&ctr::open(rom)),
         ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
         ["ls3ds", rom, filter] => ctr::ls(&ctr::open(rom), filter),
@@ -412,6 +414,37 @@ fn starters(path: &str) -> CliResult {
         let gifts = kaleido_core::data::starters::read_bw_gifts(&game)?;
         let list: Vec<_> = gifts.iter().map(|&g| names.get(g as usize).cloned().unwrap_or_else(|| g.to_string())).collect();
         println!("Donnés par le script 782 : {}", list.join(", "));
+    }
+    Ok(())
+}
+
+fn statics(path: &str) -> CliResult {
+    let game = kaleido_core::GameRom::open(Path::new(path))?;
+    let listing = kaleido_core::randomizer::statics::list(&game)?;
+    let names = game.text_file(game.layout.species_names)?;
+    let name = |id: u16| names.get(id as usize).cloned().unwrap_or_else(|| format!("n°{id}"));
+    println!("Pokémon fixes et dons ({}) :", listing.statics.len());
+    for s in &listing.statics {
+        let levels: Vec<String> = s.levels.iter().map(u8::to_string).collect();
+        let levels = if levels.is_empty() { String::new() } else { format!(" niv. {}", levels.join("/")) };
+        println!("  {:2} {:<10} {:3} {}{levels}", s.index, s.kind.label(), s.species, name(s.species));
+    }
+    println!("Échanges ({}) :", listing.trades.len());
+    for t in &listing.trades {
+        println!(
+            "  n°{:2} {} « {} » (DO {} / {}) contre {} — objet {}, IV {:?}",
+            t.entry,
+            name(t.given),
+            t.nickname,
+            t.ot_name,
+            t.ot_id,
+            name(t.requested),
+            t.item,
+            t.ivs
+        );
+    }
+    for n in &listing.notes {
+        println!("  remarque : {n}");
     }
     Ok(())
 }
