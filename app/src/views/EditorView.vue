@@ -156,7 +156,7 @@ const statHue = (v: number) => Math.min(190, (v / 150) * 190);
         <aside v-if="detail" class="detail panel" @keydown.esc="detail = null">
           <button class="close" aria-label="Fermer" @click="detail = null">×</button>
           <div class="halo">
-            <Sprite :id="detail.id" :size="170" />
+            <Sprite :id="detail.id" variant="model" :size="170" />
           </div>
           <span class="id">#{{ String(detail.id).padStart(3, "0") }}</span>
           <h2>{{ detail.name }}</h2>

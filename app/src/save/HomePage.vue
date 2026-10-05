@@ -225,7 +225,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
         >
           <div class="art">
             <template v-if="tile.id === 'pokemon' && lead">
-              <Sprite :id="lead.species" :shiny="lead.shiny" :size="150" />
+              <Sprite :id="lead.species" :shiny="lead.shiny" :form="lead.form" :gender="lead.gender" variant="model" :size="150" />
             </template>
             <div v-else-if="tile.id === 'boxes'" class="mini">
               <span v-for="p in boxPreview" :key="JSON.stringify(p!.slot)"><Sprite :id="p!.species" :shiny="p!.shiny" :size="52" /></span>

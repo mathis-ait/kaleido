@@ -112,6 +112,12 @@ cargo test --workspace --exclude kaleido-app
 
 Les icônes viennent de [pokesprite](https://github.com/msikma/pokesprite) (MIT), téléchargées
 la première fois qu'elles s'affichent puis gardées en cache dans le dossier de l'application.
+Les autres styles (Réglages → « Style des Pokémon » : 3D animés, pixel animés façon Noir et Blanc,
+artwork HOME, et leurs images fixes `dex/` et `gen5/` quand les animations sont réduites) viennent
+des sprites de [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/) et de ses contributeurs ;
+ils ne sont pas inclus dans le dépôt, seulement téléchargés à la demande et mis en cache de la même
+façon. La table des noms Showdown et de l'ordre des formes (`app/src-tauri/src/showdown_ids.txt`)
+est générée depuis `data/pokedex.json` de [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) (MIT).
 Les noms français embarqués (`crates/core/data/noms-fr.json`) sont extraits d'une ROM avec
 `kaleido export-names`. Pokémon © Nintendo, Game Freak, The Pokémon Company.
 

@@ -1,0 +1,1025 @@
+bulbasaur
+ivysaur
+venusaur = mega
+charmander
+charmeleon
+charizard = megax megay
+squirtle
+wartortle
+blastoise = mega
+caterpie
+metapod
+butterfree
+weedle
+kakuna
+beedrill = mega
+pidgey
+pidgeotto
+pidgeot = mega
+rattata = alola
+raticate = alola alolatotem
+spearow
+fearow
+ekans
+arbok
+pikachu = original hoenn sinnoh unova kalos alola partner starter world rockstar belle popstar phd libre cosplay
+raichu = alola megax megay
+sandshrew = alola
+sandslash = alola
+nidoranf
+nidorina
+nidoqueen
+nidoranm
+nidorino
+nidoking
+clefairy
+clefable = mega
+vulpix = alola
+ninetales = alola
+jigglypuff
+wigglytuff
+zubat
+golbat
+oddish
+gloom
+vileplume
+paras
+parasect
+venonat
+venomoth
+diglett = alola
+dugtrio = alola
+meowth = alola galar
+persian = alola
+psyduck
+golduck
+mankey
+primeape
+growlithe = hisui
+arcanine = hisui
+poliwag
+poliwhirl
+poliwrath
+abra
+kadabra
+alakazam = mega
+machop
+machoke
+machamp
+bellsprout
+weepinbell
+victreebel = mega
+tentacool
+tentacruel
+geodude = alola
+graveler = alola
+golem = alola
+ponyta = galar
+rapidash = galar
+slowpoke = galar
+slowbro = mega galar
+magnemite
+magneton
+farfetchd = galar
+doduo
+dodrio
+seel
+dewgong
+grimer = alola
+muk = alola
+shellder
+cloyster
+gastly
+haunter
+gengar = mega
+onix
+drowzee
+hypno
+krabby
+kingler
+voltorb = hisui
+electrode = hisui
+exeggcute
+exeggutor = alola
+cubone
+marowak = alola alolatotem
+hitmonlee
+hitmonchan
+lickitung
+koffing
+weezing = galar
+rhyhorn
+rhydon
+chansey
+tangela
+kangaskhan = mega
+horsea
+seadra
+goldeen
+seaking
+staryu
+starmie = mega
+mrmime = galar
+scyther
+jynx
+electabuzz
+magmar
+pinsir = mega
+tauros = paldeacombat paldeablaze paldeaaqua
+magikarp
+gyarados = mega
+lapras
+ditto
+eevee = starter
+vaporeon
+jolteon
+flareon
+porygon
+omanyte
+omastar
+kabuto
+kabutops
+aerodactyl = mega
+snorlax
+articuno = galar
+zapdos = galar
+moltres = galar
+dratini
+dragonair
+dragonite = mega
+mewtwo = megax megay
+mew
+chikorita
+bayleef
+meganium = mega
+cyndaquil
+quilava
+typhlosion = hisui
+totodile
+croconaw
+feraligatr = mega
+sentret
+furret
+hoothoot
+noctowl
+ledyba
+ledian
+spinarak
+ariados
+crobat
+chinchou
+lanturn
+pichu = spikyeared
+cleffa
+igglybuff
+togepi
+togetic
+natu
+xatu
+mareep
+flaaffy
+ampharos = mega
+bellossom
+marill
+azumarill
+sudowoodo
+politoed
+hoppip
+skiploom
+jumpluff
+aipom
+sunkern
+sunflora
+yanma
+wooper = paldea
+quagsire
+espeon
+umbreon
+murkrow
+slowking = galar
+misdreavus
+unown = b c d e f g h i j k l m n o p q r s t u v w x y z exclamation question
+wobbuffet
+girafarig
+pineco
+forretress
+dunsparce
+gligar
+steelix = mega
+snubbull
+granbull
+qwilfish = hisui
+scizor = mega
+shuckle
+heracross = mega
+sneasel = hisui
+teddiursa
+ursaring
+slugma
+magcargo
+swinub
+piloswine
+corsola = galar
+remoraid
+octillery
+delibird
+mantine
+skarmory = mega
+houndour
+houndoom = mega
+kingdra
+phanpy
+donphan
+porygon2
+stantler
+smeargle
+tyrogue
+hitmontop
+smoochum
+elekid
+magby
+miltank
+blissey
+raikou
+entei
+suicune
+larvitar
+pupitar
+tyranitar = mega
+lugia
+hooh
+celebi
+treecko
+grovyle
+sceptile = mega
+torchic
+combusken
+blaziken = mega
+mudkip
+marshtomp
+swampert = mega
+poochyena
+mightyena
+zigzagoon = galar
+linoone = galar
+wurmple
+silcoon
+beautifly
+cascoon
+dustox
+lotad
+lombre
+ludicolo
+seedot
+nuzleaf
+shiftry
+taillow
+swellow
+wingull
+pelipper
+ralts
+kirlia
+gardevoir = mega
+surskit
+masquerain
+shroomish
+breloom
+slakoth
+vigoroth
+slaking
+nincada
+ninjask
+shedinja
+whismur
+loudred
+exploud
+makuhita
+hariyama
+azurill
+nosepass
+skitty
+delcatty
+sableye = mega
+mawile = mega
+aron
+lairon
+aggron = mega
+meditite
+medicham = mega
+electrike
+manectric = mega
+plusle
+minun
+volbeat
+illumise
+roselia
+gulpin
+swalot
+carvanha
+sharpedo = mega
+wailmer
+wailord
+numel
+camerupt = mega
+torkoal
+spoink
+grumpig
+spinda
+trapinch
+vibrava
+flygon
+cacnea
+cacturne
+swablu
+altaria = mega
+zangoose
+seviper
+lunatone
+solrock
+barboach
+whiscash
+corphish
+crawdaunt
+baltoy
+claydol
+lileep
+cradily
+anorith
+armaldo
+feebas
+milotic
+castform = sunny rainy snowy
+kecleon
+shuppet
+banette = mega
+duskull
+dusclops
+tropius
+chimecho = mega
+absol = mega megaz
+wynaut
+snorunt
+glalie = mega
+spheal
+sealeo
+walrein
+clamperl
+huntail
+gorebyss
+relicanth
+luvdisc
+bagon
+shelgon
+salamence = mega
+beldum
+metang
+metagross = mega
+regirock
+regice
+registeel
+latias = mega
+latios = mega
+kyogre = primal
+groudon = primal
+rayquaza = mega
+jirachi
+deoxys = attack defense speed
+turtwig
+grotle
+torterra
+chimchar
+monferno
+infernape
+piplup
+prinplup
+empoleon
+starly
+staravia
+staraptor = mega
+bidoof
+bibarel
+kricketot
+kricketune
+shinx
+luxio
+luxray
+budew
+roserade
+cranidos
+rampardos
+shieldon
+bastiodon
+burmy = sandy trash
+wormadam = sandy trash
+mothim
+combee
+vespiquen
+pachirisu
+buizel
+floatzel
+cherubi
+cherrim = sunshine
+shellos = east
+gastrodon = east
+ambipom
+drifloon
+drifblim
+buneary
+lopunny = mega
+mismagius
+honchkrow
+glameow
+purugly
+chingling
+stunky
+skuntank
+bronzor
+bronzong
+bonsly
+mimejr
+happiny
+chatot
+spiritomb
+gible
+gabite
+garchomp = mega megaz
+munchlax
+riolu
+lucario = mega megaz
+hippopotas
+hippowdon
+skorupi
+drapion
+croagunk
+toxicroak
+carnivine
+finneon
+lumineon
+mantyke
+snover
+abomasnow = mega
+weavile
+magnezone
+lickilicky
+rhyperior
+tangrowth
+electivire
+magmortar
+togekiss
+yanmega
+leafeon
+glaceon
+gliscor
+mamoswine
+porygonz
+gallade = mega
+probopass
+dusknoir
+froslass = mega
+rotom = heat wash frost fan mow
+uxie
+mesprit
+azelf
+dialga = origin
+palkia = origin
+heatran = mega
+regigigas
+giratina = origin
+cresselia
+phione
+manaphy
+darkrai = mega
+shaymin = sky
+arceus = fighting flying poison ground rock bug ghost steel fire water grass electric psychic ice dragon dark fairy
+victini
+snivy
+servine
+serperior
+tepig
+pignite
+emboar = mega
+oshawott
+dewott
+samurott = hisui
+patrat
+watchog
+lillipup
+herdier
+stoutland
+purrloin
+liepard
+pansage
+simisage
+pansear
+simisear
+panpour
+simipour
+munna
+musharna
+pidove
+tranquill
+unfezant
+blitzle
+zebstrika
+roggenrola
+boldore
+gigalith
+woobat
+swoobat
+drilbur
+excadrill = mega
+audino = mega
+timburr
+gurdurr
+conkeldurr
+tympole
+palpitoad
+seismitoad
+throh
+sawk
+sewaddle
+swadloon
+leavanny
+venipede
+whirlipede
+scolipede = mega
+cottonee
+whimsicott
+petilil
+lilligant = hisui
+basculin = bluestriped whitestriped
+sandile
+krokorok
+krookodile
+darumaka = galar
+darmanitan = zen galar galarzen
+maractus
+dwebble
+crustle
+scraggy
+scrafty = mega
+sigilyph
+yamask = galar
+cofagrigus
+tirtouga
+carracosta
+archen
+archeops
+trubbish
+garbodor
+zorua = hisui
+zoroark = hisui
+minccino
+cinccino
+gothita
+gothorita
+gothitelle
+solosis
+duosion
+reuniclus
+ducklett
+swanna
+vanillite
+vanillish
+vanilluxe
+deerling = summer autumn winter
+sawsbuck = summer autumn winter
+emolga
+karrablast
+escavalier
+foongus
+amoonguss
+frillish
+jellicent
+alomomola
+joltik
+galvantula
+ferroseed
+ferrothorn
+klink
+klang
+klinklang
+tynamo
+eelektrik
+eelektross = mega
+elgyem
+beheeyem
+litwick
+lampent
+chandelure = mega
+axew
+fraxure
+haxorus
+cubchoo
+beartic
+cryogonal
+shelmet
+accelgor
+stunfisk = galar
+mienfoo
+mienshao
+druddigon
+golett
+golurk = mega
+pawniard
+bisharp
+bouffalant
+rufflet
+braviary = hisui
+vullaby
+mandibuzz
+heatmor
+durant
+deino
+zweilous
+hydreigon
+larvesta
+volcarona
+cobalion
+terrakion
+virizion
+tornadus = therian
+thundurus = therian
+reshiram
+zekrom
+landorus = therian
+kyurem = white black
+keldeo = resolute
+meloetta = pirouette
+genesect = douse shock burn chill
+chespin
+quilladin
+chesnaught = mega
+fennekin
+braixen
+delphox = mega
+froakie
+frogadier
+greninja = bond ash mega
+bunnelby
+diggersby
+fletchling
+fletchinder
+talonflame
+scatterbug
+spewpa
+vivillon icysnow polar tundra continental garden elegant = modern marine archipelago highplains sandstorm river monsoon savanna sun ocean jungle fancy pokeball
+litleo
+pyroar = mega
+flabebe = yellow orange blue white
+floette = yellow orange blue white eternal mega
+florges = yellow orange blue white
+skiddo
+gogoat
+pancham
+pangoro
+furfrou = heart star diamond debutante matron dandy lareine kabuki pharaoh
+espurr
+meowstic = f mmega fmega
+honedge
+doublade
+aegislash = blade
+spritzee
+aromatisse
+swirlix
+slurpuff
+inkay
+malamar = mega
+binacle
+barbaracle = mega
+skrelp
+dragalge = mega
+clauncher
+clawitzer
+helioptile
+heliolisk
+tyrunt
+tyrantrum
+amaura
+aurorus
+sylveon
+hawlucha = mega
+dedenne
+carbink
+goomy
+sliggoo = hisui
+goodra = hisui
+klefki
+phantump
+trevenant
+pumpkaboo = small large super
+gourgeist = small large super
+bergmite
+avalugg = hisui
+noibat
+noivern
+xerneas neutral =
+yveltal
+zygarde = 10 10 = complete mega
+diancie = mega
+hoopa = unbound
+volcanion
+rowlet
+dartrix
+decidueye = hisui
+litten
+torracat
+incineroar
+popplio
+brionne
+primarina
+pikipek
+trumbeak
+toucannon
+yungoos
+gumshoos = totem
+grubbin
+charjabug
+vikavolt = totem
+crabrawler
+crabominable = mega
+oricorio = pompom pau sensu
+cutiefly
+ribombee = totem
+rockruff = dusk
+lycanroc = midnight dusk
+wishiwashi = school
+mareanie
+toxapex
+mudbray
+mudsdale
+dewpider
+araquanid = totem
+fomantis
+lurantis = totem
+morelull
+shiinotic
+salandit
+salazzle = totem
+stufful
+bewear
+bounsweet
+steenee
+tsareena
+comfey
+oranguru
+passimian
+wimpod
+golisopod = mega
+sandygast
+palossand
+pyukumuku
+typenull
+silvally = fighting flying poison ground rock bug ghost steel fire water grass electric psychic ice dragon dark fairy
+minior meteor meteor meteor meteor meteor meteor meteor = orange yellow green blue indigo violet
+komala
+turtonator
+togedemaru = totem
+mimikyu = busted totem bustedtotem
+bruxish
+drampa = mega
+dhelmise
+jangmoo
+hakamoo
+kommoo = totem
+tapukoko
+tapulele
+tapubulu
+tapufini
+cosmog
+cosmoem
+solgaleo
+lunala
+nihilego
+buzzwole
+pheromosa
+xurkitree
+celesteela
+kartana
+guzzlord
+necrozma = duskmane dawnwings ultra
+magearna = original mega originalmega
+marshadow
+poipole
+naganadel
+stakataka
+blacephalon
+zeraora = mega
+meltan
+melmetal
+grookey
+thwackey
+rillaboom
+scorbunny
+raboot
+cinderace
+sobble
+drizzile
+inteleon
+skwovet
+greedent
+rookidee
+corvisquire
+corviknight
+blipbug
+dottler
+orbeetle
+nickit
+thievul
+gossifleur
+eldegoss
+wooloo
+dubwool
+chewtle
+drednaw
+yamper
+boltund
+rolycoly
+carkol
+coalossal
+applin
+flapple
+appletun
+silicobra
+sandaconda
+cramorant = gulping gorging
+arrokuda
+barraskewda
+toxel
+toxtricity = lowkey
+sizzlipede
+centiskorch
+clobbopus
+grapploct
+sinistea = antique
+polteageist = antique
+hatenna
+hattrem
+hatterene
+impidimp
+morgrem
+grimmsnarl
+obstagoon
+perrserker
+cursola
+sirfetchd
+mrrime
+runerigus
+milcery
+alcremie = rubycream matchacream mintcream lemoncream saltedcream rubyswirl caramelswirl rainbowswirl
+falinks = mega
+pincurchin
+snom
+frosmoth
+stonjourner
+eiscue = noice
+indeedee = f
+morpeko = hangry
+cufant
+copperajah
+dracozolt
+arctozolt
+dracovish
+arctovish
+duraludon
+dreepy
+drakloak
+dragapult
+zacian = crowned
+zamazenta = crowned
+eternatus = eternamax
+kubfu
+urshifu = rapidstrike
+zarude = dada
+regieleki
+regidrago
+glastrier
+spectrier
+calyrex = ice shadow
+wyrdeer
+kleavor
+ursaluna = bloodmoon
+basculegion = f
+sneasler
+overqwil
+enamorus = therian
+sprigatito
+floragato
+meowscarada
+fuecoco
+crocalor
+skeledirge
+quaxly
+quaxwell
+quaquaval
+lechonk
+oinkologne = f
+tarountula
+spidops
+nymble
+lokix
+pawmi
+pawmo
+pawmot
+tandemaus
+maushold = four
+fidough
+dachsbun
+smoliv
+dolliv
+arboliva
+squawkabilly = blue yellow white
+nacli
+naclstack
+garganacl
+charcadet
+armarouge
+ceruledge
+tadbulb
+bellibolt
+wattrel
+kilowattrel
+maschiff
+mabosstiff
+shroodle
+grafaiai
+bramblin
+brambleghast
+toedscool
+toedscruel
+klawf
+capsakid
+scovillain = mega
+rellor
+rabsca
+flittle
+espathra
+tinkatink
+tinkatuff
+tinkaton
+wiglett
+wugtrio
+bombirdier
+finizen
+palafin = hero
+varoom
+revavroom
+cyclizar
+orthworm
+glimmet
+glimmora = mega
+greavard
+houndstone
+flamigo
+cetoddle
+cetitan
+veluza
+dondozo
+tatsugiri = droopy stretchy curlymega droopymega stretchymega
+annihilape
+clodsire
+farigiraf
+dudunsparce = threesegment
+kingambit
+greattusk
+screamtail
+brutebonnet
+fluttermane
+slitherwing
+sandyshocks
+irontreads
+ironbundle
+ironhands
+ironjugulis
+ironmoth
+ironthorns
+frigibax
+arctibax
+baxcalibur = mega
+gimmighoul = roaming
+gholdengo
+wochien
+chienpao
+tinglu
+chiyu
+roaringmoon
+ironvaliant
+koraidon
+miraidon
+walkingwake
+ironleaves
+dipplin
+poltchageist = artisan
+sinistcha = masterpiece
+okidogi
+munkidori
+fezandipiti
+ogerpon = wellspring hearthflame cornerstone tealtera wellspringtera hearthflametera cornerstonetera
+archaludon
+hydrapple
+gougingfire
+ragingbolt
+ironboulder
+ironcrown
+terapagos = terastal stellar
+pecharunt

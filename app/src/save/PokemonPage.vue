@@ -127,7 +127,7 @@ const locationText = computed(() => {
     <!-- Carte du Pokémon -->
     <aside class="card sv-panel">
       <div class="halo">
-        <Sprite :id="p.species" :shiny="p.shiny" :size="168" />
+        <Sprite :id="p.species" :shiny="p.shiny" :form="p.form" :gender="p.gender" variant="model" :size="168" />
       </div>
       <h2>{{ p.nickname || p.speciesName }}</h2>
       <div class="sub">
