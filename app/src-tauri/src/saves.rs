@@ -20,6 +20,12 @@ impl OpenSave {
         let (_, session) = slot.as_mut().ok_or("aucune sauvegarde ouverte")?;
         f(session).map_err(|e| e.to_string())
     }
+
+    /// Accès à la sauvegarde ouverte et à son chemin (`None` si aucune), pour la banque.
+    pub(crate) fn with_open<T>(&self, f: impl FnOnce(Option<(&std::path::Path, &mut SaveSession)>) -> Result<T, String>) -> Result<T, String> {
+        let mut slot = self.0.lock().map_err(|e| e.to_string())?;
+        f(slot.as_mut().map(|(p, s)| (p.as_path(), s)))
+    }
 }
 
 #[tauri::command]
