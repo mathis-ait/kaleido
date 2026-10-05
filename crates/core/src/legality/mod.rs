@@ -9,13 +9,18 @@
 //!
 //! Données : `data/pkhex/legality/` (voir `data/pkhex/README.md`).
 //!
-//! Limites connues (par rapport à PKHeX) : pas de base des distributions (Cadeaux
-//! Mystère, signalés « Douteux »), pas de vérification des rencontres des Gen 1 à 3,
-//! héritage des Balls et des attaques d'œuf simplifié, pas de vérification des
-//! souvenirs, rubans, tailles, dates ni des créneaux RNG (méthodes J/K).
+//! - [`events`] : distributions (Cadeaux Mystère) de la base de PKHeX ;
+//! - [`db`] : base « Rencontres » pour l'interface.
+//!
+//! Limites connues (par rapport à PKHeX) : rencontres et attaques des Gen 1 à 3 non
+//! vérifiées (« Douteux »), héritage des Balls et des attaques d'œuf simplifié, pas de
+//! vérification des souvenirs, rubans, tailles, dates, surnoms d'échange ni des créneaux
+//! RNG (méthodes J/K, Poké Radar en détail), distributions comparées sans les
+//! restrictions de langue des cartes.
 
 pub mod db;
 pub mod encounters;
+pub mod events;
 pub mod evolution;
 pub mod learn;
 pub mod legalize;

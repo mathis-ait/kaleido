@@ -52,6 +52,9 @@ pub struct EncounterEntry {
     pub trainer: Option<String>,
     pub fateful: bool,
     pub egg: bool,
+    /// Titre de la carte (distributions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// Résumé par espèce (liste de gauche de la page « Rencontres »).
@@ -96,11 +99,29 @@ fn location_label(game: Game, loc: u16) -> String {
 
 type GroupKey = (u16, u8, EncounterKind, u16, Vec<u8>, bool);
 
+/// Indices des distributions dans la base (après les rencontres du jeu).
+pub const EVENT_BASE: usize = 1_000_000;
+
+/// Rencontre d'après son indice dans la base d'un jeu (rencontres puis distributions).
+pub fn encounter_by_index(game: Game, index: usize) -> Option<super::encounters::Encounter> {
+    if index >= EVENT_BASE {
+        super::events::events(game.generation()).get(index - EVENT_BASE).cloned()
+    } else {
+        encounters(game).get(index).cloned()
+    }
+}
+
 fn build(game: Game) -> Vec<EncounterEntry> {
     let list = encounters(game);
     let mut out: Vec<EncounterEntry> = Vec::new();
     let mut groups: HashMap<GroupKey, usize> = HashMap::new();
-    for (index, e) in list.iter().enumerate() {
+    let versions_of_game = super::encounters::game_versions(game);
+    let event_list = super::events::events(game.generation())
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.versions.iter().any(|v| versions_of_game.contains(v)))
+        .map(|(i, e)| (EVENT_BASE + i, e));
+    for (index, e) in list.iter().enumerate().chain(event_list) {
         let mut versions = e.versions.clone();
         versions.sort();
         let hidden = matches!(e.ability, AbilityRule::OnlyHidden | AbilityRule::Any12H);
@@ -135,7 +156,7 @@ fn build(game: Game) -> Vec<EncounterEntry> {
             level_min: e.level_min,
             level_max: e.level_max,
             location: e.location,
-            location_name: if e.kind == EncounterKind::EggGift { location_label(game, e.egg_location) } else { location_label(game, e.location) },
+            location_name: if e.is_egg() && e.location == 0 { location_label(game, e.egg_location) } else { location_label(game, e.location) },
             version_names: versions.iter().map(|&v| dex::game_name(v).unwrap_or("?").to_string()).collect(),
             versions,
             ball: e.ball.and_then(dex::ball_name).map(str::to_string),
@@ -155,6 +176,7 @@ fn build(game: Game) -> Vec<EncounterEntry> {
             }),
             fateful: e.fateful,
             egg: e.is_egg(),
+            title: e.title.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string),
         });
     }
     out.sort_by_key(|e| (e.species, e.form, e.level_min));

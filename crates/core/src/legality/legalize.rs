@@ -282,6 +282,12 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
         p.set_language(LANGUAGE_FR);
         changes.push("Langue : français".into());
     }
+    if let Some(l) = e.language {
+        if p.language() != l {
+            p.set_language(l);
+            changes.push("Langue de la distribution".into());
+        }
+    }
 
     // Dresseur.
     if let Some(t) = &e.trainer {
@@ -531,7 +537,9 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
                     pid = rng::generate_pid(rand, tid, sid, 16, PidWish { shiny: Some(shiny), ..Default::default() }, false, false);
                     changes.push("PID recalculé".into());
                 }
-                if ec == 0 || ec == pid {
+                if let Some(fixed) = e.ec {
+                    ec = fixed;
+                } else if ec == 0 || ec == pid {
                     ec = rand.next_u32();
                 }
                 p.set_encryption_constant(ec);
@@ -731,6 +739,11 @@ fn run(pk: &Pokemon, game: Game, trainer: &Trainer, plans: Vec<Plan>, wishes: Wi
         let p = apply(pk, game, trainer, &plan, wishes, &mut rand, &mut changes);
         let report = analyze(&p, game);
         let ok = report.verdict != Verdict::Illegal;
+        #[cfg(test)]
+        if std::env::var("KALEIDO_DEBUG_PLANS").is_ok() && !ok {
+            let bad: Vec<String> = report.checks.iter().filter(|c| c.severity == verify::Severity::Invalid).map(|c| format!("{} — {}", c.title, c.detail)).collect();
+            println!("  essai {:?} n°{} lieu {} : {bad:?}", plan.enc.kind, plan.enc.species, plan.enc.location);
+        }
         let better = best.as_ref().is_none_or(|b| report.errors < b.report.errors);
         if ok || better {
             let outcome = LegalizeOutcome { pokemon: p, changes, success: ok, report };
@@ -834,9 +847,10 @@ pub fn generate_legal(game: Game, format: PkmFormat, trainer: &Trainer, req: &Ge
     if let Some(i) = req.encounter_index {
         let eg = req.encounter_game.as_deref().and_then(super::db::game_from_id).unwrap_or(game);
         if eg.generation() <= game.generation() {
-            if let Some(e) = encounters::encounters(eg).get(i) {
-                let version = e.versions.first().copied().unwrap_or(prefer);
-                list.push(Plan { enc: e.clone(), version });
+            if let Some(e) = super::db::encounter_by_index(eg, i) {
+                let mine = game_versions(eg);
+                let version = e.versions.iter().copied().find(|v| mine.contains(v)).or(e.versions.first().copied()).unwrap_or(prefer);
+                list.push(Plan { enc: e, version });
             }
         }
     }

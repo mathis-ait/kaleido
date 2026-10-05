@@ -75,8 +75,8 @@ fn pkhex_samples() {
     println!("{report}");
     println!("Légaux reconnus : {ok_legal}/{} · Illégaux détectés : {ok_illegal}/{}", legal.len(), illegal.len());
     // Seuils minimaux (voir le rapport ci-dessus pour le détail).
-    assert!(ok_legal * 100 >= legal.len() * 90, "trop de faux illégaux : {ok_legal}/{}", legal.len());
-    assert!(ok_illegal * 100 >= illegal.len() * 40, "trop peu d'illégaux détectés : {ok_illegal}/{}", illegal.len());
+    assert!(ok_legal * 100 >= legal.len() * 97, "trop de faux illégaux : {ok_legal}/{}", legal.len());
+    assert!(ok_illegal * 100 >= illegal.len() * 70, "trop peu d'illégaux détectés : {ok_illegal}/{}", illegal.len());
 }
 
 fn has(game: Game, location: u16, species: u16) -> bool {
@@ -168,7 +168,7 @@ fn generate_from_database_entries() {
         let mut by_kind: std::collections::HashMap<_, Vec<_>> = std::collections::HashMap::new();
         for e in encounter_db(game) {
             let list = by_kind.entry(e.kind).or_default();
-            if list.len() < 6 {
+            if list.len() < if e.kind == EncounterKind::Event { 30 } else { 6 } {
                 list.push(e.clone());
             }
         }
@@ -258,9 +258,30 @@ fn real_save_check_all() {
         counts[r.verdict as usize] += 1;
         if std::env::var("KALEIDO_DUMP").is_ok_and(|f| crate::dex::species_name(pk.species()) == Some(f.as_str())) {
             println!(
-                "{} forme {} niv {} rencontre {}@{} œuf {} version {} ball {} pid {:08X} ec {:08X} talent {} n {} fatidique {} attaques {:?} {:?}",
-                pk.species(), pk.form(), super::verify::growth_level(&pk, game), pk.met_level(), pk.met_location(), pk.egg_location(), pk.version(), pk.ball(), pk.pid(), pk.encryption_constant(), pk.ability(), pk.ability_number(), pk.fateful_encounter(), pk.moves(), r.checks.iter().map(|c| c.title.clone()).collect::<Vec<_>>()
+                "{} forme {} niv {} rencontre {}@{} œuf {} version {} ball {} pid {:08X} ec {:08X} talent {} n {} fatidique {} dresseur {:?} {}/{} langue {} attaques {:?} {:?}",
+                pk.species(),
+                pk.form(),
+                super::verify::growth_level(&pk, game),
+                pk.met_level(),
+                pk.met_location(),
+                pk.egg_location(),
+                pk.version(),
+                pk.ball(),
+                pk.pid(),
+                pk.encryption_constant(),
+                pk.ability(),
+                pk.ability_number(),
+                pk.fateful_encounter(),
+                pk.ot_name(),
+                pk.tid(),
+                pk.sid(),
+                pk.language(),
+                pk.moves(),
+                r.checks.iter().map(|c| format!("{} : {}", c.title, c.detail)).collect::<Vec<_>>()
             );
+            for e in super::events::events(4).iter().chain(super::events::events(5)).filter(|e| e.species == pk.species()) {
+                println!("    distribution {:?} niv {} lieu {} {:?}", e.title, e.level_min, e.location, e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone())));
+            }
         }
         if r.verdict == Verdict::Illegal {
             let bad: Vec<String> = r.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| c.title.clone()).collect();
@@ -311,6 +332,12 @@ fn debug_dump() {
             super::legalize::pid_type(&pk)
         );
         println!("  {}", summary(p, &pk, game));
+        for e in (4..=7).flat_map(super::events::events).filter(|e| e.species == pk.species()) {
+            println!(
+                "    distribution {:?} forme {} niv {} lieu {} versions {:?} talent {:?} chromatique {:?} {:?}",
+                e.title, e.form, e.level_min, e.location, e.versions, e.ability, e.shiny, e.trainer.as_ref().map(|t| (t.tid, t.sid, t.names.clone()))
+            );
+        }
     }
 }
 

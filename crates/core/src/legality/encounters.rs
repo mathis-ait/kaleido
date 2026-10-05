@@ -127,6 +127,8 @@ pub enum EncounterKind {
     Pokewalker,
     /// Œuf pondu à la Pension.
     Egg,
+    /// Distribution (Cadeau Mystère).
+    Event,
 }
 
 impl EncounterKind {
@@ -134,7 +136,7 @@ impl EncounterKind {
     pub fn is_wild(self) -> bool {
         !matches!(
             self,
-            Self::Static | Self::Roaming | Self::Gift | Self::EggGift | Self::Trade | Self::DreamWorld | Self::DreamRadar | Self::Pokewalker | Self::Egg
+            Self::Static | Self::Roaming | Self::Gift | Self::EggGift | Self::Trade | Self::DreamWorld | Self::DreamRadar | Self::Pokewalker | Self::Egg | Self::Event
         )
     }
 
@@ -176,6 +178,7 @@ impl EncounterKind {
             Self::DreamRadar => "Rêve Radar",
             Self::Pokewalker => "Pokéwalker",
             Self::Egg => "Œuf (Pension)",
+            Self::Event => "Distribution",
         }
     }
 
@@ -190,7 +193,7 @@ impl EncounterKind {
             Self::Gift => "don",
             Self::EggGift | Self::Egg => "oeuf",
             Self::Trade => "echange",
-            Self::DreamWorld | Self::DreamRadar | Self::Pokewalker => "evenement",
+            Self::DreamWorld | Self::DreamRadar | Self::Pokewalker | Self::Event => "evenement",
         }
     }
 }
@@ -299,11 +302,15 @@ pub struct Encounter {
     pub nicknames: Vec<(u8, String)>,
     /// Peut évoluer dès l'échange.
     pub evolve_on_trade: bool,
+    /// Distribution : langue et constante de chiffrement imposées, titre de la carte.
+    pub language: Option<u8>,
+    pub ec: Option<u32>,
+    pub title: Option<String>,
 }
 
 impl Encounter {
     #[allow(clippy::too_many_arguments)]
-    fn base(kind: EncounterKind, generation: u8, versions: Vec<u8>, species: u16, form: u8, min: u8, max: u8, location: u16) -> Self {
+    pub(crate) fn base(kind: EncounterKind, generation: u8, versions: Vec<u8>, species: u16, form: u8, min: u8, max: u8, location: u16) -> Self {
         Encounter {
             kind,
             generation,
@@ -332,6 +339,9 @@ impl Encounter {
             fixed_nickname: false,
             nicknames: Vec::new(),
             evolve_on_trade: false,
+            language: None,
+            ec: None,
+            title: None,
         }
     }
 
@@ -348,7 +358,7 @@ impl Encounter {
     }
 
     pub fn is_egg(&self) -> bool {
-        self.kind == EncounterKind::Egg || self.kind == EncounterKind::EggGift
+        self.kind == EncounterKind::Egg || self.kind == EncounterKind::EggGift || (self.kind == EncounterKind::Event && self.egg_location != 0 && self.location == 0)
     }
 
     /// Lieu de rencontre attendu une fois le Pokémon reçu (échange sans lieu : lieu d'échange).

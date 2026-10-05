@@ -5,6 +5,7 @@
 use serde::Serialize;
 
 use super::encounters::{self, version_game, version_generation, AbilityRule, Encounter, EncounterKind, ShinyRule};
+use super::events;
 use super::evolution::{self, Stage};
 use super::learn::{self, LearnQuery};
 use super::rng::{self, PidType};
@@ -342,6 +343,10 @@ pub(crate) fn context(pk: &Pokemon, game: Game) -> Result<Ctx<'_>, Check> {
 // --- Recherche des rencontres.
 
 fn form_ok(e: &Encounter, stage: &Stage) -> bool {
+    if e.species == 718 && e.form != stage.form {
+        // Zygarde (Gen 7) : seules les formes Rassemblement (2, 3) s'obtiennent ensuite ; 10 % → 50 % possible.
+        return e.form < 30 && (stage.form >= 2 || (e.form == 1 && stage.form == 0));
+    }
     e.form == stage.form || e.form >= 30 || form_changeable(e.species) || (e.species == 664 || e.species == 665) && stage.species == 666
 }
 
@@ -406,11 +411,10 @@ fn candidates(ctx: &Ctx) -> Vec<Encounter> {
         if !level_matches(ctx, list, e) {
             continue;
         }
-        if stage > 0 && !ctx.met_replaced && e.kind != EncounterKind::Trade && ctx.level < ctx.chain[0].level_min {
-            // Évolution par niveau impossible au niveau actuel : on garde quand même la rencontre (signalée plus loin).
-        }
+        let _ = stage;
         out.push(e.clone());
     }
+    out.extend(event_candidates(ctx));
     // Œufs de Pension : espèce de base (et l'espèce suivante pour les bébés « encens »).
     if pk.is_egg() || (egg_loc != 0 && !out.iter().any(|e| e.kind == EncounterKind::EggGift)) {
         let n = ctx.chain.len();
@@ -419,6 +423,42 @@ fn candidates(ctx: &Ctx) -> Vec<Encounter> {
         }
     }
     out
+}
+
+/// Le Pokémon peut venir d'une distribution (rencontre fatidique, Mémoire Ball, lieu d'événement…).
+fn may_be_event(ctx: &Ctx) -> bool {
+    let pk = ctx.pk;
+    let g = ctx.origin_generation();
+    pk.fateful_encounter() || pk.ball() == 16 || is_event_location(g, pk.met_location()) || is_event_location(g, pk.egg_location()) || pk.met_location() == 30011
+}
+
+/// Distributions compatibles (espèce, version, lieu, niveau).
+fn event_candidates(ctx: &Ctx) -> Vec<Encounter> {
+    if !may_be_event(ctx) {
+        return Vec::new();
+    }
+    let pk = ctx.pk;
+    let met = pk.met_level();
+    let egg_loc = pk.egg_location();
+    events::events(ctx.origin_generation())
+        .iter()
+        .filter(|e| e.versions.contains(&ctx.version) && stage_of(ctx, e).is_some())
+        .filter(|e| {
+            if e.is_egg() {
+                egg_loc == e.egg_location || matches!(egg_loc, 2002 | 30002 | 30003) || ctx.met_replaced
+            } else if ctx.met_replaced {
+                e.level_min <= met
+            } else {
+                pk.met_location() == e.location && met == e.met_level.unwrap_or(e.level_min)
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+/// La base des distributions connaît-elle cette espèce pour la génération d'origine ?
+fn species_has_event(ctx: &Ctx) -> bool {
+    events::events(ctx.origin_generation()).iter().any(|e| ctx.chain.iter().any(|s| s.species == e.species))
 }
 
 /// Rencontre « événement » non vérifiable (aucune base des distributions).
@@ -546,7 +586,10 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             out.bad("trainer-id", "ID du dresseur incorrect", format!("Ce Pokémon d'échange appartient au dresseur ID {} (ID secret {}).", t.tid, t.sid), TAB_TRAINER);
         }
         let ot = pk.ot_name();
-        if !t.names.is_empty() && !t.names.iter().any(|(_, n)| n == &ot) {
+        // Noms japonais / coréens des cartes Gen 4 : jeu de caractères non décodé, comparaison impossible.
+        let undecodable = t.names.iter().any(|(_, n)| n.contains("{X:"));
+        let same = |n: &str| n == ot || (ctx.met_replaced && n.eq_ignore_ascii_case(&ot));
+        if !t.names.is_empty() && !undecodable && !t.names.iter().any(|(_, n)| same(n)) {
             let fr = t.names.iter().find(|(l, _)| *l == 3).or(t.names.first()).map(|(_, n)| n.clone()).unwrap_or_default();
             out.bad("trainer-name", "Nom du dresseur incorrect", format!("Le dresseur d'origine de ce Pokémon s'appelle « {fr} » (version française)."), TAB_TRAINER);
         }
@@ -554,6 +597,18 @@ fn check_encounter(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             if gender_code(pk.ot_gender()) != g && e.kind == EncounterKind::Trade {
                 out.fishy("trainer-gender", "Sexe du dresseur", "Le sexe du dresseur d'origine ne correspond pas à l'échange.", TAB_TRAINER);
             }
+        }
+    }
+
+    // Distribution : langue et constante de chiffrement imposées.
+    if let Some(lang) = e.language {
+        if pk.language() != lang && !pk.is_egg() {
+            out.bad("event-language", "Langue de la distribution", "Cette distribution n'existait que dans une autre langue.", TAB_TRAINER);
+        }
+    }
+    if let Some(ec) = e.ec {
+        if pk.encryption_constant() != ec {
+            out.bad("event-ec", "Constante de chiffrement de la distribution", format!("Cette distribution a une constante de chiffrement fixe ({ec:08X})."), TAB_OVERVIEW);
         }
     }
 
@@ -640,7 +695,7 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     let origin_gen = ctx.origin_generation();
     // PID d'origine (avant transfert vers la Gen 6, PID = EC).
     let pid = if ctx.format >= 6 && origin_gen <= 5 { pk.encryption_constant() } else { ctx.pid };
-    if origin_gen == 4 && !e.is_egg() && e.kind != EncounterKind::Trade && e.pid.is_none() {
+    if origin_gen == 4 && !e.is_egg() && !matches!(e.kind, EncounterKind::Trade | EncounterKind::Event) && e.pid.is_none() {
         let ratio = ctx.info.as_ref().map_or(127, |i| i.gender_ratio);
         let t = rng::analyze_gen34(pid, iv32(pk), ctx.tid, ctx.sid, ctx.shiny, gender_code(pk.gender()), ratio);
         let ok = match e.kind {
@@ -854,13 +909,19 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
     };
     let nick_len = pk.nickname().chars().count();
     // (Gen 4 : jeu de caractères propre, le décodage des noms japonais n'est pas fiable.)
-    if !pk.is_egg() && ctx.format >= 5 && nick_len > max_nick {
+    if !pk.is_egg() && pk.is_nicknamed() && ctx.format >= 5 && nick_len > max_nick {
         out.bad("nickname-length", "Surnom trop long", format!("{nick_len} caractères : {max_nick} au maximum dans cette langue."), TAB_OVERVIEW);
     }
 
     // Console virtuelle : espèces, langue, statistiques de Concours.
     if let Origin::VirtualConsole { generation } = ctx.origin {
         let max_vc = if generation == 1 { 151 } else { 251 };
+        // La Banque donne au moins 3 IV à 31 (5 pour Mew et Celebi).
+        let need = if matches!(species, 151 | 251) { 5 } else { 3 };
+        let perfect = pk.ivs().iter().filter(|&&v| v == 31).count();
+        if perfect < need {
+            out.bad("vc-ivs", "IV parfaits manquants", format!("Un Pokémon de la Console virtuelle reçoit au moins {need} IV à 31 lors du transfert (ici {perfect})."), TAB_STATS);
+        }
         // Stade transféré : le premier de la lignée qui existait dans le jeu d'origine.
         let transferred = ctx.chain.iter().position(|s| s.species <= max_vc);
         let impossible = match transferred {
@@ -1142,15 +1203,34 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
             let best = best_encounter(&ctx);
             let event = event_marker(&ctx);
             match best {
-                Some((e, lines)) if lines.errors() == 0 || !event => {
+                Some((e, lines)) if lines.errors() == 0 || !event || e.kind == EncounterKind::Event => {
                     out.ok("encounter", format!("Rencontre : {}", e.kind.label()), describe(&e, generation));
                     summary = Some(summarize(generation, &e));
                     out.0.extend(lines.0);
                 }
-                _ if event => {
-                    out.fishy("event", "Événement non vérifiable", "Pokémon de distribution (Cadeau Mystère) : Kaleido n'a pas encore la base des événements, la rencontre n'est pas vérifiée.", TAB_MET);
+                _ if event && !species_has_event(&ctx) => {
+                    out.fishy(
+                        "event",
+                        "Distribution non vérifiable",
+                        "Pokémon de distribution (Cadeau Mystère) absent de la base de PKHeX (distribution locale ?) : la rencontre n'est pas vérifiée.",
+                        TAB_MET,
+                    );
                     check_moves(&ctx, None, true, &mut out);
-                    origin = format!("{origin} · événement");
+                    origin = format!("{origin} · distribution");
+                }
+                _ if event => {
+                    out.bad(
+                        "event-none",
+                        "Aucune distribution ne correspond",
+                        format!(
+                            "Aucune distribution connue de {} n'a été reçue à « {} » au niveau {}.",
+                            species_name(pk.species()),
+                            location_name(generation, pk.met_location()),
+                            pk.met_level()
+                        ),
+                        TAB_MET,
+                    );
+                    check_moves(&ctx, None, true, &mut out);
                 }
                 _ => {
                     out.bad(
@@ -1198,7 +1278,8 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
 fn describe(e: &Encounter, generation: u8) -> String {
     let lvl = if e.level_min == e.level_max { format!("niv. {}", e.level_min) } else { format!("niv. {} à {}", e.level_min, e.level_max) };
     let place = if e.location != 0 { format!(" à « {} »", location_name(generation, e.location)) } else { String::new() };
-    format!("{}{place}, {lvl}.", species_name(e.species))
+    let title = e.title.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(|t| format!(" Carte : « {t} ».")).unwrap_or_default();
+    format!("{}{place}, {lvl}.{title}", species_name(e.species))
 }
 
 fn finish(mut out: Lines, encounter: Option<EncounterSummary>, origin: String, pid_type: Option<PidType>) -> Report {
