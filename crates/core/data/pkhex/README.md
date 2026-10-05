@@ -14,6 +14,7 @@ Ils sont embarqués par `crates/core/src/dex/`.
 | `levelup/lvlmove_*.pkl` | `byte/levelup/` (mêmes jeux) |
 | `eggmove/eggmove_*.pkl` | `byte/eggmove/eggmove_{dppt,hgss,bw,xy,ao,sm,uu}.pkl` |
 | `moves/pp_g{4,5,6,7}.txt`, `moves/type_g{5,9}.txt` | tableaux `PP` et `Type` de `PKHeX.Core/Moves/MoveInfo{4,5,6,7,9}.cs`, recopiés en texte |
+| `mgdb/{wc4,pgf,wc6,wc6full,wc7,wc7full}.pkl` | `legality/mgdb/` : cadeaux mystère Gen 4 à 7 (lus par `crates/core/src/gifts/`, comme `EncounterEvent.cs`) |
 
 Les formats binaires suivent `PersonalInfo4/5BW/5B2W2/6XY/6AO/7.cs`, `BinLinkerAccessor16.cs`,
 `LearnsetReader.cs` et `MoveSource.cs`.

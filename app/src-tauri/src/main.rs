@@ -12,6 +12,7 @@ use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+mod gifts;
 mod saves;
 mod sprites;
 
@@ -187,6 +188,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(OpenRom::default())
         .manage(saves::OpenSave::default())
+        .manage(gifts::GiftFiles::default())
         .register_asynchronous_uri_scheme_protocol("sprite", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
@@ -228,7 +230,13 @@ fn main() {
             saves::save_set_dex,
             saves::save_dex_all,
             saves::peek_save,
-            saves::name_lists
+            saves::name_lists,
+            gifts::gifts_search,
+            gifts::gifts_overview,
+            gifts::gifts_details,
+            gifts::gifts_add,
+            gifts::gifts_export,
+            gifts::gifts_import
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");
