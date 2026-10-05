@@ -121,6 +121,12 @@ attaques apprises, lieux de rencontre Gen 4 à 7) viennent des ressources de
 La puissance, la précision et la catégorie des attaques viennent de
 [PokeAPI](https://github.com/PokeAPI/pokeapi) (BSD-3-Clause).
 
+Import / export Showdown (`crates/core/src/showdown/`) : format d'équipe de
+[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) (MIT) et `ShowdownSet` de PKHeX (GPLv3),
+noms anglais tirés de PKHeX. Les sets compétitifs viennent des analyses de
+[Smogon University](https://www.smogon.com), au format JSON de [pkmn/smogon](https://github.com/pkmn/smogon)
+(`data.pkmn.cc`, MIT), téléchargés à la demande puis gardés en cache pour le hors-ligne.
+
 ## Licence
 
 GPL-3.0-or-later, comme les projets dont Kaleido s'inspire.

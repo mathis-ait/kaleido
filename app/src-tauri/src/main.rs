@@ -13,6 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod saves;
+mod showdown;
 mod sprites;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
@@ -228,7 +229,13 @@ fn main() {
             saves::save_set_dex,
             saves::save_dex_all,
             saves::peek_save,
-            saves::name_lists
+            saves::name_lists,
+            showdown::showdown_preview,
+            showdown::showdown_import,
+            showdown::showdown_export,
+            showdown::showdown_apply,
+            showdown::showdown_add_set,
+            showdown::smogon_sets
         ])
         .run(tauri::generate_context!())
         .expect("impossible de démarrer Kaleido");

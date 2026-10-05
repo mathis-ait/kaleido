@@ -17,6 +17,9 @@ import TrainerTab from "./pokemon/TrainerTab.vue";
 import ExtrasTab from "./pokemon/ExtrasTab.vue";
 import { BALLS, genderLabel, genderSymbol, TYPE_KEYS } from "./refdata";
 import { useShell } from "./shell";
+import { openShowdown, showdownUi } from "./showdown/api";
+import ShowdownDialog from "./showdown/ShowdownDialog.vue";
+import SmogonSets from "./showdown/SmogonSets.vue";
 
 const p = computed(() => saveState.selected);
 const view = computed(() => saveState.view!);
@@ -97,6 +100,7 @@ useShell(() => ({
         { key: ",", cap: "<", label: "Précédent", run: () => stepPokemon(-1) },
         { key: ".", cap: ">", label: "Suivant", run: () => stepPokemon(1) },
         { key: "y", cap: "Y", label: "Vérifications", run: () => (showReport.value = !showReport.value) },
+        { key: "m", cap: "M", label: "Sets compétitifs", run: () => (showdownUi.smogon = true), disabled: p.value.isEgg },
         { key: "Ctrl+Tab", cap: "Ctrl+Tab", label: "Onglet suivant", run: () => goTab(1) },
       ]
     : [],
@@ -180,6 +184,16 @@ const locationText = computed(() => {
         <button class="sv-btn" @click="exportIt"><Icon name="file" :size="15" /> Exporter</button>
         <button class="sv-btn" @click="showReport = !showReport"><Icon name="shield" :size="15" /> Rapport</button>
       </div>
+      <div class="two">
+        <button class="sv-btn" title="Sets conseillés par Smogon (M)" :disabled="p.isEgg" @click="showdownUi.smogon = true">
+          <Icon name="swords" :size="15" /> Sets
+        </button>
+        <button class="sv-btn" title="Exporter / importer au format Showdown (Ctrl+I)" @click="openShowdown('export')">
+          <Icon name="upload" :size="15" /> Showdown
+        </button>
+      </div>
+      <ShowdownDialog :target="p.slot" />
+      <SmogonSets :p="p" />
     </aside>
 
     <!-- Onglets -->
