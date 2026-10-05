@@ -11,7 +11,8 @@
 //! Blocs communs : noms des boîtes 0x0 (0x3E0, entrée 0), boîte `i` en
 //! 0x400 + 0x1000·i (0xFF0, entrée 1 + i), équipe 0x18E00 (0x534, entrée 26 :
 //! compteur à +4, Pokémon à +8), dresseur (entrée 27 : nom +0x4, TID +0x14, SID +0x16,
-//! sexe +0x21, temps de jeu +0x24). L'argent est lu dans le bloc « divers »
+//! sexe +0x21, temps de jeu +0x24), sac 0x18400 (entrée 25 : 0x9C0 octets en NB,
+//! 0x9EC en N2B2, d'après `SaveBlockAccessor5BW/B2W2` de PKHeX). L'argent est lu dans le bloc « divers »
 //! (0x21200 en NB, 0x21100 en N2B2) mais n'est pas modifiable ici.
 //!
 //! Seuls les blocs que Kaleido peut modifier sont recalculés : les autres gardent
@@ -27,6 +28,7 @@ use super::{rd_u16, wr_u16, BlockCheck, Checks, Layout, PkmFormat, SaveError, Sa
 const BOX_COUNT: usize = 24;
 const BOXES: usize = 0x400;
 const BOX_STRIDE: usize = 0x1000;
+const ITEMS: usize = 0x18400;
 const PARTY_BLOCK: usize = 0x18E00;
 const TRAINER: usize = 0x19400;
 
@@ -36,13 +38,15 @@ struct Table {
     len: usize,
     trainer_len: usize,
     money: usize,
+    /// Taille du bloc 25 « Inventory » (`SaveBlockAccessor5BW/B2W2` de PKHeX).
+    items_len: usize,
 }
 
 fn table(version: SaveVersion) -> Table {
     if version == SaveVersion::Black2White2 {
-        Table { offset: 0x25F00, len: 0x94, trainer_len: 0xB0, money: 0x21100 }
+        Table { offset: 0x25F00, len: 0x94, trainer_len: 0xB0, money: 0x21100, items_len: 0x9EC }
     } else {
-        Table { offset: 0x23F00, len: 0x8C, trainer_len: 0x68, money: 0x21200 }
+        Table { offset: 0x23F00, len: 0x8C, trainer_len: 0x68, money: 0x21200, items_len: 0x9C0 }
     }
 }
 
@@ -92,6 +96,7 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
     for i in 0..BOX_COUNT {
         blocks.push(NdsBlock { name: format!("boîte {}", i + 1), offset: BOXES + i * BOX_STRIDE, len: 0xFF0, mirror: mirror(1 + i) });
     }
+    blocks.push(NdsBlock { name: "sac".into(), offset: ITEMS, len: t.items_len, mirror: mirror(25) });
     blocks.push(NdsBlock { name: "équipe".into(), offset: PARTY_BLOCK, len: 0x534, mirror: mirror(26) });
     blocks.push(NdsBlock { name: "dresseur".into(), offset: TRAINER, len: t.trainer_len, mirror: mirror(27) });
 
@@ -116,6 +121,7 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
         box_names: 4,
         box_name_stride: 0x28,
         box_name_max: 0x28 / 2 - 1,
+        items: ITEMS,
         checks: Checks::Gen5(NdsChecks { blocks, table: t.offset, table_len: t.len, table_chk: table_chk_at(&t) }),
     };
     Ok((layout, Vec::new()))

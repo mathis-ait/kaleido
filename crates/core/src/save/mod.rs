@@ -27,6 +27,7 @@ mod gen4;
 mod gen5;
 mod gen6;
 mod gen7;
+mod inventory;
 pub mod pkm;
 pub mod session;
 pub mod stats;
@@ -36,6 +37,7 @@ use std::fmt::Write as _;
 
 use serde::Serialize;
 
+pub use inventory::{InventoryItem, Pouch, PouchKind};
 pub use pkm::{Gender, PkmDate, PkmError, PkmFormat, Pokemon, PokemonSummary, ShinyMode};
 pub use stats::{calc_stats, exp_for_level, level_from_exp, nature_name, GrowthRate, NATURES_FR};
 
@@ -196,6 +198,8 @@ struct Layout {
     box_names: usize,
     box_name_stride: usize,
     box_name_max: usize,
+    /// Base du sac (offset absolu des poches, voir [`inventory`]).
+    items: usize,
     checks: Checks,
 }
 

@@ -9,7 +9,8 @@
 //! | SL | 0x1200 | 0x1400 | 0x4000 | 0x4800 | 0x4E00 | 0x40C00 |
 //! | USUL | 0x1400 | 0x1600 | 0x4400 | 0x4C00 | 0x5200 | 0x41000 |
 //!
-//! Dresseur Gen 7 : TID +0, SID +2, sexe +5, nom +0x38. 32 boîtes.
+//! Dresseur Gen 7 : TID +0, SID +2, sexe +5, nom +0x38. 32 boîtes. Sac : bloc 0
+//! (0x0, 0xDE0 octets en SL, 0xE28 en USUL, d'après `SaveBlockAccessor7SM/USUM`).
 //!
 //! **Signature MemeCrypto non gérée** : le jeu vérifie une signature RSA du
 //! SHA-256 de la table des blocs, que Kaleido ne sait pas recalculer (clé privée
@@ -30,6 +31,9 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             box_names: 0x4C00,
             boxes: 0x5200,
             box_count: 32,
+            // Bloc 0 « MyItem » (SaveBlockAccessor7USUM).
+            items: 0,
+            items_len: 0xE28,
         }
     } else {
         CtrOffsets {
@@ -41,6 +45,9 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             box_names: 0x4800,
             boxes: 0x4E00,
             box_count: 32,
+            // Bloc 0 « MyItem » (SaveBlockAccessor7SM).
+            items: 0,
+            items_len: 0xDE0,
         }
     }
 }
@@ -86,6 +93,7 @@ mod tests {
             assert_eq!(offsets[13], o.box_names, "{version:?}");
             assert_eq!(offsets[14], o.boxes, "{version:?}");
             assert_eq!(offsets[16], o.play_time, "{version:?}");
+            assert_eq!((offsets[0], synthetic_lengths(version)[0]), (o.items, o.items_len), "{version:?}");
         }
     }
 }
