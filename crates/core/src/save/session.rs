@@ -671,3 +671,13 @@ fn prepare_for_party(mut p: Pokemon) -> Pokemon {
     }
     p
 }
+
+impl SaveSession {
+    pub fn inventory(&self) -> Result<Vec<super::Pouch>, SaveError> {
+        self.save.inventory()
+    }
+
+    pub fn set_inventory(&mut self, pouches: &[super::Pouch]) -> Result<(), SaveError> {
+        self.mutate(|s| s.save.set_inventory(pouches))
+    }
+}

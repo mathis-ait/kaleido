@@ -218,6 +218,9 @@ fn main() {
             saves::save_set_trainer,
             saves::save_set_box_name,
             saves::save_path,
+            saves::save_inventory,
+            saves::save_set_inventory,
+            saves::ability_names,
             saves::name_lists
         ])
         .run(tauri::generate_context!())

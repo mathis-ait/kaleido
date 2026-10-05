@@ -165,3 +165,26 @@ pub fn save_set_box_name(index: usize, name: String, state: State<'_, OpenSave>)
 pub fn save_path(state: State<'_, OpenSave>) -> Result<Option<String>, String> {
     Ok(state.0.lock().map_err(|e| e.to_string())?.as_ref().map(|(p, _)| p.display().to_string()))
 }
+
+#[tauri::command]
+pub fn save_inventory(state: State<'_, OpenSave>) -> Result<Vec<save::Pouch>, String> {
+    state.with(|s| s.inventory())
+}
+
+#[tauri::command]
+pub fn save_set_inventory(pouches: Vec<save::Pouch>, state: State<'_, OpenSave>) -> Result<SaveView, String> {
+    state.with(|s| {
+        s.set_inventory(&pouches)?;
+        s.view()
+    })
+}
+
+/// Talents (index = numéro), pour les menus.
+#[tauri::command]
+pub fn ability_names() -> Vec<String> {
+    let mut list: Vec<String> = (0..400u16).map(|i| names::ability(i).unwrap_or("").to_string()).collect();
+    while list.last().is_some_and(String::is_empty) {
+        list.pop();
+    }
+    list
+}

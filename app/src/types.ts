@@ -170,20 +170,39 @@ export interface SlotView {
   itemName: string | null;
   moveNames: string[];
   stats: number[] | null;
+  encryptionConstant: number;
+  abilityNumber: number;
+  pp: number[];
+  ppUps: number[];
+  otGender: Gender;
+  metLocation: number;
+  metLevel: number;
+  metDate: PkmDate | null;
+  eggLocation: number;
+  eggDate: PkmDate | null;
+  version: number;
+  language: number;
+  fatefulEncounter: boolean;
+  markings: number[];
+  pokerusStrain: number;
+  pokerusDays: number;
+  tsv: number;
+  psv: number;
 }
 
 export interface Trainer {
   name: string;
   tid: number;
   sid: number;
-  displayId: string;
-  gender: string;
+  displayId: number;
+  gender: Gender;
   money: number;
   playTime: { hours: number; minutes: number; seconds: number };
 }
 
 export interface SaveView {
   game: string;
+  version: string;
   generation: number;
   trainer: Trainer;
   boxNames: string[];
@@ -191,17 +210,14 @@ export interface SaveView {
   warnings: string[];
   needsResign: boolean;
   checksumsValid: boolean;
+  boxFill: number[];
+  canUndo: boolean;
+  canRedo: boolean;
+  trainerNameMax: number;
+  boxNameMax: number;
+  nicknameMax: number;
 }
 
-export interface PokemonPatch {
-  nickname?: string;
-  level?: number;
-  heldItem?: number;
-  moves?: number[];
-  ivs?: number[];
-  evs?: number[];
-  friendship?: number;
-}
 
 export interface Detail {
   label: string;
@@ -229,3 +245,80 @@ export interface Detection {
 
 /** ROM produite par Kaleido (signature, ou seed retrouvée dans le nom du fichier). */
 export const isKaleidoRom = (d: Detection) => !!d.kaleido || d.details.some((x) => x.label === "Randomisée par");
+
+export type Gender = "male" | "female" | "genderless";
+export type ShinyMode = "none" | "star" | "square" | "keepPid";
+
+export interface PkmDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+export interface PokemonPatch {
+  species?: number;
+  form?: number;
+  nickname?: string;
+  isNicknamed?: boolean;
+  level?: number;
+  exp?: number;
+  nature?: number;
+  ability?: number;
+  abilityNumber?: number;
+  gender?: Gender;
+  shiny?: ShinyMode;
+  pid?: number;
+  encryptionConstant?: number;
+  heldItem?: number;
+  language?: number;
+  moves?: number[];
+  pp?: number[];
+  ppUps?: number[];
+  ivs?: number[];
+  evs?: number[];
+  friendship?: number;
+  otName?: string;
+  tid?: number;
+  sid?: number;
+  otGender?: Gender;
+  ball?: number;
+  metLocation?: number;
+  metLevel?: number;
+  metDate?: PkmDate | null;
+  eggLocation?: number;
+  eggDate?: PkmDate | null;
+  version?: number;
+  fatefulEncounter?: boolean;
+  isEgg?: boolean;
+  markings?: number[];
+  pokerus?: [number, number];
+}
+
+export interface TrainerPatch {
+  name?: string;
+  tid?: number;
+  sid?: number;
+  gender?: Gender;
+  money?: number;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+}
+
+export type PouchKind =
+  | "items" | "key_items" | "tm_hm" | "medicine" | "berries" | "balls" | "battle_items" | "mail" | "z_crystals" | "roto_powers";
+
+export interface InventoryItem {
+  id: number;
+  count: number;
+  isNew: boolean;
+  isFavorite: boolean;
+}
+
+export interface Pouch {
+  kind: PouchKind;
+  capacity: number;
+  maxCount: number;
+  allowed: number[];
+  items: InventoryItem[];
+}

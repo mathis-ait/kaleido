@@ -3,6 +3,7 @@ import { library } from "../library";
 import type { ViewId } from "../types";
 import KaleidoLogo from "./KaleidoLogo.vue";
 
+defineProps<{ compact?: boolean }>();
 const view = defineModel<ViewId>({ required: true });
 
 // Icônes en traits fins, 24×24.
@@ -15,7 +16,7 @@ const items: { id: ViewId; label: string; icon: string }[] = [
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ compact }">
     <div class="brand">
       <KaleidoLogo :size="34" />
       <div>
@@ -25,7 +26,7 @@ const items: { id: ViewId; label: string; icon: string }[] = [
     </div>
 
     <nav>
-      <button v-for="item in items" :key="item.id" class="nav-item" :class="{ active: view === item.id }" @click="view = item.id">
+      <button v-for="item in items" :key="item.id" class="nav-item" :class="{ active: view === item.id }" :title="item.label" @click="view = item.id">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path :d="item.icon" />
         </svg>
@@ -128,5 +129,31 @@ nav {
   font-size: 11px;
   font-weight: 700;
   text-align: center;
+}
+</style>
+
+<style scoped>
+/* Barre réduite aux icônes (éditeur de sauvegardes en plein écran). */
+.sidebar.compact {
+  padding: 24px 10px;
+  align-items: center;
+}
+
+.compact .brand {
+  padding: 0;
+}
+
+.compact .brand > div,
+.compact .nav-item span {
+  display: none;
+}
+
+.compact .nav-item {
+  justify-content: center;
+  padding: 12px;
+}
+
+.compact .nav-item.active::before {
+  left: -10px;
 }
 </style>

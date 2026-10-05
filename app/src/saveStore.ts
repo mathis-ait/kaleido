@@ -1,12 +1,25 @@
 import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { nav } from "./nav";
-import type { PokemonPatch, SaveView, Slot, SlotView } from "./types";
+import type { PokemonPatch, Pouch, SaveView, Slot, SlotView, TrainerPatch } from "./types";
+
+export type SavePage = "home" | "boxes" | "pokemon" | "tools" | "manager";
+export type SaveTool = "trainer" | "items" | "dex" | "boxes";
+
+/** Pages de l'éditeur, dans l'ordre des onglets (Q / E pour passer de l'une à l'autre). */
+export const SAVE_PAGES: { id: SavePage; label: string; icon: string }[] = [
+  { id: "boxes", label: "Boîtes", icon: "grid" },
+  { id: "pokemon", label: "Pokémon", icon: "ball" },
+  { id: "tools", label: "Outils", icon: "sliders" },
+  { id: "manager", label: "Sauvegardes", icon: "folder" },
+];
 
 /** Sauvegarde ouverte dans l'éditeur. */
 export const saveState = reactive({
   path: null as string | null,
   view: null as SaveView | null,
+  page: "home" as SavePage,
+  tool: null as SaveTool | null,
   box: 0,
   slots: [] as (SlotView | null)[],
   selected: null as SlotView | null,
@@ -16,7 +29,32 @@ export const saveState = reactive({
   notice: null as string | null,
 });
 
-const sameSlot = (a: Slot, b: Slot) => JSON.stringify(a) === JSON.stringify(b);
+/** Listes de noms (index = identifiant), chargées une fois. */
+export const names = reactive({
+  loaded: false,
+  species: [] as string[],
+  moves: [] as string[],
+  items: [] as string[],
+  abilities: [] as string[],
+});
+
+export async function loadNames() {
+  if (names.loaded) return;
+  const [lists, abilities] = await Promise.all([
+    invoke<{ species: string[]; moves: string[]; items: string[] }>("name_lists"),
+    invoke<string[]>("ability_names"),
+  ]);
+  Object.assign(names, lists, { abilities, loaded: true });
+}
+
+export const sameSlot = (a: Slot, b: Slot) => JSON.stringify(a) === JSON.stringify(b);
+
+let noticeTimer: number | undefined;
+export function notify(text: string) {
+  saveState.notice = text;
+  clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => (saveState.notice = null), 4000);
+}
 
 async function run<T>(action: () => Promise<T>): Promise<T | undefined> {
   saveState.error = null;
@@ -35,9 +73,14 @@ export async function openSave(path: string) {
   const view = await run(() => invoke<SaveView>("open_save", { path }));
   saveState.loading = false;
   if (!view) return;
-  Object.assign(saveState, { path, view, box: 0, dirty: false, notice: null });
+  Object.assign(saveState, { path, view, box: 0, dirty: false, notice: null, page: "home", tool: null });
   await loadBox(0);
   saveState.selected = view.party[0] ?? null;
+  loadNames();
+}
+
+export function closeSave() {
+  Object.assign(saveState, { path: null, view: null, slots: [], selected: null, dirty: false, page: "manager", tool: null });
 }
 
 export async function loadBox(index: number) {
@@ -49,61 +92,116 @@ export async function loadBox(index: number) {
 }
 
 /** Recharge l'emplacement sélectionné après une modification. */
-function reselect(slot: Slot | null) {
+function reselect(slot: Slot | null | undefined) {
   if (!slot) return;
   const all = [...(saveState.view?.party ?? []), ...saveState.slots.filter((s): s is SlotView => !!s)];
   saveState.selected = all.find((s) => sameSlot(s.slot, slot)) ?? null;
 }
 
-export async function movePokemon(from: Slot, to: Slot) {
-  if (sameSlot(from, to)) return;
-  const view = await run(() => invoke<SaveView>("save_move", { from, to }));
-  if (!view) return;
+/** Après une modification qui renvoie l'état général. */
+async function refresh(view: SaveView, select?: Slot | null) {
   saveState.view = view;
   saveState.dirty = true;
   await loadBox(saveState.box);
-  reselect(to);
+  reselect(select === undefined ? saveState.selected?.slot : select);
+}
+
+export async function movePokemon(from: Slot, to: Slot) {
+  if (sameSlot(from, to)) return;
+  const view = await run(() => invoke<SaveView>("save_move", { from, to }));
+  if (view) await refresh(view, to);
+}
+
+/** Copie (Maj + glisser) ou déplacement en écrasant la cible (Alt + glisser). */
+export async function copyPokemon(from: Slot, to: Slot, overwrite: boolean) {
+  if (sameSlot(from, to)) return;
+  const view = await run(() => invoke<SaveView>("save_copy", { from, to, overwrite }));
+  if (view) {
+    await refresh(view, to);
+    notify(overwrite ? "Pokémon déplacé (cible écrasée)" : "Pokémon copié");
+  }
 }
 
 export async function patchPokemon(slot: Slot, patch: PokemonPatch) {
   const updated = await run(() => invoke<SlotView>("save_patch", { slot, patch }));
   if (!updated) return false;
   saveState.dirty = true;
-  if (slot.kind === "party" && saveState.view) {
-    saveState.view.party[slot.index] = updated;
-  } else {
-    await loadBox(saveState.box);
-  }
+  const view = await run(() => invoke<SaveView>("save_view"));
+  if (view) saveState.view = view;
+  if (slot.kind === "box" && slot.box === saveState.box) saveState.slots[slot.index] = updated;
   saveState.selected = updated;
   return true;
+}
+
+export async function createPokemon(slot: Slot, species: number, level: number) {
+  const created = await run(() => invoke<SlotView>("save_create", { slot, species, level }));
+  if (!created) return;
+  const view = await run(() => invoke<SaveView>("save_view"));
+  if (view) await refresh(view, created.slot);
+  notify(`${created.speciesName} ajouté`);
 }
 
 export async function deletePokemon(slot: Slot) {
   const view = await run(() => invoke<SaveView>("save_delete", { slot }));
   if (!view) return;
-  saveState.view = view;
-  saveState.dirty = true;
+  await refresh(view, null);
   saveState.selected = null;
-  await loadBox(saveState.box);
 }
 
 export async function importPokemon(slot: Slot, file: string) {
   const v = await run(() => invoke<SlotView>("save_import_pokemon", { slot, file }));
   if (!v) return;
-  saveState.dirty = true;
-  saveState.view = (await run(() => invoke<SaveView>("save_view"))) ?? saveState.view;
-  await loadBox(saveState.box);
-  saveState.selected = v;
+  const view = await run(() => invoke<SaveView>("save_view"));
+  if (view) await refresh(view, v.slot);
 }
 
 export async function exportPokemon(slot: Slot, output: string) {
-  await run(() => invoke("save_export_pokemon", { slot, output }));
-  saveState.notice = `Pokémon exporté : ${output}`;
+  const ok = await run(() => invoke("save_export_pokemon", { slot, output }));
+  if (ok !== undefined) notify(`Pokémon exporté : ${output}`);
+}
+
+export async function history(redo: boolean) {
+  const view = await run(() => invoke<SaveView>("save_history", { redo }));
+  if (!view) return;
+  await refresh(view);
+  notify(redo ? "Modification rétablie" : "Modification annulée");
+}
+
+export async function setTrainer(patch: TrainerPatch) {
+  const view = await run(() => invoke<SaveView>("save_set_trainer", { patch }));
+  if (view) await refresh(view);
+  return !!view;
+}
+
+export async function setBoxName(index: number, name: string) {
+  const view = await run(() => invoke<SaveView>("save_set_box_name", { index, name }));
+  if (view) await refresh(view);
+  return !!view;
+}
+
+export async function getInventory() {
+  return run(() => invoke<Pouch[]>("save_inventory"));
+}
+
+export async function setInventory(pouches: Pouch[]) {
+  const view = await run(() => invoke<SaveView>("save_set_inventory", { pouches }));
+  if (view) await refresh(view);
+  return !!view;
 }
 
 export async function writeSave(output?: string) {
   const backup = await run(() => invoke<string | null>("save_write", { output: output ?? null }));
   if (backup === undefined) return;
   saveState.dirty = false;
-  saveState.notice = backup ? `Sauvegarde enregistrée. Copie de sécurité de l'original : ${backup}` : "Sauvegarde enregistrée.";
+  notify(backup ? `Sauvegarde enregistrée (copie de l'original : ${backup.split(/[\\/]/).pop()})` : "Sauvegarde enregistrée");
+}
+
+export function goTo(page: SavePage, tool: SaveTool | null = null) {
+  saveState.page = page;
+  saveState.tool = tool;
+}
+
+export function editPokemon(p: SlotView) {
+  saveState.selected = p;
+  goTo("pokemon");
 }

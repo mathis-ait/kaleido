@@ -33,9 +33,9 @@ onUnmounted(() => unlisten?.());
 </script>
 
 <template>
-  <div class="shell">
-    <Sidebar v-model="nav.view" />
-    <main class="content">
+  <div class="shell" :class="{ compact: nav.view === 'saves' }">
+    <Sidebar v-model="nav.view" :compact="nav.view === 'saves'" />
+    <main class="content" :class="{ flush: nav.view === 'saves' }">
       <Transition name="view" mode="out-in">
         <HomeView v-if="nav.view === 'home'" key="home" />
         <EditorView v-else-if="nav.view === 'editor'" key="editor" />
@@ -53,11 +53,22 @@ onUnmounted(() => unlisten?.());
   display: grid;
   grid-template-columns: 248px 1fr;
   height: 100%;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.shell.compact {
+  grid-template-columns: 72px 1fr;
 }
 
 .content {
   overflow-y: auto;
   padding: 36px 44px 48px;
+}
+
+.content.flush {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
 }
 
 .view-enter-active,
