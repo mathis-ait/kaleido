@@ -138,7 +138,14 @@ export const ROM_GAMES: Record<string, string[]> = {
   heart_gold_soul_silver: ["heart_gold", "soul_silver"],
   black_white: ["black", "white"],
   black2_white2: ["black2", "white2"],
+  x_y: ["x", "y"],
+  omega_ruby_alpha_sapphire: ["omega_ruby", "alpha_sapphire"],
+  sun_moon: ["sun", "moon"],
+  ultra_sun_ultra_moon: ["ultra_sun", "ultra_moon"],
 };
+
+/** Versions de sauvegarde Gen 7 : pas de badges, mais des îles (Grands Duels). */
+export const ALOLA_VERSIONS = ["sun_moon", "ultra_sun_ultra_moon"];
 
 /** Règles, dans l'ordre d'affichage, avec leur bulle d'aide. */
 export const RULES: { id: keyof NuzRules; label: string; tip: string; check: boolean }[] = [

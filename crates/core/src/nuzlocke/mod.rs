@@ -9,9 +9,11 @@
 //! - [`report`] calcule le bilan à partir de la sauvegarde ouverte.
 //!
 //! Pris en charge : Platine, Noire, Blanche (Gen 4 et 5, où le lieu de rencontre
-//! du Pokémon est l'identifiant de lieu des cartes de la ROM).
+//! du Pokémon est l'identifiant de lieu des cartes de la ROM), et les jeux 3DS
+//! ([`rom_ctr`] : X / Y, ROSA, Soleil / Lune, Ultra, où c'est le lieu des zones).
 
 pub mod rom;
+pub mod rom_ctr;
 
 #[cfg(test)]
 mod tests;
@@ -284,6 +286,10 @@ pub fn compatible(game: Game, version: SaveVersion) -> bool {
             | (Game::HeartGold | Game::SoulSilver, SaveVersion::HeartGoldSoulSilver)
             | (Game::Black | Game::White, SaveVersion::BlackWhite)
             | (Game::Black2 | Game::White2, SaveVersion::Black2White2)
+            | (Game::X | Game::Y, SaveVersion::XY)
+            | (Game::OmegaRuby | Game::AlphaSapphire, SaveVersion::OmegaRubyAlphaSapphire)
+            | (Game::Sun | Game::Moon, SaveVersion::SunMoon)
+            | (Game::UltraSun | Game::UltraMoon, SaveVersion::UltraSunUltraMoon)
     )
 }
 
@@ -370,7 +376,11 @@ pub fn report(rom: &RomInfo, session: &SaveSession, state: &RunState) -> Result<
     let view = session.view()?;
     let box_names = view.box_names.clone();
     let mons = read_mons(session, &box_names)?;
-    let save_badges = session.save.badges();
+    let mut save_badges = session.save.badges();
+    if rom.game.generation() == 7 {
+        // Alola : îles terminées, converties en capitaines / doyens battus.
+        save_badges = save_badges.map(|islands| rom_ctr::alola_badges(rom, islands));
+    }
     Ok(compute(rom, &view.trainer, save_badges, &box_names, mons, state))
 }
 

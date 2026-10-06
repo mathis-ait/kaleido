@@ -6,8 +6,10 @@ import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import { addPaths, library } from "../library";
 import { notify, saveState } from "../saveStore";
+import { isRom } from "../types";
 import { useShell } from "./shell";
 import {
+  ALOLA_VERSIONS,
   CATCH_LABEL,
   linkRom,
   monName,
@@ -71,8 +73,14 @@ async function update(change: (s: NuzState) => void) {
 
 const candidates = computed(() => {
   const games = ROM_GAMES[saveState.view?.version ?? ""] ?? [];
-  return library.items.filter((d) => d.kind === "nds_rom" && d.game && games.includes(d.game.id));
+  return library.items.filter((d) => isRom(d) && d.game && games.includes(d.game.id));
 });
+
+/** Sauvegarde d'un jeu 3DS : ROM `.3ds` ou dossier extrait. */
+const is3ds = computed(() => (saveState.view?.generation ?? 0) >= 6);
+/** Soleil / Lune et Ultra : capitaines et Grands Duels au lieu des badges. */
+const alola = computed(() => ALOLA_VERSIONS.includes(saveState.view?.version ?? ""));
+const gymCount = computed(() => Math.min(report.value?.caps.filter((c) => c.kind === "gym").length ?? 8, 8) || 8);
 
 async function link(path: string | null) {
   linking.value = true;
@@ -84,8 +92,12 @@ async function link(path: string | null) {
   }
 }
 
-async function pickRom() {
-  const path = await open({ title: "Choisir la ROM de la partie", filters: [{ name: "ROM Nintendo DS", extensions: ["nds"] }] });
+async function pickRom(folder = false) {
+  const path = await open({
+    title: folder ? "Dossier du jeu 3DS extrait" : "Choisir la ROM de la partie",
+    directory: folder,
+    filters: folder ? undefined : [{ name: "ROM DS / 3DS", extensions: ["nds", "3ds", "cci", "cxi", "app"] }],
+  });
   if (typeof path === "string") link(path);
 }
 
@@ -176,7 +188,8 @@ useShell(() => ({
       <h2>Mode Nuzlocke</h2>
       <p>
         Le suivi Nuzlocke fonctionne pour l'instant avec <strong>Pokémon Diamant, Perle, Platine</strong>,
-        <strong>HeartGold, SoulSilver</strong>, <strong>Noire</strong> et <strong>Blanche</strong>.
+        <strong>HeartGold, SoulSilver</strong>, <strong>Noire, Blanche</strong> et leurs suites, et sur 3DS avec
+        <strong>X, Y, Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil</strong> et <strong>Ultra-Lune</strong>.
         Cette sauvegarde est une partie de {{ data.saveGame }}.
       </p>
     </div>
@@ -213,8 +226,11 @@ useShell(() => ({
         </button>
       </div>
       <p v-else class="sv-help">Aucune ROM compatible dans la bibliothèque pour l'instant.</p>
-      <button class="sv-btn solid" :disabled="linking" @click="pickRom">
+      <button class="sv-btn solid" :disabled="linking" @click="pickRom()">
         <Icon name="folder-open" :size="16" /> {{ linking ? "Lecture de la ROM…" : "Choisir le fichier de la ROM…" }}
+      </button>
+      <button v-if="is3ds" class="sv-btn" :disabled="linking" @click="pickRom(true)">
+        <Icon name="folder" :size="16" /> Dossier 3DS extrait…
       </button>
     </div>
 
@@ -233,11 +249,19 @@ useShell(() => ({
             <span>{{ report.stats.alive }} en vie</span>
           </div>
           <div class="stat sv-panel">
-            <small>Badges <Tip title="Badges" text="Lus dans la sauvegarde. Tu peux forcer une valeur si besoin : le niveau maximum suit le nombre de badges." /></small>
-            <strong>{{ report.stats.badges }} / 8</strong>
+            <small v-if="alola"
+              >Épreuves
+              <Tip
+                title="Épreuves"
+                text="Capitaines et doyens battus, déduits des îles terminées (Grands Duels) enregistrées dans la sauvegarde. Tu peux forcer une valeur si besoin : le niveau maximum suit ce nombre."
+            /></small>
+            <small v-else>Badges <Tip title="Badges" text="Lus dans la sauvegarde. Tu peux forcer une valeur si besoin : le niveau maximum suit le nombre de badges." /></small>
+            <strong>{{ report.stats.badges }} / {{ gymCount }}</strong>
             <select class="sv-select mini" :value="state.badges ?? ''" @change="setBadges(($event.target as HTMLSelectElement).value)">
               <option value="">Auto (sauvegarde)</option>
-              <option v-for="n in 9" :key="n" :value="n - 1">{{ n - 1 }} badge{{ n - 1 > 1 ? "s" : "" }}</option>
+              <option v-for="n in gymCount + 1" :key="n" :value="n - 1">
+                {{ n - 1 }} {{ alola ? "épreuve" : "badge" }}{{ n - 1 > 1 ? "s" : "" }}
+              </option>
             </select>
           </div>
           <div class="stat sv-panel cap" :class="{ off: !state.rules.levelCaps }">
@@ -257,7 +281,7 @@ useShell(() => ({
           <span :title="state.romPath ?? ''">{{ fileName(state.romPath ?? "") }} · {{ report.gameName }}</span>
           <span v-if="report.seed !== null" class="chip">Seed {{ report.seed }}</span>
           <span v-for="r in RULES.filter((r) => state!.rules[r.id])" :key="r.id" class="chip rule">{{ r.label }}</span>
-          <button class="sv-btn" @click="pickRom">Changer de ROM</button>
+          <button class="sv-btn" @click="pickRom()">Changer de ROM</button>
           <button class="sv-btn" title="Relire la sauvegarde" @click="load"><Icon name="refresh" :size="14" /></button>
         </div>
       </header>
@@ -435,7 +459,7 @@ useShell(() => ({
           </select>
           <p class="sv-help">Réglages enregistrés dans {{ fileName(data.stateFile) }}, à côté de la sauvegarde. La sauvegarde elle-même n'est pas modifiée.</p>
           <div class="sv-row">
-            <button class="sv-btn" @click="pickRom">Changer de ROM</button>
+            <button class="sv-btn" @click="pickRom()">Changer de ROM</button>
             <button class="sv-btn danger" @click="link(null)">Délier la ROM</button>
           </div>
         </div>

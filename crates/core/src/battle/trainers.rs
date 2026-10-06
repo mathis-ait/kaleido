@@ -14,6 +14,7 @@
 //!   talent est toujours le premier.
 //! - **Nature (Gen 5/6)** : non reproduite (approximation : Hardi, neutre) ; talent
 //!   d'après l'octet « genre/talent » (bits 4-5 : 1 = premier, 2 = second, 3 = caché).
+//! - **Gen 7** : nature, IV et EV exacts, lus dans la ROM (voir `trainers/ctr.rs`).
 //! - **Bonheur** : 255, 0 si le Pokémon connaît Frustration (règle de Platine).
 
 use std::path::Path;
@@ -29,6 +30,9 @@ use crate::dex::{self, PersonalInfo};
 use crate::games::Game;
 use crate::rom::{GameRom, RomError};
 use crate::save::calc_stats;
+
+mod ctr;
+pub use ctr::ExactStats;
 
 /// Rôle d'un dresseur important.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -66,6 +70,8 @@ pub struct Trainer {
     pub double: bool,
     pub custom_moves: bool,
     pub team: Vec<TrainerPokemon>,
+    /// Gen 7 : nature, IV et EV de chaque Pokémon (vide pour les autres jeux).
+    pub exact: Vec<ExactStats>,
 }
 
 /// Un Pokémon de l'équipe, pour les cartes de l'interface.
@@ -254,6 +260,7 @@ impl RomTrainers {
                 double,
                 custom_moves: team.flags & FLAG_MOVES != 0,
                 team: team.pokemon,
+                exact: Vec::new(),
             });
         }
         Ok(Self { game, personal, learnsets, trainers, verified: rom.layout.verified })
@@ -261,9 +268,6 @@ impl RomTrainers {
 
     pub fn from_ctr(rom: &CtrGameRom) -> Result<Self, RomError> {
         let game = rom.game;
-        if game.generation() != 6 {
-            return Err(RomError::Unsupported(format!("{} : dresseurs non pris en charge (format Gen 7 non lu)", game.name_fr())));
-        }
         let l = rom.layout;
         let entries = |path: &str| -> Result<Vec<Vec<u8>>, RomError> {
             let garc = rom.garc(path)?;
@@ -274,9 +278,29 @@ impl RomTrainers {
         let trdata = entries(l.trainer_data)?;
         let trpoke = entries(l.trainer_pokemon)?;
         let personal = entries(l.personal)?;
-        // Gen 6 : couples (attaque u16, niveau u16) comme en Gen 5.
+        // Gen 6 / 7 : couples (attaque u16, niveau u16) comme en Gen 5.
         let learnsets = entries(l.levelup)?.iter().map(|d| learnsets::read(5, d)).collect();
         let mut trainers = Vec::new();
+        if game.generation() == 7 {
+            for (i, (d, p)) in trdata.iter().zip(&trpoke).enumerate().skip(1) {
+                let Some(t) = ctr::read_gen7(d, p).filter(|t| !t.team.is_empty()) else {
+                    continue;
+                };
+                let name = names.get(i).cloned().unwrap_or_default();
+                trainers.push(Trainer {
+                    id: i as u16,
+                    class_id: t.class,
+                    class_name: classes.get(t.class as usize).cloned().unwrap_or_default(),
+                    role: ctr::role(game, t.class, &name),
+                    name,
+                    double: t.double,
+                    custom_moves: t.team.iter().any(|p| p.moves.iter().any(|&m| m != 0)),
+                    team: t.team,
+                    exact: t.exact,
+                });
+            }
+            return Ok(Self { game, personal, learnsets, trainers, verified: l.verified });
+        }
         // X / Y : fiche de 0x14 octets, convertie au format de Rubis Oméga / Saphir Alpha.
         let xy = matches!(game, crate::games::Game::X | crate::games::Game::Y);
         for (i, (d, p)) in trdata.iter().zip(&trpoke).enumerate() {
@@ -302,12 +326,14 @@ impl RomTrainers {
                 id: i as u16,
                 class_id,
                 class_name: classes.get(class_id as usize).cloned().unwrap_or_default(),
-                role: role_of(game, class_id, &name),
+                role: ctr::role(game, class_id, &name).or_else(|| role_of(game, class_id, &name)),
                 name,
-                // Type de combat non vérifié en Gen 6.
-                double: false,
+                // Type de combat @6 (format ROSA) : 0 simple, 1 double, 2 triple, 3 rotatif,
+                // 4 duo de Sbires (pk3DS `TrainerData6` ; vérifié sur Y : Jumelles n°88 en double).
+                double: d[6] != 0,
                 custom_moves: team.flags & FLAG_MOVES != 0,
                 team: team.pokemon,
+                exact: Vec::new(),
             });
         }
         Ok(Self { game, personal, learnsets, trainers, verified: l.verified })
@@ -337,7 +363,7 @@ impl RomTrainers {
                 class_name: t.class_name.clone(),
                 name: display_name(t),
                 role: t.role,
-                role_label: t.role.map(Role::label),
+                role_label: t.role.map(|r| ctr::label(self.game, r)),
                 double: t.double,
                 max_level: t.team.iter().map(|p| p.level).max().unwrap_or(0),
                 team: t
@@ -379,10 +405,10 @@ impl RomTrainers {
     /// Pokémon adverses d'un dresseur, prêts pour le calcul.
     pub fn team(&self, id: u16) -> Option<Vec<Combatant>> {
         let t = self.trainer(id)?;
-        Some(t.team.iter().map(|p| self.build(t, p)).collect())
+        Some(t.team.iter().enumerate().map(|(i, p)| self.build(t, p, t.exact.get(i))).collect())
     }
 
-    fn build(&self, t: &Trainer, p: &TrainerPokemon) -> Combatant {
+    fn build(&self, t: &Trainer, p: &TrainerPokemon, exact: Option<&ExactStats>) -> Combatant {
         let generation = self.generation();
         let dg = self.dex_game();
         let mut notes = Vec::new();
@@ -395,10 +421,19 @@ impl RomTrainers {
         };
         let level = p.level.clamp(1, 100) as u8;
         let iv = (p.difficulty as u32 * 31 / 255) as u8;
-        let ivs = [iv; 6];
+        let ivs = exact.map_or([iv; 6], |x| x.ivs);
+        let evs = exact.map_or([0; 6], |x| x.evs);
 
         // Nature et talent.
-        let (nature, ability) = if generation == 4 {
+        let (nature, ability) = if let Some(x) = exact {
+            // Gen 7 : nature lue dans la ROM, talent comme en Gen 5 / 6.
+            let slot = match (p.gender_ability >> 4) & 3 {
+                2 => 1,
+                3 => 2,
+                _ => 0,
+            };
+            (x.nature, ability_slot(&info, slot))
+        } else if generation == 4 {
             // Diamant / Perle : classes identiques à celles de Platine (n° 0-97), même calcul.
             // HGSS : liste propre (classes déduites de la ROM), même calcul.
             let hgss = matches!(self.game, Game::HeartGold | Game::SoulSilver);
@@ -424,7 +459,7 @@ impl RomTrainers {
             (0, ability_slot(&info, slot))
         };
         let b = info.base_stats;
-        let stats = calc_stats(&b, level, ivs, [0; 6], nature);
+        let stats = calc_stats(&b, level, ivs, evs, nature);
 
         let custom = t.custom_moves && p.moves.iter().any(|&m| m != 0);
         let moves = if custom {
@@ -453,7 +488,7 @@ impl RomTrainers {
             moves,
             nature,
             ivs,
-            evs: [0; 6],
+            evs,
             friendship,
             weight,
             notes,
