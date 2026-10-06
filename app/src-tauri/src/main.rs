@@ -348,6 +348,7 @@ fn main() {
             library::emulator_download_info,
             library::emulator_install,
             library::music_title_theme,
+            library::music_switch_theme,
             library::game_status,
             library::emulators_running,
             library::library_scan_switch,

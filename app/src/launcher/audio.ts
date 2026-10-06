@@ -2,6 +2,10 @@ import { reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Detection } from "../types";
+import { titleIdOf } from "../games";
+
+/** Jeux dont on sait lire la musique : Pokémon DS et 3DS, et jeux Switch (selon le jeu). */
+const hasMusic = (d: Detection | null | undefined): d is Detection => !!d && (!!d.game || d.platform === "switch");
 
 /**
  * Son du lanceur : musique de l'écran titre du jeu sélectionné (extraite de la
@@ -82,7 +86,11 @@ const MAX_BUFFERS = 8;
 function load(d: Detection): Promise<AudioBuffer | null> {
   let p = buffers.get(d.path);
   if (!p) {
-    p = invoke<ArrayBuffer>("music_title_theme", { path: d.path, game: d.game?.id ?? "" })
+    const request =
+      d.platform === "switch"
+        ? invoke<ArrayBuffer>("music_switch_theme", { path: d.path, titleId: titleIdOf(d) ?? "" })
+        : invoke<ArrayBuffer>("music_title_theme", { path: d.path, game: d.game?.id ?? "" });
+    p = request
       .then((bytes) => context().decodeAudioData(bytes))
       .catch(() => null);
     buffers.set(d.path, p);
@@ -114,7 +122,7 @@ export function previewMusic(d: Detection | null, wait = 650) {
   if (current && current.path === d?.path) return;
   stopCurrent();
   audio.loading = null;
-  if (!d?.game || !audio.music || silenced()) return;
+  if (!hasMusic(d) || !audio.music || silenced()) return;
   delay = window.setTimeout(async () => {
     audio.loading = d.path;
     const buffer = await load(d);
@@ -146,7 +154,7 @@ export function stopMusic(forget = true) {
 
 /** Précharge la musique (rendu côté Rust) sans la jouer. */
 export const prefetchMusic = (d: Detection | undefined) => {
-  if (d?.game && audio.music) void load(d);
+  if (hasMusic(d) && audio.music) void load(d);
 };
 
 // --- Bruitages

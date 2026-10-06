@@ -302,6 +302,29 @@ fn music_key(path: &Path) -> Option<String> {
     Some(format!("{hash:016x}"))
 }
 
+/// Thème de l'écran titre d'un jeu Switch, en Ogg Opus, lu dans le jeu de l'utilisateur
+/// avec ses propres clés (extrait une fois puis gardé en cache).
+#[tauri::command]
+pub async fn music_switch_theme(path: PathBuf, title_id: String, app: AppHandle) -> Result<tauri::ipc::Response, String> {
+    crate::blocking(move || {
+        let tid = u64::from_str_radix(&title_id, 16).map_err(|_| "title ID invalide")?;
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("music");
+        let key = music_key(&path).ok_or("jeu introuvable")?;
+        let cached = dir.join(format!("{key}.ogg"));
+        if let Ok(data) = fs::read(&cached) {
+            return Ok(tauri::ipc::Response::new(data));
+        }
+        let keys_file = crate::switch::prod_keys(&app).ok_or("clés de la console introuvables (prod.keys d'Eden)")?;
+        let keys = kaleido_core::nx::Keys::load(&keys_file).map_err(|e| e.to_string())?;
+        let ogg = kaleido_core::music::nx::title_theme(&path, &keys, tid, MUSIC_SECONDS)?;
+        if fs::create_dir_all(&dir).is_ok() {
+            let _ = fs::write(&cached, &ogg);
+        }
+        Ok(tauri::ipc::Response::new(ogg))
+    })
+    .await
+}
+
 /// Thème de l'écran titre d'une ROM, en WAV (rendu une fois puis gardé en cache).
 #[tauri::command]
 pub async fn music_title_theme(path: PathBuf, game: String, app: AppHandle) -> Result<tauri::ipc::Response, String> {

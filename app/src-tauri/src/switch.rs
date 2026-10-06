@@ -365,13 +365,18 @@ fn names_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// Jeux Switch (un par title ID de base) des dossiers et fichiers donnés.
-pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<SwitchGame> {
+/// Fichier `prod.keys` utilisable (celui d'Eden en priorité).
+pub fn prod_keys(app: &AppHandle) -> Option<PathBuf> {
     let config = crate::play::load_config(app);
     let env = crate::play::Env::system(&config.search_dirs);
     let eden = crate::play::resolve(crate::play::EmulatorId::Eden, &config, &env);
-    let key = keys_candidates(env.appdata.as_deref(), eden.ctr_user_dir().as_deref())
-        .iter()
-        .find_map(|p| fs::read_to_string(p).ok().and_then(|t| header_key_from(&t)));
+    keys_candidates(env.appdata.as_deref(), eden.ctr_user_dir().as_deref())
+        .into_iter()
+        .find(|p| fs::read_to_string(p).ok().and_then(|t| header_key_from(&t)).is_some())
+}
+
+pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<SwitchGame> {
+    let key = prod_keys(app).and_then(|p| fs::read_to_string(p).ok()).and_then(|t| header_key_from(&t));
 
     let mut files: Vec<PathBuf> = roots.iter().flat_map(|r| find_files(r)).collect();
     files.sort();

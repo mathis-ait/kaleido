@@ -364,3 +364,69 @@ fn real_wem() {
     println!("{} canaux, {} Hz, {:.1} s, {} paquets, TOC {:#04x}", w.channels, w.sample_rate, w.seconds(), w.packets.len(), w.packets[0][0]);
     std::fs::write(format!("{path}.ogg"), to_ogg_opus(&w, 0.0)).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// Thème de l'écran titre
+
+/// Évènement Wwise du thème de chaque jeu (title ID du jeu de base).
+pub fn title_event(title_id: u64) -> Option<&'static str> {
+    Some(match title_id {
+        // L'écran titre normal ne joue que des ambiances ; ce thème accompagne l'écran
+        // titre une fois l'histoire terminée (séquence demo/sequence/sd9010_title.bseq).
+        0x01001F5010DFA000 => "PLAY_BGM_HA_SYS_TITLE_CLEAR",
+        _ => return None,
+    })
+}
+
+/// Thème de l'écran titre d'un jeu Switch, en Ogg Opus (au plus `max_seconds`).
+/// Parmi les sons de l'évènement (couches, variantes), le plus long est le morceau complet.
+pub fn title_theme(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64, max_seconds: f32) -> Result<Vec<u8>, String> {
+    let event = wwise_hash(title_event(title_id).ok_or("pas de thème connu pour ce jeu")?);
+    let mut nca = crate::nx::open_program(game, keys).map_err(|e| e.to_string())?;
+    let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
+    let files = romfs.list();
+    let in_sound = |f: &&crate::nx::RomFile, ext: &str| f.path.contains("/sound/") && f.path.ends_with(ext);
+
+    // Banque qui contient l'évènement.
+    let mut objects = None;
+    for f in files.iter().filter(|f| in_sound(f, ".bnk")) {
+        let bank = romfs.read_all(f).map_err(|e| e.to_string())?;
+        let objs = bank_objects(&bank);
+        if objs.contains_key(&event) {
+            objects = Some(objs);
+            break;
+        }
+    }
+    let objects = objects.ok_or("évènement du thème introuvable dans les banques de sons")?;
+
+    // Sons de l'évènement, cherchés dans chaque archive .pck.
+    let mut best: Option<(crate::nx::RomFile, u64, u64)> = None;
+    for f in files.iter().filter(|f| in_sound(f, ".pck")) {
+        let first = romfs.read(f, 0, 16).map_err(|e| e.to_string())?;
+        let Some(size) = pck_header_size(&first) else { continue };
+        let header = romfs.read(f, 0, size).map_err(|e| e.to_string())?;
+        let streams = pck_streams(&header);
+        for id in event_sources(&objects, event, &streams) {
+            let (offset, len) = streams[&id];
+            if best.as_ref().is_none_or(|b| len > b.2) {
+                best = Some((f.clone(), offset, len));
+            }
+        }
+    }
+    let (file, offset, len) = best.ok_or("sons du thème introuvables")?;
+    let wem = romfs.read(&file, offset, len as usize).map_err(|e| e.to_string())?;
+    Ok(to_ogg_opus(&parse_wwise_opus(&wem)?, max_seconds))
+}
+
+/// Thème d'un vrai jeu : `KALEIDO_NX_GAME=<xci|nsp> KALEIDO_NX_KEYS=<prod.keys> KALEIDO_NX_OGG=<sortie.ogg> cargo test -p kaleido-core real_title_theme -- --ignored --nocapture`.
+#[cfg(test)]
+#[test]
+#[ignore]
+fn real_title_theme() {
+    let game = std::path::PathBuf::from(std::env::var("KALEIDO_NX_GAME").unwrap());
+    let keys = crate::nx::Keys::load(std::path::Path::new(&std::env::var("KALEIDO_NX_KEYS").unwrap())).unwrap();
+    let t = std::time::Instant::now();
+    let ogg = title_theme(&game, &keys, 0x01001F5010DFA000, 50.0).unwrap();
+    println!("{} Ko en {:?}", ogg.len() / 1024, t.elapsed());
+    std::fs::write(std::env::var("KALEIDO_NX_OGG").unwrap(), ogg).unwrap();
+}

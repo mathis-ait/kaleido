@@ -358,7 +358,7 @@ pub fn open_program(path: &Path, keys: &Keys) -> Result<Nca> {
     let mut best: Option<Nca> = None;
     for e in entries.iter().filter(|e| e.name.ends_with(".nca")) {
         let Ok(nca) = Nca::open(path, e, keys, &titlekeys) else { continue };
-        if nca.info.content == ContentType::Program && nca.sections.iter().any(|s| s.romfs.is_some()) && best.as_ref().is_none_or(|b| nca.info.size > b.info.size) {
+        if nca.info.content == ContentType::Program && nca.sections.iter().any(|s| s.romfs.is_some() && s.crypto != 4) && best.as_ref().is_none_or(|b| nca.info.size > b.info.size) {
             best = Some(nca);
         }
     }
