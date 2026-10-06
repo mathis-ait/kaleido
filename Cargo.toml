@@ -26,6 +26,13 @@ opt-level = 3
 [profile.dev.package.kaleido-core]
 opt-level = 2
 
+# Décodage AAC des musiques de X/Y (aperçu sonore de la bibliothèque).
+[profile.dev.package.symphonia-codec-aac]
+opt-level = 2
+
+[profile.dev.package.symphonia-core]
+opt-level = 2
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
