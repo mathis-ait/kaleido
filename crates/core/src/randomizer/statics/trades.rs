@@ -1,5 +1,5 @@
 //! Échanges en jeu : Diamant / Perle / Platine (`fld_trade.narc`, sous `resource/fra/`
-//! dans les ROMs françaises), HeartGold / SoulSilver (`a/1/1/2`, non vérifié),
+//! dans les ROMs françaises), HeartGold / SoulSilver (`a/1/1/2`),
 //! Noire/Blanche (`a/1/6/5`) et Noire 2 / Blanche 2 (`a/1/6/3`). Même format en Gen 4.
 //! Portage de `getInGameTrades` / `setInGameTrades` (Gen4RomHandler, Gen5RomHandler)
 //! et de `TradeRandomizer` de l'Universal Pokémon Randomizer.

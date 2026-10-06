@@ -375,11 +375,12 @@ pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Ent
             notes.push("vagabonds (Créfadet, Cresselia, oiseaux légendaires) non pris en charge : l'UPR ajoute pour cela du code à l'ARM9".into())
         }
         Game::Black2 | Game::White2 => notes.push("Passages Cachés et Pokémon du PWT non modifiés".into()),
-        Game::Diamond | Game::Pearl => notes.push("vagabonds (Créfollet, Cresselia) non pris en charge : l'UPR modifie pour cela le code de l'ARM9".into()),
-        Game::HeartGold | Game::SoulSilver => notes.push(
-            "HeartGold / SoulSilver : emplacements non vérifiés sur une vraie ROM ; vagabonds, Giratina Originel, lots du Casino, Shuckie, Kenya et œuf mystère non pris en charge"
-                .into(),
-        ),
+        Game::Diamond | Game::Pearl => {
+            notes.push("vagabonds (Créfollet, Cresselia) non pris en charge : l'UPR modifie pour cela le code de l'ARM9".into())
+        }
+        Game::HeartGold | Game::SoulSilver => {
+            notes.push("vagabonds, Giratina Originel, lots du Casino, Shuckie, Kenya et œuf mystère non pris en charge".into())
+        }
         _ => {}
     }
     let mut out = Vec::new();

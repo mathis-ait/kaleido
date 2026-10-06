@@ -138,8 +138,8 @@ pub fn diamond_pearl(code: &str) -> Vec<Def> {
     out
 }
 
-/// HeartGold / SoulSilver : `StaticPokemon{}` de `[HeartGold (U)]` (UPR-ZX), non vérifiées
-/// sur une ROM (chaque valeur est relue avant écriture). Archive des scripts : `a/0/1/2`.
+/// HeartGold / SoulSilver : `StaticPokemon{}` de `[HeartGold (U)]` (UPR-ZX), copiées par
+/// les versions traduites ; toutes relues sur SoulSilver (IPGF). Archive des scripts : `a/0/1/2`.
 /// Ignorés : Giratina Originel (forme), lots du Casino (textes du menu), Shuckie et
 /// Kenya (échanges), œuf mystère et vagabonds (code de l'overlay / de l'ARM9).
 pub fn heartgold_soulsilver() -> Vec<Def> {
@@ -436,7 +436,7 @@ pub const PT_TRADE_PERSON_TEXTS: [usize; 4] = [74, 97, 180, 643];
 /// `IngameTradePersonTextOffsets` ; vérifiés sur Diamant ADAF).
 pub const DP_TRADE_TEXT: usize = 326;
 pub const DP_TRADE_PERSON_TEXTS: [usize; 4] = [67, 89, 171, 584];
-/// HeartGold / SoulSilver (non vérifié) : 0 = pas de dialogue ; entrées 6 et 7
+/// HeartGold / SoulSilver (vérifié sur SoulSilver IPGF) : 0 = pas de dialogue ; entrées 6 et 7
 /// (Shuckie, Kenya) traitées à part par l'UPR et ignorées ici.
 pub const HGSS_TRADE_TEXT: usize = 200;
 pub const HGSS_TRADE_PERSON_TEXTS: [usize; 11] = [562, 596, 608, 634, 0, 0, 344, 463, 535, 47, 537];

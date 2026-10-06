@@ -13,9 +13,10 @@
 //! - **Diamant / Perle** : même table (559 en-têtes, 0xEEDFC sur la ROM française,
 //!   UPR-ZX `MapTableARM9Offset`), mais nom du lieu = **u16** en +0x12 ; textes 382
 //!   (vérifié sur Diamant ADAF).
-//! - **HeartGold / SoulSilver** (non vérifié, d'après UPR-ZX `loadWildMapNames`) :
-//!   en-têtes de 24 octets dans l'ARM9 ; rencontres = u8 en +0x00 (0xFF = aucune),
-//!   nom du lieu = u8 en +0x12 ; textes 279. Nombre d'en-têtes (toute la Gen 4) :
+//! - **HeartGold / SoulSilver** (UPR-ZX `loadWildMapNames`, vérifié sur SoulSilver
+//!   IPGF : 0xF6BC4) : en-têtes de 24 octets dans l'ARM9 ; rencontres = u8 en +0x00
+//!   (0xFF = aucune), nom du lieu = u8 en +0x12 ; textes 279, mêmes identifiants que
+//!   `met4_00000` de PKHeX (Route 29 = 177, Mauville = 128). Nombre d'en-têtes (toute la Gen 4) :
 //!   taille de `fielddata/maptable/mapname.bin` / 16.
 //! - **Noire / Blanche** : NARC `a/0/1/2`, un fichier de 427 en-têtes de 48 octets.
 //!   Rencontres = u16 en +0x14 (0xFFFF = aucune), nom du lieu = u8 en +0x1A
@@ -119,7 +120,15 @@ impl RomInfo {
     pub fn supports(game: Game) -> bool {
         matches!(
             game,
-            Game::Diamond | Game::Pearl | Game::Platinum | Game::HeartGold | Game::SoulSilver | Game::Black | Game::White | Game::Black2 | Game::White2
+            Game::Diamond
+                | Game::Pearl
+                | Game::Platinum
+                | Game::HeartGold
+                | Game::SoulSilver
+                | Game::Black
+                | Game::White
+                | Game::Black2
+                | Game::White2
         )
     }
 }
@@ -264,7 +273,7 @@ fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> R
         .collect())
 }
 
-/// HeartGold / SoulSilver (non vérifié) : rencontres sur un octet en tête d'en-tête.
+/// HeartGold / SoulSilver : rencontres sur un octet en tête d'en-tête.
 fn hgss_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<(u16, u16)>, RomError> {
     let arm9 = game.rom().arm9_decompressed()?;
     let count = gen4_header_count(game)?;
@@ -346,7 +355,10 @@ fn method(game: Game, offset: usize) -> &'static str {
             128..148 => "Canne",
             148..168 => "Super Canne",
             168..HGSS_SWARMS => "Méga Canne",
-            _ => "Essaim",
+            HGSS_SWARMS..190 => "Essaim",
+            190..192 => "Essaim (Surf)",
+            192..194 => "Pêche de nuit",
+            _ => "Essaim (pêche)",
         };
     }
     if game.generation() == 4 {
@@ -448,10 +460,17 @@ fn story_order(game: Game) -> &'static [u16] {
         // Grotte Falaise, Parc Safari, Route 42, Mont Creuset, Acajou, Route 43, Lac Colère,
         // Repaire Rocket, Route 44, Route de Glace, Ebènelle, Antre du Dragon, Route 45,
         // Antre Noir, Tourb'Îles, Route 27, Chutes Tohjo, Route 26, Route Victoire, Plateau
-        // Indigo, puis Kanto et l'après-Ligue (ordre approximatif, non vérifié sur une ROM).
+        // Indigo ; puis Kanto depuis Carmin sur Mer : Routes 6, 5, Azuria, Routes 24, 25, 9,
+        // 10, Grotte, Lavanville, Routes 8, 7, Céladopole, Routes 11, Cave Taupiqueur,
+        // Routes 12 à 18, Parmanie, Chenaux 19-21, Îles Écume, Cramois'Île, Bourg Palette,
+        // Route 1, Jadielle, Route 2, Forêt de Jade, Argenta, Route 3, Mont Sélénite,
+        // Route 4, Route 22, Route 28, Mont Argenté, Grotte Argentée, Caverne Azurée
+        // (ordre approximatif ; lieux et zones relus sur SoulSilver IPGF).
         Game::HeartGold | Game::SoulSilver => &[
             177, 127, 194, 178, 179, 128, 204, 180, 209, 210, 181, 129, 211, 214, 182, 131, 183, 207, 184, 185, 133, 206, 205, 186, 187, 132, 212,
-            188, 189, 130, 195, 196, 228, 202, 190, 216, 134, 191, 135, 213, 192, 217, 136, 222, 193, 220, 218, 175, 223, 174, 221, 147,
+            188, 189, 130, 195, 196, 228, 202, 190, 216, 134, 191, 135, 213, 192, 217, 136, 222, 193, 220, 218, 175, 223, 174, 221, 147, 143, 154,
+            153, 141, 172, 173, 157, 158, 200, 142, 156, 155, 144, 159, 197, 160, 161, 162, 163, 164, 165, 166, 145, 167, 168, 169, 203, 146, 138,
+            149, 139, 150, 224, 140, 151, 198, 152, 170, 176, 137, 219, 199,
         ],
         Game::Black | Game::White => &[
             14, 15, 6, 32, 16, 54, 33, 17, 34, 35, 18, 65, 10, 36, 19, 37, 20, 56, 59, 38, 12, 57, 21, 39, 22, 68, 23, 40, 73, 61, 24, 67, 25, 26,
@@ -568,30 +587,30 @@ const DIAMOND_PEARL_LEADERS: &[LeaderDef] = &[
     LeaderDef { kind: LeaderKind::Champion, name: "Cynthia", town: "Ligue Pokémon", members: &[(267, 69)] },
 ];
 
-/// HeartGold / SoulSilver : identifiants de `tagTrainersHGSS` (UPR-ZX), non vérifiés sur
-/// une ROM. Classes inconnues : 0 = classe non contrôlée.
+/// HeartGold / SoulSilver : identifiants de `tagTrainersHGSS` (UPR-ZX) ; noms, classes
+/// et équipes vérifiés sur SoulSilver (IPGF). Chaque champion a sa propre classe.
 const HGSS_LEADERS: &[LeaderDef] = &[
-    gym("Albert", "Mauville", &[(20, 0)]),
-    gym("Hector", "Écorcia", &[(21, 0)]),
-    gym("Blanche", "Doublonville", &[(30, 0)]),
-    gym("Mortimer", "Rosalia", &[(31, 0)]),
-    gym("Chuck", "Irisia", &[(34, 0)]),
-    gym("Jasmine", "Oliville", &[(33, 0)]),
-    gym("Frédo", "Acajou", &[(32, 0)]),
-    gym("Sandra", "Ebènelle", &[(35, 0)]),
-    elite("Clément", &[(245, 0)]),
-    elite("Koga", &[(247, 0)]),
-    elite("Aldo", &[(418, 0)]),
-    elite("Marion", &[(246, 0)]),
-    LeaderDef { kind: LeaderKind::Champion, name: "Peter", town: "Ligue Pokémon", members: &[(244, 0)] },
-    gym("Pierre", "Argenta", &[(253, 0)]),
-    gym("Ondine", "Azuria", &[(254, 0)]),
-    gym("Major Bob", "Carmin sur Mer", &[(255, 0)]),
-    gym("Erika", "Céladopole", &[(256, 0)]),
-    gym("Jeannine", "Parmanie", &[(257, 0)]),
-    gym("Morgane", "Safrania", &[(258, 0)]),
-    gym("Auguste", "Cramois'Île", &[(259, 0)]),
-    gym("Blue", "Jadielle", &[(261, 0)]),
+    gym("Albert", "Mauville", &[(20, 66)]),
+    gym("Hector", "Écorcia", &[(21, 67)]),
+    gym("Blanche", "Doublonville", &[(30, 70)]),
+    gym("Mortimer", "Rosalia", &[(31, 72)]),
+    gym("Chuck", "Irisia", &[(34, 75)]),
+    gym("Jasmine", "Oliville", &[(33, 74)]),
+    gym("Frédo", "Acajou", &[(32, 73)]),
+    gym("Sandra", "Ebènelle", &[(35, 76)]),
+    elite("Clément", &[(245, 87)]),
+    elite("Koga", &[(247, 89)]),
+    elite("Aldo", &[(418, 112)]),
+    elite("Marion", &[(246, 88)]),
+    LeaderDef { kind: LeaderKind::Champion, name: "Peter", town: "Ligue Pokémon", members: &[(244, 86)] },
+    gym("Pierre", "Argenta", &[(253, 98)]),
+    gym("Ondine", "Azuria", &[(254, 103)]),
+    gym("Major Bob", "Carmin sur Mer", &[(255, 104)]),
+    gym("Erika", "Céladopole", &[(256, 105)]),
+    gym("Jeannine", "Parmanie", &[(257, 106)]),
+    gym("Morgane", "Safrania", &[(258, 107)]),
+    gym("Auguste", "Cramois'Île", &[(259, 108)]),
+    gym("Blue", "Jadielle", &[(261, 110)]),
 ];
 
 fn leader_defs(game: Game) -> &'static [LeaderDef] {
@@ -628,8 +647,7 @@ fn read_leaders(game: &GameRom, paths: &DataPaths) -> Result<Vec<Leader>, RomErr
                 continue;
             };
             let class = td.get(1).copied().unwrap_or(0);
-            // Classe attendue 0 : inconnue (HGSS, non vérifié), pas de contrôle.
-            verified &= expected == 0 || class == expected;
+            verified &= class == expected;
             if class_name.is_empty() {
                 class_name = classes.get(class as usize).cloned().unwrap_or_default();
             }

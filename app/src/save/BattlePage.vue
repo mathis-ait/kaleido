@@ -72,7 +72,7 @@ useShell(() => ({
         K.O., qui attaque en premier.
       </p>
       <p class="sv-help">
-        Jeux pris en charge : Diamant / Perle, Platine, Noir / Blanc, Noir 2 / Blanc 2, Rubis Oméga / Saphir Alpha, X / Y (HeartGold / SoulSilver à l'essai). La ROM doit être du même jeu que la
+        Jeux pris en charge : Diamant / Perle, Platine, HeartGold / SoulSilver, Noir / Blanc, Noir 2 / Blanc 2, Rubis Oméga / Saphir Alpha, X / Y. La ROM doit être du même jeu que la
         sauvegarde ({{ view?.game }}).
       </p>
       <div v-if="candidates.length" class="cands">

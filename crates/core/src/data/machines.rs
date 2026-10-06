@@ -66,7 +66,7 @@ impl MachineSpec {
     }
 
     /// Organisation propre à un jeu : HeartGold / SoulSilver ont un autre motif devant
-    /// le tableau (`hgssTMDataPrefix` d'UPR-ZX, non vérifié sur une ROM). Diamant / Perle
+    /// le tableau (`hgssTMDataPrefix` d'UPR-ZX, unique dans l'ARM9 de SoulSilver IPGF). Diamant / Perle
     /// ont celui de Platine (vérifié sur Diamant ADAF : motif unique dans l'ARM9).
     pub fn for_game(game: Game) -> Option<Self> {
         let mut spec = Self::for_generation(game.generation())?;

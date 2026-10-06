@@ -4,8 +4,9 @@
 //! - Diamant / Perle : même tableau dans l'overlay 64, à l'offset 0x1B88 (UPR-ZX
 //!   `StarterPokemonOffset` ; vérifié sur Diamant ADAF : 387, 390, 393), même code
 //!   d'affichage et mêmes scripts du rival que Platine (autres fichiers).
-//! - HeartGold / SoulSilver (non vérifié, d'après UPR-ZX) : 3 espèces u32 dans l'ARM9,
-//!   13 octets avant le motif `hgssStarterCodeSuffix` ; cris dans l'overlay 61.
+//! - HeartGold / SoulSilver (d'après UPR-ZX, vérifié sur SoulSilver IPGF) : 3 espèces
+//!   u32 dans l'ARM9, 13 octets avant le motif `hgssStarterCodeSuffix` ; cris dans
+//!   l'overlay 61 ; scripts du rival dans 7 fichiers de `a/0/1/2` ; textes du fichier 190.
 //! - Noire/Blanche, trois endroits :
 //!   - overlay 223 : tableau de 3 espèces u16 de l'écran de choix ;
 //!   - script 304 : commandes `57 00 00 <espèce>` (sprite / cri sur l'écran de choix) ;
@@ -330,7 +331,7 @@ mod platinum {
 }
 
 /// HeartGold / SoulSilver : portage de la branche HGSS de `Gen4RomHandler.setStarters`
-/// (UPR-ZX). Non vérifié sur une vraie ROM : chaque motif est contrôlé avant écriture.
+/// (UPR-ZX), vérifié sur SoulSilver (IPGF) ; chaque motif est contrôlé avant écriture.
 mod hgss {
     use super::{find_unique, mismatch, GameRom, Narc, RomError, StarterLabels, HGSS_CRIES_PREFIX, HGSS_STARTER_OVERLAY};
 
@@ -388,8 +389,9 @@ mod hgss {
         for (i, (type_name, name)) in labels.iter().enumerate() {
             let color = if i == 0 { 3 } else { i };
             let shown = format!("{{VAR:FF00,{color:04X}}}{name}{{VAR:FF00,0000}}");
-            lines[i + 1] = format!("Prof. Orme : tu choisis {shown},\nle Pokémon de type {type_name} ?");
-            lines[i + 4] = format!("{shown}, le Pokémon de type\n{type_name}, est dans cette Poké Ball !");
+            // Même tournure que le jeu (ROM française de SoulSilver).
+            lines[i + 1] = format!("Orme: Préfères-tu {shown},\nle Pokémon {type_name}?");
+            lines[i + 4] = format!("Cette Poké Ball contient\nle Pokémon {type_name} {shown}.");
         }
         *file = MsgFile::from_strings(msg.seed, &lines)?.to_bytes();
         game.rom_mut().replace_file_by_path(archive, narc.to_bytes())?;

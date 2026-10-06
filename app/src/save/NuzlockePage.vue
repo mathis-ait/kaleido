@@ -176,7 +176,7 @@ useShell(() => ({
       <h2>Mode Nuzlocke</h2>
       <p>
         Le suivi Nuzlocke fonctionne pour l'instant avec <strong>Pokémon Diamant, Perle, Platine</strong>,
-        <strong>HeartGold, SoulSilver</strong> (à l'essai), <strong>Noire</strong> et <strong>Blanche</strong>.
+        <strong>HeartGold, SoulSilver</strong>, <strong>Noire</strong> et <strong>Blanche</strong>.
         Cette sauvegarde est une partie de {{ data.saveGame }}.
       </p>
     </div>
