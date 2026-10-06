@@ -83,6 +83,34 @@ function context() {
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
 const MAX_BUFFERS = 8;
 
+/**
+ * Volume homogène d'un jeu à l'autre : certains morceaux sont mixés bas (Wwise applique
+ * son volume pendant le jeu). Gain vers un niveau moyen commun, sans jamais saturer.
+ */
+function normalize(buffer: AudioBuffer): AudioBuffer {
+  const TARGET_RMS = 0.1;
+  let sum = 0;
+  let peak = 0;
+  let count = 0;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < data.length; i += 7) {
+      sum += data[i] * data[i];
+      peak = Math.max(peak, Math.abs(data[i]));
+      count++;
+    }
+  }
+  const rms = Math.sqrt(sum / Math.max(1, count));
+  if (rms < 1e-4) return buffer;
+  const gain = Math.min(TARGET_RMS / rms, 0.95 / Math.max(peak, 1e-4), 6);
+  if (gain < 1.15 && gain > 0.87) return buffer;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < data.length; i++) data[i] *= gain;
+  }
+  return buffer;
+}
+
 function load(d: Detection): Promise<AudioBuffer | null> {
   let p = buffers.get(d.path);
   if (!p) {
@@ -92,6 +120,7 @@ function load(d: Detection): Promise<AudioBuffer | null> {
         : invoke<ArrayBuffer>("music_title_theme", { path: d.path, game: d.game?.id ?? "" });
     p = request
       .then((bytes) => context().decodeAudioData(bytes))
+      .then(normalize)
       .catch(() => null);
     buffers.set(d.path, p);
     if (buffers.size > MAX_BUFFERS) buffers.delete(buffers.keys().next().value!);

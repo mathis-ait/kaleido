@@ -378,13 +378,24 @@ pub fn title_event(title_id: u64) -> Option<&'static str> {
     })
 }
 
-/// Thème de l'écran titre d'un jeu Switch, en Ogg Opus (au plus `max_seconds`).
-/// Parmi les sons de l'évènement (couches, variantes), le plus long est le morceau complet.
+/// Thème de l'écran titre d'un jeu Switch : fichier audio (Ogg Opus pour les jeux Wwise,
+/// WAV sinon), au plus `max_seconds`.
+///
+/// - Jeux Wwise connus (`title_event`) : parmi les sons de l'évènement du thème (couches,
+///   variantes), le plus long est le morceau complet.
+/// - Autres jeux : flux audio dont le nom contient « title » (portages qui gardent leurs
+///   formats d'origine, comme les flux AST de Super Mario Galaxy 1 et 2).
 pub fn title_theme(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64, max_seconds: f32) -> Result<Vec<u8>, String> {
-    let event = wwise_hash(title_event(title_id).ok_or("pas de thème connu pour ce jeu")?);
     let mut nca = crate::nx::open_program(game, keys).map_err(|e| e.to_string())?;
     let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
     let files = romfs.list();
+    match title_event(title_id) {
+        Some(event) => wwise_theme(&mut romfs, &files, wwise_hash(event), max_seconds),
+        None => named_theme(&mut romfs, &files, max_seconds),
+    }
+}
+
+fn wwise_theme(romfs: &mut crate::nx::RomFs<'_>, files: &[crate::nx::RomFile], event: u32, max_seconds: f32) -> Result<Vec<u8>, String> {
     let in_sound = |f: &&crate::nx::RomFile, ext: &str| f.path.contains("/sound/") && f.path.ends_with(ext);
 
     // Banque qui contient l'évènement.
@@ -418,6 +429,88 @@ pub fn title_theme(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64
     Ok(to_ogg_opus(&parse_wwise_opus(&wem)?, max_seconds))
 }
 
+/// Flux « titre » d'un jeu qui n'utilise pas Wwise (le plus gros si plusieurs).
+pub fn title_stream_candidates(files: &[crate::nx::RomFile]) -> Vec<&crate::nx::RomFile> {
+    let mut list: Vec<&crate::nx::RomFile> = files
+        .iter()
+        .filter(|f| {
+            let lower = f.path.to_lowercase();
+            let name = lower.rsplit('/').next().unwrap_or("");
+            name.contains("title") && lower.ends_with(".ast")
+        })
+        .collect();
+    list.sort_by(|a, b| b.size.cmp(&a.size));
+    list
+}
+
+fn named_theme(romfs: &mut crate::nx::RomFs<'_>, files: &[crate::nx::RomFile], max_seconds: f32) -> Result<Vec<u8>, String> {
+    let file = title_stream_candidates(files).first().copied().cloned().ok_or("pas de musique d'écran titre reconnue dans ce jeu")?;
+    let data = romfs.read_all(&file).map_err(|e| e.to_string())?;
+    let mut pcm = parse_ast(&data)?;
+    if max_seconds > 0.0 {
+        let frames = (max_seconds * pcm.sample_rate as f32) as usize;
+        pcm.samples.truncate(frames * 2);
+        pcm.fade_out(1.5);
+    }
+    Ok(pcm.to_wav())
+}
+
+// ---------------------------------------------------------------------------
+// AST (flux Nintendo de la GameCube / Wii, repris tels quels par certains portages)
+
+/// Flux AST en PCM 16 bits. En-tête `STRM` (gros-boutiste, Wii) ou `MRTS` (en-tête
+/// petit-boutiste des portages Switch, échantillons restés gros-boutistes) : format en
+/// 0x09 (1 = PCM16), bits en 0x0A, canaux en 0x0C, fréquence en 0x10, nombre
+/// d'échantillons en 0x14. Puis des blocs `BLCK` (0x20 octets d'en-tête, taille par
+/// canal en +4) contenant les canaux l'un après l'autre.
+pub fn parse_ast(data: &[u8]) -> Result<super::Pcm, String> {
+    let magic = data.get(..4).ok_or("flux AST vide")?;
+    let le = match magic {
+        b"STRM" => false,
+        b"MRTS" => true,
+        _ => return Err("ce n'est pas un flux AST".into()),
+    };
+    let rd16 = |o: usize| data.get(o..o + 2).map(|b| if le { u16::from_le_bytes([b[0], b[1]]) } else { u16::from_be_bytes([b[0], b[1]]) });
+    let rd32 = |o: usize| data.get(o..o + 4).map(|b| if le { u32::from_le_bytes(b.try_into().unwrap()) } else { u32::from_be_bytes(b.try_into().unwrap()) });
+    // Format sur 16 bits en 0x08 : seul l'octet 0x09 compte (0x0100 en petit-boutiste, 1 en gros).
+    let format = *data.get(9).ok_or("en-tête AST incomplet")?;
+    let bits = rd16(0x0A).ok_or("en-tête AST incomplet")?;
+    let channels = rd16(0x0C).ok_or("en-tête AST incomplet")? as usize;
+    let sample_rate = rd32(0x10).ok_or("en-tête AST incomplet")?;
+    let total = rd32(0x14).ok_or("en-tête AST incomplet")? as usize;
+    if format != 1 || bits != 16 {
+        return Err("flux AST compressé (AFC) non pris en charge".into());
+    }
+    if channels == 0 || channels > 8 || sample_rate == 0 {
+        return Err("en-tête AST invalide".into());
+    }
+    let mut chans: Vec<Vec<i16>> = vec![Vec::with_capacity(total); channels];
+    let mut o = 0x40;
+    while o + 0x20 <= data.len() {
+        let tag = &data[o..o + 4];
+        if tag != b"BLCK" && tag != b"KCLB" {
+            break;
+        }
+        let size = rd32(o + 4).unwrap_or(0) as usize;
+        let start = o + 0x20;
+        for (c, out) in chans.iter_mut().enumerate() {
+            let block = data.get(start + c * size..start + (c + 1) * size).ok_or("bloc AST tronqué")?;
+            // Échantillons gros-boutistes dans les deux variantes.
+            out.extend(block.chunks_exact(2).map(|b| i16::from_be_bytes([b[0], b[1]])));
+        }
+        o = start + channels * size;
+    }
+    let frames = chans.iter().map(Vec::len).min().unwrap_or(0).min(if total > 0 { total } else { usize::MAX });
+    let mut samples = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        let l = chans[0][i];
+        let r = chans.get(1).map_or(l, |c| c[i]);
+        samples.push(l);
+        samples.push(r);
+    }
+    Ok(super::Pcm { sample_rate, samples })
+}
+
 /// Thème d'un vrai jeu : `KALEIDO_NX_GAME=<xci|nsp> KALEIDO_NX_KEYS=<prod.keys> KALEIDO_NX_OGG=<sortie.ogg> cargo test -p kaleido-core real_title_theme -- --ignored --nocapture`.
 #[cfg(test)]
 #[test]
@@ -426,7 +519,54 @@ fn real_title_theme() {
     let game = std::path::PathBuf::from(std::env::var("KALEIDO_NX_GAME").unwrap());
     let keys = crate::nx::Keys::load(std::path::Path::new(&std::env::var("KALEIDO_NX_KEYS").unwrap())).unwrap();
     let t = std::time::Instant::now();
-    let ogg = title_theme(&game, &keys, 0x01001F5010DFA000, 50.0).unwrap();
+    let tid = u64::from_str_radix(&std::env::var("KALEIDO_NX_TID").unwrap_or("01001F5010DFA000".into()), 16).unwrap();
+    let ogg = title_theme(&game, &keys, tid, 50.0).unwrap();
     println!("{} Ko en {:?}", ogg.len() / 1024, t.elapsed());
     std::fs::write(std::env::var("KALEIDO_NX_OGG").unwrap(), ogg).unwrap();
+}
+
+#[cfg(test)]
+mod ast_tests {
+    use super::*;
+
+    fn ast(le: bool, left: &[i16], right: &[i16]) -> Vec<u8> {
+        let mut h = vec![0u8; 0x40];
+        let w16 = |v: u16| if le { v.to_le_bytes() } else { v.to_be_bytes() };
+        let w32 = |v: u32| if le { v.to_le_bytes() } else { v.to_be_bytes() };
+        h[..4].copy_from_slice(if le { b"MRTS" } else { b"STRM" });
+        // Comme les vrais fichiers : 00 01 dans les deux variantes (0x0100 lu en petit-boutiste).
+        h[8..10].copy_from_slice(&[0, 1]);
+        h[0x0A..0x0C].copy_from_slice(&w16(16));
+        h[0x0C..0x0E].copy_from_slice(&w16(2));
+        h[0x10..0x14].copy_from_slice(&w32(32000));
+        h[0x14..0x18].copy_from_slice(&w32(left.len() as u32));
+        let mut out = h;
+        let mut block = vec![0u8; 0x20];
+        block[..4].copy_from_slice(if le { b"KCLB" } else { b"BLCK" });
+        block[4..8].copy_from_slice(&w32((left.len() * 2) as u32));
+        out.extend(block);
+        for s in left.iter().chain(right) {
+            out.extend_from_slice(&s.to_be_bytes());
+        }
+        out
+    }
+
+    #[test]
+    fn both_variants() {
+        for le in [false, true] {
+            let pcm = parse_ast(&ast(le, &[1, -2, 3], &[10, 20, 30])).unwrap();
+            assert_eq!(pcm.sample_rate, 32000);
+            assert_eq!(pcm.samples, vec![1, 10, -2, 20, 3, 30]);
+        }
+        assert!(parse_ast(b"RIFF....").is_err());
+    }
+
+    #[test]
+    fn title_candidates() {
+        let f = |p: &str, size| crate::nx::RomFile { path: p.into(), offset: 0, size };
+        let files = vec![f("/AudioRes/Stream/SMG_title_strm.ast", 5), f("/LayoutData/TitleLogo.arc", 9), f("/AudioRes/Stream/SMG_boss01a_strm.ast", 7)];
+        let c = title_stream_candidates(&files);
+        assert_eq!(c.len(), 1);
+        assert!(c[0].path.ends_with("SMG_title_strm.ast"));
+    }
 }

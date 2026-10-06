@@ -302,7 +302,7 @@ fn music_key(path: &Path) -> Option<String> {
     Some(format!("{hash:016x}"))
 }
 
-/// Thème de l'écran titre d'un jeu Switch, en Ogg Opus, lu dans le jeu de l'utilisateur
+/// Thème de l'écran titre d'un jeu Switch (Ogg Opus ou WAV), lu dans le jeu de l'utilisateur
 /// avec ses propres clés (extrait une fois puis gardé en cache).
 #[tauri::command]
 pub async fn music_switch_theme(path: PathBuf, title_id: String, app: AppHandle) -> Result<tauri::ipc::Response, String> {
@@ -310,7 +310,8 @@ pub async fn music_switch_theme(path: PathBuf, title_id: String, app: AppHandle)
         let tid = u64::from_str_radix(&title_id, 16).map_err(|_| "title ID invalide")?;
         let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("music");
         let key = music_key(&path).ok_or("jeu introuvable")?;
-        let cached = dir.join(format!("{key}.ogg"));
+        // Ogg Opus (jeux Wwise) ou WAV (autres) : décodé tel quel par le lecteur.
+        let cached = dir.join(format!("{key}.nxaudio"));
         if let Ok(data) = fs::read(&cached) {
             return Ok(tauri::ipc::Response::new(data));
         }
