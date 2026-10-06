@@ -1,4 +1,4 @@
-//! Pokémon fixes, dons et échanges en jeu (Platine, Noire, Blanche).
+//! Pokémon fixes, dons et échanges en jeu (Platine, Noire, Blanche, Noire 2, Blanche 2).
 //!
 //! Portage de `StaticPokemonRandomizer` et `TradeRandomizer` de l'Universal
 //! Pokémon Randomizer (FVX), avec ses emplacements (`StaticPokemon{}`,
@@ -10,8 +10,11 @@
 //! - Noire/Blanche : vagabonds (Fulguris / Boréas), dont la seconde espèce était
 //!   calculée par « Boréas + 1 ».
 //!
+//! - Noire 2 / Blanche 2 : formes imposées (Kyurem Noir / Blanc, Vivaldaim) remises à 0.
+//!
 //! Non pris en charge : vagabonds de Platine (l'UPR ajoute une routine à l'ARM9),
-//! musique des légendaires (correctif IPS de l'UPR), formes alternatives.
+//! musique des légendaires (correctif IPS de l'UPR), formes alternatives, Passages
+//! Cachés et équipes du PWT de Noire 2 / Blanche 2.
 
 mod access;
 mod tables;
@@ -92,13 +95,13 @@ pub struct Listing {
 }
 
 fn supported(game: Game) -> bool {
-    matches!(game, Game::Platinum | Game::Black | Game::White)
+    matches!(game, Game::Platinum | Game::Black | Game::White | Game::Black2 | Game::White2)
 }
 
 /// Lit les rencontres fixes et les échanges, sans rien modifier.
 pub fn list(game: &GameRom) -> Result<Listing, RomError> {
     if !supported(game.game) {
-        return Err(RomError::Unsupported("Pokémon fixes : Platine, Noire et Blanche seulement".into()));
+        return Err(RomError::Unsupported("Pokémon fixes : Platine, Noire, Blanche, Noire 2 et Blanche 2 seulement".into()));
     }
     let mut files = access::Files::load(game)?;
     let (entries, mut notes) = access::entries(game, &mut files, game.layout.species_count);
@@ -108,6 +111,7 @@ pub fn list(game: &GameRom) -> Result<Listing, RomError> {
             let ok = files.patch_distortion_world(game)?;
             notes.push(format!("correctif du Monde Distorsion : {}", if ok { "code reconnu" } else { "code introuvable" }));
         }
+        Game::Black2 | Game::White2 => {}
         _ => {
             // Seulement sur une ROM d'origine (le code corrigé ne ressemble plus à l'original).
             let index = if game.game == Game::Black { tables::BW_BOX_LEGENDARY_BLACK } else { tables::BW_BOX_LEGENDARY_WHITE };
@@ -207,6 +211,14 @@ fn randomize_statics(
             changed.push((e.index, new));
             for &loc in &e.def.species {
                 files.set_u16(loc, new);
+            }
+            // Noire 2 / Blanche 2 : forme imposée remise à 0 (UPR `setForme`).
+            if matches!(game.game, Game::Black2 | Game::White2) {
+                for (_, locs) in tables::B2W2_FORMS.iter().filter(|(i, _)| *i == e.index) {
+                    for &(file, offset) in locs.iter() {
+                        files.set_u8(tables::Loc::Script(file, offset), 0);
+                    }
+                }
             }
         }
         let levels: Vec<u8> =
@@ -352,5 +364,11 @@ mod tests {
         assert!(pt.iter().chain(&bw).all(|d| !d.species.is_empty()));
         assert!(pt.iter().chain(&bw).filter(|d| d.kind == Kind::Egg).all(|d| d.levels.is_empty()));
         assert_eq!(tables::BW_BOX_LEGENDARY_WHITE, tables::BW_BOX_LEGENDARY_BLACK + 1);
+        // Noire 2 / Blanche 2 : 41 rencontres (dont 9 fossiles) + 2 faux objets, comme l'UPR.
+        let b2 = tables::black2_white2();
+        assert_eq!(b2.len(), 41 + 2);
+        assert!(b2.iter().all(|d| !d.species.is_empty()));
+        assert!(b2.iter().filter(|d| d.kind == Kind::Egg).all(|d| d.levels.is_empty()));
+        assert!(tables::B2W2_FORMS.iter().all(|(i, _)| b2[*i].kind == Kind::Static));
     }
 }

@@ -7,6 +7,10 @@
 //!   - script 782 : le **don** réel, `28 00 21 80 <espèce>` (variable 0x8021 = espèce
 //!     reçue) suivi de `57 00 01 <espèce>` (affichage du Pokémon reçu).
 //!     Mêmes emplacements que l'Universal Pokémon Randomizer (782:639, 782:644…).
+//! - Noire 2 / Blanche 2 : script 854 de `a/0/5/6`, pour chaque starter
+//!   `28 00 25 80 <espèce>` (variable 0x8025 = espèce reçue) puis `57 00 01 <espèce>` et
+//!   `57 00 02 <espèce>` (`StarterOffsets1..3` de l'UPR : 854:0x58B, 0x590, 0x595…).
+//!   Vérifié sur Noire 2 (IREF) : Vipélierre (495), Gruikui (498), Moustillon (501).
 
 use crate::rom::{GameRom, RomError};
 use kaleido_formats::narc::Narc;
@@ -15,6 +19,7 @@ use kaleido_formats::narc::Narc;
 pub enum StarterLocation {
     Platinum,
     BlackWhite,
+    Black2White2,
 }
 
 const PT_OVERLAY: u32 = 78;
@@ -30,6 +35,22 @@ const BW_GIFT_SCRIPT: usize = 782;
 /// `setvar 0x8021, <espèce>` : l'espèce effectivement donnée au joueur.
 const BW_GIFT_SETVAR: [u8; 4] = [0x28, 0x00, 0x21, 0x80];
 const BW_GIFT_SHOW: [u8; 3] = [0x57, 0x00, 0x01];
+
+/// Noire 2 / Blanche 2 (`gen5_offsets.ini` de l'UPR, identiques dans toutes les langues).
+const B2W2_SCRIPTS: &str = "a/0/5/6";
+const B2W2_SCRIPT: usize = 854;
+/// Trois emplacements par starter ; le premier est le `setvar` de l'espèce donnée.
+const B2W2_OFFSETS: [[usize; 3]; 3] = [[0x58B, 0x590, 0x595], [0x5C0, 0x5C5, 0x5CA], [0x5E2, 0x5E7, 0x5EC]];
+/// Correctif du Pokédex de l'UPR (`bw2StarterScriptMagic`, `bw2NewStarterScript`).
+const B2W2_POKEDEX_MAGIC: [u8; 6] = [0x28, 0x00, 0xA1, 0x40, 0x04, 0x00];
+const B2W2_NEW_STARTER_SCRIPT: [u8; 14] = [0x28, 0x00, 0xA1, 0x40, 0x04, 0x00, 0xDE, 0x00, 0x00, 0x00, 0xFD, 0x01, 0x05, 0x00];
+/// Cris de l'écran de choix (overlay 316, `StarterCryTablePrefix`).
+const B2W2_CRY_OVERLAY: u32 = 316;
+const B2W2_CRY_PREFIX: [u8; 8] = [0x08, 0x0A, 0x07, 0x00, 0x00, 0x08, 0x00, 0x00];
+const B2W2_STARTER_GRAPHICS: &str = "a/2/0/2";
+/// « Pokémon de type … » : fichier 169 des textes de l'histoire, lignes 37, 36, 35.
+const B2W2_STARTER_TEXT_FILE: usize = 169;
+const B2W2_STARTER_TEXT_LINE: usize = 37;
 
 /// Remplace `prefix + orig` par `prefix + new` dans `script` ; renvoie le nombre de remplacements.
 fn replace_after(script: &mut [u8], prefix: &[u8], orig: u16, new: u16) -> usize {
@@ -72,6 +93,22 @@ pub fn read(game: &GameRom, location: StarterLocation) -> Result<[u16; 3], RomEr
             for (i, s) in out.iter_mut().enumerate() {
                 let at = BW_OFFSET + i * 2;
                 *s = u16::from_le_bytes(ovl.get(at..at + 2).ok_or_else(mismatch)?.try_into().unwrap());
+            }
+        }
+        StarterLocation::Black2White2 => {
+            let narc = Narc::parse(game.rom().file_by_path(B2W2_SCRIPTS)?)?;
+            let script = narc.files.get(B2W2_SCRIPT).ok_or_else(mismatch)?;
+            for (s, offsets) in out.iter_mut().zip(B2W2_OFFSETS) {
+                let values: Vec<u16> = offsets
+                    .iter()
+                    .map(|&at| script.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]])))
+                    .collect::<Option<_>>()
+                    .ok_or_else(mismatch)?;
+                // Les trois copies (don, affichages) doivent concorder.
+                if values.iter().any(|&v| v != values[0]) {
+                    return Err(mismatch());
+                }
+                *s = values[0];
             }
         }
     }
@@ -352,6 +389,82 @@ pub fn write(game: &mut GameRom, location: StarterLocation, starters: [u16; 3], 
             }
             game.rom_mut().replace_file_by_path(BW_SCRIPTS, narc.to_bytes())?;
         }
+        StarterLocation::Black2White2 => {
+            if read(game, location)? != BW_ORIGINAL {
+                return Err(mismatch());
+            }
+            black2::write(game, starters, labels)?;
+        }
     }
     Ok(())
+}
+
+/// Noire 2 / Blanche 2 : portage de `Gen5RomHandler.setStarters` (branche BW2) de l'UPR.
+mod black2 {
+    use super::*;
+
+    pub(super) fn write(game: &mut GameRom, starters: [u16; 3], labels: &StarterLabels) -> Result<(), RomError> {
+        // Don réel et affichages (script 854), puis correctif du Pokédex de l'UPR :
+        // un saut vers une copie de la commande ajoutée en fin de fichier.
+        let mut narc = Narc::parse(game.rom().file_by_path(B2W2_SCRIPTS)?)?;
+        let script = narc.files.get_mut(B2W2_SCRIPT).ok_or_else(mismatch)?;
+        for (offsets, s) in B2W2_OFFSETS.iter().zip(starters) {
+            for &at in offsets {
+                script.get_mut(at..at + 2).ok_or_else(mismatch)?.copy_from_slice(&s.to_le_bytes());
+            }
+        }
+        if let Some(pos) = find_unique(script, &B2W2_POKEDEX_MAGIC).filter(|&p| p > 0) {
+            let old_len = script.len();
+            script.extend_from_slice(&B2W2_NEW_STARTER_SCRIPT);
+            if game.rom().header().game_code.ends_with('J') {
+                script[old_len + 6] -= 4; // version japonaise (UPR)
+            }
+            script[pos..pos + 2].copy_from_slice(&[0x1E, 0x00]);
+            let relative = old_len as i32 - (pos as i32 + 2 + 4);
+            script[pos + 2..pos + 6].copy_from_slice(&relative.to_le_bytes());
+        }
+        game.rom_mut().replace_file_by_path(B2W2_SCRIPTS, narc.to_bytes())?;
+
+        // Cris de l'écran de choix (overlay 316).
+        let mut ovl = game.rom().overlay(B2W2_CRY_OVERLAY)?;
+        if let Some(table) = find_unique(&ovl, &B2W2_CRY_PREFIX).map(|p| p + B2W2_CRY_PREFIX.len()) {
+            for (i, s) in starters.iter().enumerate() {
+                let at = table + i * 2;
+                ovl.get_mut(at..at + 2).ok_or_else(mismatch)?.copy_from_slice(&s.to_le_bytes());
+            }
+            game.rom_mut().replace_overlay_recompressed(B2W2_CRY_OVERLAY, ovl)?;
+        }
+
+        // Images de l'écran de choix : palette et sprite de face de chaque espèce.
+        let pokegra = Narc::parse(game.rom().file_by_path(BW_POKEMON_GRAPHICS)?)?;
+        let mut gfx = Narc::parse(game.rom().file_by_path(B2W2_STARTER_GRAPHICS)?)?;
+        if gfx.files.len() < 15 {
+            return Err(mismatch());
+        }
+        for (i, &s) in starters.iter().enumerate() {
+            let base = s as usize * 20;
+            let (Some(palette), Some(picture)) = (pokegra.files.get(base + 18), pokegra.files.get(base)) else {
+                return Err(mismatch());
+            };
+            gfx.files[i * 2] = palette.clone();
+            gfx.files[12 + i] = kaleido_formats::lz::decompress(picture)?;
+        }
+        game.rom_mut().replace_file_by_path(B2W2_STARTER_GRAPHICS, gfx.to_bytes())?;
+
+        // Textes « Pokémon de type … » (Plante, Feu, Eau : lignes 37, 36, 35).
+        let mut story = Narc::parse(game.rom().file_by_path(BW_STORY_TEXT)?)?;
+        if let Some(file) = story.files.get_mut(B2W2_STARTER_TEXT_FILE) {
+            let mut msg = crate::text::gen5::MsgFile::parse(file)?;
+            let mut lines = msg.strings();
+            for (i, (type_name, name)) in labels.iter().enumerate() {
+                if let Some(line) = lines.get_mut(B2W2_STARTER_TEXT_LINE - i) {
+                    *line = format!("{{VAR:BD02}}Pokémon de type {type_name}\n{{VAR:BD02}}{name}");
+                }
+            }
+            msg.set_strings(&lines)?;
+            *file = msg.to_bytes();
+            game.rom_mut().replace_file_by_path(BW_STORY_TEXT, story.to_bytes())?;
+        }
+        Ok(())
+    }
 }

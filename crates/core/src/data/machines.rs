@@ -159,6 +159,8 @@ fn unsupported() -> RomError {
 const PALETTE_PREFIX_GEN4: [u8; 16] = [0x8D, 0x01, 0x8E, 0x01, 0x21, 0x01, 0x33, 0x01, 0x8D, 0x01, 0x8F, 0x01, 0x22, 0x01, 0x34, 0x01];
 const PALETTE_WILDCARDS_GEN4: [usize; 4] = [2, 3, 10, 11];
 const PALETTE_PREFIX_BW: [u8; 16] = [0xE9, 0x03, 0xEA, 0x03, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00, 0x05, 0x00, 0x06, 0x00, 0x07, 0x00];
+/// Noire 2 / Blanche 2 (UPR `bw2ItemPalettesPrefix`, ARM9 0x8CD60 sur Noire 2 FR).
+const PALETTE_PREFIX_BW2: [u8; 16] = [0xFD, 0x03, 0xFE, 0x03, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00, 0x05, 0x00, 0x06, 0x00, 0x07, 0x00];
 
 /// Palette d'icône de CT pour un type (identique en Gen 4 et 5, d'après UPR).
 pub fn tm_palette(t: PokeType) -> u16 {
@@ -197,7 +199,7 @@ pub fn palette_slots(arm9: &[u8], spec: &MachineSpec) -> Option<Vec<usize>> {
         (0..spec.tm_count).map(|i| base + i * 8 + 2).collect()
     } else {
         // La table commence à l'objet 0 (4 octets par objet).
-        let base = find_unique(arm9, &PALETTE_PREFIX_BW)?;
+        let base = find_unique(arm9, &PALETTE_PREFIX_BW).or_else(|| find_unique(arm9, &PALETTE_PREFIX_BW2))?;
         (0..spec.tm_count).map(|i| base + spec.tm_item(i) as usize * 4 + 2).collect()
     };
     slots.iter().all(|&s| s + 2 <= arm9.len()).then_some(slots)
@@ -228,7 +230,7 @@ pub fn set_compatible(personal: &mut [u8], spec: &MachineSpec, index: usize, val
 pub fn move_data_path(game: Game) -> Option<&'static str> {
     match game {
         Game::Platinum => Some("poketool/waza/pl_waza_tbl.narc"),
-        Game::Black | Game::White => Some("a/0/2/1"),
+        Game::Black | Game::White | Game::Black2 | Game::White2 => Some("a/0/2/1"),
         _ => None,
     }
 }
@@ -319,9 +321,159 @@ impl TutorTable {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Donneurs de capacités (Noire 2 / Blanche 2).
+//
+// Portage de `getMoveTutorMoves` / `getMoveTutorCompatibility` (Gen5RomHandler) :
+// overlay 36, 60 entrées de 12 octets (attaque u32, prix en PCo u32, n° u32) ;
+// compatibilité dans la fiche « personal » à 0x3C : 4 groupes de 32 bits, rangés
+// dans un autre ordre que les attaques. Vérifié sur Noire 2 (IREF, 0x5152C : Ligotage,
+// Ronflement, Sabotage, Synthèse…, les donneurs de Port Yoneuve).
+
+pub const B2W2_TUTOR_OVERLAY: u32 = 36;
+pub const B2W2_TUTOR_COUNT: usize = 60;
+const B2W2_TUTOR_ENTRY: usize = 12;
+const B2W2_TUTOR_COMPAT: usize = 0x3C;
+/// `MoveTutorDataOffset` de l'UPR par code de jeu (Noire 2 puis Blanche 2).
+const B2W2_TUTOR_OFFSETS: [(&str, usize); 14] = [
+    ("IREO", 0x51538),
+    ("IREF", 0x5152C),
+    ("IRED", 0x5155C),
+    ("IREI", 0x51554),
+    ("IRES", 0x5153C),
+    ("IREJ", 0x512DC),
+    ("IREK", 0x5160C),
+    ("IRDO", 0x5152C),
+    ("IRDF", 0x51520),
+    ("IRDD", 0x51550),
+    ("IRDI", 0x51548),
+    ("IRDS", 0x51530),
+    ("IRDJ", 0x512D0),
+    ("IRDK", 0x51600),
+];
+/// Taille des groupes de donneurs, dans l'ordre des attaques (UPR `countsMoveOrder`).
+const B2W2_GROUPS: [usize; 4] = [13, 15, 15, 17];
+/// Groupe de la fiche « personal » qui contient chaque groupe d'attaques
+/// (inverse de `personalToMoveOrder` = [1, 3, 0, 2]).
+const B2W2_GROUP_SLOT: [usize; 4] = [2, 0, 3, 1];
+
+/// Tableau des donneurs de capacités dans l'overlay 36 de Noire 2 / Blanche 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct B2w2Tutors {
+    pub offset: usize,
+}
+
+impl B2w2Tutors {
+    /// Cherche le tableau à l'emplacement de la ROM (`game_code`), puis aux autres
+    /// emplacements connus : 60 attaques distinctes et valides, prix plausibles (1 à 64
+    /// tessons) et rang dans la liste du donneur (moins de 32). Les tableaux voisins
+    /// décalés d'une entrée échouent sur ce dernier point.
+    pub fn locate(overlay: &[u8], max_move: u16, game_code: &str) -> Result<Self, RomError> {
+        let mut candidates: Vec<usize> = B2W2_TUTOR_OFFSETS.iter().filter(|(c, _)| *c == game_code).map(|&(_, o)| o).collect();
+        candidates.extend(B2W2_TUTOR_OFFSETS.iter().map(|&(_, o)| o));
+        for offset in candidates {
+            if offset + B2W2_TUTOR_COUNT * B2W2_TUTOR_ENTRY > overlay.len() {
+                continue;
+            }
+            let t = Self { offset };
+            let moves = t.moves(overlay);
+            let valid = moves.iter().all(|&m| (1..=max_move).contains(&m));
+            let distinct = moves.iter().enumerate().all(|(i, m)| !moves[..i].contains(m));
+            let word = |i: usize, field: usize| u32::from_le_bytes(overlay[offset + i * B2W2_TUTOR_ENTRY + field..][..4].try_into().unwrap());
+            let fields = (0..B2W2_TUTOR_COUNT).all(|i| (1..=64).contains(&word(i, 4)) && word(i, 8) < 32 && word(i, 0) <= max_move as u32);
+            if valid && distinct && fields {
+                return Ok(t);
+            }
+        }
+        Err(RomError::Layout("tableau des donneurs de capacités introuvable (overlay 36)".into()))
+    }
+
+    pub fn moves(&self, overlay: &[u8]) -> Vec<u16> {
+        (0..B2W2_TUTOR_COUNT).map(|i| u16_at(overlay, self.offset + i * B2W2_TUTOR_ENTRY)).collect()
+    }
+
+    pub fn set_moves(&self, overlay: &mut [u8], moves: &[u16]) {
+        for (i, &m) in moves.iter().take(B2W2_TUTOR_COUNT).enumerate() {
+            put_u16(overlay, self.offset + i * B2W2_TUTOR_ENTRY, m);
+        }
+    }
+}
+
+/// Position (octet, bit) dans la fiche « personal » du donneur n° `tutor` (ordre des attaques).
+fn b2w2_tutor_bit(tutor: usize) -> Option<(usize, u8)> {
+    let mut start = 0;
+    for (group, &size) in B2W2_GROUPS.iter().enumerate() {
+        if tutor < start + size {
+            let j = tutor - start;
+            return Some((B2W2_TUTOR_COMPAT + B2W2_GROUP_SLOT[group] * 4 + j / 8, 1 << (j % 8)));
+        }
+        start += size;
+    }
+    None
+}
+
+/// L'espèce peut-elle apprendre l'attaque du donneur n° `tutor` (Noire 2 / Blanche 2) ?
+pub fn b2w2_tutor_compatible(personal: &[u8], tutor: usize) -> bool {
+    b2w2_tutor_bit(tutor).and_then(|(at, bit)| personal.get(at).map(|b| b & bit != 0)).unwrap_or(false)
+}
+
+pub fn set_b2w2_tutor_compatible(personal: &mut [u8], tutor: usize, value: bool) {
+    if let Some((at, bit)) = b2w2_tutor_bit(tutor) {
+        if let Some(b) = personal.get_mut(at) {
+            if value {
+                *b |= bit;
+            } else {
+                *b &= !bit;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn b2w2_tutor_bits() {
+        // Premier donneur du groupe 0 → 3e mot de la fiche ; groupe 1 → 1er mot ;
+        // groupe 3 (dernier, 17 attaques) → 2e mot.
+        assert_eq!(b2w2_tutor_bit(0), Some((0x3C + 8, 1)));
+        assert_eq!(b2w2_tutor_bit(13), Some((0x3C, 1)));
+        assert_eq!(b2w2_tutor_bit(28), Some((0x3C + 12, 1)));
+        assert_eq!(b2w2_tutor_bit(59), Some((0x3C + 4 + 2, 1)));
+        assert_eq!(b2w2_tutor_bit(60), None);
+        let mut p = vec![0u8; 0x4C];
+        set_b2w2_tutor_compatible(&mut p, 59, true);
+        assert!(b2w2_tutor_compatible(&p, 59) && !b2w2_tutor_compatible(&p, 58));
+        set_b2w2_tutor_compatible(&mut p, 59, false);
+        assert!(p.iter().all(|&b| b == 0));
+        // Fiche trop courte : ignoré, sans panique.
+        set_b2w2_tutor_compatible(&mut [0u8; 4], 3, true);
+    }
+
+    #[test]
+    fn b2w2_tutor_table_not_shifted() {
+        // Tableau à 0x5152C (Noire 2 FR) suivi d'un autre tableau : l'emplacement
+        // américain (0x51538, une entrée plus loin) doit être refusé.
+        let mut ovl = vec![0u8; 0x52000];
+        let at = 0x5152C;
+        for i in 0..=B2W2_TUTOR_COUNT {
+            let e = at + i * B2W2_TUTOR_ENTRY;
+            ovl[e..e + 4].copy_from_slice(&(10 + i as u32).to_le_bytes());
+            ovl[e + 4..e + 8].copy_from_slice(&4u32.to_le_bytes());
+            let rank: u32 = if i == B2W2_TUTOR_COUNT { 300 } else { (i % 16) as u32 };
+            ovl[e + 8..e + 12].copy_from_slice(&rank.to_le_bytes());
+        }
+        assert_eq!(B2w2Tutors::locate(&ovl, 559, "IREO").unwrap().offset, at);
+        assert_eq!(B2w2Tutors::locate(&ovl, 559, "IREF").unwrap().offset, at);
+        let t = B2w2Tutors { offset: at };
+        let mut moves = t.moves(&ovl);
+        assert_eq!((moves[0], moves[59]), (10, 69));
+        moves[0] = 400;
+        t.set_moves(&mut ovl, &moves);
+        assert_eq!(t.moves(&ovl)[0], 400);
+        assert!(B2w2Tutors::locate(&ovl, 300, "IREF").is_err(), "attaque hors limites");
+    }
 
     fn fake_arm9(spec: &MachineSpec, moves: &[u16]) -> Vec<u8> {
         let mut d = vec![0xAAu8; 32];

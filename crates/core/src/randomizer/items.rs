@@ -83,6 +83,8 @@ pub(crate) struct ItemCatalog {
     gen: u8,
     max: u16,
     unnamed: BTreeSet<u16>,
+    /// Noire 2 / Blanche 2 : autres CT requises au sol, tessons utiles (UPR `Type_BW2`).
+    b2w2: bool,
 }
 
 fn any_in(id: u16, ranges: &[RangeInclusive<u16>]) -> bool {
@@ -92,7 +94,13 @@ fn any_in(id: u16, ranges: &[RangeInclusive<u16>]) -> bool {
 impl ItemCatalog {
     pub(crate) fn new(gen: u8, names: &[String]) -> Self {
         let unnamed = names.iter().enumerate().filter(|(_, n)| n.trim().is_empty() || n.trim() == "???").map(|(i, _)| i as u16).collect();
-        Self { gen, max: names.len().saturating_sub(1) as u16, unnamed }
+        Self { gen, max: names.len().saturating_sub(1) as u16, unnamed, b2w2: false }
+    }
+
+    /// Règles de Noire 2 / Blanche 2.
+    pub(crate) fn with_b2w2(mut self, b2w2: bool) -> Self {
+        self.b2w2 = b2w2;
+        self
     }
 
     pub(crate) fn is_tm(&self, id: u16) -> bool {
@@ -125,6 +133,9 @@ impl ItemCatalog {
         }
         if self.gen == 4 {
             (70..=71).contains(&id)
+        } else if self.b2w2 {
+            // Les tessons s'échangent contre des donneurs de capacités en Noire 2 / Blanche 2.
+            any_in(id, &[571..=571, 575..=575])
         } else {
             any_in(id, &[571..=571, 575..=575, 72..=75])
         }
@@ -160,6 +171,11 @@ impl ItemCatalog {
     fn required_tms(&self) -> Vec<u16> {
         let numbers: &[u16] = if self.gen == 4 {
             &[2, 3, 5, 7, 9, 11, 12, 18, 19, 23, 28, 34, 37, 39, 41, 43, 46, 47, 49, 50, 62, 69, 79, 80, 82, 84, 85, 87]
+        } else if self.b2w2 {
+            &[
+                1, 2, 3, 5, 6, 12, 13, 19, 22, 26, 28, 29, 30, 36, 39, 41, 46, 47, 50, 52, 53, 56, 58, 61, 63, 65, 66, 67, 69, 71, 80, 81, 84, 85,
+                86, 90, 91, 92, 93,
+            ]
         } else {
             &[
                 2, 3, 5, 6, 9, 12, 13, 19, 22, 24, 26, 29, 30, 35, 36, 39, 41, 46, 47, 50, 52, 53, 55, 58, 61, 63, 65, 66, 71, 80, 81, 84, 85, 86,
@@ -339,7 +355,7 @@ pub(crate) fn randomize_items(game: &mut GameRom, settings: &ItemSettings, seed:
     }
     let layout = ItemLayout::for_rom(game).ok_or_else(field_items::unsupported)?;
     let names = game.text_file(layout.item_names)?;
-    let catalog = ItemCatalog::new(layout.gen, &names);
+    let catalog = ItemCatalog::new(layout.gen, &names).with_b2w2(matches!(game.game, crate::games::Game::Black2 | crate::games::Game::White2));
     let name = |id: u16| names.get(id as usize).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| format!("objet n°{id}"));
 
     if settings.field_items != FieldItemsMode::Unchanged {

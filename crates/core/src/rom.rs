@@ -59,7 +59,7 @@ impl NdsLayout {
             Platinum => gen4("msgdata/pl_msg.narc", 412, 610, "poketool/personal/pl_personal.narc", true),
             HeartGold | SoulSilver => gen4("a/0/2/7", 237, 720, "a/0/0/2", false),
             Black | White => gen5(70, 182, true),
-            Black2 | White2 => gen5(90, 374, false),
+            Black2 | White2 => gen5(90, 374, true),
             _ => return None,
         })
     }

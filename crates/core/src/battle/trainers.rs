@@ -108,6 +108,7 @@ fn nds_text(game: Game) -> Option<(usize, usize)> {
     Some(match game {
         Game::Platinum => (618, 619),
         Game::Black | Game::White => (190, 191),
+        Game::Black2 | Game::White2 => (382, 383),
         _ => return None,
     })
 }
@@ -150,6 +151,20 @@ fn role_of(game: Game, class: u16, name: &str) -> Option<Role> {
             82 | 101 => Role::Boss,
             _ => return None,
         }),
+        // Classes de Noire 2 / Blanche 2 (texte 383, vérifié sur Noire 2 FR).
+        Game::Black2 | Game::White2 => Some(match class {
+            112..=119 => Role::Gym,
+            78..=81 => Role::EliteFour,
+            // Iris, puis Goyah et Cynthia (après la Ligue).
+            193 | 89 | 100 => Role::Champion,
+            // Matis (145), Bianca (38), N (40), Tcheren hors arène (197).
+            145 | 38 | 40 | 197 => Role::Rival,
+            // Ghetis (189), Nikolaï (186, et 235 après la Ligue).
+            189 | 186 | 235 => Role::Boss,
+            // Lilien (191) et les Ombres (192).
+            191 | 192 => Role::Admin,
+            _ => return None,
+        }),
         // Classes de Rubis Oméga / Saphir Alpha (texte 21).
         Game::OmegaRuby | Game::AlphaSapphire => Some(match class {
             // Brice / Flora, Timmy.
@@ -179,7 +194,12 @@ impl RomTrainers {
 
     pub fn from_nds(rom: &GameRom) -> Result<Self, RomError> {
         let game = rom.game;
-        let unsupported = || RomError::Unsupported(format!("{} : dresseurs non pris en charge (Platine et Noire/Blanche seulement)", game.name_fr()));
+        let unsupported = || {
+            RomError::Unsupported(format!(
+                "{} : dresseurs non pris en charge (Platine, Noire/Blanche et Noire 2 / Blanche 2 seulement)",
+                game.name_fr()
+            ))
+        };
         let paths = DataPaths::for_game(game).ok_or_else(unsupported)?;
         let (names_file, classes_file) = nds_text(game).ok_or_else(unsupported)?;
         let generation = game.generation();

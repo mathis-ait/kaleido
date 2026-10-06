@@ -9,7 +9,7 @@
 //! - Compatibilité : inchangée, aléatoire (50 %), aléatoire en privilégiant le
 //!   type (90 % même type, 50 % Normal, 25 % sinon), ou totale. Les CS requises
 //!   tôt (Coupe, Éclate-Roc) ont une chance ×1,8.
-//! - Donneurs de capacités : Platine seulement (Noire/Blanche n'en ont pas dans UPR).
+//! - Donneurs de capacités : Platine, Noire 2 et Blanche 2 (Noire/Blanche n'en ont pas).
 
 use std::fmt::Write as _;
 
@@ -313,6 +313,7 @@ fn description_texts(game: Game) -> Option<(usize, usize)> {
     match game {
         Game::Platinum => Some((391, 646)),
         Game::Black | Game::White => Some((53, 202)),
+        Game::Black2 | Game::White2 => Some((63, 402)),
         _ => None,
     }
 }
@@ -406,8 +407,14 @@ pub(crate) fn apply(game: &mut GameRom, ctx: &mut Ctx, settings: &MoveSettings, 
     let info: Vec<Option<MoveInfo>> = game.narc(data_path)?.files.iter().map(|d| machines::move_info(gen, d)).collect();
     let max = (names.len().min(info.len())).saturating_sub(1) as u16;
     let table = MoveTable { names, info, max };
-    let (field_moves, early_hms): (&[u16], &[u16]) =
-        if gen <= 4 { (&FIELD_MOVES_GEN4, &EARLY_HMS_GEN4) } else { (&FIELD_MOVES_GEN5, &EARLY_HMS_GEN5) };
+    let b2w2 = matches!(game.game, Game::Black2 | Game::White2);
+    let (field_moves, early_hms): (&[u16], &[u16]) = if gen <= 4 {
+        (&FIELD_MOVES_GEN4, &EARLY_HMS_GEN4)
+    } else if b2w2 {
+        (&FIELD_MOVES_GEN5, &[]) // Noire 2 / Blanche 2 : aucune CS requise tôt (UPR)
+    } else {
+        (&FIELD_MOVES_GEN5, &EARLY_HMS_GEN5)
+    };
 
     let mut arm9 = game.rom().arm9_decompressed()?;
     let current = machines::read_from(&arm9, &spec)?;
@@ -482,6 +489,73 @@ pub(crate) fn apply(game: &mut GameRom, ctx: &mut Ctx, settings: &MoveSettings, 
     // 3. Donneurs de capacités (Platine).
     if settings.changes_tutors() && game.game == Game::Platinum {
         apply_tutors(game, ctx, settings, &table, &tms, &hms, seed, log)?;
+    }
+    if settings.changes_tutors() && b2w2 {
+        apply_tutors_b2w2(game, ctx, settings, &table, &tms, &hms, seed, log)?;
+    }
+    Ok(())
+}
+
+/// Donneurs de capacités de Noire 2 / Blanche 2 : attaques dans l'overlay 36,
+/// compatibilité dans les fiches « personal » (mises à jour dans `ctx`).
+#[allow(clippy::too_many_arguments)]
+fn apply_tutors_b2w2(
+    game: &mut GameRom,
+    ctx: &mut Ctx,
+    settings: &MoveSettings,
+    table: &MoveTable,
+    tms: &[u16],
+    hms: &[u16],
+    seed: u64,
+    log: &mut String,
+) -> Result<(), RomError> {
+    let mut ovl = game.rom().overlay(machines::B2W2_TUTOR_OVERLAY)?;
+    let tutor = machines::B2w2Tutors::locate(&ovl, table.max, &game.rom().header().game_code)?;
+    let old = tutor.moves(&ovl);
+    let mut moves = old.clone();
+
+    if settings.random_tutors {
+        let mut rng = rng_for(seed, "tutor_moves");
+        let excluded: Vec<u16> = tms.iter().chain(hms).copied().collect();
+        let rules = PickRules {
+            no_game_breaking: settings.no_game_breaking,
+            keep_field_moves: settings.keep_field_moves,
+            good_damaging_percent: settings.good_damaging_percent,
+            field_moves: &FIELD_MOVES_GEN5,
+            excluded: &excluded,
+        };
+        moves = pick_moves(&old, table, &rules, &mut rng);
+        tutor.set_moves(&mut ovl, &moves);
+        // Recompressé : l'overlay 36 (terrain) ne tiendrait plus non compressé dans une ROM DSi.
+        game.rom_mut().replace_overlay_recompressed(machines::B2W2_TUTOR_OVERLAY, ovl)?;
+        let _ = writeln!(log, "== Donneurs de capacités ==");
+        for (o, n) in old.iter().zip(&moves) {
+            let _ = writeln!(log, "{} → {}", table.name(*o), table.name(*n));
+        }
+        let _ = writeln!(log);
+    }
+
+    if settings.tutor_compat != CompatMode::Unchanged || settings.levelup_sanity {
+        let mut rows: Vec<CompatRow> = species_entries(ctx)
+            .into_iter()
+            .map(|p| CompatRow { personal: p, flags: (0..moves.len()).map(|k| machines::b2w2_tutor_compatible(&ctx.personal[p], k)).collect() })
+            .collect();
+        let mut rng = rng_for(seed, "tutor_compat");
+        let rules = CompatRules { prefer_type: false, follow_evolutions: settings.follow_evolutions, prioritized: &[] };
+        apply_mode(ctx, &mut rows, &moves, table, settings.tutor_compat, rules, &mut rng);
+        let fixed = if settings.levelup_sanity { levelup_sanity(ctx, &mut rows, &moves) } else { 0 };
+        for row in &rows {
+            for (k, &v) in row.flags.iter().enumerate() {
+                machines::set_b2w2_tutor_compatible(&mut ctx.personal[row.personal], k, v);
+            }
+        }
+        let mut narc = game.narc(game.layout.personal)?;
+        narc.files = ctx.personal.clone();
+        game.replace_narc(game.layout.personal, &narc)?;
+        let total: usize = rows.iter().map(|r| r.flags.iter().filter(|&&f| f).count()).sum();
+        let _ = writeln!(log, "== Compatibilité des donneurs de capacités ==");
+        let _ =
+            writeln!(log, "Mode : {:?} ; {total} compatibilités ; {fixed} ajoutée(s) pour les attaques apprises par niveau\n", settings.tutor_compat);
     }
     Ok(())
 }

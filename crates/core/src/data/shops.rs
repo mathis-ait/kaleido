@@ -6,7 +6,9 @@
 //!   `u16` badges requis ; taille sur un octet, pointeur vers la liste), puis une table
 //!   de 20 pointeurs vers les boutiques secondaires (listes de `u16` terminées par `FFFF`) ;
 //! - Noire/Blanche (overlay 21) : 26 boutiques, une table de pointeurs et une table de
-//!   tailles (un octet par boutique), dont les positions dépendent de la langue.
+//!   tailles (un octet par boutique), dont les positions dépendent de la langue ;
+//! - Noire 2 / Blanche 2 (archive `a/2/8/2`) : un fichier par boutique, liste de `u16`
+//!   (32 boutiques ; vérifié sur Noire 2, IREF).
 //!
 //! Contrairement à l'UPR, les boutiques gardent leur taille : les objets sont réécrits
 //! sur place, sans déplacer les listes.
@@ -46,6 +48,8 @@ impl ShopKind {
 pub enum ShopSource {
     Arm9,
     Overlay(u32),
+    /// Fichier n° `.0` de l'archive des boutiques (Noire 2 / Blanche 2).
+    NarcFile(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +123,52 @@ const BW_TM_SHOPS: [usize; 4] = [10, 12, 13, 23];
 const BW_REGULAR_SHOPS: [usize; 6] = [0, 1, 2, 3, 4, 5];
 const BW_MAIN_GAME_SHOPS: [usize; 12] = [3, 5, 6, 8, 9, 12, 14, 17, 18, 19, 21, 22];
 
+/// Noire 2 / Blanche 2 : une boutique par fichier de `a/2/8/2` (liste de `u16`),
+/// 32 boutiques utilisées (`ShopCount`, `bw2ShopNames` de l'UPR).
+const B2W2_SHOPS: &str = "a/2/8/2";
+const B2W2_SHOP_NAMES: [&str; 32] = [
+    "Boutique principale (0 badge)",
+    "Boutique principale (1 badge)",
+    "Boutique principale (3 badges)",
+    "Boutique principale (5 badges)",
+    "Boutique principale (7 badges)",
+    "Boutique principale (8 badges)",
+    "Arabelle (comptoir secondaire)",
+    "Ogoesse (CT)",
+    "Maillard (comptoir secondaire)",
+    "Volucité (comptoir secondaire)",
+    "Méanville (CT)",
+    "Port Yoneuve (comptoir secondaire)",
+    "Parsemille (CT)",
+    "Flocombe (comptoir secondaire)",
+    "Janusia (comptoir secondaire)",
+    "Route Victoire (comptoir secondaire)",
+    "Ligue Pokémon (comptoir secondaire)",
+    "Entrelasque (CT)",
+    "Vaguelone (comptoir secondaire)",
+    "Ville Noire / Forêt Blanche (comptoir secondaire)",
+    "Maillard / Centre commercial (objets X)",
+    "Port Yoneuve (herboriste)",
+    "Port Yoneuve (encens)",
+    "Centre commercial Route 9 (1)",
+    "Centre commercial Route 9 (CT)",
+    "Centre commercial Route 9 (2)",
+    "Centre commercial Route 9 (3, gauche)",
+    "Pavonnay (comptoir secondaire)",
+    "Ondes-sur-Mer (comptoir secondaire)",
+    "Papeloa (comptoir secondaire)",
+    "Amaillide (comptoir secondaire)",
+    "Arpentières (comptoir secondaire)",
+];
+const B2W2_TM_SHOPS: [usize; 5] = [7, 10, 12, 17, 24];
+const B2W2_REGULAR_SHOPS: [usize; 6] = [0, 1, 2, 3, 4, 5];
+const B2W2_MAIN_GAME_SHOPS: [usize; 17] = [9, 11, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31];
+
 #[derive(Debug, Clone, Copy)]
 enum Layout {
     Platinum { size: usize, pointer: usize, special_table: usize, special_count: usize },
     BlackWhite { pointers: usize, sizes: usize, count: usize },
+    Black2White2,
 }
 
 /// Emplacements repris de `gen4_offsets.ini` / `gen5_offsets.ini` de l'UPR.
@@ -147,6 +193,8 @@ fn layout(game: &GameRom) -> Option<Layout> {
         (Game::White, "IRAI") => bw(0x56288, 0x516C2),
         (Game::White, "IRAJ") => bw(0x55FA8, 0x513E2),
         (Game::White, "IRAK") => bw(0x56288, 0x516C6),
+        // Archive des boutiques : même emplacement dans toutes les langues (UPR `File<ShopItems>`).
+        (Game::Black2 | Game::White2, _) => Layout::Black2White2,
         _ => return None,
     })
 }
@@ -238,6 +286,32 @@ pub fn read(game: &GameRom) -> Result<Vec<Shop>, RomError> {
             }
             shops
         }
+        Layout::Black2White2 => {
+            let narc = game.narc(B2W2_SHOPS)?;
+            let mut shops = Vec::new();
+            for (i, &name) in B2W2_SHOP_NAMES.iter().enumerate() {
+                let file = narc.files.get(i).ok_or_else(bad)?;
+                let positions: Vec<usize> = (0..file.len() / 2).map(|j| j * 2).collect();
+                let items = positions.iter().map(|&p| rd16(file, p)).collect::<Result<Vec<_>, _>>()?;
+                let kind = if B2W2_TM_SHOPS.contains(&i) {
+                    ShopKind::Tm
+                } else if B2W2_REGULAR_SHOPS.contains(&i) {
+                    ShopKind::Regular
+                } else {
+                    ShopKind::Special
+                };
+                shops.push(Shop {
+                    index: i,
+                    name,
+                    kind,
+                    main_game: B2W2_MAIN_GAME_SHOPS.contains(&i),
+                    items,
+                    source: ShopSource::NarcFile(i),
+                    positions,
+                });
+            }
+            shops
+        }
     };
     if shops.iter().any(|s| s.items.is_empty() || s.items.iter().any(|&i| i == 0 || i > 1000)) {
         return Err(bad());
@@ -249,11 +323,18 @@ pub fn read(game: &GameRom) -> Result<Vec<Shop>, RomError> {
 pub fn write(game: &mut GameRom, shops: &[Shop]) -> Result<(), RomError> {
     let mut arm9: Option<Vec<u8>> = None;
     let mut overlay: Option<Vec<u8>> = None;
+    let mut narc: Option<kaleido_formats::narc::Narc> = None;
     for shop in shops {
         if shop.items.len() != shop.positions.len() {
             return Err(RomError::Layout(format!("la boutique « {} » doit garder sa taille", shop.name)));
         }
         let data = match shop.source {
+            ShopSource::NarcFile(file) => {
+                if narc.is_none() {
+                    narc = Some(game.narc(B2W2_SHOPS)?);
+                }
+                narc.as_mut().and_then(|n| n.files.get_mut(file))
+            }
             ShopSource::Arm9 => {
                 if arm9.is_none() {
                     arm9 = Some(game.rom().arm9_decompressed()?);
@@ -283,6 +364,9 @@ pub fn write(game: &mut GameRom, shops: &[Shop]) -> Result<(), RomError> {
             game.rom_mut().replace_overlay_recompressed(BW_SHOP_OVERLAY, data)?;
         }
     }
+    if let Some(n) = narc {
+        game.replace_narc(B2W2_SHOPS, &n)?;
+    }
     Ok(())
 }
 
@@ -304,5 +388,6 @@ mod tests {
         assert_eq!(PT_SHOP_NAMES.len(), 21);
         assert!(PT_TM_SHOPS.iter().all(|&i| i <= 20));
         assert!(BW_TM_SHOPS.iter().chain(&BW_MAIN_GAME_SHOPS).all(|&i| i < BW_SHOP_NAMES.len()));
+        assert!(B2W2_TM_SHOPS.iter().chain(&B2W2_MAIN_GAME_SHOPS).all(|&i| i < B2W2_SHOP_NAMES.len()));
     }
 }

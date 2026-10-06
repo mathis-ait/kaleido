@@ -11,7 +11,7 @@
 pub enum Loc {
     /// Fichier n° `.0` de l'archive des scripts, décalage `.1`.
     Script(u16, u32),
-    /// Fichier n° `.0` de l'archive des cartes (Noire/Blanche : `a/1/2/5`).
+    /// Fichier n° `.0` de l'archive des cartes (Noire/Blanche : `a/1/2/5` ; Noire 2 / Blanche 2 : `a/1/2/6`).
     Map(u16, u32),
     /// Code ARM9 (décompressé).
     Arm9(u32),
@@ -138,6 +138,137 @@ pub fn black_white() -> Vec<Def> {
     });
     out
 }
+
+/// Noire 2 / Blanche 2 : `StaticPokemon{}` puis `StaticPokemonFakeBall{}` de `[Black 2 (U)]`,
+/// copiés tels quels par Blanche 2 et les versions traduites (`CopyStaticPokemon=1`).
+/// Scripts `a/0/5/6`, cartes `a/1/2/6`. Vérifié sur Noire 2 (IREF).
+pub fn black2_white2() -> Vec<Def> {
+    use Kind::{Egg, Fossil, Static};
+    let mut out = vec![
+        script(Static, &[(662, 0x1DE), (662, 0x240), (740, 0xCD), (740, 0xFC), (740, 0x12C), (740, 0x14C)], &[(740, 0x12E), (740, 0x14E)]), // Cobaltium
+        script(Static, &[(730, 0x13A), (730, 0x15F), (730, 0x19B), (730, 0x1BB)], &[(730, 0x19D), (730, 0x1BD)]), // Viridium
+        script(Static, &[(948, 0x45D), (948, 0x48D), (948, 0x4AD)], &[(948, 0x48F), (948, 0x4AF)]),               // Terrakium
+        script(
+            Static,
+            &[(426, 0x38A), (426, 0x39B), (556, 0x367), (556, 0x568), (556, 0x5E6), (556, 0x6E1), (1208, 0x3A4), (1208, 0xA6A), (1208, 0x717)],
+            &[(426, 0x39D)],
+        ), // Reshiram
+        script(
+            Static,
+            &[(426, 0x36B), (426, 0x37C), (556, 0x350), (556, 0x551), (556, 0x5C7), (556, 0x6C3), (1208, 0x38D), (1208, 0xA53), (1208, 0x706)],
+            &[(426, 0x37E)],
+        ), // Zekrom
+        script(
+            Static,
+            &[
+                (1112, 0x133),
+                (1122, 0x2BA),
+                (1122, 0x311),
+                (1128, 0x37A),
+                (1128, 0x3D1),
+                (1208, 0x1B7),
+                (1208, 0x1F8),
+                (1208, 0x723),
+                (1208, 0xF3D),
+                (1208, 0xF4E),
+            ],
+            &[(1208, 0xF50)],
+        ), // Kyurem
+        script(Static, &[(1208, 0xD8B), (1208, 0xD97)], &[(1208, 0xD99)]),                                        // Kyurem Noir (forme : B2W2_FORMS)
+        script(Static, &[(1208, 0xDB6), (1208, 0xDC2)], &[(1208, 0xDC4)]),                                        // Kyurem Blanc
+        script(
+            Static,
+            &[
+                (304, 0xCC),
+                (304, 0x14B),
+                (304, 0x1BC),
+                (304, 0x237),
+                (304, 0x327),
+                (304, 0x3E6),
+                (304, 0x4A1),
+                (304, 0x54A),
+                (304, 0x5BD),
+                (304, 0x5CE),
+            ],
+            &[(304, 0x5D0)],
+        ), // Latias
+        script(
+            Static,
+            &[
+                (304, 0xB5),
+                (304, 0x134),
+                (304, 0x1A5),
+                (304, 0x220),
+                (304, 0x310),
+                (304, 0x3CF),
+                (304, 0x48A),
+                (304, 0x533),
+                (304, 0x59E),
+                (304, 0x5AF),
+            ],
+            &[(304, 0x5B1)],
+        ), // Latios
+        script(Static, &[(32, 0x247), (32, 0x2B0), (32, 0x2C1), (1034, 0x12A)], &[(32, 0x2C3)]),                  // Créhelf
+        script(Static, &[(684, 0x136), (684, 0x1C2), (684, 0x1D3), (1034, 0x169)], &[(684, 0x1D5)]),              // Créfollet
+        script(Static, &[(950, 0xA1), (950, 0x10A), (950, 0x11B), (1034, 0x1BE)], &[(950, 0x11D)]),               // Créfadet
+        script(Static, &[(1222, 0x134), (1222, 0x145), (1018, 0x32)], &[(1222, 0x147)]),                          // Regirock
+        script(Static, &[(1224, 0x134), (1224, 0x145), (1018, 0x2C)], &[(1224, 0x147)]),                          // Regice
+        script(Static, &[(1226, 0x134), (1226, 0x145), (1018, 0x38)], &[(1226, 0x147)]),                          // Registeel
+        script(Static, &[(1018, 0x97), (1018, 0xA8)], &[(1018, 0xAA)]),                                           // Regigigas
+        script(Static, &[(526, 0x48D), (526, 0x512), (526, 0x523)], &[(526, 0x525)]),                             // Cresselia
+        script(Static, &[(1068, 0x193), (1068, 0x1D6), (1068, 0x1E7), (1080, 0x193), (1080, 0x1D6), (1080, 0x1E7)], &[(1068, 0x1E9), (1080, 0x1E9)]), // Heatran
+        script(Static, &[(652, 0x5C6), (652, 0x5E9)], &[(652, 0x5EB)]),    // Vaututrice
+        script(Static, &[(1102, 0x592), (1102, 0x5B5)], &[(1102, 0x5B7)]), // Gueriaigle
+        script(Static, &[(364, 0xE), (364, 0x32), (364, 0x40)], &[(364, 0x34), (364, 0x42)]), // Pyrax
+        script(Static, &[(1030, 0x290), (1030, 0x2A1)], &[(1030, 0x2A3)]), // Crabaraque
+        script(Static, &[(480, 0xE1), (480, 0x10A), (480, 0x131), (480, 0x15A)], &[(480, 0x10C), (480, 0x15C)]), // Moyade
+        script(Static, &[(1168, 0x2C), (1168, 0x4F)], &[(1168, 0x51)]),    // Tranchodon chromatique
+        script(Static, &[(988, 0x382)], &[(988, 0x386)]),                  // Évoli
+        script(Static, &[(664, 0x3B5), (664, 0x3E2), (664, 0x40F), (664, 0x43C)], &[(664, 0x3B9), (664, 0x3E6), (664, 0x413), (664, 0x440)]), // Vivaldaim (quatre saisons)
+        script(Static, &[(880, 0xAB4), (880, 0xAC7)], &[(880, 0xAB8)]), // Griknot chromatique
+        script(Static, &[(880, 0xAD3), (880, 0xAE6)], &[(880, 0xAD7)]), // Minidraco chromatique
+        script(Egg, &[(54, 0xDD)], &[]),                                // Ptiravi (œuf)
+        script(Static, &[(526, 0x27E)], &[(526, 0x282)]),               // Magicarpe
+    ];
+    // Fossiles (script 1253, niveau commun).
+    for off in [0x5E0, 0x5FF, 0x61E, 0x63D, 0x65C, 0x67B, 0x69A, 0x6B9, 0x6D8] {
+        out.push(script(Fossil, &[(1253, off)], &[(1253, 0x3D6)]));
+    }
+    out.push(script(Static, &[(208, 0x5A6)], &[(208, 0x5A8)])); // Zorua
+                                                                // Faux objets (Trompignon, Gaulet) : espèce dans le script 1273, niveaux dans les cartes.
+    out.push(Def {
+        species: vec![Loc::Script(1273, 0x45)],
+        levels: [(500, 0x46E), (500, 0x492), (500, 0x4B6), (506, 0x42A), (506, 0x44E)].iter().map(|&(f, o)| Loc::Map(f, o)).collect(),
+        kind: Kind::FakeItem,
+    });
+    out.push(Def {
+        species: vec![Loc::Script(1273, 0xC7)],
+        levels: [(534, 0x2F2), (534, 0x316), (562, 0x3FE), (562, 0x422), (563, 0x742), (563, 0x766), (563, 0x78A)]
+            .iter()
+            .map(|&(f, o)| Loc::Map(f, o))
+            .collect(),
+        kind: Kind::FakeItem,
+    });
+    out
+}
+
+/// Noire 2 / Blanche 2 : formes imposées (`Forme=[…]` de l'UPR) des rencontres
+/// Kyurem Noir (6), Kyurem Blanc (7) et Vivaldaim (26). Remises à 0 quand l'espèce change.
+pub const B2W2_FORMS: [(usize, &[(u16, u32)]); 3] =
+    [(6, &[(1208, 0xD8D), (1208, 0xD9B)]), (7, &[(1208, 0xDB8), (1208, 0xDC6)]), (26, &[(664, 0x3B7), (664, 0x3E4), (664, 0x411), (664, 0x43E)])];
+
+/// Échanges de Noire 2 / Blanche 2 (`a/1/6/3`) : entrée inutilisée (`TradesUnused`).
+pub const BLACK2_TRADES_UNUSED: [usize; 1] = [25];
+pub const WHITE2_TRADES_UNUSED: [usize; 1] = [24];
+/// Textes des échanges (surnoms et dresseurs d'origine).
+pub const B2W2_TRADE_TEXT: usize = 37;
+/// Dialogues des personnes qui proposent les échanges : (entrée, fichier des textes de
+/// l'histoire `a/0/0/3`), d'après `IngameTradePersonTextOffsets` de l'UPR (Noire 2 :
+/// 529, 555, 193, 594, 628, 628 ; Blanche 2 : 537 pour son échange exclusif). Vérifié
+/// sur Noire 2 : Chlorobule/Doudouvet (529), Gigalithe/Emolga (555), Bouldeneu/Démanta
+/// (193), Motisma/Métamorph (594), Capidextre/Minotaupe et Alakazam/Hippodocus (628).
+pub const B2W2_TRADE_PERSON_TEXTS: [(usize, usize); 7] = [(24, 529), (25, 537), (26, 555), (27, 193), (28, 594), (29, 628), (30, 628)];
+pub const B2W2_STORY_TEXT: &str = "a/0/0/3";
 
 /// Index du légendaire de la boîte (`BoxLegendaryOffset`) : Reshiram (Noire), Zekrom (Blanche).
 pub const BW_BOX_LEGENDARY_BLACK: usize = 15;

@@ -489,6 +489,17 @@ fn tms(path: &str, species: u16) -> CliResult {
             .collect();
         println!("{label} : {} / {} : {}", learn.len(), tutor_moves.len(), learn.join(", "));
     }
+    if matches!(game.game, kaleido_core::games::Game::Black2 | kaleido_core::games::Game::White2) {
+        let ovl = game.rom().overlay(machines::B2W2_TUTOR_OVERLAY)?;
+        let table = machines::B2w2Tutors::locate(&ovl, moves.len().saturating_sub(1) as u16, &game.rom().header().game_code)?;
+        println!("\nDonneurs de capacités : overlay {} @ {:#X}", machines::B2W2_TUTOR_OVERLAY, table.offset);
+        let tutor_moves = table.moves(&ovl);
+        let list: Vec<String> = tutor_moves.iter().map(|&t| format!("{} ({})", move_name(t), move_type(t))).collect();
+        println!("  {}", list.join(", "));
+        let learn: Vec<String> =
+            tutor_moves.iter().enumerate().filter(|(i, _)| machines::b2w2_tutor_compatible(data, *i)).map(|(_, &t)| move_name(t)).collect();
+        println!("{label} : {} / {} : {}", learn.len(), tutor_moves.len(), learn.join(", "));
+    }
     Ok(())
 }
 

@@ -13,6 +13,9 @@
 //! - **Noire / Blanche** : NARC `a/0/1/2`, un fichier de 427 en-têtes de 48 octets.
 //!   Rencontres = u16 en +0x14 (0xFFFF = aucune), nom du lieu = u8 en +0x1A
 //!   (l'octet suivant porte des drapeaux d'affichage), index dans le fichier de textes 89.
+//! - **Noire 2 / Blanche 2** : même NARC, 615 en-têtes ; rencontres = u8 en +0x14
+//!   (0xFF = aucune), nom du lieu = u8 en +0x1A, fichier de textes 109 (dont la liste
+//!   `met5_00000` de PKHeX, 153 lieux, est la copie).
 //!
 //! Dans les deux jeux, le lieu de rencontre enregistré dans un Pokémon (PK4 / PK5)
 //! est **ce même index** : les listes de lieux de PKHeX (`met4_00000`, `met5_00000`)
@@ -107,7 +110,7 @@ impl RomInfo {
     }
 
     pub fn supports(game: Game) -> bool {
-        matches!(game, Game::Platinum | Game::Black | Game::White)
+        matches!(game, Game::Platinum | Game::Black | Game::White | Game::Black2 | Game::White2)
     }
 }
 
@@ -116,6 +119,7 @@ fn place_names_text(game: Game) -> Option<usize> {
     match game {
         Game::Platinum => Some(433),
         Game::Black | Game::White => Some(89),
+        Game::Black2 | Game::White2 => Some(109),
         _ => None,
     }
 }
@@ -125,6 +129,7 @@ fn trainer_classes_text(game: Game) -> Option<usize> {
     match game {
         Game::Platinum => Some(619),
         Game::Black | Game::White => Some(191),
+        Game::Black2 | Game::White2 => Some(383),
         _ => None,
     }
 }
@@ -139,6 +144,7 @@ pub fn read(game: &GameRom) -> Result<RomInfo, RomError> {
     let enc = game.narc(paths.encounters)?;
     let zones = match g {
         Game::Platinum => platinum_zones(game, enc.files.len(), place_names.len())?,
+        Game::Black2 | Game::White2 => b2w2_zones(game)?,
         _ => bw_zones(game)?,
     };
     let french = game.rom().header().region() == Some('F');
@@ -205,6 +211,16 @@ fn bw_zones(game: &GameRom) -> Result<Vec<(u16, u16)>, RomError> {
             (wild != 0xFFFF).then_some((wild, e[0x1A] as u16))
         })
         .collect())
+}
+
+/// Noire 2 / Blanche 2 : même NARC `a/0/1/2` (615 en-têtes de 48 octets), mais le
+/// fichier de rencontres est un u8 en +0x14 (0xFF = aucun ; l'octet suivant porte des
+/// drapeaux), comme dans `loadWildMapNames` de l'UPR. Nom du lieu = u8 en +0x1A, index
+/// dans le fichier de textes 109. Vérifié sur Noire 2 (Route 19 = 124, Route 20 = 125…).
+fn b2w2_zones(game: &GameRom) -> Result<Vec<(u16, u16)>, RomError> {
+    let narc = game.narc(BW_HEADERS)?;
+    let d = narc.files.first().ok_or_else(|| RomError::Layout("en-têtes de cartes absents".into()))?;
+    Ok(d.as_chunks::<BW_HEADER_SIZE>().0.iter().filter(|e| e[0x14] != 0xFF).map(|e| (e[0x14] as u16, e[0x1A] as u16)).collect())
 }
 
 /// Nom français d'un lieu : texte de la ROM si elle est française, sinon liste de
@@ -318,6 +334,18 @@ fn story_order(game: Game) -> &'static [u16] {
             14, 15, 6, 32, 16, 54, 33, 17, 34, 35, 18, 65, 10, 36, 19, 37, 20, 56, 59, 38, 12, 57, 21, 39, 22, 68, 23, 40, 73, 61, 24, 67, 25, 26,
             27, 28, 29, 30, 31, 42, 71, 53, 70, 72, 63, 74,
         ],
+        // Noire 2 / Blanche 2 (identifiants du texte 109) : Pavonnay, Route 19, Route 20, Ranch
+        // d'Amaillide, Ondes-sur-Mer, Z.I. d'Ondes-sur-Mer, Volucité, Égouts de Volucité, Chemin
+        // Enfoui, Route 4, Désert Délassant, Château Enfoui, Route 16, Bois des Illusions,
+        // Route 5, Pont Yoneuve, Route Bardane, Ruines Enfouies, Route 6, Grotte Électrolithe,
+        // Grotte Parsemille, Espace Guide, Route 7, Tour des Cieux, Mont Renenvers, Manoir de
+        // l'Étrange, Vaguelone, Baie Vaguelone, Routes 13, 12, Pont du Hameau, Routes 11, 9,
+        // Chenal 21, Route 22, Papeloa, Grotte Littorale, Frégate Plasma, Grotte Cyclopéenne,
+        // Route 23, Route Victoire, puis l'après-Ligue.
+        Game::Black2 | Game::White2 => &[
+            117, 124, 125, 130, 118, 131, 8, 129, 136, 17, 34, 35, 29, 72, 18, 65, 137, 149, 19, 37, 54, 74, 20, 56, 132, 133, 42, 71, 26, 25, 67,
+            24, 22, 126, 127, 119, 141, 135, 61, 128, 134, 40,
+        ],
         _ => &[],
     }
 }
@@ -380,10 +408,30 @@ const BW_LEADERS: &[LeaderDef] = &[
     LeaderDef { kind: LeaderKind::Champion, name: "Ghetis", town: "Château de N", members: &[(232, 82)] },
 ];
 
+/// Noire 2 / Blanche 2 : équipes du mode normal (les dresseurs 764 à 776 sont ceux du
+/// mode Défi). Vérifié sur Noire 2 (IREF) : classes 112 à 119 « Champion », 78 à 81
+/// « Conseil 4 », 193 « Maître » (texte 383), noms du texte 382.
+const B2W2_LEADERS: &[LeaderDef] = &[
+    gym("Tcheren", "Pavonnay", &[(156, 115)]),
+    gym("Strykna", "Ondes-sur-Mer", &[(157, 116)]),
+    gym("Artie", "Volucité", &[(154, 113)]),
+    gym("Inezia", "Méanville", &[(153, 112)]),
+    gym("Bardane", "Port Yoneuve", &[(158, 117)]),
+    gym("Carolina", "Parsemille", &[(155, 114)]),
+    gym("Watson", "Janusia", &[(159, 118)]),
+    gym("Amana", "Papeloa", &[(160, 119)]),
+    elite("Anis", &[(38, 78)]),
+    elite("Kunz", &[(39, 79)]),
+    elite("Pieris", &[(40, 80)]),
+    elite("Percila", &[(41, 81)]),
+    LeaderDef { kind: LeaderKind::Champion, name: "Iris", town: "Ligue Pokémon", members: &[(341, 193)] },
+];
+
 fn leader_defs(game: Game) -> &'static [LeaderDef] {
     match game {
         Game::Platinum => PLATINUM_LEADERS,
         Game::Black | Game::White => BW_LEADERS,
+        Game::Black2 | Game::White2 => B2W2_LEADERS,
         _ => &[],
     }
 }
@@ -430,7 +478,7 @@ fn read_leaders(game: &GameRom, paths: &DataPaths) -> Result<Vec<Leader>, RomErr
                 format!("Arène {gym_n}")
             }
             LeaderKind::Elite => "Conseil 4".to_string(),
-            LeaderKind::Champion if game.game == Game::Platinum => "Maître".to_string(),
+            LeaderKind::Champion if matches!(game.game, Game::Platinum | Game::Black2 | Game::White2) => "Maître".to_string(),
             LeaderKind::Champion => "Combat final".to_string(),
         };
         let (ace_species, ace_level) = ace.unwrap_or((0, 0));
