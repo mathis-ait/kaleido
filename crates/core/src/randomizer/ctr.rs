@@ -24,6 +24,7 @@ use super::{apply_personal, ctr_xy, randomize_trainers, randomize_wild, share_co
 use crate::ctr_rom::CtrGameRom;
 use crate::data::encounters;
 use crate::games::Game;
+use crate::data::shiny_ctr;
 use crate::rom::RomError;
 
 /// Plus grand identifiant de talent de Rubis Oméga / Saphir Alpha.
@@ -371,19 +372,71 @@ pub fn randomize(
         files.push((l.trainer_pokemon.to_string(), trpoke_garc.to_bytes()));
     }
 
+    // 5. Taux de chromatiques (programme du jeu, code.bin).
+    let code_patch = shiny_patch(game, settings.shiny_odds, &mut log)?;
+    let written = write_outputs(game, out_dir, target, output, image_out, &files, code_patch.as_ref(), &mut log)?;
+    let starters = starters.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect();
+    let outcome = Outcome { seed, share_code: code, starters, wild_slots, trainer_pokemon, log };
+    Ok((outcome, written))
+}
+
+/// Programme du jeu modifié : décompressé (pour la ROM complète) et patch IPS
+/// `code.ips` (pour LayeredFS : Luma3DS et Azahar / Citra l'appliquent au chargement).
+pub(crate) struct CodePatch {
+    pub code: Vec<u8>,
+    pub ips: Vec<u8>,
+}
+
+/// Taux de chromatiques « 1 / `odds` » (voir [`shiny_ctr`]). `None` si rien ne change.
+pub(crate) fn shiny_patch(game: &CtrGameRom, odds: u32, log: &mut String) -> Result<Option<CodePatch>, RomError> {
+    let plan = shiny_ctr::plan(odds);
+    if plan == shiny_ctr::Plan::Unchanged {
+        return Ok(None);
+    }
+    let original = game.code()?.code;
+    let mut code = original.clone();
+    let rate = shiny_ctr::apply(&mut code, plan)?;
+    let ips = kaleido_formats::ips::create(&original, &code)?;
+    let rate = if rate == 1 { "tous les Pokémon".to_string() } else { format!("1 / {rate}") };
+    let _ = writeln!(log, "== Chromatiques ==\nTaux : {rate} (au lieu de 1 / {}, Charme Chroma sans effet)\n", shiny_ctr::BASE_ODDS);
+    Ok(Some(CodePatch { code, ips }))
+}
+
+/// Écrit le dossier LayeredFS (+ `code.ips`) et/ou la ROM reconstruite.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_outputs(
+    game: &CtrGameRom,
+    out_dir: &Path,
+    target: LayeredFsTarget,
+    output: CtrOutput,
+    image_out: Option<PathBuf>,
+    files: &[(String, Vec<u8>)],
+    code: Option<&CodePatch>,
+    log: &mut String,
+) -> Result<CtrWritten, RomError> {
     let mut written = CtrWritten { files: files.iter().map(|(p, _)| p.clone()).collect(), ..Default::default() };
     if output.layeredfs() {
-        written.romfs = Some(write(out_dir, game.title_id(), target, &files)?);
+        let romfs = write(out_dir, game.title_id(), target, files)?;
+        if let Some(code) = code {
+            write_code_ips(&romfs, &code.ips)?;
+        }
+        written.romfs = Some(romfs);
     }
     if let (Some(dest), Some(input)) = (image_out, game.romfs().image_path()) {
-        let report = write_image(input, &dest, &files)?;
+        let report = write_image(input, &dest, files, code.map(|c| c.code.as_slice()))?;
         let _ = writeln!(log, "== ROM complète ==");
         let _ = writeln!(log, "{} ({} octets, {} fichiers remplacés dans le RomFS)", dest.display(), report.size, report.replaced);
         written.image = Some(dest);
     }
-    let starters = starters.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect();
-    let outcome = Outcome { seed, share_code: code, starters, wild_slots, trainer_pokemon, log };
-    Ok((outcome, written))
+    Ok(written)
+}
+
+/// `code.ips` à côté du dossier `romfs` (`luma/titles/<TID>/code.ips` ou
+/// `<TID>/code.ips`, lu par Azahar / Citra dans `load/mods/<TID>/`).
+pub(crate) fn write_code_ips(romfs: &Path, ips: &[u8]) -> Result<PathBuf, RomError> {
+    let dest = romfs.parent().unwrap_or(romfs).join("code.ips");
+    std::fs::write(&dest, ips).map_err(kaleido_formats::FormatError::from)?;
+    Ok(dest)
 }
 
 /// `<out_dir>/<nom de la ROM> - Kaleido <seed>.3ds` (`.cxi` si l'entrée n'est pas une CCI).
@@ -395,16 +448,28 @@ pub(super) fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Resu
     Ok(out_dir.join(format!("{stem} - Kaleido {seed}.{ext}")))
 }
 
-/// Reconstruit la ROM avec les fichiers modifiés, puis relit chacun d'eux dans
-/// l'image écrite. En cas d'échec, le fichier incomplet est supprimé.
-pub(crate) fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
+/// Reconstruit la ROM avec les fichiers modifiés (et le programme du jeu `code`,
+/// décompressé), puis relit chacun d'eux dans l'image écrite. En cas d'échec, le
+/// fichier incomplet est supprimé.
+pub(crate) fn write_image(
+    input: &Path,
+    dest: &Path,
+    files: &[(String, Vec<u8>)],
+    code: Option<&[u8]>,
+) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
     use kaleido_formats::romfs::RomFsSource;
     let refs: Vec<(&str, &[u8])> = files.iter().map(|(p, d)| (p.as_str(), d.as_slice())).collect();
-    let result = kaleido_formats::ctr_build::rebuild_image(input, dest, &refs).map_err(RomError::from).and_then(|report| {
+    let result = kaleido_formats::ctr_build::rebuild_image_with_code(input, dest, &refs, code).map_err(RomError::from).and_then(|report| {
         let rebuilt = RomFsSource::open(dest)?;
         for (path, data) in files {
             if rebuilt.read(path)? != *data {
                 return Err(RomError::Layout(format!("relecture de {path} dans la ROM reconstruite : contenu différent")));
+            }
+        }
+        if let Some(code) = code {
+            let game = crate::CtrGameRom::from_romfs(rebuilt)?;
+            if game.code()?.code != code {
+                return Err(RomError::Layout("relecture du programme du jeu dans la ROM reconstruite : contenu différent".into()));
             }
         }
         Ok(report)
@@ -422,6 +487,8 @@ pub(crate) fn write(out_dir: &Path, title_id: u64, target: LayeredFsTarget, file
         LayeredFsTarget::Luma => out_dir.join("luma").join("titles").join(&tid).join("romfs"),
         LayeredFsTarget::Emulator => out_dir.join(&tid).join("romfs"),
     };
+    // Créé même vide : un mod peut ne modifier que le programme (code.ips).
+    std::fs::create_dir_all(&romfs).map_err(kaleido_formats::FormatError::from)?;
     for (path, data) in files {
         let dest = romfs.join(path);
         if let Some(parent) = dest.parent() {

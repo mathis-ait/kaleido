@@ -8,6 +8,7 @@ pub mod field_items;
 pub mod learnsets;
 pub mod machines;
 pub mod shiny;
+pub mod shiny_ctr;
 pub mod shops;
 pub mod starters;
 pub mod trainers;

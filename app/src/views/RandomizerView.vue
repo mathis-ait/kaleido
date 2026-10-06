@@ -80,7 +80,7 @@ const reset = () => {
   customNames.value = ["", "", ""];
 };
 
-const SHINY_PRESETS = [
+const NDS_SHINY_PRESETS = [
   { odds: 8192, label: "Normal" },
   { odds: 4096, label: "×2" },
   { odds: 1024, label: "×8" },
@@ -88,13 +88,59 @@ const SHINY_PRESETS = [
   { odds: 257, label: "Max (1/257)" },
   { odds: 1, label: "Tous ✨" },
 ];
+/** 3DS : le taux normal est 1 / 4 096 ; « Normal » garde la valeur par défaut des réglages. */
+const CTR_SHINY_PRESETS = [
+  { odds: 8192, label: "Normal" },
+  { odds: 1365, label: "×3 (Charme Chroma)" },
+  { odds: 512, label: "×8" },
+  { odds: 256, label: "×16" },
+  { odds: 100, label: "1 / 100" },
+  { odds: 1, label: "Tous ✨" },
+];
+const shinyPresets = computed(() => (isCtr.value ? CTR_SHINY_PRESETS : NDS_SHINY_PRESETS));
+const shinyPresetOn = (odds: number) => {
+  const n = Number(settings.shinyOdds) || 8192;
+  return isCtr.value && odds === 8192 ? n >= 4096 : n === odds;
+};
+
+/** 3DS, même calcul que le moteur (data/shiny_ctr.rs) : N tirages de PID, N exprimable
+ *  par `mov r0, #N` en ARM (un octet tourné d'un nombre pair de bits). */
+const armImmediate = (v: number) => {
+  for (let rot = 0; rot < 16; rot++) {
+    const r = 2 * rot;
+    const imm = r === 0 ? v : ((v << r) | (v >>> (32 - r))) >>> 0;
+    if (imm <= 0xff) return true;
+  }
+  return false;
+};
+const ctrRerolls = (odds: number): number | "always" | null => {
+  if (odds <= 1) return "always";
+  if (odds >= 4096) return null;
+  const n = Math.min(0x4000, Math.max(1, Math.round(Math.log(1 - 1 / odds) / Math.log(4095 / 4096))));
+  for (let d = 0; d <= n; d++) {
+    for (const v of [n - d, n + d]) if (v >= 1 && v <= 0x4000 && armImmediate(v)) return v === 1 ? null : v;
+  }
+  return null;
+};
+const ctrShinyLabel = (odds: number) => {
+  const n = ctrRerolls(odds);
+  if (n === "always") return "tous les Pokémon";
+  if (n === null) return "1 / 4096 (normal)";
+  return `1 / ${Math.max(1, Math.round(1 / (1 - Math.pow(4095 / 4096, n))))}`;
+};
 
 /** Même calcul que le moteur : seuil arrondi entre 1 et 255 (sur 65 536). */
 const shinyLabel = computed(() => {
   const n = Number(settings.shinyOdds) || 8192;
+  if (isCtr.value) return ctrShinyLabel(n);
   if (n <= 1) return "tous les Pokémon";
   const threshold = Math.min(255, Math.max(1, Math.round(65536 / n)));
   return `1 / ${Math.floor(65536 / threshold)}`;
+});
+/** Le taux sera-t-il vraiment modifié ? (3DS : rien sous 1 / 4 096) */
+const shinyChanged = computed(() => {
+  const n = Number(settings.shinyOdds) || 8192;
+  return isCtr.value ? ctrRerolls(n) !== null : n !== 8192;
 });
 
 /** Noms des espèces (français), pour choisir ses starters. */
@@ -355,7 +401,7 @@ const changes = computed<Change[]>(() => {
   flag("statics", "Objets tenus aléatoires (échanges)", st.tradeRandomItems, ds.tradeRandomItems);
   flag("statics", "IV aléatoires (échanges)", st.tradeRandomIvs, ds.tradeRandomIvs);
 
-  add("shiny", s.shinyOdds !== d.shinyOdds, `Chromatiques : ${shinyLabel.value}`);
+  add("shiny", shinyChanged.value, `Chromatiques : ${shinyLabel.value}`);
   return out;
 });
 const changeCount = (id: TabId) => changes.value.filter((c) => c.tab === id).length;
@@ -787,20 +833,31 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div class="row shiny-row first">
               <label class="shiny-input">
                 1 chance sur
-                <input v-model.number="settings.shinyOdds" class="input" type="number" min="1" max="65536" :disabled="isCtr" />
+                <input v-model.number="settings.shinyOdds" class="input" type="number" min="1" max="65536" />
               </label>
               <div class="chips-row">
-                <button v-for="q in SHINY_PRESETS" :key="q.odds" class="chip-btn" :class="{ on: settings.shinyOdds === q.odds }" :disabled="isCtr" @click="settings.shinyOdds = q.odds">
+                <button v-for="q in shinyPresets" :key="q.odds" class="chip-btn" :class="{ on: shinyPresetOn(q.odds) }" @click="settings.shinyOdds = q.odds">
                   {{ q.label }}
                 </button>
               </div>
             </div>
             <p class="dim note">
-              <template v-if="isCtr">Pas encore disponible sur 3DS : le taux est défini dans le code du jeu (code.bin).</template>
+              <template v-if="isCtr">
+                Taux réel : <strong>{{ shinyLabel }}</strong>. Modifie le programme du jeu (code.bin
+                <Tip title="code.bin" text="Le programme du jeu 3DS. Kaleido y change le nombre de PID tirés à chaque Pokémon créé : le jeu garde le premier chromatique trouvé. En mod LayeredFS, c'est un petit fichier code.ips à côté du dossier romfs ; dans une ROM .3ds complète, le programme est réécrit directement." />)
+                pour les Pokémon sauvages, fixes et offerts. Sur 3DS, on ne peut pas descendre sous 1 / 4 096, et le Charme Chroma
+                n'a plus d'effet (le taux choisi le remplace).
+              </template>
               <template v-else>
                 Taux réel : <strong>{{ shinyLabel }}</strong>. Modifie la fonction du jeu qui décide si un Pokémon est chromatique
                 (sauvages, dons, œufs, dresseurs).
               </template>
+            </p>
+            <p v-if="isCtr && settings.shinyOdds > 1 && settings.shinyOdds < 4096 && shinyLabel.endsWith('(normal)')" class="dim note">
+              Ce taux est trop proche du taux normal : rien ne sera modifié.
+            </p>
+            <p v-if="isCtr && settings.shinyOdds <= 1" class="dim note">
+              Les Pokémon qui ne doivent jamais être chromatiques (cadeaux et légendaires protégés) le restent.
             </p>
             <p v-if="!isCtr && settings.shinyOdds <= 1" class="warn-text">
               ⚠ Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
