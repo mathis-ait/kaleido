@@ -45,7 +45,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Télécharge `url` ; `Ok(None)` si le serveur répond 404 (image inexistante).
-fn fetch(url: &str) -> Result<Option<Vec<u8>>, String> {
+pub(crate) fn fetch(url: &str) -> Result<Option<Vec<u8>>, String> {
     let response = match ureq::get(url).set("User-Agent", USER_AGENT).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(404, _)) => return Ok(None),

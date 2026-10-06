@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import Sidebar from "./components/Sidebar.vue";
 import DropOverlay from "./components/DropOverlay.vue";
 import HomeView from "./views/HomeView.vue";
+import LibraryView from "./views/LibraryView.vue";
 import EditorView from "./views/EditorView.vue";
 import RandomizerView from "./views/RandomizerView.vue";
 import SavesView from "./views/SavesView.vue";
@@ -38,6 +39,7 @@ onUnmounted(() => unlisten?.());
     <main class="content" :class="{ flush: nav.view === 'saves' }">
       <Transition name="view" mode="out-in">
         <HomeView v-if="nav.view === 'home'" key="home" />
+        <LibraryView v-else-if="nav.view === 'library'" key="library" />
         <EditorView v-else-if="nav.view === 'editor'" key="editor" />
         <RandomizerView v-else-if="nav.view === 'randomizer'" key="randomizer" />
         <SavesView v-else-if="nav.view === 'saves'" key="saves" />

@@ -276,7 +276,7 @@ pub(crate) fn load_config(app: &AppHandle) -> PlayConfig {
     config_path(app).ok().and_then(|p| fs::read(p).ok()).and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default()
 }
 
-fn store_config(app: &AppHandle, config: &PlayConfig) -> Result<(), String> {
+pub(crate) fn store_config(app: &AppHandle, config: &PlayConfig) -> Result<(), String> {
     let path = config_path(app)?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -794,7 +794,7 @@ fn info(r: &Resolved) -> EmulatorInfo {
     }
 }
 
-fn state_of(config: PlayConfig) -> EmulatorsState {
+pub(crate) fn state_of(config: PlayConfig) -> EmulatorsState {
     let env = Env::system(&config.search_dirs);
     let emulators = EmulatorId::ALL.iter().map(|&id| info(&resolve(id, &config, &env))).collect();
     EmulatorsState { emulators, config }

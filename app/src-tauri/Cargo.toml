@@ -16,3 +16,4 @@ serde.workspace = true
 serde_json.workspace = true
 kaleido-core.workspace = true
 ureq = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }

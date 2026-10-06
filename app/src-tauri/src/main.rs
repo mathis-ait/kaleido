@@ -19,6 +19,7 @@ mod battle;
 mod emusaves;
 mod gifts;
 mod legality;
+mod library;
 mod nuzlocke;
 mod play;
 mod saves;
@@ -276,6 +277,10 @@ fn main() {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
         })
+        .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(library::handle_cover(&app, &request)));
+        })
         .invoke_handler(tauri::generate_handler![
             detect_file,
             expand_paths,
@@ -329,6 +334,11 @@ fn main() {
             play::watch_save,
             play::unwatch_save,
             play::watch_save_resync,
+            library::library_config,
+            library::library_set_config,
+            library::library_scan,
+            library::emulator_download_info,
+            library::emulator_install,
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
             nuzlocke::nuzlocke_link_rom,

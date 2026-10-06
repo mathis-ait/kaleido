@@ -1,4 +1,4 @@
-export type ViewId = "home" | "randomizer" | "editor" | "saves" | "settings";
+export type ViewId = "home" | "library" | "randomizer" | "editor" | "saves" | "settings";
 
 // Miroir des types sérialisés par `kaleido_core::detect`.
 

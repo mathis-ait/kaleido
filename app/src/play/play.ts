@@ -88,12 +88,12 @@ export const emus = reactive({
   error: null as string | null,
 });
 
-interface EmulatorsState {
+export interface EmulatorsState {
   emulators: EmulatorInfo[];
   config: PlayConfig;
 }
 
-function applyState(s: EmulatorsState) {
+export function applyState(s: EmulatorsState) {
   emus.list = s.emulators;
   emus.config = s.config;
   emus.loaded = true;
@@ -130,6 +130,60 @@ export function defaultEmulator(platform: PlayPlatform): EmulatorInfo | null {
   const list = available(platform);
   const preferred = platform === "nds" ? emus.config.preferredNds : emus.config.preferredCtr;
   return list.find((e) => e.id === preferred) ?? list[0] ?? null;
+}
+
+// --- Installation d'un émulateur
+
+export interface EmulatorDownload {
+  id: EmulatorId;
+  name: string;
+  version: string;
+  file: string;
+  size: number;
+  page: string;
+}
+
+/** Émulateur installé quand on veut jouer sans en avoir. */
+export const RECOMMENDED: Record<PlayPlatform, EmulatorId> = { nds: "melonds", "3ds": "azahar" };
+/** Émulateurs que Kaleido sait télécharger et installer. */
+export const INSTALLABLE: EmulatorId[] = ["melonds", "azahar", "desmume"];
+
+export interface InstallProgress {
+  step: "info" | "download" | "extract";
+  done: number;
+  total: number;
+}
+
+/** Installations en cours. */
+export const installs = reactive<Partial<Record<EmulatorId, InstallProgress>>>({});
+
+listen<InstallProgress & { id: EmulatorId }>("emulator-install", (e) => {
+  const { id, ...progress } = e.payload;
+  if (installs[id]) installs[id] = progress;
+}).catch(() => undefined);
+
+export const formatMo = (bytes: number) => `${Math.max(1, Math.round(bytes / 1048576))} Mo`;
+
+/** Propose puis installe un émulateur (dernière version officielle). Renvoie true s'il est installé. */
+export async function installEmulator(id: EmulatorId, reason?: string): Promise<boolean> {
+  if (installs[id]) return false;
+  installs[id] = { step: "info", done: 0, total: 0 };
+  try {
+    const info = await invoke<EmulatorDownload>("emulator_download_info", { id });
+    const ok = await ask(
+      `${reason ? reason + "\n\n" : ""}Kaleido peut télécharger ${info.name} ${info.version} (${formatMo(info.size)}) depuis sa page officielle sur GitHub et l'installer dans son propre dossier. Rien d'autre n'est modifié sur ton PC.`,
+      { title: `Installer ${info.name}`, okLabel: "Télécharger et installer", cancelLabel: "Annuler" },
+    );
+    if (!ok) return false;
+    installs[id] = { step: "download", done: 0, total: info.size };
+    applyState(await invoke<EmulatorsState>("emulator_install", { id }));
+    return true;
+  } catch (e) {
+    await message(String(e), { title: "Installation impossible", kind: "error" });
+    return false;
+  } finally {
+    delete installs[id];
+  }
 }
 
 // --- Guide de première utilisation
@@ -375,7 +429,13 @@ export async function play(o: PlayOptions): Promise<PlayResult | null> {
     showGuide(() => play(o));
     return null;
   }
-  const emu = o.emulator ? emus.list.find((e) => e.id === o.emulator && e.exe) : defaultEmulator(o.platform);
+  let emu = o.emulator ? emus.list.find((e) => e.id === o.emulator && e.exe) : defaultEmulator(o.platform);
+  if (!emu && !o.emulator) {
+    // Aucun émulateur pour cette console : on propose d'installer le recommandé.
+    const id = RECOMMENDED[o.platform];
+    if (!(await installEmulator(id, `Aucun émulateur ${o.platform === "nds" ? "DS" : "3DS"} n'a été trouvé sur ce PC.`))) return null;
+    emu = defaultEmulator(o.platform);
+  }
   if (!emu) {
     showGuide(null);
     return null;

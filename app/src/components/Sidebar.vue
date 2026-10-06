@@ -9,7 +9,8 @@ const view = defineModel<ViewId>({ required: true });
 
 // Icônes en traits fins, 24×24.
 const items: { id: ViewId; label: string; icon: string }[] = [
-  { id: "home", label: "Bibliothèque", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" },
+  { id: "home", label: "Fichiers", icon: "M6 3h8l5 5v13H6zM14 3v5h5" },
+  { id: "library", label: "Bibliothèque", icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" },
   { id: "randomizer", label: "Randomizer", icon: "M4 7h3l10 10h3M4 17h3l3-3M14 10l3-3h3M18 4l3 3-3 3M18 14l3 3-3 3" },
   { id: "editor", label: "Éditeur de ROM", icon: "M5 19h4L19 9l-4-4L5 15zM13 7l4 4" },
   { id: "saves", label: "Sauvegardes", icon: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" },
