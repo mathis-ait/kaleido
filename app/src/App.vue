@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import Sidebar from "./components/Sidebar.vue";
 import DropOverlay from "./components/DropOverlay.vue";
@@ -11,8 +11,10 @@ import SavesView from "./views/SavesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { addPaths } from "./library";
 import { nav } from "./nav";
+import { allGames, libraryUi } from "./games";
 
 const dragging = ref(false);
+const launcher = computed(() => nav.view === "library" && libraryUi.mode === "launcher" && allGames.value.length > 0);
 
 // Déposer un fichier fonctionne partout dans la fenêtre, quelle que soit la vue.
 let unlisten: (() => void) | undefined;
@@ -34,9 +36,9 @@ onUnmounted(() => unlisten?.());
 </script>
 
 <template>
-  <div class="shell" :class="{ compact: nav.view === 'saves' }">
-    <Sidebar v-model="nav.view" :compact="nav.view === 'saves'" />
-    <main class="content" :class="{ flush: nav.view === 'saves' }">
+  <div class="shell" :class="{ compact: nav.view === 'saves', immersive: launcher && libraryUi.immersive }">
+    <Sidebar v-if="!(launcher && libraryUi.immersive)" v-model="nav.view" :compact="nav.view === 'saves'" />
+    <main class="content" :class="{ flush: nav.view === 'saves' || launcher }">
       <Transition name="view" mode="out-in">
         <HomeView v-if="nav.view === 'home'" key="home" />
         <LibraryView v-else-if="nav.view === 'library'" key="library" />
@@ -56,6 +58,10 @@ onUnmounted(() => unlisten?.());
   grid-template-columns: 248px 1fr;
   height: 100%;
   transition: grid-template-columns 0.2s ease;
+}
+
+.shell.immersive {
+  grid-template-columns: 1fr;
 }
 
 .shell.compact {

@@ -87,3 +87,33 @@ watch(
     if (fresh.length) await addFiles(fresh, false);
   },
 );
+
+// --- Affichage de la bibliothèque
+
+const UI_KEY = "kaleido.library.mode";
+
+function readMode(): "launcher" | "grid" {
+  try {
+    return localStorage.getItem(UI_KEY) === "grid" ? "grid" : "launcher";
+  } catch {
+    return "launcher";
+  }
+}
+
+/** Mode d'affichage (lanceur ou grille), plein écran, jeu sélectionné dans le lanceur. */
+export const libraryUi = reactive({
+  mode: readMode(),
+  immersive: false,
+  selected: null as string | null,
+});
+
+watch(
+  () => libraryUi.mode,
+  (mode) => {
+    try {
+      localStorage.setItem(UI_KEY, mode);
+    } catch {
+      /* stockage indisponible */
+    }
+  },
+);

@@ -1,0 +1,60 @@
+import { onMounted, onUnmounted, ref } from "vue";
+
+/** Actions du lanceur, au clavier comme à la manette. */
+export type PadAction = "left" | "right" | "up" | "down" | "accept" | "back" | "prevTab" | "nextTab" | "menu";
+
+/**
+ * Manette (API Gamepad, disposition « standard ») : croix et stick gauche pour
+ * naviguer, A pour valider, B pour revenir, LB / RB pour changer d'onglet,
+ * Start pour le menu. Répétition automatique quand on garde une direction.
+ */
+export function useGamepad(onAction: (a: PadAction) => void) {
+  const connected = ref(false);
+  let frame = 0;
+  const held = new Map<PadAction, number>();
+
+  const BUTTONS: [number, PadAction][] = [
+    [0, "accept"],
+    [1, "back"],
+    [4, "prevTab"],
+    [5, "nextTab"],
+    [9, "menu"],
+    [12, "up"],
+    [13, "down"],
+    [14, "left"],
+    [15, "right"],
+  ];
+
+  function poll(now: number) {
+    const pads = navigator.getGamepads?.() ?? [];
+    const pad = pads.find((p) => p && p.connected) ?? null;
+    connected.value = !!pad;
+    if (pad) {
+      const active = new Set<PadAction>();
+      for (const [i, action] of BUTTONS) if (pad.buttons[i]?.pressed) active.add(action);
+      const [x = 0, y = 0] = pad.axes;
+      if (x < -0.55) active.add("left");
+      if (x > 0.55) active.add("right");
+      if (y < -0.55) active.add("up");
+      if (y > 0.55) active.add("down");
+      for (const action of active) {
+        const since = held.get(action);
+        const repeats = ["left", "right", "up", "down"].includes(action);
+        if (since === undefined) {
+          held.set(action, now);
+          onAction(action);
+        } else if (repeats && now - since > 380) {
+          // Répétition : une action toutes les 110 ms après 380 ms d'appui.
+          held.set(action, now - 380 + 110);
+          onAction(action);
+        }
+      }
+      for (const action of [...held.keys()]) if (!active.has(action)) held.delete(action);
+    }
+    frame = requestAnimationFrame(poll);
+  }
+
+  onMounted(() => (frame = requestAnimationFrame(poll)));
+  onUnmounted(() => cancelAnimationFrame(frame));
+  return { connected };
+}

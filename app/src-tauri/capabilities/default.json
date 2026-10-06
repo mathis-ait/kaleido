@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions de la fenêtre principale",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "opener:default", "opener:allow-reveal-item-in-dir", "opener:allow-open-path"]
+  "permissions": ["core:default", "dialog:default", "opener:default", "opener:allow-reveal-item-in-dir", "opener:allow-open-path", "core:window:allow-set-fullscreen", "core:window:allow-is-fullscreen"]
 }

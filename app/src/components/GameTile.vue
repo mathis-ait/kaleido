@@ -1,26 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { computed, onUnmounted, ref } from "vue";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "./Icon.vue";
 import { openRom } from "../editor";
-import { allGames, hideGame } from "../games";
+import { hideGame } from "../games";
 import { removeItem } from "../library";
-import { nav } from "../nav";
-import { RANDOMIZABLE, isKaleidoRom, type Detection } from "../types";
-import { RECOMMENDED, defaultEmulator, emus, installs, openGameSave, play, type PlayPlatform } from "../play/play";
+import { isKaleidoRom, type Detection } from "../types";
+import { RECOMMENDED, defaultEmulator, emus, installs, type PlayPlatform } from "../play/play";
+import { canRandomize as canRandomizeGame, coverUrl, launchGame, openSaveOf, randomize as randomizeGame } from "../launcher/actions";
+import { audio, previewMusic, stopMusic } from "../launcher/audio";
 
 const props = defineProps<{ game: Detection }>();
 
 const platform = computed<PlayPlatform>(() => (props.game.platform === "3ds" ? "3ds" : "nds"));
 const randomized = computed(() => isKaleidoRom(props.game));
-/** Les boîtes DS existent en français ; les autres langues prennent la boîte européenne. */
-const coverSrc = computed(() => {
-  const id = props.game.game?.id;
-  if (!id) return null;
-  const english = platform.value === "nds" && !props.game.isFrench;
-  return convertFileSrc(`${id}${english ? "-en" : ""}.png`, "cover");
-});
+/** Boîte française en priorité, quelle que soit la langue de la ROM. */
+const coverSrc = computed(() => coverUrl(props.game));
 const coverFailed = ref(false);
 const coverLoaded = ref(false);
 
@@ -35,32 +30,38 @@ const playHint = computed(() => {
   return emulator.value ? `Lancer dans ${emulator.value.name}` : "Aucun émulateur trouvé : Kaleido te propose de l'installer";
 });
 
-/** Un dossier 3DS (mod LayeredFS ou jeu extrait) se joue par-dessus le jeu d'origine. */
-function playOptions() {
-  const d = props.game;
-  if (d.kind !== "ctr_dump") return { platform: platform.value, rom: d.path, modRomfs: null };
-  const modRomfs = /[\\/]romfs$/i.test(d.path) ? d.path : `${d.path}\\romfs`;
-  const base = allGames.value.find((g) => g.kind === "ctr_rom" && g.game?.id === d.game?.id && !isKaleidoRom(g));
-  return { platform: platform.value, rom: base?.path ?? null, modRomfs };
-}
-
 async function launch() {
   busy.value = true;
   status.value = null;
-  const result = await play(playOptions());
+  stopMusic();
+  const emulator = await launchGame(props.game);
   busy.value = false;
-  if (result) status.value = `Lancé dans ${result.emulator}`;
+  if (emulator) status.value = `Lancé dans ${emulator}`;
 }
 
 async function openSave() {
   menuOpen.value = false;
-  status.value = await openGameSave(playOptions());
+  stopMusic();
+  status.value = await openSaveOf(props.game);
 }
 
-function randomize() {
-  nav.randomizerRom = props.game.path;
-  nav.view = "randomizer";
+const randomize = () => randomizeGame(props.game);
+
+// Musique de l'écran titre au survol.
+const hovered = ref(false);
+function enter() {
+  hovered.value = true;
+  previewMusic(props.game, 700);
 }
+function leave() {
+  hovered.value = false;
+  menuOpen.value = false;
+  if (audio.playing === props.game.path || audio.loading === props.game.path) stopMusic();
+  else previewMusic(null);
+}
+onUnmounted(() => {
+  if (hovered.value) stopMusic();
+});
 
 async function remove() {
   menuOpen.value = false;
@@ -68,12 +69,12 @@ async function remove() {
   await hideGame(props.game.path);
 }
 
-const canRandomize = computed(() => !randomized.value && RANDOMIZABLE.includes(props.game.game?.id ?? ""));
+const canRandomize = computed(() => canRandomizeGame(props.game));
 const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
 </script>
 
 <template>
-  <article class="tile" :class="{ randomized }" @mouseleave="menuOpen = false">
+  <article class="tile" :class="{ randomized, singing: audio.playing === game.path }" @mouseenter="enter" @mouseleave="leave">
     <div class="cover" :class="platform">
       <template v-if="coverSrc && !coverFailed">
         <img class="backdrop" :src="coverSrc" alt="" aria-hidden="true" />

@@ -1,10 +1,9 @@
 //! Bibliothèque de jeux : dossiers mémorisés, jaquettes et installation des
 //! émulateurs en un clic.
 //!
-//! - Jaquettes : `cover://localhost/<jeu>[-en].png`, téléchargées une fois depuis
-//!   libretro-thumbnails (dossier `Named_Boxarts`, noms No-Intro) puis gardées dans
-//!   `<données>/covers`. `-en` demande la boîte européenne au lieu de la française
-//!   (jeux DS seulement : les boîtes 3DS européennes sont multilingues).
+//! - Jaquettes : `cover://localhost/<jeu>.png`, boîte française en priorité
+//!   (GameTDB, puis libretro-thumbnails), téléchargée une fois puis gardée dans
+//!   `<données>/covers-fr`.
 //! - Émulateurs : dernière release GitHub officielle (archive Windows .zip),
 //!   décompressée dans `<données locales>/emulators/<nom>`, puis l'exécutable est
 //!   enregistré dans le profil de l'émulateur (voir `play.rs`).
@@ -76,84 +75,175 @@ pub async fn library_scan(config: LibraryConfig) -> Result<Vec<kaleido_core::det
 // ---------------------------------------------------------------------------
 // Jaquettes
 
-const COVERS_URL: &str = "https://raw.githubusercontent.com/libretro-thumbnails";
+const GAMETDB_URL: &str = "https://art.gametdb.com";
+const LIBRETRO_URL: &str = "https://raw.githubusercontent.com/libretro-thumbnails";
 
-/// Nom No-Intro de la boîte : (dépôt, version française, version européenne).
-fn cover_names(game: &str) -> Option<(&'static str, &'static str, &'static str)> {
+/// Sources d'une boîte : GameTDB (plateforme, code produit européen) et noms No-Intro
+/// libretro (dépôt, boîte française, boîte européenne si pas de française).
+struct CoverSources {
+    tdb: (&'static str, &'static str),
+    repo: &'static str,
+    fr: Option<&'static str>,
+    eu: Option<&'static str>,
+}
+
+fn cover_sources(game: &str) -> Option<CoverSources> {
     const DS: &str = "Nintendo_-_Nintendo_DS";
     const CTR: &str = "Nintendo_-_Nintendo_3DS";
+    let ds = |code, fr| CoverSources { tdb: ("ds", code), repo: DS, fr: Some(fr), eu: None };
+    let ctr = |code, eu| CoverSources { tdb: ("3ds", code), repo: CTR, fr: None, eu: Some(eu) };
     Some(match game {
-        "diamond" => (DS, "Pokemon - Version Diamant (France) (Rev 5)", "Pokemon - Diamond Version (Europe) (Rev 5)"),
-        "pearl" => (DS, "Pokemon - Version Perle (France) (Rev 5)", "Pokemon - Pearl Version (Europe) (Rev 5)"),
-        "platinum" => (DS, "Pokemon - Version Platine (France)", "Pokemon - Platinum Version (Europe)"),
-        "heart_gold" => (DS, "Pokemon - Version Or HeartGold (France)", "Pokemon - HeartGold Version (Europe)"),
-        "soul_silver" => (DS, "Pokemon - Version Argent SoulSilver (France)", "Pokemon - SoulSilver Version (Europe)"),
-        "black" => (DS, "Pokemon - Version Noire (France) (NDSi Enhanced)", "Pokemon - Black Version (USA, Europe) (NDSi Enhanced)"),
-        "white" => (DS, "Pokemon - Version Blanche (France) (NDSi Enhanced)", "Pokemon - White Version (USA, Europe) (NDSi Enhanced)"),
-        "black2" => (DS, "Pokemon - Version Noire 2 (France) (NDSi Enhanced)", "Pokemon - Black Version 2 (USA, Europe) (NDSi Enhanced)"),
-        "white2" => (DS, "Pokemon - Version Blanche 2 (France) (NDSi Enhanced)", "Pokemon - White Version 2 (USA, Europe) (NDSi Enhanced)"),
-        "x" => (CTR, "Pokemon X (Europe) (En,Ja,Fr,De,Es,It,Ko)", ""),
-        "y" => (CTR, "Pokemon Y (Europe) (En,Ja,Fr,De,Es,It,Ko)", ""),
-        "omega_ruby" => (CTR, "Pokemon Omega Ruby (Europe) (En,Ja,Fr,De,Es,It,Ko) (Rev 2)", ""),
-        "alpha_sapphire" => (CTR, "Pokemon Alpha Sapphire (Europe) (En,Ja,Fr,De,Es,It,Ko) (Rev 2)", ""),
-        "sun" => (CTR, "Pokemon Sun (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)", ""),
-        "moon" => (CTR, "Pokemon Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)", ""),
-        "ultra_sun" => (CTR, "Pokemon Ultra Sun (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)", ""),
-        "ultra_moon" => (CTR, "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)", ""),
+        "diamond" => ds("ADAF", "Pokemon - Version Diamant (France) (Rev 5)"),
+        "pearl" => ds("APAF", "Pokemon - Version Perle (France) (Rev 5)"),
+        "platinum" => ds("CPUF", "Pokemon - Version Platine (France)"),
+        "heart_gold" => ds("IPKF", "Pokemon - Version Or HeartGold (France)"),
+        "soul_silver" => ds("IPGF", "Pokemon - Version Argent SoulSilver (France)"),
+        "black" => ds("IRBF", "Pokemon - Version Noire (France) (NDSi Enhanced)"),
+        "white" => ds("IRAF", "Pokemon - Version Blanche (France) (NDSi Enhanced)"),
+        "black2" => ds("IREF", "Pokemon - Version Noire 2 (France) (NDSi Enhanced)"),
+        "white2" => ds("IRDF", "Pokemon - Version Blanche 2 (France) (NDSi Enhanced)"),
+        // Pas de boîte française chez GameTDB pour X et Y : la boîte européenne est la même en France.
+        "x" => ctr("EKJP", "Pokemon X (Europe) (En,Ja,Fr,De,Es,It,Ko)"),
+        "y" => ctr("EK2P", "Pokemon Y (Europe) (En,Ja,Fr,De,Es,It,Ko)"),
+        "omega_ruby" => ctr("ECRP", "Pokemon Omega Ruby (Europe) (En,Ja,Fr,De,Es,It,Ko) (Rev 2)"),
+        "alpha_sapphire" => ctr("ECLP", "Pokemon Alpha Sapphire (Europe) (En,Ja,Fr,De,Es,It,Ko) (Rev 2)"),
+        "sun" => ctr("BNDP", "Pokemon Sun (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)"),
+        "moon" => ctr("BNEP", "Pokemon Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)"),
+        "ultra_sun" => ctr("A2AP", "Pokemon Ultra Sun (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)"),
+        "ultra_moon" => ctr("A2BP", "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)"),
         _ => return None,
     })
 }
 
-/// Adresse de la jaquette pour `<jeu>` ou `<jeu>-en`.
-pub fn cover_url(key: &str) -> Option<String> {
-    let (game, english) = match key.strip_suffix("-en") {
-        Some(g) => (g, true),
-        None => (key, false),
-    };
-    let (repo, fr, en) = cover_names(game)?;
-    let name = if english && !en.is_empty() { en } else { fr };
+fn libretro_url(repo: &str, name: &str) -> String {
     // Les noms No-Intro ne contiennent que des lettres, chiffres, espaces, virgules et parenthèses.
     let encoded = name.replace(' ', "%20").replace(',', "%2C").replace('(', "%28").replace(')', "%29");
-    Some(format!("{COVERS_URL}/{repo}/master/Named_Boxarts/{encoded}.png"))
+    format!("{LIBRETRO_URL}/{repo}/master/Named_Boxarts/{encoded}.png")
+}
+
+/// Adresses à essayer, de la meilleure à la moins bonne. La boîte française passe
+/// toujours en premier, quelle que soit la langue de la ROM : GameTDB en haute
+/// définition (768×680), libretro, GameTDB en taille moyenne (400×352), puis la
+/// boîte européenne.
+pub fn cover_urls(game: &str) -> Vec<String> {
+    let Some(s) = cover_sources(game) else { return Vec::new() };
+    let (platform, code) = s.tdb;
+    let mut urls = vec![format!("{GAMETDB_URL}/{platform}/coverHQ/FR/{code}.jpg")];
+    urls.extend(s.fr.map(|n| libretro_url(s.repo, n)));
+    urls.push(format!("{GAMETDB_URL}/{platform}/coverM/FR/{code}.jpg"));
+    urls.extend(s.eu.map(|n| libretro_url(s.repo, n)));
+    urls
 }
 
 fn covers_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("covers");
+    // `covers-fr` : l'ancien cache (`covers`) pouvait contenir des boîtes anglaises.
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("covers-fr");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
-fn load_cover(dir: &Path, key: &str) -> Result<Vec<u8>, String> {
-    let url = cover_url(key).ok_or("jeu inconnu")?;
-    let file = dir.join(format!("{key}.png"));
-    if let Ok(data) = fs::read(&file) {
-        return Ok(data);
-    }
-    let missing = dir.join(format!("{key}.missing"));
-    if missing.exists() {
-        return Err("pas de jaquette".into());
-    }
-    match crate::sprites::fetch(&url)? {
-        Some(data) if data.starts_with(b"\x89PNG") => {
-            let _ = fs::write(&file, &data);
-            Ok(data)
-        }
-        _ => {
-            let _ = fs::write(&missing, b"");
-            Err("pas de jaquette".into())
-        }
+fn image_type(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(b"\x89PNG") {
+        Some("image/png")
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else {
+        None
     }
 }
 
-/// Protocole `cover://` (voir l'en-tête du module).
+fn load_cover(dir: &Path, game: &str) -> Result<Vec<u8>, String> {
+    let file = dir.join(format!("{game}.img"));
+    if let Ok(data) = fs::read(&file) {
+        return Ok(data);
+    }
+    let missing = dir.join(format!("{game}.missing"));
+    if missing.exists() {
+        return Err("pas de jaquette".into());
+    }
+    let urls = cover_urls(game);
+    if urls.is_empty() {
+        return Err("jeu inconnu".into());
+    }
+    let mut offline = None;
+    for url in urls {
+        match crate::sprites::fetch(&url) {
+            Ok(Some(data)) if image_type(&data).is_some() => {
+                let _ = fs::write(&file, &data);
+                return Ok(data);
+            }
+            Ok(_) => {}
+            Err(e) => offline = Some(e),
+        }
+    }
+    // Hors ligne : on réessaiera la prochaine fois ; sinon, aucune source n'a d'image.
+    if let Some(e) = offline {
+        return Err(e);
+    }
+    let _ = fs::write(&missing, b"");
+    Err("pas de jaquette".into())
+}
+
+/// Protocole `cover://localhost/<jeu>.png` (voir l'en-tête du module).
 pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-    let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png").to_string();
-    let valid = !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
-    let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &key)) } else { Err("nom invalide".into()) };
+    let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png");
+    // Ancien format `<jeu>-en` : la boîte française est désormais toujours servie.
+    let game = key.strip_suffix("-en").unwrap_or(key).to_string();
+    let valid = !game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &game)) } else { Err("nom invalide".into()) };
     match result {
-        Ok(data) => Response::builder().header("Content-Type", "image/png").header("Cache-Control", "max-age=31536000, immutable").body(data).unwrap(),
+        Ok(data) => Response::builder()
+            .header("Content-Type", image_type(&data).unwrap_or("application/octet-stream"))
+            .header("Cache-Control", "max-age=31536000, immutable")
+            // Lecture des pixels (couleur dominante) depuis un <canvas>.
+            .header("Access-Control-Allow-Origin", "*")
+            .body(data)
+            .unwrap(),
         Err(e) => Response::builder().status(StatusCode::NOT_FOUND).header("Content-Type", "text/plain; charset=utf-8").body(e.into_bytes()).unwrap(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Musique de l'écran titre
+
+/// Durée de l'extrait joué dans le lanceur (il boucle).
+const MUSIC_SECONDS: f32 = 50.0;
+
+fn game_from_id(id: &str) -> Option<kaleido_core::games::Game> {
+    kaleido_core::games::Game::ALL.into_iter().find(|g| serde_json::to_value(g).ok().and_then(|v| v.as_str().map(|s| s == id)).unwrap_or(false))
+}
+
+/// Clé de cache : chemin, taille et date de modification de la ROM.
+fn music_key(path: &Path) -> Option<String> {
+    let meta = fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    // FNV-1a 64 bits.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in path.to_string_lossy().bytes().chain(meta.len().to_le_bytes()).chain(modified.to_le_bytes()) {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    Some(format!("{hash:016x}"))
+}
+
+/// Thème de l'écran titre d'une ROM, en WAV (rendu une fois puis gardé en cache).
+#[tauri::command]
+pub async fn music_title_theme(path: PathBuf, game: String, app: AppHandle) -> Result<tauri::ipc::Response, String> {
+    crate::blocking(move || {
+        let game = game_from_id(&game).ok_or("jeu inconnu")?;
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("music");
+        let key = music_key(&path).ok_or("ROM introuvable")?;
+        let cached = dir.join(format!("{key}.wav"));
+        if let Ok(data) = fs::read(&cached) {
+            return Ok(tauri::ipc::Response::new(data));
+        }
+        let wav = kaleido_core::music::title_theme(&path, game, MUSIC_SECONDS).map_err(|e| e.to_string())?.to_wav();
+        if fs::create_dir_all(&dir).is_ok() {
+            let _ = fs::write(&cached, &wav);
+        }
+        Ok(tauri::ipc::Response::new(wav))
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -339,15 +429,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cover_urls() {
+    fn french_covers_first() {
         assert_eq!(
-            cover_url("platinum").unwrap(),
-            "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_DS/master/Named_Boxarts/Pokemon%20-%20Version%20Platine%20%28France%29.png"
+            cover_urls("platinum"),
+            [
+                "https://art.gametdb.com/ds/coverHQ/FR/CPUF.jpg",
+                "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_DS/master/Named_Boxarts/Pokemon%20-%20Version%20Platine%20%28France%29.png",
+                "https://art.gametdb.com/ds/coverM/FR/CPUF.jpg",
+            ]
         );
-        assert!(cover_url("black2-en").unwrap().contains("Black%20Version%202%20%28USA%2C%20Europe%29"));
-        // Pas de boîte « anglaise » séparée en 3DS.
-        assert_eq!(cover_url("x-en"), cover_url("x"));
-        assert!(cover_url("emerald").is_none());
+        let x = cover_urls("x");
+        assert!(x[0].ends_with("/3ds/coverHQ/FR/EKJP.jpg"));
+        assert!(x.last().unwrap().contains("Pokemon%20X%20%28Europe%29"));
+        assert!(cover_urls("emerald").is_empty());
     }
 
     #[test]

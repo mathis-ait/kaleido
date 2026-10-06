@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import GameTile from "../components/GameTile.vue";
+import Launcher from "../launcher/Launcher.vue";
+import { audio } from "../launcher/audio";
 import Icon from "../components/Icon.vue";
 import Segmented from "../components/Segmented.vue";
-import { addFiles, addFolder, allGames, games, loadGames, removeFolder, rescan } from "../games";
+import { addFiles, addFolder, allGames, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { nav } from "../nav";
 import { RECOMMENDED, available, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
 
@@ -39,6 +41,11 @@ async function pickFiles() {
   if (picked) await addFiles(Array.isArray(picked) ? picked : [picked]);
 }
 
+/** Ordre du lanceur : par génération puis par titre. */
+const sorted = computed(() =>
+  [...allGames.value].sort((a, b) => (a.generation ?? 0) - (b.generation ?? 0) || a.title.localeCompare(b.title, "fr")),
+);
+
 const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
 // --- Émulateurs
@@ -66,7 +73,8 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
 </script>
 
 <template>
-  <section class="library">
+  <Launcher v-if="libraryUi.mode === 'launcher' && sorted.length" :games="sorted" />
+  <section v-else class="library">
     <header>
       <div>
         <h1>Bibliothèque</h1>
@@ -76,6 +84,8 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
         <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier</button>
         <button class="btn" @click="pickFiles"><Icon name="plus" :size="16" /> Ajouter des jeux</button>
         <button class="btn" :disabled="games.scanning" title="Relire les dossiers" @click="rescan"><Icon name="refresh" :size="16" /></button>
+        <button class="btn" :title="audio.music ? 'Couper la musique au survol' : 'Musique au survol'" @click="audio.music = !audio.music">{{ audio.music ? "♪ Musique" : "♪ Coupée" }}</button>
+        <button v-if="allGames.length" class="btn btn-primary" @click="libraryUi.mode = 'launcher'"><Icon name="play" :size="15" /> Mode lanceur</button>
       </div>
     </header>
 
