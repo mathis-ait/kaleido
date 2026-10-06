@@ -157,6 +157,20 @@ fn unsupported() -> RomError {
     RomError::Unsupported("le randomizer 3DS prend en charge X, Y, Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil et Ultra-Lune".into())
 }
 
+/// Capacités Z (Gen 7) : jamais apprises par niveau.
+pub(crate) use super::ctr_gen7::is_z_move;
+
+/// Plus grand identifiant de talent du jeu (3DS).
+pub(crate) fn max_ability(game: Game) -> u16 {
+    if super::ctr_gen7::supports(game) {
+        super::ctr_gen7::max_ability(game)
+    } else if ctr_xy::is_xy(game) {
+        ctr_xy::MAX_ABILITY
+    } else {
+        ORAS_MAX_ABILITY
+    }
+}
+
 /// Starters d'origine du jeu.
 fn original_starters(game: Game) -> [u16; 3] {
     if ctr_xy::is_xy(game) {
@@ -167,7 +181,7 @@ fn original_starters(game: Game) -> [u16; 3] {
 }
 
 /// Entrées d'une archive GARC (première sous-entrée de chacune).
-pub(super) fn entries(garc: &Garc) -> Vec<Vec<u8>> {
+pub(crate) fn entries(garc: &Garc) -> Vec<Vec<u8>> {
     (0..garc.len()).map(|i| garc.file(i).map(<[u8]>::to_vec).unwrap_or_default()).collect()
 }
 
@@ -183,7 +197,7 @@ fn load(game: &CtrGameRom, settings: &Settings) -> Result<(Ctx, Garc), RomError>
         personal: entries(&personal),
         evolutions: &evolutions,
         learnsets: &learnsets,
-        max_ability: if ctr_xy::is_xy(game.game) { ctr_xy::MAX_ABILITY } else { ORAS_MAX_ABILITY },
+        max_ability: max_ability(game.game),
     };
     Ok((Ctx::new(src, settings)?, personal))
 }
@@ -383,7 +397,7 @@ pub(super) fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Resu
 
 /// Reconstruit la ROM avec les fichiers modifiés, puis relit chacun d'eux dans
 /// l'image écrite. En cas d'échec, le fichier incomplet est supprimé.
-pub(super) fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
+pub(crate) fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
     use kaleido_formats::romfs::RomFsSource;
     let refs: Vec<(&str, &[u8])> = files.iter().map(|(p, d)| (p.as_str(), d.as_slice())).collect();
     let result = kaleido_formats::ctr_build::rebuild_image(input, dest, &refs).map_err(RomError::from).and_then(|report| {
@@ -402,7 +416,7 @@ pub(super) fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]
 }
 
 /// Écrit les fichiers sous `<out>/luma/titles/<TID>/romfs` ou `<out>/<TID>/romfs`.
-pub(super) fn write(out_dir: &Path, title_id: u64, target: LayeredFsTarget, files: &[(String, Vec<u8>)]) -> Result<PathBuf, RomError> {
+pub(crate) fn write(out_dir: &Path, title_id: u64, target: LayeredFsTarget, files: &[(String, Vec<u8>)]) -> Result<PathBuf, RomError> {
     let tid = format!("{title_id:016X}");
     let romfs = match target {
         LayeredFsTarget::Luma => out_dir.join("luma").join("titles").join(&tid).join("romfs"),
