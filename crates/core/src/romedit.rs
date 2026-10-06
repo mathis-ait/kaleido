@@ -241,7 +241,11 @@ mod tests {
     /// Relit une ROM modifiée : seule l'espèce éditée change, les autres sont intactes.
     #[test]
     fn edit_real_roms() {
-        for name in ["Pokemon - Platinum Version (Europe).nds", "Pokemon - Version Blanche (France) (NDSi Enhanced).nds"] {
+        for name in [
+            "Pokemon - Version Diamant (France) (Rev 5).nds",
+            "Pokemon - Platinum Version (Europe).nds",
+            "Pokemon - Version Blanche (France) (NDSi Enhanced).nds",
+        ] {
             let Some(mut game) = rom(name) else {
                 eprintln!("ROM absente, test ignoré : {name}");
                 continue;

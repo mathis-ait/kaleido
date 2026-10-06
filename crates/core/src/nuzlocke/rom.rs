@@ -216,7 +216,7 @@ fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> R
     let rd = |e: &[u8], i: usize| u16::from_le_bytes([e[i], e[i + 1]]);
     let table_ok = |at: usize| {
         arm9.get(at..at + PT_HEADER_SIZE * count).is_some_and(|t| {
-            t.chunks_exact(PT_HEADER_SIZE).all(|e| {
+            t.as_chunks::<PT_HEADER_SIZE>().0.iter().all(|e| {
                 let wild = rd(e, 0x0E);
                 (wild == 0xFFFF || (wild as usize) < enc_count)
                     && (rd(e, 0x12) as usize) < name_count
@@ -245,7 +245,9 @@ fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> R
             .ok_or_else(|| RomError::Layout("table des cartes de Diamant / Perle introuvable".into()))?
     };
     Ok(arm9[at..at + PT_HEADER_SIZE * count]
-        .chunks_exact(PT_HEADER_SIZE)
+        .as_chunks::<PT_HEADER_SIZE>()
+        .0
+        .iter()
         .filter_map(|e| {
             let wild = rd(e, 0x0E);
             (wild != 0xFFFF).then_some((wild, rd(e, 0x12)))
@@ -271,11 +273,12 @@ fn hgss_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec
         _ => return Err(RomError::Unsupported("HeartGold / SoulSilver : version linguistique non reconnue".into())),
     };
     let table = arm9.get(at..at + PT_HEADER_SIZE * count).ok_or_else(|| RomError::Layout("table des cartes hors de l'ARM9".into()))?;
-    let ok = table.chunks_exact(PT_HEADER_SIZE).all(|e| (e[0] == 0xFF || (e[0] as usize) < enc_count) && (e[0x12] as usize) < name_count);
+    let headers = table.as_chunks::<PT_HEADER_SIZE>().0;
+    let ok = headers.iter().all(|e| (e[0] == 0xFF || (e[0] as usize) < enc_count) && (e[0x12] as usize) < name_count);
     if !ok {
         return Err(RomError::Layout("table des cartes de HeartGold / SoulSilver inattendue".into()));
     }
-    Ok(table.chunks_exact(PT_HEADER_SIZE).filter(|e| e[0] != 0xFF).map(|e| (e[0] as u16, e[0x12] as u16)).collect())
+    Ok(headers.iter().filter(|e| e[0] != 0xFF).map(|e| (e[0] as u16, e[0x12] as u16)).collect())
 }
 
 const BW_HEADERS: &str = "a/0/1/2";

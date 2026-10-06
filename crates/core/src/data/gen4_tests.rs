@@ -109,6 +109,9 @@ fn diamond_nuzlocke_and_battle() {
     let built = r.team(246).unwrap();
     assert!(built.iter().all(|c| c.stats[0] > 0 && c.moves.iter().any(|&m| m != 0)));
     assert!(r.trainers.iter().any(|t| t.name == "Cynthia" && t.role == Some(Role::Champion)));
+    // Combats en duo (jumelles : classe 8) lus comme sur Platine (type de combat en 0x10).
+    let doubles: Vec<u16> = r.trainers.iter().filter(|t| t.double).map(|t| t.class_id).collect();
+    assert!(doubles.contains(&8), "{doubles:?}");
 }
 
 /// Randomisation complète de Diamant, puis relecture de la ROM reconstruite.
