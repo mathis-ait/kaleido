@@ -33,6 +33,9 @@ Commandes 3DS (.3ds / .cxi / .cia déchiffrés, ou dossier extrait avec romfs/) 
   hex3ds     <rom> <chemin> [entrée|-] [début] [longueur]   Vidage hexadécimal
   wild3ds    <rom> [entrée]             Rencontres sauvages Gen 6 (toutes les zones ou une seule)
   trainers3ds <rom> [n°]                Dresseurs Gen 6 (équipes)
+  starters3ds <rom>                     Starters (table des dons, Gen 7)
+  wild7      <rom> <zone>               Rencontres d'une zone Gen 7 (jour/nuit, SOS)
+  trainers7  <rom> [filtre]             Dresseurs et équipes Gen 7
 
 Textes (DS : archive NARC ; 3DS : archive GARC, ex. a/0/7/4) :
   text      <rom> <archive> <n°>        Affiche un fichier de texte
@@ -105,6 +108,10 @@ fn main() -> ExitCode {
         ["wild3ds", rom, n] => n.parse().map_err(Into::into).and_then(|n| ctr::wild(rom, Some(n))),
         ["trainers3ds", rom] => ctr::trainers(rom, None),
         ["trainers3ds", rom, n] => n.parse().map_err(Into::into).and_then(|n| ctr::trainers(rom, Some(n))),
+        ["starters3ds", rom] => ctr::gen7_starters(rom),
+        ["wild7", rom, zone] => zone.parse().map_err(Into::into).and_then(|z| ctr::gen7_wild(rom, z)),
+        ["trainers7", rom] => ctr::gen7_trainers(rom, ""),
+        ["trainers7", rom, filter] => ctr::gen7_trainers(rom, filter),
         ["export-names", rom, out] => ctr::export_names(rom, out),
         ["demo-save", out] => kaleido_core::save::demo_save().map_err(Into::into).and_then(|b| std::fs::write(out, b).map_err(Into::into)),
         ["save", path] => std::fs::read(path)

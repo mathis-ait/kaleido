@@ -6,6 +6,7 @@
 //!   taux u32 + 5 × (max u8, min u8, u16, espèce u32).
 //! - Noire/Blanche : 232 octets par saison (1 ou 4 saisons par zone). 8 octets de
 //!   taux, puis 56 emplacements (espèce u16 avec forme en bits 11-15, min u8, max u8).
+//! - Soleil/Lune et Ultra : voir [`alola_tables`] (archive `EA` de tables jour/nuit avec SOS).
 
 use super::{put_u16, u16_at};
 
@@ -26,6 +27,8 @@ pub(crate) enum SlotKind {
     U32,
     /// Espèce u16 avec forme dans les bits hauts (Gen 5).
     U16Form,
+    /// Gen 7 : comme `U16Form`, mais les niveaux min/max sont ceux de la table, à cette position.
+    TableLevels(usize),
 }
 
 /// Lit tous les emplacements non vides d'un fichier de zone (décompressé).
@@ -33,8 +36,9 @@ pub fn read(generation: u8, data: &[u8]) -> Vec<Slot> {
     match generation {
         ..=4 => read_platinum(data),
         5 => read_bw(data),
-        _ if xy_section(data).is_some() => read_xy(data),
-        _ => read_oras(data),
+        6 if xy_section(data).is_some() => read_xy(data),
+        6 => read_oras(data),
+        _ => read_alola(data),
     }
 }
 
@@ -91,6 +95,49 @@ fn read_oras(d: &[u8]) -> Vec<Slot> {
             (species != 0).then_some(Slot { offset: at, species, min_level: d[at + 2], max_level: d[at + 3], kind: SlotKind::U16Form })
         })
         .collect()
+}
+
+/// Taille d'une moitié (jour ou nuit) d'une table de Soleil/Lune.
+pub const ALOLA_HALF: usize = 0x164;
+const ALOLA_TABLE: usize = 4 + 2 * ALOLA_HALF;
+
+/// Soleil/Lune et Ultra (Gen7RomHandler de l'Universal Pokémon Randomizer, vérifié sur Lune
+/// et Ultra-Soleil) : fichier `EA` décompressé (`u16 nombre`, puis `nombre + 1` positions
+/// `u32`), une table par entrée. Chaque table : 4 octets d'en-tête, puis le jour et la nuit
+/// (0x164 octets chacun) : `u8` niveau min, `u8` niveau max, 10 taux (%), puis 8 rangées de
+/// 10 emplacements (`u16` espèce | forme << 11, `u16` libre) — la rangée 0 est la rencontre
+/// normale, les 7 suivantes les appels à l'aide (SOS) — et 6 emplacements de SOS selon la
+/// météo (pluie, grêle, sable) à 0x14C. Renvoie la position de chaque table.
+pub fn alola_tables(d: &[u8]) -> Vec<usize> {
+    if d.len() < 4 || &d[..2] != b"EA" {
+        return Vec::new();
+    }
+    let count = u16_at(d, 2) as usize;
+    let offset = |i: usize| d.get(4 + i * 4..8 + i * 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
+    (0..count)
+        .filter_map(|i| {
+            let (start, end) = (offset(i)?, offset(i + 1)?);
+            (end >= start + ALOLA_TABLE && end <= d.len()).then_some(start)
+        })
+        .collect()
+}
+
+fn read_alola(d: &[u8]) -> Vec<Slot> {
+    let mut slots = Vec::new();
+    for table in alola_tables(d) {
+        for half in 0..2 {
+            let base = table + 4 + half * ALOLA_HALF;
+            let (min, max) = (d[base], d[base + 1]);
+            let positions = (0..80).map(|i| base + 0x0C + i * 4).chain((0..6).map(|i| base + 0x14C + i * 4));
+            for at in positions {
+                let species = u16_at(d, at) & 0x07FF;
+                if species != 0 {
+                    slots.push(Slot { offset: at, species, min_level: min, max_level: max, kind: SlotKind::TableLevels(base) });
+                }
+            }
+        }
+    }
+    slots
 }
 
 fn read_platinum(d: &[u8]) -> Vec<Slot> {
@@ -150,18 +197,24 @@ fn read_bw(d: &[u8]) -> Vec<Slot> {
 pub fn set_species(data: &mut [u8], slot: &Slot, species: u16) {
     match slot.kind {
         SlotKind::U32 => data[slot.offset..slot.offset + 4].copy_from_slice(&(species as u32).to_le_bytes()),
-        SlotKind::U16Form => put_u16(data, slot.offset, species & 0x07FF),
+        SlotKind::U16Form | SlotKind::TableLevels(_) => put_u16(data, slot.offset, species & 0x07FF),
     }
 }
 
 /// Modifie les niveaux d'un emplacement (Gen 5 et eaux de Platine uniquement ;
-/// l'herbe de Platine stocke ses niveaux à part et n'est pas touchée).
+/// l'herbe de Platine stocke ses niveaux à part et n'est pas touchée). En Gen 7, les
+/// niveaux de la table sont recalculés à partir des valeurs d'origine : appliquer la
+/// même échelle à chaque emplacement de la table donne le même résultat.
 pub fn scale_levels(data: &mut [u8], slot: &Slot, factor: f32) {
     let scale = |l: u8| ((l as f32 * factor).round() as u32).clamp(1, 100) as u8;
     match slot.kind {
         SlotKind::U16Form => {
             data[slot.offset + 2] = scale(slot.min_level);
             data[slot.offset + 3] = scale(slot.max_level);
+        }
+        SlotKind::TableLevels(at) => {
+            data[at] = scale(slot.min_level);
+            data[at + 1] = scale(slot.max_level);
         }
         SlotKind::U32 => {
             if slot.offset >= 0xCC {
@@ -206,6 +259,29 @@ mod tests {
         // Une section d'une autre taille est lue comme une zone de Rubis Oméga / Saphir Alpha.
         d[0x14..0x18].copy_from_slice(&(0x18u32 + 0x104).to_le_bytes());
         assert!(xy_section(&d).is_none());
+    }
+
+    #[test]
+    fn alola_table_with_sos() {
+        // Archive `EA` d'une table : Manglouton (734) niv. 2-3 le jour, un SOS Picassaut (731).
+        let mut d = vec![0u8; 0x80 + ALOLA_TABLE];
+        d[..4].copy_from_slice(b"EA\x01\x00");
+        d[4..8].copy_from_slice(&0x80u32.to_le_bytes());
+        d[8..12].copy_from_slice(&((0x80 + ALOLA_TABLE) as u32).to_le_bytes());
+        let day = 0x84;
+        d[day] = 2;
+        d[day + 1] = 3;
+        put_u16(&mut d, day + 0x0C, 734);
+        put_u16(&mut d, day + 0x0C + 40, 731 | (1 << 11));
+        let slots = read(7, &d);
+        assert_eq!(slots.len(), 2);
+        assert_eq!((slots[1].species, slots[1].min_level, slots[1].max_level), (731, 2, 3));
+        set_species(&mut d, &slots[1], 10);
+        for s in &slots {
+            scale_levels(&mut d, s, 2.0);
+        }
+        assert_eq!((d[day], d[day + 1]), (4, 6));
+        assert_eq!(u16_at(&d, day + 0x0C + 40), 10); // forme remise à zéro
     }
 
     #[test]

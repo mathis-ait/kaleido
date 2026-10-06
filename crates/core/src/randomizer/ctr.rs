@@ -10,6 +10,8 @@
 //! et les émulateurs ne vérifient pas ces signatures.
 //!
 //! X / Y : starters, rencontres et dresseurs ont leurs propres formats (`ctr_xy.rs`).
+//! Soleil / Lune et Ultra-Soleil / Ultra-Lune ont leurs propres formats : voir `ctr_gen7`
+//! (même sortie, mêmes réglages ; [`randomize`] et [`preview_starters`] y renvoient).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -47,6 +49,9 @@ fn u16_at(d: &[u8], at: usize) -> Option<u16> {
 pub fn preview_starters(game: &CtrGameRom, settings: &Settings, seed: u64) -> Result<Vec<super::PokemonRef>, RomError> {
     if !supports(game.game) {
         return Err(unsupported());
+    }
+    if super::ctr_gen7::supports(game.game) {
+        return super::ctr_gen7::preview_starters(game, settings, seed);
     }
     let (mut ctx, _) = load(game, settings)?;
     apply_personal(&mut ctx, settings, seed, &mut String::new());
@@ -145,11 +150,11 @@ pub struct CtrWritten {
 }
 
 pub fn supports(game: Game) -> bool {
-    matches!(game, Game::OmegaRuby | Game::AlphaSapphire) || ctr_xy::is_xy(game)
+    matches!(game, Game::OmegaRuby | Game::AlphaSapphire) || ctr_xy::is_xy(game) || super::ctr_gen7::supports(game)
 }
 
 fn unsupported() -> RomError {
-    RomError::Unsupported("le randomizer 3DS prend en charge Rubis Oméga, Saphir Alpha, X et Y pour l'instant".into())
+    RomError::Unsupported("le randomizer 3DS prend en charge X, Y, Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil et Ultra-Lune".into())
 }
 
 /// Starters d'origine du jeu.
@@ -194,6 +199,9 @@ pub fn randomize(
 ) -> Result<(Outcome, CtrWritten), RomError> {
     if !supports(game.game) {
         return Err(unsupported());
+    }
+    if super::ctr_gen7::supports(game.game) {
+        return super::ctr_gen7::randomize(game, settings, seed, out_dir, target);
     }
     let output = settings.ctr_output;
     // Vérifié avant tout calcul : une ROM complète ne se reconstruit qu'à partir d'une image.
@@ -365,7 +373,7 @@ pub fn randomize(
 }
 
 /// `<out_dir>/<nom de la ROM> - Kaleido <seed>.3ds` (`.cxi` si l'entrée n'est pas une CCI).
-fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Result<PathBuf, RomError> {
+pub(super) fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Result<PathBuf, RomError> {
     let mut r = std::io::BufReader::new(std::fs::File::open(input).map_err(kaleido_formats::FormatError::from)?);
     let img = kaleido_formats::ctr::CtrImage::probe(&mut r)?.ok_or_else(|| RomError::Unsupported("ce n'est pas une ROM 3DS".into()))?;
     let stem = input.file_stem().map_or_else(|| "ROM".into(), |s| s.to_string_lossy().into_owned());
@@ -375,7 +383,7 @@ fn image_output_path(input: &Path, out_dir: &Path, seed: u64) -> Result<PathBuf,
 
 /// Reconstruit la ROM avec les fichiers modifiés, puis relit chacun d'eux dans
 /// l'image écrite. En cas d'échec, le fichier incomplet est supprimé.
-fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
+pub(super) fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result<kaleido_formats::ctr_build::RebuildReport, RomError> {
     use kaleido_formats::romfs::RomFsSource;
     let refs: Vec<(&str, &[u8])> = files.iter().map(|(p, d)| (p.as_str(), d.as_slice())).collect();
     let result = kaleido_formats::ctr_build::rebuild_image(input, dest, &refs).map_err(RomError::from).and_then(|report| {
@@ -394,7 +402,7 @@ fn write_image(input: &Path, dest: &Path, files: &[(String, Vec<u8>)]) -> Result
 }
 
 /// Écrit les fichiers sous `<out>/luma/titles/<TID>/romfs` ou `<out>/<TID>/romfs`.
-fn write(out_dir: &Path, title_id: u64, target: LayeredFsTarget, files: &[(String, Vec<u8>)]) -> Result<PathBuf, RomError> {
+pub(super) fn write(out_dir: &Path, title_id: u64, target: LayeredFsTarget, files: &[(String, Vec<u8>)]) -> Result<PathBuf, RomError> {
     let tid = format!("{title_id:016X}");
     let romfs = match target {
         LayeredFsTarget::Luma => out_dir.join("luma").join("titles").join(&tid).join("romfs"),
