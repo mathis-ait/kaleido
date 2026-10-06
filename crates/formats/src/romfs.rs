@@ -88,6 +88,16 @@ impl<R: Read + Seek> RomFsImage<R> {
         let mut r = self.reader.lock().unwrap_or_else(|p| p.into_inner());
         Ok(read_at(&mut *r, self.data_offset + e.offset, len)?)
     }
+
+    /// `len` octets du fichier à partir de `offset`, sans lire le reste.
+    pub fn read_range(&self, path: &str, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let e = self.entry(path).ok_or_else(|| FormatError::NotFound(path.to_string()))?;
+        if offset.checked_add(len as u64).is_none_or(|end| end > e.size) {
+            return Err(FormatError::Invalid("lecture hors du fichier"));
+        }
+        let mut r = self.reader.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(read_at(&mut *r, self.data_offset + e.offset + offset, len)?)
+    }
 }
 
 pub(crate) fn normalize(path: &str) -> &str {
@@ -244,6 +254,30 @@ impl RomFsSource {
             }
         }
     }
+
+    /// Taille d'un fichier.
+    pub fn size(&self, path: &str) -> Option<u64> {
+        match self {
+            Self::Image { romfs, .. } => romfs.entry(path).map(|e| e.size),
+            Self::Dir { files, .. } => files.binary_search_by(|f| f.path.as_str().cmp(normalize(path))).ok().map(|i| files[i].size),
+        }
+    }
+
+    /// `len` octets du fichier `path` à partir de `offset`, sans lire le reste
+    /// (les archives son pèsent plusieurs centaines de Mo).
+    pub fn read_range(&self, path: &str, offset: u64, len: usize) -> Result<Vec<u8>> {
+        match self {
+            Self::Image { romfs, .. } => romfs.read_range(path, offset, len),
+            Self::Dir { root, .. } => {
+                let path = normalize(path);
+                let size = self.size(path).ok_or_else(|| FormatError::NotFound(path.to_string()))?;
+                if offset.checked_add(len as u64).is_none_or(|end| end > size) {
+                    return Err(FormatError::Invalid("lecture hors du fichier"));
+                }
+                Ok(read_at(&mut File::open(root.join(path))?, offset, len)?)
+            }
+        }
+    }
 }
 
 /// Écrit des fichiers modifiés sous forme de LayeredFS (Luma3DS) :
@@ -346,6 +380,8 @@ pub(crate) mod tests {
         assert_eq!(romfs.read("/d/b.bin").unwrap(), b"BB");
         assert_eq!(romfs.read("a.bin").unwrap(), b"AAAA");
         assert!(romfs.read("c.bin").is_err());
+        assert_eq!(romfs.read_range("a.bin", 1, 2).unwrap(), b"AA");
+        assert!(romfs.read_range("a.bin", 3, 2).is_err());
     }
 
     #[test]
@@ -368,6 +404,8 @@ pub(crate) mod tests {
         assert_eq!(src.title_id(), Some(0x0004_0000_0011_C400));
         assert_eq!(src.files().len(), 1);
         assert_eq!(src.read("a/0/1").unwrap(), b"xyz");
+        assert_eq!(src.read_range("a/0/1", 1, 2).unwrap(), b"yz");
+        assert_eq!(src.size("a/0/1"), Some(3));
         assert!(RomFsSource::open(&game.join("romfs")).unwrap().contains("/a/0/1"));
 
         let out = write_layeredfs(&tmp.join("sortie"), 0x0004_0000_0011_C400, &[("a/0/1", b"new")]).unwrap();
