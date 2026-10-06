@@ -35,6 +35,35 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     // Relecture : une zone et un dresseur, depuis les fichiers écrits.
     let names = game.text_file(game.layout.species_names)?;
     let l = game.layout;
+    if game.generation() == 7 {
+        if let Ok(data) = std::fs::read(romfs.join(gen7_gifts(&game))) {
+            let gifts = Garc::parse(&data)?;
+            println!("Starters relus :");
+            print_gen7_gifts(&names, gifts.file(0).unwrap_or_default(), 3);
+        }
+        // Textes de l'écran de choix (fichier 41 en Soleil/Lune, 39 en Ultra) : lignes modifiées.
+        if let Ok(data) = std::fs::read(romfs.join(l.story_text)) {
+            use kaleido_core::text::gen5::{MsgFile, Variant};
+            let n = if gen7_gifts(&game) == "a/1/5/9" { 39 } else { 41 };
+            let lines = |g: &Garc| g.file(n).and_then(|d| MsgFile::parse_with(d, Variant::Gen6).ok()).map(|m| m.strings()).unwrap_or_default();
+            let (before, after) = (lines(&game.garc(l.story_text)?), lines(&Garc::parse(&data)?));
+            for (i, (b, a)) in before.iter().zip(&after).enumerate().filter(|(_, (b, a))| b != a) {
+                println!("  texte {n}.{i} : {b:?} → {a:?}");
+            }
+        }
+        if let Ok(data) = std::fs::read(romfs.join(l.encounters)) {
+            let garc = Garc::parse(&data)?;
+            println!("Zone 0 relue :");
+            print_gen7_area(&names, &lz::decompress(garc.file(9).ok_or("zone 0 absente")?)?);
+        }
+        if let Ok(data) = std::fs::read(romfs.join(l.trainer_pokemon)) {
+            let (d, p) = (game.garc(l.trainer_data)?, Garc::parse(&data)?);
+            for i in [1, 149] {
+                println!("Dresseur {i} relu : {}", gen7_team(&names, d.file(i).unwrap_or_default(), p.file(i).unwrap_or_default()));
+            }
+        }
+        return Ok(());
+    }
     if let Ok(data) = std::fs::read(romfs.join(l.encounters)) {
         let garc = Garc::parse(&data)?;
         let zone = lz::decompress(garc.file(100).ok_or("zone 100 absente")?)?;
@@ -47,6 +76,127 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
         let team = trainers::read_team(6, d.file(561).unwrap_or_default(), p.file(561).unwrap_or_default()).ok_or("dresseur 561 illisible")?;
         let list: Vec<_> = team.pokemon.iter().map(|t| format!("{} niv. {} {:?}", names[t.species as usize], t.level, t.moves)).collect();
         println!("Dresseur 561 relu : {}", list.join(" ; "));
+    }
+    Ok(())
+}
+
+/// Archive des Pokémon offerts en Gen 7 (starters en tête de l'entrée 0).
+fn gen7_gifts(game: &kaleido_core::CtrGameRom) -> &'static str {
+    use kaleido_core::Game;
+    if matches!(game.game, Game::UltraSun | Game::UltraMoon) {
+        "a/1/5/9"
+    } else {
+        "a/1/5/5"
+    }
+}
+
+fn u16_at(d: &[u8], at: usize) -> u16 {
+    d.get(at..at + 2).map_or(0, |b| u16::from_le_bytes([b[0], b[1]]))
+}
+
+fn species_name(names: &[String], raw: u16) -> String {
+    let (s, form) = (raw & 0x7FF, raw >> 11);
+    let name = names.get(s as usize).map_or("?", String::as_str);
+    if form > 0 {
+        format!("{name} (forme {form})")
+    } else {
+        name.to_string()
+    }
+}
+
+/// Dons Gen 7 : 0x14 octets (`u16` espèce, `u8` forme, `u8` niveau).
+fn print_gen7_gifts(names: &[String], gifts: &[u8], count: usize) {
+    for (i, g) in gifts.as_chunks::<0x14>().0.iter().take(count).enumerate() {
+        let form = if g[2] > 0 { format!(" (forme {})", g[2]) } else { String::new() };
+        println!("  don {i:2} : {}{form} niv. {}", names.get(u16_at(g, 0) as usize).map_or("?", String::as_str), g[3]);
+    }
+}
+
+/// Tables d'une zone Gen 7 (archive `EA` décompressée).
+fn print_gen7_area(names: &[String], d: &[u8]) {
+    use kaleido_core::data::encounters::{alola_tables, ALOLA_HALF};
+    for (t, table) in alola_tables(d).into_iter().enumerate() {
+        for (half, label) in ["jour", "nuit"].iter().enumerate() {
+            let base = table + 4 + half * ALOLA_HALF;
+            let row = |r: usize| -> Vec<String> {
+                (0..10)
+                    .filter(|&i| u16_at(d, base + 0x0C + r * 40 + i * 4) != 0)
+                    .map(|i| species_name(names, u16_at(d, base + 0x0C + r * 40 + i * 4)))
+                    .collect()
+            };
+            let normal = row(0);
+            if normal.is_empty() {
+                continue;
+            }
+            let rates: Vec<String> = d[base + 2..base + 12].iter().map(|r| r.to_string()).collect();
+            println!("  table {t} ({label}, niv. {}-{}, taux {}) : {}", d[base], d[base + 1], rates.join("/"), normal.join(", "));
+            let mut sos: Vec<String> = (1..8).flat_map(row).collect();
+            sos.extend((0..6).map(|i| u16_at(d, base + 0x14C + i * 4)).filter(|&s| s != 0).map(|s| format!("{} (météo)", species_name(names, s))));
+            let mut seen = std::collections::HashSet::new();
+            sos.retain(|s| seen.insert(s.clone()));
+            if !sos.is_empty() {
+                println!("    SOS : {}", sos.join(", "));
+            }
+        }
+    }
+}
+
+/// Équipe d'un dresseur Gen 7 (voir `kaleido_core::randomizer` : trdata 0x14, trpoke 0x20).
+fn gen7_team(names: &[String], trdata: &[u8], trpoke: &[u8]) -> String {
+    let count = trdata.get(3).copied().unwrap_or(0) as usize;
+    trpoke
+        .as_chunks::<0x20>()
+        .0
+        .iter()
+        .take(count)
+        .map(|p| {
+            let moves: Vec<String> = (0..4).map(|m| u16_at(p, 0x18 + m * 2)).filter(|&m| m != 0).map(|m| m.to_string()).collect();
+            let item = u16_at(p, 0x14);
+            let mut s = format!("{} niv. {}", species_name(names, u16_at(p, 0x10) | (u16_at(p, 0x12) << 11)), u16_at(p, 0x0E));
+            if item != 0 {
+                s.push_str(&format!(" @{item}"));
+            }
+            if !moves.is_empty() {
+                s.push_str(&format!(" [{}]", moves.join(",")));
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join(" ; ")
+}
+
+pub fn gen7_starters(path: &str) -> CliResult {
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let names = game.text_file(game.layout.species_names)?;
+    let gifts = game.garc(gen7_gifts(&game))?;
+    print_gen7_gifts(&names, gifts.file(0).unwrap_or_default(), usize::MAX);
+    Ok(())
+}
+
+pub fn gen7_wild(path: &str, zone: usize) -> CliResult {
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let names = game.text_file(game.layout.species_names)?;
+    let garc = game.garc(game.layout.encounters)?;
+    let entry = garc.file(9 + 11 * zone).ok_or("zone absente")?;
+    print_gen7_area(&names, &lz::decompress(entry)?);
+    Ok(())
+}
+
+pub fn gen7_trainers(path: &str, filter: &str) -> CliResult {
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let l = game.layout;
+    let names = game.text_file(l.species_names)?;
+    let trainer_names = game.text_file(l.trainer_names)?;
+    let classes = game.text_file(l.trainer_classes)?;
+    let (d, p) = (game.garc(l.trainer_data)?, game.garc(l.trainer_pokemon)?);
+    for i in 1..d.len() {
+        let td = d.file(i).unwrap_or_default();
+        let class = td.first().and_then(|&c| classes.get(c as usize)).map_or("?", String::as_str);
+        let line =
+            format!("{i:4} {class} {} : {}", trainer_names.get(i).map_or("?", String::as_str), gen7_team(&names, td, p.file(i).unwrap_or_default()));
+        if line.contains(filter) {
+            println!("{line}");
+        }
     }
     Ok(())
 }

@@ -6,6 +6,7 @@
 //! bouleverse pas les autres parties.
 
 pub mod ctr;
+mod ctr_gen7;
 mod extras;
 pub mod items;
 pub mod moves;
@@ -32,10 +33,15 @@ use crate::rom::{GameRom, RomError};
 const LEGENDARIES: &[u16] = &[
     144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 480, 481, 482, 483, 484, 485, 486, 487,
     488, 489, 490, 491, 492, 493, 494, 638, 639, 640, 641, 642, 643, 644, 645, 646, 647, 648, 649, 716, 717, 718, 719, 720, 721,
+    // Gen 7 (liste de l'Universal Pokémon Randomizer, sans les Ultra-Chimères) : Type:0,
+    // Silvallié, Tokos, Cosmog et ses évolutions, Necrozma, Magearna, Marshadow, Zeraora.
+    772, 773, 785, 786, 787, 788, 789, 790, 791, 792, 800, 801, 802, 807,
 ];
 
-/// Talents jamais attribués au hasard : Garde Mystik, Multitype, Illusion, Mode Transe.
-const BANNED_ABILITIES: &[u16] = &[25, 121, 149, 161];
+/// Talents jamais attribués au hasard : Garde Mystik, Multitype, Illusion, Mode Transe,
+/// et les talents de changement de forme de la Gen 7 (Bouclier-Carcan, Banc, Fantômasque,
+/// Synergie, Rassemblement, Système Alpha).
+const BANNED_ABILITIES: &[u16] = &[25, 121, 149, 161, 197, 208, 209, 210, 211, 225];
 
 /// Munja (1 PV) : ses statistiques ne sont jamais modifiées.
 const SHEDINJA: u16 = 292;

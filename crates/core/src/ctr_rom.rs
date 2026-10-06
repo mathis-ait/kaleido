@@ -22,6 +22,10 @@
 //!   entrée (`u16` espèce @0, `u8` forme @4, `u8` niveau @5, `u16` objet @0xC) ;
 //!   les trois premières sont Arcko, Poussifeu et Gobou. L'écran de choix
 //!   (`DllPoke3Select.cro` @0x9FFC, pas de 0x54) contient aussi les trois espèces.
+//!
+//! Formats Gen 7 (Soleil/Lune, Ultra), relevés sur Lune et Ultra-Soleil (Europe) : voir
+//! `randomizer::ctr_gen7` (fiches 0x54, évolutions 8 × 8 octets, dons, rencontres `EA`,
+//! dresseurs 0x14 + 0x20 octets par Pokémon).
 
 use std::path::Path;
 
@@ -113,7 +117,9 @@ impl CtrLayout {
                 species_count: 721,
                 verified: false,
             },
-            // D'après pk3DS / pkNX (non vérifié).
+            // D'après l'Universal Pokémon Randomizer (gen7_offsets.ini), vérifié sur Lune et
+            // Ultra-Soleil (Europe) : voir `kaleido species3ds` / `randomize3ds` et les tests de
+            // `randomizer::ctr_gen7`. Soleil / Ultra-Lune ne diffèrent que par l'archive des rencontres.
             Sun | Moon | UltraSun | UltraMoon => {
                 let ultra = matches!(game, UltraSun | UltraMoon);
                 CtrLayout {
@@ -124,17 +130,18 @@ impl CtrLayout {
                     move_names: if ultra { 118 } else { 113 },
                     item_names: if ultra { 40 } else { 36 },
                     type_names: if ultra { 112 } else { 107 },
-                    trainer_names: if ultra { 107 } else { 101 },
-                    trainer_classes: if ultra { 112 } else { 106 },
+                    trainer_names: if ultra { 110 } else { 105 },
+                    trainer_classes: if ultra { 111 } else { 106 },
                     personal: "a/0/1/7",
                     levelup: "a/0/1/3",
                     evolution: "a/0/1/4",
                     egg_moves: "a/0/1/2",
-                    encounters: "a/0/8/2",
-                    trainer_data: "a/1/0/6",
-                    trainer_pokemon: "a/1/0/7",
+                    // L'archive de l'autre version est vide (0 octet) dans le RomFS.
+                    encounters: if matches!(game, Sun | UltraSun) { "a/0/8/2" } else { "a/0/8/3" },
+                    trainer_data: if ultra { "a/1/0/6" } else { "a/1/0/5" },
+                    trainer_pokemon: if ultra { "a/1/0/7" } else { "a/1/0/6" },
                     species_count: if ultra { 807 } else { 802 },
-                    verified: false,
+                    verified: true,
                 }
             }
             _ => return None,

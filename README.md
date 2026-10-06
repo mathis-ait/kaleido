@@ -53,12 +53,15 @@ Tout est en français, avec des bulles « i » qui expliquent chaque terme techn
 |---|---|---|
 | Randomizer → ROM `.nds` | Platine, Noire, Blanche | ✓ |
 | Randomizer → mod LayeredFS ou `.3ds` reconstruit | Rubis Oméga, Saphir Alpha | ✓ (starters inchangés) |
+| Randomizer → mod LayeredFS ou `.3ds` reconstruit | Soleil, Lune, Ultra-Soleil, Ultra-Lune | ✓ (vérifié sur Lune et Ultra-Soleil) |
 | Éditeur de ROM | Platine, Noire, Blanche | ✓ (autres jeux : Pokédex en lecture seule) |
 | Éditeur de sauvegardes | Gen 4 à 7 (DPPt, HGSS, NB, N2B2, XY, ROSA, SL, USUL) | ✓ |
 | Switch | Let's Go, Épée / Bouclier, Légendes Arceus | plus tard |
 
-Diamant / Perle, HGSS, Noire 2 / Blanche 2, X / Y et la Gen 7 utilisent des emplacements de données
+Diamant / Perle, HGSS, Noire 2 / Blanche 2 et X / Y utilisent des emplacements de données
 pas encore vérifiés sur une vraie ROM : ils sont marqués « Non vérifié » dans l'application.
+En Gen 7, les emplacements ont été vérifiés sur Lune et Ultra-Soleil (Soleil et Ultra-Lune ne
+diffèrent que par l'archive des rencontres).
 
 ## Installation
 
@@ -225,6 +228,22 @@ cargo run --release -p kaleido-cli -- check3ds  "rom.3ds"                       
 
 </details>
 
+<details>
+<summary>Emplacements des données vérifiés dans Soleil / Lune et Ultra-Soleil / Ultra-Lune</summary>
+
+| Données | Archive | Format |
+|---|---|---|
+| Textes du jeu (FR) | `a/0/3/3` | S/L : espèces n°55, talents n°96, capacités n°113, objets n°36, types n°107, dresseurs n°105, classes n°106 ; Ultra : n°60, 101, 118, 40, 112, 110, 111 |
+| Textes de l'histoire (FR) | `a/0/4/3` | écran des starters : n°41 (S/L), n°39 (Ultra) |
+| Fiches « personal » | `a/0/1/7` | 0x54 octets ; la dernière entrée est la table complète |
+| Attaques par niveau | `a/0/1/3` | comme ROSA |
+| Évolutions | `a/0/1/4` | 8 × (`u16 méthode, u16 paramètre, u16 espèce, i8 forme, u8 niveau`) |
+| Rencontres sauvages | `a/0/8/2` (Soleil, Ultra-Soleil), `a/0/8/3` (Lune, Ultra-Lune) | entrée `9 + 11 × zone` (LZ11, `EA`) : tables jour/nuit, rangée normale + 7 rangées SOS + SOS météo |
+| Dresseurs | S/L : `a/1/0/5`, `a/1/0/6` ; Ultra : `a/1/0/6`, `a/1/0/7` | 0x14 octets, puis 0x20 octets par Pokémon |
+| Starters | S/L : `a/1/5/5` ; Ultra : `a/1/5/9` (entrée 0) | table des dons, 0x14 octets par entrée |
+
+</details>
+
 ### Feuille de route
 
 - [x] Bibliothèque, détection des fichiers, thèmes
@@ -234,7 +253,8 @@ cargo run --release -p kaleido-cli -- check3ds  "rom.3ds"                       
 - [x] Éditeur de sauvegardes Gen 4 à 7, légalité, Cadeaux mystère, banque, Nuzlocke, combat, équipes Smogon
 - [ ] Éditeur de ROM : dresseurs, rencontres sauvages, évolutions
 - [ ] Préréglages IronMon, patchs de confort (texte rapide, Repousse réutilisable…)
-- [ ] Randomizer HGSS, Noire 2 / Blanche 2, X / Y, Gen 7
+- [x] Randomizer Gen 7 (Soleil, Lune, Ultra-Soleil, Ultra-Lune)
+- [ ] Randomizer HGSS, Noire 2 / Blanche 2, X / Y
 - [ ] Rubans et souvenirs, Gen 1 à 3, Switch
 
 ## Crédits

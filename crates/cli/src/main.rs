@@ -31,6 +31,9 @@ Commandes 3DS (.3ds / .cxi / .cia déchiffrés, ou dossier extrait avec romfs/) 
   check3ds   <rom>                      Reconstruit tous les GARC, vérifie le LZ11
   species3ds <rom>                      Pokédex Gen 6/7
   hex3ds     <rom> <chemin> [entrée|-] [début] [longueur]   Vidage hexadécimal
+  starters3ds <rom>                     Starters (table des dons, Gen 7)
+  wild3ds    <rom> <zone>               Rencontres d'une zone (Gen 7 : jour/nuit, SOS)
+  trainers3ds <rom> [filtre]            Dresseurs et équipes (Gen 7)
 
 Textes (DS : archive NARC ; 3DS : archive GARC, ex. a/0/7/4) :
   text      <rom> <archive> <n°>        Affiche un fichier de texte
@@ -99,6 +102,10 @@ fn main() -> ExitCode {
         ["bytes3ds", rom, pattern] => ctr::search_bytes(&ctr::open(rom), pattern, ""),
         ["bytes3ds", rom, pattern, filter] => ctr::search_bytes(&ctr::open(rom), pattern, filter),
         ["species3ds", rom] => ctr::species(rom),
+        ["starters3ds", rom] => ctr::gen7_starters(rom),
+        ["wild3ds", rom, zone] => zone.parse().map_err(Into::into).and_then(|z| ctr::gen7_wild(rom, z)),
+        ["trainers3ds", rom] => ctr::gen7_trainers(rom, ""),
+        ["trainers3ds", rom, filter] => ctr::gen7_trainers(rom, filter),
         ["export-names", rom, out] => ctr::export_names(rom, out),
         ["demo-save", out] => kaleido_core::save::demo_save().map_err(Into::into).and_then(|b| std::fs::write(out, b).map_err(Into::into)),
         ["save", path] => std::fs::read(path)
