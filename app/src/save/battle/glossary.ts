@@ -12,7 +12,7 @@ export const BATTLE_TIPS: Record<string, GlossaryEntry> = {
   },
   trainerIvs: {
     title: "IV des dresseurs",
-    text: "Chaque Pokémon de dresseur a un niveau de « difficulté » de 0 à 255 : ses six IV valent difficulté × 31 / 255 (0 pour les dresseurs ordinaires, 31 pour les plus forts). Ils n'ont aucun EV.",
+    text: "Chaque Pokémon de dresseur a un niveau de « difficulté » de 0 à 255 : ses six IV valent difficulté × 31 / 255 (0 pour les dresseurs ordinaires, 31 pour les plus forts). Ils n'ont aucun EV. En Soleil / Lune et Ultra, IV et EV sont fixés un à un par le jeu et lus tels quels dans la ROM.",
   },
   trainerMoves: {
     title: "Attaques des dresseurs",
@@ -20,7 +20,7 @@ export const BATTLE_TIPS: Record<string, GlossaryEntry> = {
   },
   trainerNature: {
     title: "Nature des Pokémon adverses",
-    text: "En Platine, la nature vient d'un « PID » que le jeu calcule à partir du numéro du dresseur, de l'espèce, du niveau et de la classe : Kaleido refait le même calcul. En Noir/Blanc et en 3DS, ce calcul n'est pas reproduit : une nature neutre est supposée.",
+    text: "En Platine, la nature vient d'un « PID » que le jeu calcule à partir du numéro du dresseur, de l'espèce, du niveau et de la classe : Kaleido refait le même calcul. En Noir/Blanc, X / Y et Rubis Oméga / Saphir Alpha, ce calcul n'est pas reproduit : une nature neutre est supposée. En Soleil / Lune et Ultra, la nature est écrite dans la ROM : elle est exacte.",
   },
   matrix: {
     title: "Matrice des duels",

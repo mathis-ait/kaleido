@@ -598,3 +598,97 @@ fn pokemon_y_trainers() {
     assert_eq!(team, [(283, 10), (666, 12)]); // Arakdo, Prismillon
     assert_eq!(r.trainer(276).unwrap().team.len(), 6);
 }
+
+/// Pokémon Y : rôles (Kalem rival, Conseil 4, Lysandre) et combats en duo (Jumelles).
+#[test]
+fn pokemon_y_roles_and_doubles() {
+    let Some(path) = rom("Pokemon Y (Europe) (En,Ja,Fr,De,Es,It,Ko).3ds") else {
+        return;
+    };
+    let r = trainers::RomTrainers::open(&path).unwrap();
+    let role = |id: u16| r.trainer(id).unwrap().role;
+    assert_eq!(role(6), Some(trainers::Role::Gym));
+    assert_eq!(role(26), Some(trainers::Role::Gym)); // Urup
+    assert_eq!(role(187), Some(trainers::Role::EliteFour)); // Thyméo
+    assert_eq!(role(276), Some(trainers::Role::Champion));
+    assert_eq!((r.trainer(130).unwrap().name.as_str(), role(130)), ("Kalem", Some(trainers::Role::Rival)));
+    assert_eq!(role(526), Some(trainers::Role::Boss)); // Lysandre
+    assert_eq!(role(175), Some(trainers::Role::Admin)); // Ancolie
+    let twins = r.trainer(88).unwrap();
+    assert_eq!((twins.name.as_str(), twins.double), ("Eva & Lyn", true));
+    assert!(!r.trainer(6).unwrap().double);
+    let first_gym = r.summaries().into_iter().find(|s| s.role == Some(trainers::Role::Gym)).unwrap();
+    assert_eq!(first_gym.name, "Violette");
+}
+
+/// Lune : fiches Gen 7 (nature, IV et EV exacts), Tili, Pectorius, Conseil 4 et Euphorbe.
+#[test]
+fn moon_trainers() {
+    let Some(path) = rom("Pokemon Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko).3ds") else {
+        return;
+    };
+    let r = trainers::RomTrainers::open(&path).unwrap();
+    assert!(r.verified);
+    let hala = r.trainer(23).unwrap();
+    assert_eq!((hala.class_name.as_str(), hala.name.as_str(), hala.role), ("Doyen", "Pectorius", Some(trainers::Role::Gym)));
+    let team: Vec<(u16, u16)> = hala.team.iter().map(|p| (p.species, p.level)).collect();
+    assert_eq!(team, [(56, 14), (296, 14), (739, 15)]); // Férosinge, Makuhita, Crabagarre
+    assert_eq!(hala.exact.len(), 3);
+    let built = r.team(23).unwrap();
+    assert_eq!(built[2].types, vec![FIGHTING]);
+    assert!(built.iter().all(|c| c.notes.is_empty()), "Gen 7 : nature et attaques connues");
+    assert_eq!(built[0].ivs, hala.exact[0].ivs);
+    let hau = r.trainer(6).unwrap();
+    assert_eq!((hau.name.as_str(), hau.role), ("Tili", Some(trainers::Role::Rival)));
+    assert_eq!(r.trainer(52).unwrap().name, "Althéo");
+    for id in [149, 152, 153, 156] {
+        assert_eq!(r.trainer(id).unwrap().role, Some(trainers::Role::EliteFour), "n°{id}");
+    }
+    let kukui = r.trainer(129).unwrap();
+    assert_eq!((kukui.name.as_str(), kukui.role, kukui.team.len()), ("Euphorbe", Some(trainers::Role::Champion), 6));
+    assert_eq!(r.trainer(138).unwrap().role, Some(trainers::Role::Boss)); // Guzma
+    let list = r.summaries();
+    assert_eq!(list[0].role, Some(trainers::Role::Rival));
+    assert_eq!(list.iter().find(|s| s.id == 23).unwrap().role_label, Some("Capitaine / Doyen"));
+}
+
+/// Ultra-Soleil : Tili est le dernier adversaire de la Ligue, Molène au Conseil 4.
+#[test]
+fn ultra_sun_trainers() {
+    let Some(path) = rom("Pokemon Ultra Sun (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko).3ds") else {
+        return;
+    };
+    let r = trainers::RomTrainers::open(&path).unwrap();
+    let ilima = r.trainer(52).unwrap();
+    assert_eq!((ilima.name.as_str(), ilima.role), ("Althéo", Some(trainers::Role::Gym)));
+    assert_eq!(ilima.team.iter().map(|p| p.level).max(), Some(11));
+    let kiawe = r.trainer(504).unwrap();
+    assert_eq!((kiawe.name.as_str(), kiawe.role), ("Kiawe", Some(trainers::Role::Gym)));
+    let hau = r.trainer(494).unwrap();
+    assert_eq!((hau.name.as_str(), hau.role), ("Tili", Some(trainers::Role::Champion)));
+    assert_eq!(r.trainer(489).unwrap().role, Some(trainers::Role::EliteFour)); // Molène
+    assert_eq!(r.trainer(497).unwrap().name, "Paulie");
+    assert_eq!(r.team(497).unwrap().len(), 4);
+}
+
+/// Sauvegarde Soleil / Lune (PKHeX) contre les dresseurs de Lune : de bout en bout.
+#[test]
+fn sun_moon_save_against_hala() {
+    let bytes = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/pkhex/sm_project_802.main")).unwrap();
+    let session = crate::save::session::SaveSession::open(&bytes).unwrap();
+    let game = session.game();
+    let Some(path) = rom("Pokemon Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko).3ds") else {
+        return;
+    };
+    let r = trainers::RomTrainers::open(&path).unwrap();
+    assert_eq!(crate::dex::Game::from(r.game), game);
+    let party = session.view().unwrap().party;
+    let mine: Vec<Combatant> = party.iter().filter_map(|v| party::from_slot(game, v, Some(&r))).collect();
+    assert!(!mine.is_empty());
+    let theirs = r.team(23).unwrap();
+    let side = SideState::default();
+    let m = matrix(game, &mine, &side, &theirs, &side, &Field::default());
+    assert_eq!((m.len(), m[0].len()), (mine.len(), 3));
+    let d = duel(game, &theirs[2], &side, &mine[0], &side, &Field::default());
+    assert!(!d.moves.is_empty());
+}

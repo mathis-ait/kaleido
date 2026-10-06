@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use kaleido_core::nuzlocke::{self, Report, RomInfo, RunState};
-use kaleido_core::GameRom;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -22,7 +21,7 @@ pub struct NuzlockeView {
     pub state: RunState,
     /// Fichier où l'état est enregistré.
     pub state_file: String,
-    /// La sauvegarde ouverte est-elle d'un jeu pris en charge (Gen 4, Noire, Blanche) ?
+    /// La sauvegarde ouverte est-elle d'un jeu pris en charge (Gen 4 à 7) ?
     pub supported: bool,
     pub save_game: String,
     pub report: Option<Report>,
@@ -32,7 +31,10 @@ pub struct NuzlockeView {
 
 fn supported(version: kaleido_core::save::SaveVersion) -> bool {
     use kaleido_core::save::SaveVersion::*;
-    matches!(version, DiamondPearl | Platinum | HeartGoldSoulSilver | BlackWhite | Black2White2)
+    matches!(
+        version,
+        DiamondPearl | Platinum | HeartGoldSoulSilver | BlackWhite | Black2White2 | XY | OmegaRubyAlphaSapphire | SunMoon | UltraSunUltraMoon
+    )
 }
 
 /// Lit la ROM (ou la reprend du cache) hors du fil de l'interface.
@@ -45,9 +47,8 @@ async fn rom_info(app: &AppHandle, path: PathBuf) -> Result<Arc<RomInfo>, String
         if !path.exists() {
             return Err(format!("ROM introuvable : {}", path.display()));
         }
-        let game = GameRom::open(&path).map_err(|e| e.to_string())?;
-        let mut info = nuzlocke::rom::read(&game).map_err(|e| e.to_string())?;
-        info.seed = nuzlocke::rom::kaleido_seed(&path);
+        // ROM DS (.nds) ou jeu 3DS (image ou dossier extrait).
+        let info = nuzlocke::rom_ctr::read_path(&path).map_err(|e| e.to_string())?;
         Ok(Arc::new(info))
     })
     .await?;

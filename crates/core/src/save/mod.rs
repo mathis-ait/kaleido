@@ -350,10 +350,18 @@ impl SaveFile {
         }
     }
 
-    /// Badges d'arène obtenus (un bit par badge), Gen 4 et 5 seulement.
+    /// Badges d'arène obtenus (un bit par badge), Gen 4 à 6.
     /// PKHeX : SAV4 `Badges = General[Trainer1 + 0x1A]` (argent en Trainer1 + 0x14) ;
     /// Misc5 `Badges = Data[0x04]` (argent en 0x00). Pour HGSS, badges de Johto.
+    ///
+    /// Gen 6 : PKHeX `Misc6XY` / `Misc6AO` `Badges = Data[0xC]` (argent en 0x8).
+    /// Gen 7 : pas de badges ; renvoie les îles terminées (bits 0-3), tampons 1 à 4 de
+    /// PKHeX `Misc7.Stamps` (`u32` en Misc + 0x8, argent en Misc + 0x4, tampons à partir du bit 4).
     pub fn badges(&self) -> Option<u8> {
+        if self.generation() == 7 {
+            let at = self.layout.trainer.money + 4;
+            return self.data.get(at..at + 4).map(|b| ((u32::from_le_bytes([b[0], b[1], b[2], b[3]]) >> 5) & 0xF) as u8);
+        }
         self.badges_offset().map(|at| rd_u8(&self.data, at))
     }
 
@@ -367,7 +375,7 @@ impl SaveFile {
         let money = self.layout.trainer.money;
         match self.generation() {
             4 => Some(money + 6),
-            5 => Some(money + 4),
+            5 | 6 => Some(money + 4),
             _ => None,
         }
     }
