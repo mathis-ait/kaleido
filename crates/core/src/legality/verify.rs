@@ -49,7 +49,7 @@ pub struct Check {
     pub code: &'static str,
     pub title: String,
     pub detail: String,
-    /// Onglet de la fiche où corriger : overview, met, stats, moves, trainer, extras.
+    /// Onglet de la fiche où corriger : overview, met, stats, moves, trainer, extras, ribbons, memories.
     pub tab: Option<&'static str>,
 }
 
@@ -89,6 +89,9 @@ const TAB_STATS: &str = "stats";
 const TAB_MOVES: &str = "moves";
 const TAB_TRAINER: &str = "trainer";
 const TAB_EXTRAS: &str = "extras";
+
+#[path = "verify_extras.rs"]
+mod extras;
 
 /// Liste de résultats avec raccourcis.
 #[derive(Default)]
@@ -1370,6 +1373,7 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
         Origin::VirtualConsole { generation } => format!("{} (Console virtuelle, Gen {generation})", version_name(ctx.version)),
     };
     check_general(&ctx, &mut out);
+    extras::check_extras(&ctx, &mut out);
 
     let mut summary = None;
     let mut pid_type = None;

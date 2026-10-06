@@ -13,6 +13,7 @@ use super::rng::{self, PidType, PidWish, Rand};
 use super::verify::{self, analyze, Report, Verdict};
 use crate::dex::{self, Game};
 use crate::save::session::{max_pp, today, LANGUAGE_FR};
+use crate::save::pkm::{ExtrasPatch, Memory};
 use crate::save::{exp_for_level, Gender, PkmFormat, Pokemon, Trainer};
 
 /// Résultat de « Rendre légal ».
@@ -366,6 +367,27 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
     }
     if p.met_date().is_none() && !p.is_egg() {
         p.set_met_date(Some(now));
+    }
+    // Souvenir avec le dresseur d'origine : toujours en Gen 6 (PKHeX `SetRandomMemory6` /
+    // `SetHatchMemory6`), jamais sinon. Les cadeaux gardent celui de la distribution.
+    if fgen >= 6 && !e.fateful {
+        if let Some(h) = p.extras().handler {
+            let want = if origin_gen != 6 || p.is_egg() {
+                Memory::default()
+            } else if e.is_egg() {
+                // « … a brisé la coquille de son Œuf » : Route 7 (X/Y) ou Spot Combat (ROSA).
+                Memory { id: 2, intensity: 1, feeling: 0, variable: if matches!(plan.version, 24 | 25) { 43 } else { 27 } }
+            } else if h.ot_memory.id != 0 {
+                h.ot_memory
+            } else {
+                // « … a failli se perdre en explorant une forêt » : ressenti 1 autorisé pour ce souvenir.
+                Memory { id: 63, intensity: 7, feeling: 1, variable: 0 }
+            };
+            if want != h.ot_memory {
+                let _ = p.apply_extras(&ExtrasPatch { ot_memory: Some(want), ..Default::default() });
+                changes.push(if want.id == 0 { "Souvenir du dresseur d'origine retiré".into() } else { "Souvenir du dresseur d'origine ajouté".to_string() });
+            }
+        }
     }
     if p.fateful_encounter() != e.fateful {
         p.set_fateful_encounter(e.fateful);

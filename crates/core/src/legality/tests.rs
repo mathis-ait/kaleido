@@ -394,3 +394,51 @@ fn legal_samples_stay_legal_after_legalize() {
         assert!(out.changes.is_empty(), "{} modifié : {:?}", p.display(), out.changes);
     }
 }
+
+fn codes(pk: &Pokemon, game: Game) -> Vec<&'static str> {
+    analyze(pk, game).checks.iter().filter(|c| c.severity != super::Severity::Valid).map(|c| c.code).collect()
+}
+
+fn patched(pk: &Pokemon, patch: crate::save::pkm::ExtrasPatch) -> Pokemon {
+    let mut p = pk.clone();
+    p.apply_extras(&patch).unwrap();
+    p.refresh_checksum();
+    p
+}
+
+/// Rubans, Hyper Training, pays et souvenirs : règles reprises de PKHeX.
+#[test]
+fn extras_rules() {
+    use crate::save::pkm::{ExtrasPatch, Memory};
+    // Métamorph de Soleil/Lune (né en Gen 7), légal tel quel.
+    let (pk, game) = load(&root().join("Legal/Generation 7 Static/132 - Ditto - D2606D168C32.pk7"));
+    let base = codes(&pk, game);
+    assert!(analyze(&pk, game).verdict != Verdict::Illegal, "{base:?}");
+
+    let kalos = patched(&pk, ExtrasPatch { ribbons: Some([("RibbonChampionKalos".to_string(), true)].into()), ..Default::default() });
+    assert!(codes(&kalos, game).contains(&"ribbon"), "Maître de Kalos sur un Pokémon de Gen 7");
+    let alola = patched(&pk, ExtrasPatch { ribbons: Some([("RibbonChampionAlola".to_string(), true)].into()), ..Default::default() });
+    assert!(!codes(&alola, game).contains(&"ribbon"), "Maître d'Alola possible en Gen 7");
+
+    let ht = patched(&pk, ExtrasPatch { hyper_training: Some([true, false, false, false, false, false]), ..Default::default() });
+    let ht_codes = codes(&ht, game);
+    assert!(ht_codes.contains(&"hyper-level") || ht_codes.contains(&"hyper-perfect"), "{ht_codes:?}");
+
+    let geo = patched(&pk, ExtrasPatch { geo: Some([[0, 0], [1, 49], [0, 0], [0, 0], [0, 0]]), ..Default::default() });
+    assert!(codes(&geo, game).contains(&"geo"));
+
+    let mem = patched(&pk, ExtrasPatch { ot_memory: Some(Memory { id: 63, intensity: 7, feeling: 1, variable: 0 }), ..Default::default() });
+    assert!(codes(&mem, game).contains(&"memory-ot"), "pas de souvenir de dresseur d'origine en Gen 7");
+
+    let medals = patched(&pk, ExtrasPatch { medals: Some(vec![true]), ..Default::default() });
+    assert!(codes(&medals, game).contains(&"super-training"));
+}
+
+/// Un Pokémon créé en X/Y reçoit un souvenir avec son dresseur d'origine, comme en jeu.
+#[test]
+fn generated_gen6_has_ot_memory() {
+    let req = GenerateRequest { species: 661, level: 10, ..Default::default() };
+    let out = generate_legal(Game::XY, PkmFormat::Gen6, &trainer(), &req).unwrap();
+    assert_ne!(out.pokemon.extras().handler.unwrap().ot_memory.id, 0);
+    assert!(!codes(&out.pokemon, Game::XY).contains(&"memory-ot-missing"));
+}
