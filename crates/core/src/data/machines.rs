@@ -65,6 +65,17 @@ impl MachineSpec {
         }
     }
 
+    /// Organisation propre à un jeu : HeartGold / SoulSilver ont un autre motif devant
+    /// le tableau (`hgssTMDataPrefix` d'UPR-ZX, non vérifié sur une ROM). Diamant / Perle
+    /// ont celui de Platine (vérifié sur Diamant ADAF : motif unique dans l'ARM9).
+    pub fn for_game(game: Game) -> Option<Self> {
+        let mut spec = Self::for_generation(game.generation())?;
+        if matches!(game, Game::HeartGold | Game::SoulSilver) {
+            spec.prefix = &[0x1E, 0x00, 0x32, 0x00];
+        }
+        Some(spec)
+    }
+
     /// Nombre total de bits de compatibilité utilisés (CT + CS).
     pub fn total(&self) -> usize {
         self.tm_count + self.hm_count
@@ -142,6 +153,11 @@ pub fn write_into(arm9: &mut [u8], spec: &MachineSpec, tms: &[u16]) -> Result<()
     Ok(())
 }
 
+pub fn read_game(rom: &NdsRom, game: Game) -> Result<Machines, RomError> {
+    let spec = MachineSpec::for_game(game).ok_or_else(unsupported)?;
+    read_from(&rom.arm9_decompressed()?, &spec)
+}
+
 pub fn read(rom: &NdsRom, generation: u8) -> Result<Machines, RomError> {
     let spec = MachineSpec::for_generation(generation).ok_or_else(unsupported)?;
     read_from(&rom.arm9_decompressed()?, &spec)
@@ -157,6 +173,8 @@ fn unsupported() -> RomError {
 /// Entrées CT01 et CT02 (UPR `pthgssItemPalettesPrefix`). Les palettes (octets 2-3
 /// et 10-11) sont ignorées à la recherche : une ROM déjà modifiée est aussi reconnue.
 const PALETTE_PREFIX_GEN4: [u8; 16] = [0x8D, 0x01, 0x8E, 0x01, 0x21, 0x01, 0x33, 0x01, 0x8D, 0x01, 0x8F, 0x01, 0x22, 0x01, 0x34, 0x01];
+/// Diamant / Perle (`dpItemPalettesPrefix` ; unique dans l'ARM9 de Diamant ADAF).
+const PALETTE_PREFIX_DP: [u8; 16] = [0x8D, 0x01, 0x8E, 0x01, 0x21, 0x01, 0x32, 0x01, 0x8D, 0x01, 0x8F, 0x01, 0x22, 0x01, 0x33, 0x01];
 const PALETTE_WILDCARDS_GEN4: [usize; 4] = [2, 3, 10, 11];
 const PALETTE_PREFIX_BW: [u8; 16] = [0xE9, 0x03, 0xEA, 0x03, 0x02, 0x00, 0x03, 0x00, 0x04, 0x00, 0x05, 0x00, 0x06, 0x00, 0x07, 0x00];
 
@@ -188,12 +206,15 @@ pub fn tm_palette(t: PokeType) -> u16 {
 pub fn palette_slots(arm9: &[u8], spec: &MachineSpec) -> Option<Vec<usize>> {
     let slots: Vec<usize> = if spec.generation <= 4 {
         // La table commence à l'entrée de la CT01 (8 octets par objet).
-        let matches = |w: &[u8]| w.iter().zip(PALETTE_PREFIX_GEN4).enumerate().all(|(i, (a, b))| PALETTE_WILDCARDS_GEN4.contains(&i) || *a == b);
-        let mut hits = arm9.windows(PALETTE_PREFIX_GEN4.len()).enumerate().filter(|(_, w)| matches(w)).map(|(i, _)| i);
-        let base = match (hits.next(), hits.next()) {
-            (Some(p), None) => p,
-            _ => return None,
+        let unique = |prefix: [u8; 16]| {
+            let matches = |w: &[u8]| w.iter().zip(prefix).enumerate().all(|(i, (a, b))| PALETTE_WILDCARDS_GEN4.contains(&i) || *a == b);
+            let mut hits = arm9.windows(prefix.len()).enumerate().filter(|(_, w)| matches(w)).map(|(i, _)| i);
+            match (hits.next(), hits.next()) {
+                (Some(p), None) => Some(p),
+                _ => None,
+            }
         };
+        let base = unique(PALETTE_PREFIX_GEN4).or_else(|| unique(PALETTE_PREFIX_DP))?;
         (0..spec.tm_count).map(|i| base + i * 8 + 2).collect()
     } else {
         // La table commence à l'objet 0 (4 octets par objet).
@@ -228,6 +249,8 @@ pub fn set_compatible(personal: &mut [u8], spec: &MachineSpec, index: usize, val
 pub fn move_data_path(game: Game) -> Option<&'static str> {
     match game {
         Game::Platinum => Some("poketool/waza/pl_waza_tbl.narc"),
+        Game::Diamond | Game::Pearl => Some("poketool/waza/waza_tbl.narc"),
+        Game::HeartGold | Game::SoulSilver => Some("a/0/1/1"),
         Game::Black | Game::White => Some("a/0/2/1"),
         _ => None,
     }

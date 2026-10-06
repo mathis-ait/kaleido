@@ -10,6 +10,8 @@ use crate::games::Game;
 use crate::rom::{GameRom, RomError};
 
 const PT_SCRIPTS: &str = "fielddata/script/scr_seq.narc";
+const DP_SCRIPTS: &str = "fielddata/script/scr_seq_release.narc";
+const HGSS_SCRIPTS: &str = "a/0/1/2";
 const BW_SCRIPTS: &str = "a/0/5/7";
 const BW_MAPS: &str = "a/1/2/5";
 
@@ -44,7 +46,12 @@ fn find_unique(data: &[u8], pattern: &[u8]) -> Option<usize> {
 impl Files {
     pub(super) fn load(game: &GameRom) -> Result<Self, RomError> {
         let bw = matches!(game.game, Game::Black | Game::White);
-        let scripts_path = if bw { BW_SCRIPTS } else { PT_SCRIPTS };
+        let scripts_path = match game.game {
+            Game::Black | Game::White => BW_SCRIPTS,
+            Game::Diamond | Game::Pearl => DP_SCRIPTS,
+            Game::HeartGold | Game::SoulSilver => HGSS_SCRIPTS,
+            _ => PT_SCRIPTS,
+        };
         let mut files = Files {
             scripts_path,
             scripts: game.narc(scripts_path)?,
@@ -55,6 +62,9 @@ impl Files {
         };
         if bw {
             files.overlays.insert(tables::BW_ROAMER_OVERLAY, game.rom().overlay(tables::BW_ROAMER_OVERLAY)?);
+        }
+        if matches!(game.game, Game::HeartGold | Game::SoulSilver) {
+            files.overlays.insert(tables::HGSS_FOSSIL_OVERLAY, game.rom().overlay(tables::HGSS_FOSSIL_OVERLAY)?);
         }
         Ok(files)
     }
@@ -343,6 +353,8 @@ pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Ent
     let mut notes = Vec::new();
     let mut defs = match game.game {
         Game::Platinum => tables::platinum(),
+        Game::Diamond | Game::Pearl => tables::diamond_pearl(&game.rom().header().game_code),
+        Game::HeartGold | Game::SoulSilver => tables::heartgold_soulsilver(),
         Game::Black | Game::White => tables::black_white(),
         _ => Vec::new(),
     };
@@ -354,6 +366,11 @@ pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Ent
         Game::Platinum => {
             notes.push("vagabonds (Créfadet, Cresselia, oiseaux légendaires) non pris en charge : l'UPR ajoute pour cela du code à l'ARM9".into())
         }
+        Game::Diamond | Game::Pearl => notes.push("vagabonds (Créfollet, Cresselia) non pris en charge : l'UPR modifie pour cela le code de l'ARM9".into()),
+        Game::HeartGold | Game::SoulSilver => notes.push(
+            "HeartGold / SoulSilver : emplacements non vérifiés sur une vraie ROM ; vagabonds, Giratina Originel, lots du Casino, Shuckie, Kenya et œuf mystère non pris en charge"
+                .into(),
+        ),
         _ => {}
     }
     let mut out = Vec::new();

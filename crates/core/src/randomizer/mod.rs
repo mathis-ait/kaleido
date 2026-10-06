@@ -92,6 +92,9 @@ pub(crate) struct Ctx {
     learnsets: Vec<Learnset>,
     no_legendaries: bool,
     max_ability: u16,
+    /// Formats des rencontres et des équipes (différents en Diamant / Perle et HGSS).
+    encounter_format: encounters::Format,
+    team_format: trainers::TeamFormat,
 }
 
 /// Fichiers bruts nécessaires pour construire le contexte.
@@ -122,6 +125,8 @@ impl Ctx {
             learnsets: src.learnsets.iter().map(|f| learnsets::read(src.gen, f)).collect(),
             no_legendaries: settings.no_legendaries,
             max_ability: src.max_ability,
+            encounter_format: encounters::Format::for_generation(src.gen),
+            team_format: trainers::TeamFormat::for_generation(src.gen),
         })
     }
 
@@ -137,7 +142,10 @@ impl Ctx {
             learnsets: &learnsets,
             max_ability: paths.max_ability,
         };
-        Self::new(src, settings)
+        let mut ctx = Self::new(src, settings)?;
+        ctx.encounter_format = encounters::Format::for_game(game.game);
+        ctx.team_format = trainers::TeamFormat::for_game(game.game);
+        Ok(ctx)
     }
 
     fn name(&self, id: u16) -> &str {
@@ -202,6 +210,9 @@ pub fn randomize(game: &mut GameRom, settings: &Settings, seed: u64) -> Result<O
     let _ = writeln!(log, "Jeu : {} ({})", game.game.name_fr(), game.rom().header().game_code);
     let _ = writeln!(log, "Seed : {seed}");
     let _ = writeln!(log, "Code de partage : {code}\n");
+    if !game.layout.verified {
+        let _ = writeln!(log, "Attention : emplacements des données de ce jeu non vérifiés sur une vraie ROM (à l'essai).\n");
+    }
 
     // 1. Fiches des espèces (types, statistiques, talents).
     if apply_personal(&mut ctx, settings, seed, &mut log) {
@@ -484,7 +495,7 @@ pub(crate) fn randomize_wild(ctx: &Ctx, settings: &Settings, seed: u64, files: &
     let _ = writeln!(log, "== Pokémon sauvages ==");
     let mut total = 0;
     for (zone, file) in files.iter_mut().enumerate() {
-        let slots = encounters::read(ctx.gen, file);
+        let slots = encounters::read_format(ctx.encounter_format, file);
         if slots.is_empty() {
             continue;
         }
@@ -537,7 +548,7 @@ pub(crate) fn randomize_trainers(
 
     let count = trdata.len().min(trpoke.len());
     for i in 1..count {
-        let Some(mut team) = trainers::read_team(ctx.gen, &trdata[i], &trpoke[i]) else { continue };
+        let Some(mut team) = trainers::read_team_with(ctx.team_format, &trdata[i], &trpoke[i]) else { continue };
         if team.pokemon.is_empty() {
             continue;
         }
@@ -578,7 +589,7 @@ pub(crate) fn randomize_trainers(
             lines.push(line);
             total += 1;
         }
-        trpoke[i] = trainers::write_team(ctx.gen, &team, &mut trdata[i]);
+        trpoke[i] = trainers::write_team_with(ctx.team_format, &team, &mut trdata[i]);
         let theme_label = theme.map(|t| format!(" (type {})", t.name_fr())).unwrap_or_default();
         let _ = writeln!(log, "Dresseur n°{i}{theme_label} : {}", lines.join(" ; "));
     }

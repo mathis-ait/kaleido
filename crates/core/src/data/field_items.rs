@@ -8,9 +8,14 @@
 //!   commencent par `setvar <variable>, <objet>` ;
 //!   - Platine : script 404 de `fielddata/script/scr_seq.narc`,
 //!     `28 00 08 80 <objet>` au début du script (scripts 25, 238, 321, 325 et 326 ignorés) ;
+//!   - Diamant / Perle : script 370 de `scr_seq_release.narc`, même commande
+//!     (scripts 40 et 196 ignorés ; vérifié sur Diamant ADAF) ;
+//!   - HeartGold / SoulSilver (non vérifié) : script 141 de `a/0/1/2`,
+//!     `29 00 08 80 <objet>` (script 58 ignoré) ;
 //!   - Noire/Blanche : script 864 de `a/0/5/7`, `28 00 0C 80 <objet>` 2 octets après le début ;
 //! - les objets cachés :
-//!   - Platine : table de 257 entrées de 8 octets dans l'ARM9 (`u16` objet en tête) ;
+//!   - Gen 4 : table de l'ARM9, entrées de 8 octets (`u16` objet en tête) : 257 en
+//!     Platine, 229 en Diamant / Perle, 231 en HeartGold / SoulSilver ;
 //!   - Noire/Blanche : script 865, `2A 00 00 80 <objet>` 2 octets après le début.
 //!
 //! Les emplacements de chaque objet sont mémorisés à la lecture : l'écriture remet
@@ -35,6 +40,8 @@ pub struct ItemLayout {
     /// Entrées de la liste de scripts à ignorer (ce ne sont pas des objets).
     pub ball_skip: &'static [usize],
     pub hidden: HiddenItems,
+    /// Commande `setvar` des scripts d'objets (0x29 en HeartGold / SoulSilver).
+    pub set_var: u16,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,11 +76,66 @@ impl ItemLayout {
                     ball_script: 404,
                     ball_skip: &[25, 238, 321, 325, 326],
                     hidden: HiddenItems::Arm9Table { offset: hidden, count: 257 },
+                    set_var: 0x28,
                 })
             }
-            Game::Black | Game::White => {
-                Some(Self { gen: 5, item_names: 54, scripts: "a/0/5/7", ball_script: 864, ball_skip: &[], hidden: HiddenItems::Script(865) })
+            // Vérifié sur Diamant (ADAF) ; autres langues d'après UPR-ZX.
+            Game::Diamond | Game::Pearl => {
+                let (hidden, names) = match code.get(1..)? {
+                    "DAE" | "PAE" => (0xF2DB4, 344),
+                    "DAF" | "PAF" => (0xF2DF4, 344),
+                    "DAD" | "PAD" => (0xF2DC4, 344),
+                    "DAS" | "PAS" => (0xF2E00, 344),
+                    "DAI" | "PAI" => (0xF2D68, 344),
+                    "DAJ" => (0xF4C10, 341),
+                    "PAJ" => (0xF4C14, 341),
+                    "DAK" | "PAK" => (0xEE400, 342),
+                    _ => return None,
+                };
+                Some(Self {
+                    gen: 4,
+                    item_names: names,
+                    scripts: "fielddata/script/scr_seq_release.narc",
+                    ball_script: 370,
+                    ball_skip: &[40, 196],
+                    hidden: HiddenItems::Arm9Table { offset: hidden, count: 229 },
+                    set_var: 0x28,
+                })
             }
+            // Non vérifié (pas de ROM) : UPR-ZX, `[HeartGold (U)]` et versions traduites.
+            Game::HeartGold | Game::SoulSilver => {
+                let (hidden, names) = match code {
+                    "IPKE" | "IPGE" => (0xFA558, 222),
+                    "IPKF" | "IPGF" => (0xFA53C, 222),
+                    "IPKD" | "IPGD" => (0xFA50C, 222),
+                    "IPKS" => (0xFA540, 222),
+                    "IPGS" => (0xFA548, 222),
+                    "IPKI" | "IPGI" => (0xFA4D0, 222),
+                    "IPKJ" | "IPGJ" => (0xF9D08, 219),
+                    "IPKK" => (0xFAC04, 220),
+                    "IPGK" => (0xFABFC, 220),
+                    _ => return None,
+                };
+                Some(Self {
+                    gen: 4,
+                    item_names: names,
+                    scripts: "a/0/1/2",
+                    ball_script: 141,
+                    ball_skip: &[58],
+                    hidden: HiddenItems::Arm9Table { offset: hidden, count: 231 },
+                    // `hgssSetVarScript`.
+                    set_var: 0x29,
+                })
+            }
+            Game::Black | Game::White => Some(Self {
+                gen: 5,
+                item_names: 54,
+                scripts: "a/0/5/7",
+                ball_script: 864,
+                ball_skip: &[],
+                hidden: HiddenItems::Script(865),
+                set_var: 0x28,
+            }),
             _ => None,
         }
     }
@@ -81,7 +143,7 @@ impl ItemLayout {
     /// Position de la commande `setvar` dans chaque script, commande, variable.
     fn ball_command(&self) -> ScriptCommand {
         if self.gen == 4 {
-            ScriptCommand { at: 0, command: 0x28, variable: 0x8008 }
+            ScriptCommand { at: 0, command: self.set_var, variable: 0x8008 }
         } else {
             ScriptCommand { at: 2, command: 0x28, variable: 0x800C }
         }
@@ -241,7 +303,7 @@ pub fn write(game: &mut GameRom, items: &[FieldItem]) -> Result<(), RomError> {
 }
 
 pub(crate) fn unsupported() -> RomError {
-    RomError::Unsupported("objets et boutiques : Platine, Noire et Blanche seulement".into())
+    RomError::Unsupported("objets et boutiques : jeu ou version linguistique non pris en charge".into())
 }
 
 #[cfg(test)]

@@ -468,7 +468,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
     <!-- Choix de la ROM -->
     <div v-if="!roms.length" class="panel empty">
-      <p>Ajoute d'abord une ROM DS (Platine, Noire ou Blanche) dans la bibliothèque.</p>
+      <p>Ajoute d'abord une ROM DS (Diamant, Perle, Platine, HeartGold, SoulSilver, Noire ou Blanche) dans la bibliothèque.</p>
       <button class="btn btn-primary" @click="nav.view = 'home'">Ajouter une ROM</button>
     </div>
 

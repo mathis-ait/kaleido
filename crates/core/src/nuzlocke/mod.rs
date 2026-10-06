@@ -277,7 +277,13 @@ pub struct Report {
 
 /// Le jeu de la ROM correspond-il à la sauvegarde ?
 pub fn compatible(game: Game, version: SaveVersion) -> bool {
-    matches!((game, version), (Game::Platinum, SaveVersion::Platinum) | (Game::Black | Game::White, SaveVersion::BlackWhite))
+    matches!(
+        (game, version),
+        (Game::Diamond | Game::Pearl, SaveVersion::DiamondPearl)
+            | (Game::Platinum, SaveVersion::Platinum)
+            | (Game::HeartGold | Game::SoulSilver, SaveVersion::HeartGoldSoulSilver)
+            | (Game::Black | Game::White, SaveVersion::BlackWhite)
+    )
 }
 
 /// Données d'un Pokémon utiles au bilan.

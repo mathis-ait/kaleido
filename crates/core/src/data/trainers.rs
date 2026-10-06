@@ -4,14 +4,17 @@
 //! type de combat, nombre de Pokémon, objets, IA…
 //!
 //! trpoke, par Pokémon :
-//! - Platine : difficulté u8, genre/talent u8, niveau u16, espèce u16 (forme en
-//!   bits 10-15), [objet u16], [4 attaques u16], sceau de Ball u16.
+//! - Platine / HeartGold / SoulSilver : difficulté u8, genre/talent u8, niveau u16,
+//!   espèce u16 (forme en bits 10-15), [objet u16], [4 attaques u16], sceau de Ball u16.
+//! - Diamant / Perle : idem sans le sceau de Ball (6 octets de base ; UPR-ZX
+//!   `getTrainers`, vérifié sur Diamant ADAF).
 //! - Noire/Blanche : difficulté u8, genre/talent u8, niveau u8, u8, espèce u16,
 //!   forme u16, [objet u16], [4 attaques u16].
 
 use serde::Serialize;
 
 use super::{put_u16, u16_at};
+use crate::games::Game;
 
 pub const FLAG_MOVES: u8 = 0x01;
 pub const FLAG_ITEM: u8 = 0x02;
@@ -36,10 +39,34 @@ pub struct Team {
     pub pokemon: Vec<TrainerPokemon>,
 }
 
-/// Taille d'une entrée : 8 octets de base dans les deux générations
-/// (Platine : 6 + sceau de Ball ; Gen 5 : 8), plus l'objet et les attaques.
-fn entry_size(flags: u8) -> usize {
-    8 + if flags & FLAG_ITEM != 0 { 2 } else { 0 } + if flags & FLAG_MOVES != 0 { 8 } else { 0 }
+/// Format des fichiers trpoke d'un jeu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TeamFormat {
+    pub generation: u8,
+    /// Gen 4 : sceau de Ball (u16) en fin d'entrée (absent de Diamant / Perle).
+    pub ball_seal: bool,
+}
+
+impl TeamFormat {
+    /// Format par défaut d'une génération (Gen 4 : Platine / HGSS).
+    pub fn for_generation(generation: u8) -> Self {
+        Self { generation, ball_seal: generation == 4 }
+    }
+
+    pub fn for_game(game: Game) -> Self {
+        let mut f = Self::for_generation(game.generation());
+        if matches!(game, Game::Diamond | Game::Pearl) {
+            f.ball_seal = false;
+        }
+        f
+    }
+
+    /// Taille d'une entrée : 8 octets de base (Platine : 6 + sceau de Ball ; Gen 5 : 8 ;
+    /// Diamant / Perle : 6), plus l'objet et les attaques.
+    fn entry_size(&self, flags: u8) -> usize {
+        let base = if self.generation <= 4 && !self.ball_seal { 6 } else { 8 };
+        base + if flags & FLAG_ITEM != 0 { 2 } else { 0 } + if flags & FLAG_MOVES != 0 { 8 } else { 0 }
+    }
 }
 
 /// Position du nombre de Pokémon dans trdata (Rubis Oméga / Saphir Alpha : fiche de 0x18 octets).
@@ -51,11 +78,17 @@ fn count_offset(generation: u8) -> usize {
     }
 }
 
-/// Lit l'équipe d'un dresseur à partir de sa fiche et de son fichier trpoke.
+/// Lit l'équipe d'un dresseur à partir de sa fiche et de son fichier trpoke
+/// (format par défaut de la génération ; voir [read_team_with]).
 pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
+    read_team_with(TeamFormat::for_generation(generation), trdata, trpoke)
+}
+
+pub fn read_team_with(format: TeamFormat, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
+    let generation = format.generation;
     let flags = *trdata.first()?;
     let count = *trdata.get(count_offset(generation))? as usize;
-    let size = entry_size(flags);
+    let size = format.entry_size(flags);
     let mut pokemon = Vec::with_capacity(count);
     for i in 0..count {
         let e = trpoke.get(i * size..(i + 1) * size)?;
@@ -67,7 +100,7 @@ pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
             species = raw & 0x03FF;
             form = raw >> 10;
             at = 6;
-            extra = u16_at(e, size - 2);
+            extra = if format.ball_seal { u16_at(e, size - 2) } else { 0 };
         } else if generation >= 6 {
             level = u16_at(e, 2);
             species = u16_at(e, 4);
@@ -99,9 +132,14 @@ pub fn read_team(generation: u8, trdata: &[u8], trpoke: &[u8]) -> Option<Team> {
 
 /// Réécrit le fichier trpoke ; met à jour les drapeaux et le nombre dans trdata.
 pub fn write_team(generation: u8, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
+    write_team_with(TeamFormat::for_generation(generation), team, trdata)
+}
+
+pub fn write_team_with(format: TeamFormat, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
+    let generation = format.generation;
     trdata[0] = team.flags;
     trdata[count_offset(generation)] = team.pokemon.len() as u8;
-    let size = entry_size(team.flags);
+    let size = format.entry_size(team.flags);
     let mut out = Vec::with_capacity(size * team.pokemon.len());
     for p in &team.pokemon {
         let mut e = vec![0u8; size];
@@ -112,7 +150,9 @@ pub fn write_team(generation: u8, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
             put_u16(&mut e, 2, p.level);
             put_u16(&mut e, 4, (p.species & 0x03FF) | (p.form << 10));
             at = 6;
-            put_u16(&mut e, size - 2, p.extra);
+            if format.ball_seal {
+                put_u16(&mut e, size - 2, p.extra);
+            }
         } else if generation >= 6 {
             put_u16(&mut e, 2, p.level);
             put_u16(&mut e, 4, p.species);
@@ -154,6 +194,20 @@ mod tests {
         assert_eq!(team.pokemon[0].moves, [33, 0, 0, 0]);
         let mut td = trdata;
         assert_eq!(write_team(4, &team, &mut td), trpoke);
+    }
+
+    #[test]
+    fn diamond_pearl_team_without_seal() {
+        // Deux Pokémon sans attaques ni objet : 6 octets chacun en Diamant / Perle.
+        let trdata = [0x00, 0x02, 0x00, 0x02];
+        let trpoke = [0, 0, 3, 0, 0x0A, 0x01, 0, 0, 4, 0, 0x8C, 0x01];
+        let fmt = TeamFormat::for_game(Game::Diamond);
+        let team = read_team_with(fmt, &trdata, &trpoke).unwrap();
+        assert_eq!(team.pokemon.iter().map(|p| (p.species, p.level)).collect::<Vec<_>>(), vec![(266, 3), (396, 4)]);
+        let mut td = trdata;
+        assert_eq!(write_team_with(fmt, &team, &mut td), trpoke);
+        assert!(read_team(4, &trdata, &trpoke).is_none(), "format Platine : entrées de 8 octets");
+        assert!(TeamFormat::for_game(Game::HeartGold).ball_seal);
     }
 
     #[test]
