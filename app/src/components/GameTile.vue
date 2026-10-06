@@ -87,7 +87,7 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
 
       <div class="badges">
         <span class="badge">{{ platform === "nds" ? "DS" : "3DS" }}</span>
-        <span v-if="randomized" class="badge prism" :title="game.kaleido ? `Seed ${game.kaleido.seed}` : 'ROM générée par Kaleido'">✨ Randomisée</span>
+        <span v-if="randomized" class="badge prism" :title="game.kaleido ? `Seed ${game.kaleido.seed}` : 'ROM générée par Kaleido'">Randomisée</span>
         <span v-if="game.kind === 'ctr_dump'" class="badge" title="Dossier : joué comme mod par-dessus le jeu d'origine">Mod</span>
       </div>
 

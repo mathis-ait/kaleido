@@ -91,6 +91,9 @@ onUnmounted(() => {
     <TransitionGroup name="art">
       <img v-if="image" :key="image" class="art" :src="image" alt="" aria-hidden="true" />
     </TransitionGroup>
+    <TransitionGroup name="feature">
+      <img v-if="image" :key="image" class="feature" :src="image" alt="" aria-hidden="true" />
+    </TransitionGroup>
     <div class="glow g1" />
     <div class="glow g2" />
     <canvas ref="canvas" class="particles" />
@@ -133,6 +136,45 @@ onUnmounted(() => {
 
 .art-enter-from,
 .art-leave-to {
+  opacity: 0;
+}
+
+/* Affiche nette du jeu, fondue dans le fond, en haut à droite. */
+.feature {
+  position: absolute;
+  top: -4%;
+  right: -2%;
+  width: 66%;
+  height: 78%;
+  object-fit: cover;
+  object-position: center 40%;
+  opacity: 0.8;
+  filter: saturate(1.1) brightness(0.9);
+  -webkit-mask-image: radial-gradient(ellipse 50% 60% at 54% 42%, #000 32%, transparent 82%);
+  mask-image: radial-gradient(ellipse 50% 60% at 54% 42%, #000 32%, transparent 82%);
+  animation: kenburns 30s ease-in-out infinite alternate;
+}
+
+@keyframes kenburns {
+  from {
+    transform: scale(1.02) translateX(0);
+  }
+  to {
+    transform: scale(1.1) translateX(-2%);
+  }
+}
+
+.feature-enter-active,
+.feature-leave-active {
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.feature-enter-from {
+  opacity: 0;
+  transform: scale(1.06) translateX(3%);
+}
+
+.feature-leave-to {
   opacity: 0;
 }
 
@@ -189,6 +231,7 @@ onUnmounted(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .art,
+  .feature,
   .glow {
     animation: none;
   }

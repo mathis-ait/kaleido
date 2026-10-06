@@ -16,8 +16,8 @@ export function dominantColor(url: string): Promise<string | null> {
           const g = canvas.getContext("2d", { willReadFrequently: true })!;
           g.drawImage(img, 0, 0, size, size);
           const px = g.getImageData(0, 0, size, size).data;
-          // Histogramme des teintes (par tranches de 15°), pondéré par la saturation et la
-          // luminosité : la teinte la plus présente l'emporte, le blanc de la boîte ne compte pas.
+          // Histogramme des teintes (par tranches de 15°), pondéré par la saturation : la teinte
+          // qui couvre le plus de surface l'emporte, le blanc de la boîte ne compte pas.
           const BUCKETS = 24;
           const weights = new Array(BUCKETS).fill(0);
           const sums = Array.from({ length: BUCKETS }, () => [0, 0, 0]);
@@ -28,7 +28,7 @@ export function dominantColor(url: string): Promise<string | null> {
             const sat = max === 0 ? 0 : (max - min) / max;
             if (sat < 0.3 || max < 50) continue;
             const bucket = Math.floor((hue(r, gr, b) / 360) * BUCKETS) % BUCKETS;
-            const weight = sat * sat * (max / 255);
+            const weight = sat; // la surface compte plus que l'éclat
             weights[bucket] += weight;
             sums[bucket][0] += r * weight;
             sums[bucket][1] += gr * weight;

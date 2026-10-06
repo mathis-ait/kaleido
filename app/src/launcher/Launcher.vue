@@ -333,7 +333,7 @@ const meta = computed(() => {
           </p>
           <h1>{{ game.title }}</h1>
           <p class="sub">
-            <span v-if="isKaleidoRom(game)" class="prism">✨ Randomisée par Kaleido<template v-if="game.kaleido"> · seed {{ game.kaleido.seed }}</template></span>
+            <span v-if="isKaleidoRom(game)" class="tag">Randomisée<template v-if="game.kaleido"> · seed {{ game.kaleido.seed }}</template></span>
             <span v-if="game.kind === 'ctr_dump'">Mod joué par-dessus le jeu d'origine</span>
             <span v-if="lastPlayed[game.path]">Dernière partie {{ timeAgo(lastPlayed[game.path]) }}</span>
             <span v-else class="dim">{{ game.fileName }}</span>
@@ -372,9 +372,11 @@ const meta = computed(() => {
           <div class="card" :style="i === index ? { transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` } : undefined">
             <img v-if="coverUrl(g)" :src="coverUrl(g)!" :alt="g.title" draggable="false" />
             <span v-else class="fallback">{{ g.title }}</span>
-            <span class="badge">{{ platformOf(g) === "nds" ? "DS" : "3DS" }}</span>
-            <span v-if="isKaleidoRom(g)" class="badge spark">✨</span>
+            <span v-if="isKaleidoRom(g)" class="ribbon">Randomisée</span>
             <span class="shine" />
+          </div>
+          <div class="reflection" aria-hidden="true">
+            <img v-if="coverUrl(g)" :src="coverUrl(g)!" alt="" draggable="false" />
           </div>
         </button>
       </div>
@@ -389,14 +391,27 @@ const meta = computed(() => {
       <span v-if="padConnected" class="pad"><Icon name="check" :size="13" /> Manette connectée</span>
     </footer>
 
-    <Transition name="fade">
-      <div v-if="menuOpen" class="menu-layer" @click.self="menuOpen = false">
-        <div class="menu">
-          <h3>{{ game?.title }}</h3>
-          <button v-for="(m, i) in menu" :key="m.label" :class="{ active: i === menuIndex, danger: m.danger }" @mouseenter="menuIndex = i" @click="runMenu(i)">
-            <Icon :name="m.icon" :size="17" /> {{ m.label }}
-          </button>
-        </div>
+    <Transition name="sheet">
+      <div v-if="menuOpen && game" class="menu-layer" @click.self="menuOpen = false">
+        <aside class="sheet">
+          <div class="sheet-head">
+            <img v-if="coverUrl(game)" :src="coverUrl(game)!" alt="" />
+            <div>
+              <p>{{ platformOf(game) === "nds" ? "Nintendo DS" : "Nintendo 3DS" }}</p>
+              <h3>{{ game.title }}</h3>
+            </div>
+          </div>
+          <div class="sheet-list">
+            <button v-for="(m, i) in menu" :key="m.label" :class="{ active: i === menuIndex, danger: m.danger }" @mouseenter="menuIndex = i" @click="runMenu(i)">
+              <Icon :name="m.icon" :size="18" />
+              <span>{{ m.label }}</span>
+            </button>
+          </div>
+          <footer>
+            <span><span class="key">{{ padConnected ? "A" : "Entrée" }}</span> Valider</span>
+            <span><span class="key">{{ padConnected ? "B" : "Échap" }}</span> Retour</span>
+          </footer>
+        </aside>
       </div>
     </Transition>
 
@@ -528,10 +543,10 @@ const meta = computed(() => {
 .hero {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 18px;
   min-height: 0;
-  padding: 0 64px;
+  padding: 0 64px 8px;
 }
 
 .hero-inner {
@@ -578,11 +593,12 @@ h1 {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.prism {
-  background: linear-gradient(90deg, #fff, var(--tint));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+.tag {
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0b0d18;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -604,9 +620,8 @@ h1 {
   color: #0b0d18;
   font-size: 17px;
   font-weight: 800;
-  box-shadow: 0 0 0 0 var(--tint), 0 10px 40px color-mix(in srgb, var(--tint) 55%, transparent);
-  transition: transform 0.15s ease, box-shadow 0.4s ease;
-  animation: breathe 2.6s ease-in-out infinite;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s;
 }
 
 .play:hover:not(:disabled) {
@@ -614,14 +629,8 @@ h1 {
 }
 
 .play:disabled {
-  animation: none;
   cursor: progress;
-}
-
-@keyframes breathe {
-  50% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--tint) 35%, transparent), 0 10px 50px color-mix(in srgb, var(--tint) 70%, transparent);
-  }
+  opacity: 0.85;
 }
 
 .ghost {
@@ -760,7 +769,27 @@ h1 {
   background: none;
   transform-style: preserve-3d;
   transition: transform 0.5s cubic-bezier(0.2, 0.85, 0.25, 1), opacity 0.4s, filter 0.4s;
-  -webkit-box-reflect: below 10px linear-gradient(transparent 62%, rgba(255, 255, 255, 0.16));
+}
+
+.reflection {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  transform: scaleY(-1);
+  opacity: 0.32;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 38%);
+  mask-image: linear-gradient(to top, #000 0%, transparent 38%);
+}
+
+.reflection img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .card {
@@ -776,21 +805,9 @@ h1 {
 
 .selected .card {
   box-shadow:
-    0 0 0 3px #fff,
-    0 0 0 7px color-mix(in srgb, var(--tint) 85%, transparent),
-    0 0 50px 8px color-mix(in srgb, var(--tint) 70%, transparent),
-    0 24px 50px rgba(0, 0, 0, 0.55);
-  animation: halo 2.6s ease-in-out infinite;
-}
-
-@keyframes halo {
-  50% {
-    box-shadow:
-      0 0 0 3px #fff,
-      0 0 0 9px color-mix(in srgb, var(--tint) 60%, transparent),
-      0 0 80px 14px color-mix(in srgb, var(--tint) 75%, transparent),
-      0 24px 50px rgba(0, 0, 0, 0.55);
-  }
+    0 0 0 4px #fff,
+    0 0 36px 4px color-mix(in srgb, var(--tint) 55%, transparent),
+    0 28px 50px rgba(0, 0, 0, 0.55);
 }
 
 .card img {
@@ -810,20 +827,17 @@ h1 {
   text-align: left;
 }
 
-.badge {
+.ribbon {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.65);
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0b0d18;
   font-size: 10px;
   font-weight: 800;
-}
-
-.badge.spark {
-  left: auto;
-  right: 8px;
+  letter-spacing: 0.02em;
 }
 
 /* Reflet qui balaie la jaquette sélectionnée. */
@@ -894,43 +908,123 @@ h1 {
   backdrop-filter: blur(10px);
 }
 
-.menu {
+.menu-layer {
+  place-items: stretch end;
+  background: linear-gradient(to right, rgba(3, 4, 12, 0.15), rgba(3, 4, 12, 0.7));
+  backdrop-filter: blur(4px);
+}
+
+.sheet {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 360px;
-  padding: 18px;
-  border-radius: 20px;
-  background: rgba(16, 18, 36, 0.92);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 80px rgba(0, 0, 0, 0.6);
+  width: 400px;
+  height: 100%;
+  padding: 36px 26px 22px;
+  background: rgba(12, 14, 26, 0.94);
+  box-shadow: -30px 0 60px rgba(0, 0, 0, 0.45);
 }
 
-.menu h3 {
-  margin: 0 0 10px;
-  padding: 0 10px;
-  font-size: 15px;
-}
-
-.menu button {
+.sheet-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 16px;
+  padding: 0 6px 26px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sheet-head img {
+  width: 76px;
+  height: 67px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.sheet-head p {
+  margin: 0 0 4px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sheet-head h3 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.sheet-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 18px;
+}
+
+.sheet-list button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: #fff;
-  font-size: 14px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  font-weight: 600;
   text-align: left;
+  transition: background 0.12s, color 0.12s;
 }
 
-.menu button.active {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 3px 0 0 var(--tint);
+.sheet-list button.active {
+  background: #fff;
+  color: #0b0d18;
 }
 
-.menu button.danger {
-  color: #ff8a8a;
+.sheet-list button.danger {
+  margin-top: auto;
+  color: #ff9b9b;
+}
+
+.sheet-list button.danger.active {
+  background: #ff9b9b;
+  color: #2a0b0b;
+}
+
+.sheet footer {
+  display: flex;
+  gap: 22px;
+  padding: 18px 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+}
+
+.sheet footer > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sheet-enter-active,
+.sheet-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.sheet-enter-active .sheet,
+.sheet-leave-active .sheet {
+  transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+
+.sheet-enter-from,
+.sheet-leave-to {
+  opacity: 0;
+}
+
+.sheet-enter-from .sheet,
+.sheet-leave-to .sheet {
+  transform: translateX(100%);
 }
 
 .launch-layer {
@@ -942,7 +1036,7 @@ h1 {
 .launch-layer img {
   width: 300px;
   border-radius: 18px;
-  box-shadow: 0 0 0 3px #fff, 0 0 90px 20px color-mix(in srgb, var(--tint) 70%, transparent);
+  box-shadow: 0 0 0 4px #fff, 0 30px 80px rgba(0, 0, 0, 0.6);
   animation: launch 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
