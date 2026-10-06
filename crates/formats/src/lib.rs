@@ -7,6 +7,7 @@
 pub mod ctr;
 pub mod ctr_build;
 pub mod garc;
+pub mod ips;
 pub mod lz;
 pub mod narc;
 pub mod nds;

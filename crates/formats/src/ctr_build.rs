@@ -76,6 +76,15 @@ pub fn output_extension(input: Container) -> &'static str {
 /// (les autres partitions — manuel, téléchargement, mises à jour — sont recopiées),
 /// une entrée CXI ou CIA donne un `.cxi` (la partition principale seule).
 pub fn rebuild_image(input: &Path, output: &Path, files: &[(&str, &[u8])]) -> Result<RebuildReport> {
+    rebuild_image_with_code(input, output, files, None)
+}
+
+/// Comme [`rebuild_image`], en remplaçant aussi le programme du jeu par `code`
+/// (décompressé). Il est alors stocké sans compression : le drapeau « code
+/// compressé » de l'ExHeader est retiré, l'ExeFS est réécrit (fichiers alignés sur
+/// 0x200, hachages recalculés) et le RomFS décalé si l'ExeFS grandit, en gardant
+/// son alignement sur 0x1000 (comme les jeux d'origine).
+pub fn rebuild_image_with_code(input: &Path, output: &Path, files: &[(&str, &[u8])], code: Option<&[u8]>) -> Result<RebuildReport> {
     if same_file(input, output) {
         return Err(FormatError::Invalid("le fichier de sortie doit être différent de la ROM d'origine"));
     }
@@ -105,14 +114,51 @@ pub fn rebuild_image(input: &Path, output: &Path, files: &[(&str, &[u8])]) -> Re
     let out_ncch = if cci { ncch.offset } else { 0 };
     let file = File::options().read(true).write(true).create(true).truncate(true).open(output)?;
     let mut w = BufWriter::with_capacity(BUF_SIZE, file);
+    // CCI : tout ce qui précède la partition (en-tête NCSD…), puis la partition jusqu'à `keep_mu`.
+    let copy_prefix = |r: &mut BufReader<File>, w: &mut BufWriter<File>, keep_mu: u64| -> io::Result<()> {
+        if cci {
+            copy_range(r, w, 0, ncch.offset + keep_mu * MEDIA_UNIT)
+        } else {
+            copy_range(r, w, ncch.offset, keep_mu * MEDIA_UNIT)
+        }
+    };
 
-    // Tout ce qui précède le RomFS est recopié tel quel (en-têtes, ExHeader, logo, ExeFS…).
-    if cci {
-        copy_range(&mut r, &mut w, 0, ncch.offset + romfs_mu * MEDIA_UNIT)?;
-    } else {
-        copy_range(&mut r, &mut w, ncch.offset, romfs_mu * MEDIA_UNIT)?;
-    }
-    let out_romfs = out_ncch + romfs_mu * MEDIA_UNIT;
+    let new_romfs_mu = match code {
+        // Tout ce qui précède le RomFS est recopié tel quel (en-têtes, ExHeader, logo, ExeFS…).
+        None => {
+            copy_prefix(&mut r, &mut w, romfs_mu)?;
+            romfs_mu
+        }
+        Some(code) => {
+            let exefs_mu = u32le(&header, 0x1A0) as u64;
+            let old_exefs_end = exefs_mu + u32le(&header, 0x1A4) as u64;
+            let before_exefs = [(0x190, 0x194), (0x198, 0x19C)]
+                .iter()
+                .all(|&(o, l)| u32le(&header, l) == 0 || (u32le(&header, o) + u32le(&header, l)) as u64 <= exefs_mu);
+            if exefs_mu == 0 || old_exefs_end > romfs_mu || !before_exefs {
+                return Err(FormatError::Invalid("disposition de la partition NCCH inattendue (ExeFS)"));
+            }
+            let exefs = build_exefs(&mut r, ncch.offset, code)?;
+            // ExHeader : plus de compression du code, puis son hachage dans l'en-tête NCCH.
+            let mut exheader = read_at(&mut r, ncch.offset + NCCH_HEADER_SIZE as u64, 0x400)?;
+            exheader[0x0D] &= !1;
+            header[0x160..0x180].copy_from_slice(&Sha256::digest(&exheader));
+            copy_prefix(&mut r, &mut w, exefs_mu)?;
+            let exefs_size_mu = exefs.len() as u64 / MEDIA_UNIT;
+            header[0x1A4..0x1A8].copy_from_slice(&to_u32(exefs_size_mu)?.to_le_bytes());
+            let region = (u32le(&header, 0x1A8) as usize * MEDIA_UNIT as usize).min(exefs.len());
+            header[0x1C0..0x1E0].copy_from_slice(&Sha256::digest(&exefs[..region]));
+            w.write_all(&exefs)?;
+            let new_romfs_mu = align(exefs_mu + exefs_size_mu, 0x1000 / MEDIA_UNIT);
+            write_zeros(&mut w, (new_romfs_mu - exefs_mu - exefs_size_mu) * MEDIA_UNIT)?;
+            w.seek(SeekFrom::Start(out_ncch + NCCH_HEADER_SIZE as u64))?;
+            w.write_all(&exheader)?;
+            w.seek(SeekFrom::Start(out_ncch + new_romfs_mu * MEDIA_UNIT))?;
+            header[0x1B0..0x1B4].copy_from_slice(&to_u32(new_romfs_mu)?.to_le_bytes());
+            new_romfs_mu
+        }
+    };
+    let out_romfs = out_ncch + new_romfs_mu * MEDIA_UNIT;
     let mut built = build_romfs(&mut r, ncch.romfs_offset, files, &mut w, out_romfs)?;
     // Hachage du superbloc : relu dans le fichier écrit (avec de petits blocs, la
     // région peut déborder de l'en-tête IVFC sur les données).
@@ -120,20 +166,44 @@ pub fn rebuild_image(input: &Path, output: &Path, files: &[(&str, &[u8])]) -> Re
     built.superblock_hash = sha_range(w.get_mut(), out_romfs, built.hash_region_mu * MEDIA_UNIT)?;
 
     // En-tête NCCH : taille du contenu, du RomFS, région et hachage du superbloc.
-    let new_romfs_mu = built.size / MEDIA_UNIT;
-    let new_content_mu = romfs_mu + new_romfs_mu;
-    patch_ncch_header(&mut header, new_content_mu, new_romfs_mu, &built)?;
+    let new_romfs_size_mu = built.size / MEDIA_UNIT;
+    let new_content_mu = new_romfs_mu + new_romfs_size_mu;
+    patch_ncch_header(&mut header, new_content_mu, new_romfs_size_mu, &built)?;
     w.seek(SeekFrom::Start(out_ncch))?;
     w.write_all(&header)?;
 
     let mut size = out_ncch + new_content_mu * MEDIA_UNIT;
     if cci {
-        size = relocate_partitions(&mut r, &mut w, ncch.offset, content_mu, new_content_mu, &built)?;
+        size = relocate_partitions(&mut r, &mut w, ncch.offset, content_mu, new_content_mu, &header)?;
     }
     w.flush()?;
     let file = w.into_inner().map_err(|e| e.into_error())?;
     file.set_len(size)?;
     Ok(RebuildReport { container: if cci { Container::Cci } else { Container::Cxi }, size, romfs_size: built.size, replaced: files.len() })
+}
+
+/// Nouvel ExeFS (3dbrew — ExeFS) : mêmes fichiers dans le même ordre, `.code`
+/// remplacé par `code`, chacun aligné sur 0x200 ; hachages en ordre inverse à 0xC0.
+fn build_exefs<R: Read + Seek>(r: &mut R, ncch_offset: u64, code: &[u8]) -> Result<Vec<u8>> {
+    let mut entries = crate::ctr::exefs_entries(r, ncch_offset)?;
+    if !entries.iter().any(|e| e.name == ".code") {
+        return Err(FormatError::Invalid("section .code absente de l'ExeFS"));
+    }
+    entries.sort_by_key(|e| e.offset);
+    let mut out = vec![0u8; 0x200];
+    for (slot, e) in entries.iter().enumerate() {
+        let data = if e.name == ".code" { code.to_vec() } else { read_at(r, e.offset, e.size as usize)? };
+        let at = out.len() as u64 - 0x200;
+        let h = slot * 0x10;
+        let name = &e.name.as_bytes()[..e.name.len().min(8)];
+        out[h..h + name.len()].copy_from_slice(name);
+        out[h + 8..h + 12].copy_from_slice(&to_u32(at)?.to_le_bytes());
+        out[h + 12..h + 16].copy_from_slice(&to_u32(data.len() as u64)?.to_le_bytes());
+        out[0xC0 + (9 - slot) * 0x20..0xE0 + (9 - slot) * 0x20].copy_from_slice(&Sha256::digest(&data));
+        out.extend_from_slice(&data);
+        out.resize(align(out.len() as u64, MEDIA_UNIT) as usize, 0);
+    }
+    Ok(out)
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -163,7 +233,7 @@ fn relocate_partitions<R: Read + Seek, W: Write + Seek>(
     p0_offset: u64,
     old_mu: u64,
     new_mu: u64,
-    built: &BuiltRomFs,
+    ncch_header: &[u8],
 ) -> Result<u64> {
     let mut h = read_at(r, 0, NCSD_HEADER_SIZE)?;
     let p0_mu = p0_offset / MEDIA_UNIT;
@@ -211,7 +281,11 @@ fn relocate_partitions<R: Read + Seek, W: Write + Seek>(
     // Copie de l'en-tête NCCH de la partition 0 dans les InitialData, gardée cohérente.
     let copy = NCSD_NCCH_COPY;
     if &h[copy + 0x100..copy + 0x104] == b"NCCH" && h[copy + 0x118..copy + 0x120] == h[0x108..0x110] {
-        patch_ncch_header(&mut h[copy..copy + NCCH_HEADER_SIZE], new_mu, built.size / MEDIA_UNIT, built)?;
+        // Champs que la reconstruction peut changer : taille du contenu, hachage de
+        // l'ExHeader, ExeFS et RomFS (positions, tailles, hachages).
+        for (from, to) in [(0x104, 0x108), (0x160, 0x180), (0x1A0, 0x200)] {
+            h[copy + from..copy + to].copy_from_slice(&ncch_header[from..to]);
+        }
     }
     w.seek(SeekFrom::Start(0))?;
     w.write_all(&h)?;

@@ -27,7 +27,7 @@ use kaleido_formats::garc::Garc;
 use kaleido_formats::lz;
 use rand::seq::SliceRandom;
 
-use super::ctr::{entries, image_output_path, write, write_image, CtrWritten, LayeredFsTarget};
+use super::ctr::{entries, image_output_path, shiny_patch, write_outputs, CtrWritten, LayeredFsTarget};
 use super::{apply_personal, randomize_trainers, randomize_wild, rng_for, share_code, Ctx, Outcome, PokemonRef, Settings, Sources, WildMode};
 use crate::ctr_rom::CtrGameRom;
 use crate::data::evolutions::{self, METHOD_LEVEL, TRADE_REPLACEMENT_LEVEL};
@@ -434,16 +434,9 @@ pub(super) fn randomize(
         files.push((l.trainer_pokemon.to_string(), trpoke_garc.to_bytes()));
     }
 
-    let mut written = CtrWritten { files: files.iter().map(|(p, _)| p.clone()).collect(), ..Default::default() };
-    if output.layeredfs() {
-        written.romfs = Some(write(out_dir, game.title_id(), target, &files)?);
-    }
-    if let (Some(dest), Some(input)) = (image_out, game.romfs().image_path()) {
-        let report = write_image(input, &dest, &files)?;
-        let _ = writeln!(log, "== ROM complète ==");
-        let _ = writeln!(log, "{} ({} octets, {} fichiers remplacés dans le RomFS)", dest.display(), report.size, report.replaced);
-        written.image = Some(dest);
-    }
+    // 5. Taux de chromatiques (programme du jeu, code.bin).
+    let code_patch = shiny_patch(game, settings.shiny_odds, &mut log)?;
+    let written = write_outputs(game, out_dir, target, output, image_out, &files, code_patch.as_ref(), &mut log)?;
     let starters = starters.iter().map(|&id| PokemonRef { id, name: ctx.name(id).to_string() }).collect();
     let outcome = Outcome { seed, share_code: code, starters, wild_slots, trainer_pokemon, log };
     Ok((outcome, written))

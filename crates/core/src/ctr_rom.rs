@@ -153,6 +153,14 @@ impl CtrLayout {
     }
 }
 
+/// Programme d'un jeu 3DS.
+pub struct GameCode {
+    /// Décompressé (c'est sur lui que portent les patchs `code.ips`).
+    pub code: Vec<u8>,
+    /// Section `.code` telle que stockée dans l'image (`None` pour un dossier extrait).
+    pub stored: Option<kaleido_formats::ctr::CodeSection>,
+}
+
 /// Jeu 3DS ouvert (image déchiffrée ou dossier extrait).
 pub struct CtrGameRom {
     pub game: Game,
@@ -207,6 +215,34 @@ impl CtrGameRom {
         let abilities = self.text_file(self.layout.ability_names)?;
         let personal = self.personal_records()?;
         assemble_species(self.game, self.layout.species_count, &names, &abilities, &personal)
+    }
+
+    /// Programme du jeu (section `.code` de l'ExeFS), décompressé. Dans un dossier
+    /// extrait, cherche `exefs/code.bin` (ou `code.bin`) à côté de `romfs`.
+    pub fn code(&self) -> Result<GameCode, RomError> {
+        match &self.romfs {
+            RomFsSource::Image { path, .. } => {
+                let mut r = std::io::BufReader::new(std::fs::File::open(path).map_err(kaleido_formats::FormatError::from)?);
+                let img = kaleido_formats::ctr::CtrImage::probe(&mut r)?.ok_or_else(|| RomError::Unsupported("ce n'est pas une ROM 3DS".into()))?;
+                let ncch = img.ncch.ok_or_else(|| RomError::Unsupported("partition principale illisible".into()))?;
+                let stored = kaleido_formats::ctr::read_code(&mut r, ncch.offset)?;
+                let code = if stored.compressed { kaleido_formats::lz::decompress_blz(&stored.raw)? } else { stored.raw.clone() };
+                Ok(GameCode { code, stored: Some(stored) })
+            }
+            RomFsSource::Dir { root, .. } => {
+                let base = root.parent().unwrap_or(root);
+                let path = ["exefs/code.bin", "exefs/.code.bin", "code.bin", ".code.bin"]
+                    .iter()
+                    .map(|n| base.join(n))
+                    .find(|p| p.is_file())
+                    .ok_or_else(|| RomError::Unsupported("dossier extrait : code.bin introuvable (exefs/code.bin)".into()))?;
+                let data = std::fs::read(path).map_err(kaleido_formats::FormatError::from)?;
+                // Les outils d'extraction écrivent en général le programme décompressé
+                // (taille multiple d'une page) ; sinon, on le décompresse.
+                let code = if data.len() % 0x200 == 0 { data } else { kaleido_formats::lz::decompress_blz(&data)? };
+                Ok(GameCode { code, stored: None })
+            }
+        }
     }
 
     /// Écrit des fichiers du RomFS modifiés au format LayeredFS (Luma3DS), sous `out_dir`.

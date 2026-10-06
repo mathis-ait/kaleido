@@ -21,7 +21,8 @@
 //!   (src/common/common_paths.h : `USERDATA_DIR`, `EMU_DATA_DIR`,
 //!   `LEGACY_CITRA_DATA_DIR`, `LEGACY_LIME3DS_DATA_DIR`). Les mods sont lus dans
 //!   `<user>/load/mods/<title ID en 16 chiffres hexa majuscules>/romfs/`
-//!   (src/core/file_sys/ncch_container.cpp : `"{}mods/{:016X}/"` + `"romfs/"`).
+//!   (src/core/file_sys/ncch_container.cpp : `"{}mods/{:016X}/"` + `"romfs/"`),
+//!   le patch du programme dans `<…>/<title ID>/code.ips` (même fichier, `ApplyCodePatch`).
 //!   Les sauvegardes sont dans `<user>/sdmc/Nintendo 3DS/<id0>/<id1>/title/
 //!   <8 hexa hauts>/<8 hexa bas>/data/00000001/` (src/core/file_sys/
 //!   archive_source_sd_savedata.cpp), fichier `main` pour les jeux Pokémon.
@@ -629,6 +630,10 @@ pub fn install_mod(romfs: &Path, user: &Path, title_id: u64, replace: bool, stam
         backup = Some(bak);
     }
     copy_dir(romfs, &target.join("romfs")).map_err(|e| format!("copie du mod impossible : {e}"))?;
+    // Patch du programme du jeu (taux de chromatiques), lu dans `mods/<title ID>/code.ips`.
+    if let Some(ips) = romfs.parent().map(|p| p.join("code.ips")).filter(|p| p.is_file()) {
+        fs::copy(&ips, target.join("code.ips")).map_err(|e| format!("copie de code.ips impossible : {e}"))?;
+    }
     // Petit mot pour reconnaître le mod (ignoré par l'émulateur).
     let _ = fs::write(target.join("kaleido.txt"), format!("Mod généré par Kaleido, copié depuis :\n{}\n", romfs.display()));
     Ok((target, backup))

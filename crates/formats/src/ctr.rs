@@ -140,6 +140,58 @@ fn signature_block_size(sig_type: u32) -> Option<u64> {
     })
 }
 
+/// Fichier de l'ExeFS (3dbrew — ExeFS) : 10 entrées (nom, position, taille) puis
+/// les hachages SHA-256 en ordre inverse à 0xC0, données à partir de 0x200.
+#[derive(Debug, Clone)]
+pub struct ExeFsEntry {
+    pub name: String,
+    /// Position absolue dans le fichier.
+    pub offset: u64,
+    pub size: u64,
+    /// Rang dans la table (le hachage est à `0xC0 + (9 - index) * 0x20`).
+    pub index: usize,
+}
+
+/// Section `.code` d'une partition NCCH, telle qu'elle est stockée.
+#[derive(Debug, Clone)]
+pub struct CodeSection {
+    pub entry: ExeFsEntry,
+    /// Octets bruts (compressés en BLZ si `compressed`).
+    pub raw: Vec<u8>,
+    /// ExHeader, « SCI flags » bit 0 : code compressé.
+    pub compressed: bool,
+}
+
+/// Fichiers de l'ExeFS de la partition NCCH placée à `ncch_offset`.
+pub fn exefs_entries<R: Read + Seek>(r: &mut R, ncch_offset: u64) -> Result<Vec<ExeFsEntry>> {
+    let h = read_at(r, ncch_offset, NCCH_HEADER_SIZE)?;
+    let exefs = ncch_offset + u32le(&h, 0x1A0) as u64 * MEDIA_UNIT;
+    if u32le(&h, 0x1A4) == 0 {
+        return Ok(Vec::new());
+    }
+    let eh = read_at(r, exefs, 0x200)?;
+    Ok((0..10)
+        .filter(|&i| eh[i * 0x10..i * 0x10 + 8].iter().any(|&b| b != 0))
+        .map(|i| ExeFsEntry {
+            name: ascii(&eh[i * 0x10..i * 0x10 + 8]),
+            offset: exefs + 0x200 + u32le(&eh, i * 0x10 + 8) as u64,
+            size: u32le(&eh, i * 0x10 + 12) as u64,
+            index: i,
+        })
+        .collect())
+}
+
+/// Lit la section `.code` (le programme du jeu) de la partition NCCH à `ncch_offset`.
+pub fn read_code<R: Read + Seek>(r: &mut R, ncch_offset: u64) -> Result<CodeSection> {
+    let entry = exefs_entries(r, ncch_offset)?
+        .into_iter()
+        .find(|e| e.name == ".code")
+        .ok_or(crate::FormatError::Invalid("section .code absente de l'ExeFS"))?;
+    let exheader = read_at(r, ncch_offset + NCCH_HEADER_SIZE as u64, 0x10)?;
+    let raw = read_at(r, entry.offset, entry.size as usize)?;
+    Ok(CodeSection { entry, raw, compressed: exheader[0x0D] & 1 != 0 })
+}
+
 /// Program ID contenu dans un `exheader.bin` extrait (début de l'ACI, offset 0x200).
 pub fn exheader_program_id(exheader: &[u8]) -> Option<u64> {
     (exheader.len() >= 0x208).then(|| u64le(exheader, 0x200))

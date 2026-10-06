@@ -192,7 +192,7 @@ pub fn save(
         written.romfs = Some(rctr::write(out_dir, game.title_id(), target, &files)?);
     }
     if let Some((input, dest)) = image {
-        rctr::write_image(&input, &dest, &files)?;
+        rctr::write_image(&input, &dest, &files, None)?;
         written.image = Some(dest);
     }
     Ok((count, written))
