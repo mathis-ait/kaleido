@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import Tip from "../../components/Tip.vue";
-import { saveState } from "../../saveStore";
+import Combo from "../../components/Combo.vue";
+import { lists, saveState } from "../../saveStore";
 import type { SlotView } from "../../types";
 import { apply, hex, num } from "./edit";
 
@@ -62,6 +63,51 @@ function commitEc() {
   if (v !== null && v !== props.p.encryptionConstant) apply({ encryptionConstant: v });
 }
 
+// --- Gen 6/7 : soigneur et pays.
+const h = computed(() => props.p.extras.handler);
+const htName = ref(h.value?.name ?? "");
+const htFriendship = ref(h.value?.friendship ?? 0);
+watch(h, (v) => {
+  htName.value = v?.name ?? "";
+  htFriendship.value = v?.friendship ?? 0;
+});
+function commitHtName() {
+  const n = htName.value.trim();
+  if (h.value && n !== h.value.name) apply({ extras: { htName: n } });
+}
+function commitHtFriendship() {
+  const v = num(htFriendship.value, 0, 255);
+  if (v !== null && h.value && v !== h.value.friendship) apply({ extras: { htFriendship: v } });
+}
+const countryOptions = computed(() => [{ value: 0, label: "(Aucun)" }, ...lists.countries]);
+const regionsOf = (country: number) => [{ value: 0, label: "(Aucune)" }, ...lists.regions.filter((r) => r[0] === country).map((r) => ({ value: r[1], label: r[2] }))];
+const country = computed({
+  get: () => h.value?.country ?? 0,
+  set: (v: number) => v !== h.value?.country && apply({ extras: { country: v, region: regionsOf(v).length > 1 ? regionsOf(v)[1].value : 0 } }),
+});
+const countryName = (c: number) => lists.countries.find((o) => o.value === c)?.label ?? (c ? `Pays n°${c}` : "—");
+const regionName = (c: number, r: number) => lists.regions.find((x) => x[0] === c && x[1] === r)?.[2] ?? (r ? `n°${r}` : "");
+/** Lieux des derniers échanges ; choisir un pays met sa première région. */
+function setGeo(i: number, part: 0 | 1, v: number) {
+  const geo = (h.value?.geo ?? []).map((g) => [...g] as [number, number]);
+  geo[i][part] = v;
+  if (part === 1) geo[i][0] = regionsOf(v).length > 1 ? regionsOf(v)[1].value : 0;
+  apply({ extras: { geo } });
+}
+function clearHandler() {
+  apply({
+    extras: {
+      htName: "",
+      htGender: "male",
+      currentHandler: 0,
+      htFriendship: 0,
+      htAffection: 0,
+      htMemory: { id: 0, intensity: 0, feeling: 0, variable: 0 },
+      geo: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+    },
+  });
+}
+
 const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536 + props.p.tid) % 1_000_000)).padStart(6, "0") : String(props.p.tid).padStart(5, "0")));
 </script>
 
@@ -98,6 +144,77 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
           <button class="sv-btn" @click="useMine">Mettre mes infos de dresseur</button>
         </template>
       </div>
+    </section>
+
+    <section v-if="h">
+      <h3 class="sv-section-title">Soigneur <Tip term="handler" /></h3>
+      <div class="sv-grid">
+        <div class="sv-field">
+          <span class="sv-label">Nom du soigneur</span>
+          <input v-model="htName" class="sv-input" maxlength="12" placeholder="Jamais échangé" @change="commitHtName" />
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">Sexe du soigneur</span>
+          <div class="sv-seg">
+            <button :class="{ on: h.gender !== 'female' }" @click="apply({ extras: { htGender: 'male' } })">♂ Garçon</button>
+            <button :class="{ on: h.gender === 'female' }" @click="apply({ extras: { htGender: 'female' } })">♀ Fille</button>
+          </div>
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">S'occupe du Pokémon</span>
+          <div class="sv-seg">
+            <button :class="{ on: h.current === 0 }" @click="apply({ extras: { currentHandler: 0 } })">Dresseur d'origine</button>
+            <button :class="{ on: h.current === 1 }" :disabled="!h.name" @click="apply({ extras: { currentHandler: 1 } })">Soigneur</button>
+          </div>
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">Bonheur avec le soigneur</span>
+          <input v-model="htFriendship" class="sv-input" type="number" min="0" max="255" :disabled="!h.name" @change="commitHtFriendship" />
+        </div>
+      </div>
+      <div class="sv-row mine">
+        <button class="sv-btn" :disabled="!h.name && h.current === 0" @click="clearHandler">Effacer le soigneur (jamais échangé)</button>
+      </div>
+    </section>
+
+    <section v-if="h">
+      <h3 class="sv-section-title">Pays et région <Tip term="country" /></h3>
+      <div class="sv-grid">
+        <div class="sv-field">
+          <span class="sv-label">Pays</span>
+          <Combo v-model="country" :options="countryOptions" placeholder="Chercher un pays…" />
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">Région</span>
+          <select class="sv-select" :value="h.region" @change="apply({ extras: { region: Number(($event.target as HTMLSelectElement).value) } })">
+            <option v-if="!regionsOf(h.country).some((r) => r.value === h!.region)" :value="h.region">Région n°{{ h.region }}</option>
+            <option v-for="r in regionsOf(h.country)" :key="r.value" :value="r.value">{{ r.label }}</option>
+          </select>
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">Zone de la console</span>
+          <select class="sv-select" :value="h.consoleRegion" @change="apply({ extras: { consoleRegion: Number(($event.target as HTMLSelectElement).value) } })">
+            <template v-for="(name, i) in lists.consoleRegions" :key="i">
+              <option v-if="name" :value="i">{{ name }}</option>
+            </template>
+          </select>
+        </div>
+      </div>
+      <details class="geo">
+        <summary>Pays des derniers échanges ({{ h.geo.filter((g) => g[1]).length }}/5)</summary>
+        <div v-for="(g, i) in h.geo" :key="i" class="geo-row">
+          <span class="dim">{{ i + 1 }}.</span>
+          <select class="sv-select" :value="g[1]" :aria-label="`Pays ${i + 1}`" @change="setGeo(i, 1, Number(($event.target as HTMLSelectElement).value))">
+            <option :value="0">(Aucun)</option>
+            <option v-if="g[1] && !lists.countries.some((c) => c.value === g[1])" :value="g[1]">{{ countryName(g[1]) }}</option>
+            <option v-for="c in lists.countries" :key="c.value" :value="c.value">{{ c.label }}</option>
+          </select>
+          <select class="sv-select" :value="g[0]" :disabled="!g[1]" :aria-label="`Région ${i + 1}`" @change="setGeo(i, 0, Number(($event.target as HTMLSelectElement).value))">
+            <option v-if="g[0] && !regionName(g[1], g[0])" :value="g[0]">Région n°{{ g[0] }}</option>
+            <option v-for="r in regionsOf(g[1])" :key="r.value" :value="r.value">{{ r.label }}</option>
+          </select>
+        </div>
+      </details>
     </section>
 
     <section>
@@ -157,6 +274,24 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
 }
 
 section .sv-help {
+  margin-top: 8px;
+}
+
+.geo {
+  margin-top: 14px;
+}
+
+.geo summary {
+  color: var(--text-dim);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.geo-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   margin-top: 8px;
 }
 </style>

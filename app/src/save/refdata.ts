@@ -156,6 +156,38 @@ export function hiddenPowerType(ivs: number[]) {
   return t + 1; // de Combat (1) à Ténèbres (16)
 }
 
+/**
+ * IV donnant la Puissance Cachée de type `type` (1 Combat … 16 Ténèbres) en changeant le moins
+ * d'IV possible, d'un point chacune (parité seulement) ; à égalité, on garde les IV les plus hautes.
+ */
+export function ivsForHiddenPower(ivs: number[], type: number): number[] {
+  // Ordre de la formule : PV, Att, Déf, Vit, AtS, DéS → index Kaleido.
+  const order = [0, 1, 2, 5, 3, 4];
+  let best: number[] | null = null;
+  let bestCost: [number, number] = [Infinity, Infinity];
+  for (let bits = 0; bits < 64; bits++) {
+    if (Math.floor((bits * 15) / 63) + 1 !== type) continue;
+    const out = [...ivs];
+    let changed = 0;
+    let lost = 0;
+    order.forEach((k, i) => {
+      const want = (bits >> i) & 1;
+      if ((out[k] & 1) === want) return;
+      changed++;
+      if (want) out[k] += 1;
+      else {
+        out[k] -= 1;
+        lost++;
+      }
+    });
+    if (changed < bestCost[0] || (changed === bestCost[0] && lost < bestCost[1])) {
+      best = out;
+      bestCost = [changed, lost];
+    }
+  }
+  return best ?? ivs;
+}
+
 export function genderLabel(g: string) {
   return g === "male" ? "Mâle" : g === "female" ? "Femelle" : "Asexué";
 }

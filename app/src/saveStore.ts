@@ -1,7 +1,7 @@
 import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { nav } from "./nav";
-import type { Named, PokemonPatch, Pouch, SaveLists, SaveView, Slot, SlotView, TrainerPatch } from "./types";
+import type { Named, PokemonPatch, Pouch, SaveLists, SaveView, Slot, SlotView, TrainerPatch, MoveCat } from "./types";
 
 export type SavePage = "home" | "boxes" | "pokemon" | "encounters" | "tools" | "gifts" | "nuzlocke" | "manager" | "bank" | "battle";
 export type SaveTool = "trainer" | "items" | "dex" | "boxes" | "checks";
@@ -53,6 +53,17 @@ export const lists = reactive({
   locations: [] as Named[],
   balls: [] as Named[],
   types: [] as string[],
+  moveMeta: [] as ([number, MoveCat] | null)[],
+  characteristics: [] as string[],
+  groundTiles: [] as string[],
+  superTraining: [] as string[],
+  memories: [] as string[],
+  intensities: [] as string[],
+  feelings: [] as string[],
+  generalLocations: [] as string[],
+  consoleRegions: [] as string[],
+  countries: [] as Named[],
+  regions: [] as [number, number, string][],
   /** Noms par identifiant. */
   itemName: {} as Record<number, string>,
   moveName: {} as Record<number, string>,

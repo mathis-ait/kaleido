@@ -161,6 +161,78 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     title: "Pokérus",
     text: "Virus bénéfique : il double les EV gagnés. La souche dit combien de jours il reste à l'infection ; une fois guéri (0 jour), l'effet reste pour toujours.",
   },
+  pokerusStrain: {
+    title: "Souche et jours du Pokérus",
+    text: "La souche (1 à 15) fixe la durée de l'infection : souche % 4 + 1 jours (1 à 4). Les jours baissent à minuit ; à 0, le Pokémon est guéri et garde l'effet. Souche 0 = jamais infecté.",
+  },
+  learnable: {
+    title: "Attaques apprenables",
+    text: "Attaques que l'espèce peut apprendre dans ce jeu à son niveau : par niveau, CT/CS, donneurs de capacités et capacités Œuf. Les attaques d'événement ou héritées d'une autre génération n'y sont pas, même si elles sont légales.",
+  },
+  characteristic: {
+    title: "Caractéristique",
+    text: "Phrase du résumé (« Il adore manger. »…) qui trahit la meilleure IV et sa valeur modulo 5. Elle n'est pas stockée : le jeu la calcule depuis les IV (et le PID ou l'EC en cas d'égalité).",
+  },
+  hiddenPowerType: {
+    title: "Choisir le type de Puissance Cachée",
+    text: "Le type dépend de la parité des 6 IV. Kaleido change le moins d'IV possible, de 1 point chacune (31 devient 30) : l'effet sur les statistiques est minime.",
+  },
+  contest: {
+    title: "Caractéristiques de concours",
+    text: "Sang-froid, Beauté, Grâce, Intelligence et Robustesse (0 à 255) montent avec les Poffins (Gen 4) ou les Pokébloc (ROSA). Le Lustre limite le nombre de friandises qu'il peut encore manger.",
+  },
+  ribbons: {
+    title: "Rubans",
+    text: "Récompenses (concours, Tour de Combat, événements…). Purement décoratifs, mais un ruban impossible à obtenir rend le Pokémon illégal. Les rubans d'événement doivent correspondre à une vraie distribution.",
+  },
+  groundTile: {
+    title: "Terrain de rencontre",
+    text: "Type de sol où le Pokémon a été rencontré (herbe, grotte, eau…), qui fixait le décor du combat. Stocké en Gen 4 à 6 ; la légalité le vérifie pour les Pokémon de Gen 4.",
+  },
+  shinyLeaf: {
+    title: "Feuilles brillantes",
+    text: "HGSS : feuilles offertes par le Pokémon qui suit le joueur dans la Forêt de Jade (Pokéathlon). 5 feuilles permettent d'obtenir la couronne.",
+  },
+  walkingMood: {
+    title: "Humeur en promenade",
+    text: "HGSS : humeur du Pokémon qui suit le joueur, de -127 à 127. Elle change ses réactions quand on lui parle.",
+  },
+  nSparkle: {
+    title: "Éclat de N",
+    text: "N2B2 : drapeau des Pokémon de N rendus au joueur (ils scintillent au combat). À ne cocher que pour ces Pokémon précis.",
+  },
+  pokestarFame: {
+    title: "Renommée Pokéstar",
+    text: "N2B2 : popularité gagnée en tournant des films aux Studios Pokéstar.",
+  },
+  formArgument: {
+    title: "Argument de forme",
+    text: "Valeur liée à la forme : jours restants pour la coupe de Couafarel (5) ou Hoopa Déchaîné (3), avant de retrouver sa forme normale.",
+  },
+  hyperTraining: {
+    title: "Hyper Training",
+    text: "Soleil/Lune : M. Hyper entraîne une statistique contre une Capsule d'Argent. La statistique compte comme une IV à 31 en combat, sans changer l'IV stockée (donc ni la Puissance Cachée ni la caractéristique).",
+  },
+  handler: {
+    title: "Soigneur",
+    text: "Dernier dresseur, autre que le dresseur d'origine, à avoir reçu le Pokémon (échange, GTS…). Le jeu garde son nom, son affection et ses souvenirs. « Soigneur actuel » dit qui s'occupe du Pokémon aujourd'hui.",
+  },
+  country: {
+    title: "Pays et région 3DS",
+    text: "Pays, région et zone de la console du dresseur d'origine, réglés dans les paramètres de la 3DS. Les 5 lieux suivants retracent les pays des derniers échanges (le plus récent en premier).",
+  },
+  memories: {
+    title: "Souvenirs",
+    text: "X/Y à Ultra-Soleil/Ultra-Lune : un souvenir avec le dresseur d'origine et un avec le soigneur (« … se rappelle avoir combattu à vos côtés… »). Chaque souvenir a une intensité, un ressenti et parfois une variable : lieu, espèce, attaque ou objet.",
+  },
+  affection: {
+    title: "Affection et Poké Récré",
+    text: "Points d'affection de la Poké Récré (X/Y, ROSA) ou de la Pokémon-Récré (Soleil/Lune), de 0 à 255 : au-delà de 255 de bonheur, ils donnent des coups critiques, des esquives… Satiété et entrain servent aux friandises.",
+  },
+  superTraining: {
+    title: "Super Training",
+    text: "X/Y et ROSA : mini-jeu qui donne des EV. Chaque épreuve réussie donne une médaille. Les 8 dernières sont des épreuves distribuées.",
+  },
 
   // --- Sauvegarde
   checksum: {

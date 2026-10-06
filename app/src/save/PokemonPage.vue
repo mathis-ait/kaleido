@@ -16,6 +16,8 @@ import StatsTab from "./pokemon/StatsTab.vue";
 import MovesTab from "./pokemon/MovesTab.vue";
 import TrainerTab from "./pokemon/TrainerTab.vue";
 import ExtrasTab from "./pokemon/ExtrasTab.vue";
+import RibbonsTab from "./pokemon/RibbonsTab.vue";
+import MemoriesTab from "./pokemon/MemoriesTab.vue";
 import { BALLS, genderLabel, genderSymbol, TYPE_KEYS } from "./refdata";
 import { useShell } from "./shell";
 import { openShowdown, showdownUi } from "./showdown/api";
@@ -25,16 +27,20 @@ import SmogonSets from "./showdown/SmogonSets.vue";
 const p = computed(() => saveState.selected);
 const view = computed(() => saveState.view!);
 
-const TABS = [
-  { id: "overview", label: "Aperçu", comp: OverviewTab },
-  { id: "met", label: "Rencontre", comp: MetTab },
-  { id: "stats", label: "Statistiques", comp: StatsTab },
-  { id: "moves", label: "Attaques", comp: MovesTab },
-  { id: "trainer", label: "Dresseur", comp: TrainerTab },
-  { id: "extras", label: "Extras", comp: ExtrasTab },
+const ALL_TABS = [
+  { id: "overview", label: "Aperçu", comp: OverviewTab, since: 4 },
+  { id: "met", label: "Rencontre", comp: MetTab, since: 4 },
+  { id: "stats", label: "Statistiques", comp: StatsTab, since: 4 },
+  { id: "moves", label: "Attaques", comp: MovesTab, since: 4 },
+  { id: "trainer", label: "Dresseur", comp: TrainerTab, since: 4 },
+  { id: "extras", label: "Extras", comp: ExtrasTab, since: 4 },
+  { id: "ribbons", label: "Rubans", comp: RibbonsTab, since: 4 },
+  { id: "memories", label: "Souvenirs", comp: MemoriesTab, since: 6 },
 ];
+/** Onglets du jeu ouvert : les souvenirs n'existent qu'à partir de la Gen 6. */
+const TABS = computed(() => ALL_TABS.filter((t) => t.since <= view.value.generation));
 const tab = ref("overview");
-const current = computed(() => TABS.find((t) => t.id === tab.value)!);
+const current = computed(() => TABS.value.find((t) => t.id === tab.value) ?? TABS.value[0]);
 
 const checks = computed(() => (p.value ? checkPokemon(p.value, view.value.generation, lists.itemName) : []));
 const summary = computed(() => checkSummary(checks.value));
@@ -122,8 +128,9 @@ function stepPokemon(d: number) {
 }
 
 function goTab(d: number) {
-  const i = TABS.findIndex((t) => t.id === tab.value);
-  tab.value = TABS[(i + d + TABS.length) % TABS.length].id;
+  const tabs = TABS.value;
+  const i = tabs.findIndex((t) => t.id === tab.value);
+  tab.value = tabs[(i + d + tabs.length) % tabs.length].id;
 }
 
 useShell(() => ({

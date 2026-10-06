@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use kaleido_core::save::edit::TrainerPatch;
 use kaleido_core::save::pokedex::DexEntry;
 use kaleido_core::save::session::{self, PokemonPatch, SaveSession, SaveView, Slot, SlotView};
+use kaleido_core::legality::learn;
 use kaleido_core::{dex, names, save};
 use serde::Serialize;
 use tauri::State;
@@ -221,6 +222,20 @@ pub struct SaveLists {
     locations: Vec<Named>,
     balls: Vec<Named>,
     types: Vec<String>,
+    /// Type et catégorie de chaque attaque (index = attaque), pour les icônes des listes.
+    move_meta: Vec<Option<(u8, dex::MoveCategory)>>,
+    /// Textes de la fiche (index = valeur stockée).
+    characteristics: Vec<&'static str>,
+    ground_tiles: Vec<&'static str>,
+    super_training: Vec<&'static str>,
+    memories: Vec<&'static str>,
+    intensities: Vec<&'static str>,
+    feelings: Vec<&'static str>,
+    general_locations: Vec<&'static str>,
+    console_regions: Vec<&'static str>,
+    countries: Vec<Named>,
+    /// (pays, région, nom).
+    regions: Vec<(u8, u8, &'static str)>,
 }
 
 #[tauri::command]
@@ -243,6 +258,21 @@ pub fn save_lists(state: State<'_, OpenSave>) -> Result<SaveLists, String> {
         locations,
         balls: (1..=dex::max_ball(game)).filter_map(|b| dex::ball_name(b).map(|n| Named { value: b as u16, label: n.to_string() })).collect(),
         types: dex::type_names().iter().map(|s| s.to_string()).collect(),
+        move_meta: (0..=dex::max_move(game)).map(|m| dex::move_info_in(game, m).filter(|_| m != 0).map(|i| (i.type_id, i.category))).collect(),
+        characteristics: dex::characteristic_names().to_vec(),
+        ground_tiles: dex::ground_tile_names().to_vec(),
+        super_training: dex::super_training_names().to_vec(),
+        memories: dex::memory_texts().to_vec(),
+        intensities: dex::memory_intensities().to_vec(),
+        feelings: dex::memory_feelings().to_vec(),
+        general_locations: dex::general_locations().to_vec(),
+        console_regions: dex::console_region_names().to_vec(),
+        countries: {
+            let mut c: Vec<Named> = dex::country_names().iter().map(|&(v, n)| Named { value: v as u16, label: n.to_string() }).collect();
+            c.sort_by(|a, b| a.label.cmp(&b.label));
+            c
+        },
+        regions: dex::region_names().to_vec(),
     })
 }
 
@@ -278,17 +308,24 @@ pub struct SuggestedMoves {
     pp: [u8; 4],
 }
 
-/// Attaques apprises par niveau et par reproduction, pour aider à choisir.
+/// Attaques apprises par niveau et par reproduction, pour aider à choisir, et toutes les
+/// attaques apprenables dans ce jeu au niveau donné (niveau, CT/CS, donneurs, Œuf).
 #[tauri::command]
-pub fn save_learnset(species: u16, form: u8, state: State<'_, OpenSave>) -> Result<Learnset, String> {
-    let game = state.with(|s| Ok(s.game()))?;
-    Ok(Learnset { levelup: dex::levelup(game, species, form).to_vec(), egg: dex::egg_moves(game, species, form).to_vec() })
+pub fn save_learnset(species: u16, form: u8, level: Option<u8>, state: State<'_, OpenSave>) -> Result<Learnset, String> {
+    let (game, format) = state.with(|s| Ok((s.game(), s.save.format().generation())))?;
+    let egg = dex::egg_moves(game, species, form).to_vec();
+    let q = learn::LearnQuery { species, form, level: level.unwrap_or(100), format };
+    let mut learnable = learn::learnable_moves(game, &q);
+    let extra: Vec<u16> = egg.iter().copied().filter(|m| !learnable.contains(m)).collect();
+    learnable.extend(extra);
+    Ok(Learnset { levelup: dex::levelup(game, species, form).to_vec(), egg, learnable })
 }
 
 #[derive(Serialize)]
 pub struct Learnset {
     levelup: Vec<(u16, u8)>,
     egg: Vec<u16>,
+    learnable: Vec<u16>,
 }
 
 #[tauri::command]

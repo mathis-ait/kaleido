@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import type { MoveCat, TypeTag } from "../types";
+import CategoryIcon from "./CategoryIcon.vue";
 import Sprite from "./Sprite.vue";
+import TypeBadge from "./TypeBadge.vue";
 
 /**
  * Liste déroulante avec recherche (espèces, attaques, objets, lieux…).
@@ -13,6 +16,11 @@ export interface ComboOption {
   hint?: string;
   /** Espèce dont l'icône est affichée. */
   sprite?: number;
+  /** Attaques : type et catégorie affichés à droite. */
+  type?: TypeTag;
+  category?: MoveCat;
+  /** Choix conseillé (ex. attaque apprenable), surligné en vert. */
+  good?: boolean;
 }
 
 const props = withDefaults(
@@ -154,13 +162,15 @@ onBeforeUnmount(close);
           :data-i="i"
           role="option"
           :aria-selected="o.value === model"
-          :class="{ active: i === active, chosen: o.value === model }"
+          :class="{ active: i === active, chosen: o.value === model, good: o.good }"
           @pointerenter="active = i"
           @pointerdown.prevent="choose(o)"
         >
           <Sprite v-if="sprites && o.value" :id="o.sprite ?? o.value" :size="28" />
           <span class="label">{{ o.label }}</span>
           <small v-if="o.hint">{{ o.hint }}</small>
+          <TypeBadge v-if="o.type" :type="o.type" class="mini-type" />
+          <CategoryIcon v-if="o.category" :cat="o.category" />
         </li>
         <li v-if="!filtered.length" class="empty">Aucun résultat</li>
       </ul>
@@ -271,6 +281,20 @@ onBeforeUnmount(close);
 
 .combo-list li.active {
   background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+}
+
+.combo-list li.good {
+  color: #8ff0b5;
+  background: color-mix(in srgb, #3ccf7a 12%, transparent);
+}
+
+.combo-list li.good + li:not(.good) {
+  margin-top: 6px;
+}
+
+.combo-list li .mini-type {
+  min-width: 52px;
+  font-size: 10px;
 }
 
 .combo-list li.chosen .label {

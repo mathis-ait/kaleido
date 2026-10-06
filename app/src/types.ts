@@ -16,6 +16,8 @@ export type PokeTypeKey =
   | "normal" | "fighting" | "flying" | "poison" | "ground" | "rock" | "bug" | "ghost" | "steel"
   | "mystery" | "fire" | "water" | "grass" | "electric" | "psychic" | "ice" | "dragon" | "dark" | "fairy";
 
+export type MoveCat = "physical" | "special" | "status";
+
 export interface TypeTag {
   key: PokeTypeKey;
   name: string;
@@ -226,10 +228,84 @@ export interface SlotView {
   pokerusDays: number;
   tsv: number;
   psv: number;
+  extras: PokemonExtras;
   knownMoves: KnownMove[];
   metLocationName: string | null;
   eggLocationName: string | null;
   speciesData: SpeciesData | null;
+}
+
+/** Souvenir Gen 6/7 : texte, intensité, ressenti et variable (lieu, espèce, attaque ou objet). */
+export interface Memory {
+  id: number;
+  intensity: number;
+  feeling: number;
+  variable: number;
+}
+
+export interface Handler {
+  name: string;
+  gender: Gender;
+  /** 0 : dresseur d'origine, 1 : soigneur. */
+  current: number;
+  friendship: number;
+  otAffection: number;
+  htAffection: number;
+  country: number;
+  region: number;
+  consoleRegion: number;
+  /** [région, pays] des 5 derniers lieux, du plus récent au plus ancien. */
+  geo: [number, number][];
+  fullness: number;
+  enjoyment: number;
+  otMemory: Memory;
+  htMemory: Memory;
+}
+
+/** Champs secondaires (absents = n'existent pas dans ce format). */
+export interface PokemonExtras {
+  /** Sang-froid, Beauté, Grâce, Intelligence, Robustesse, Lustre. */
+  contest: number[];
+  ribbons: { key: string; name: string; on: boolean }[];
+  characteristic: number;
+  groundTile: number | null;
+  shinyLeaf: number | null;
+  walkingMood: number | null;
+  nSparkle: boolean | null;
+  pokestarFame: number | null;
+  formArgument: number | null;
+  hyperTraining: boolean[] | null;
+  handler: Handler | null;
+  superTraining: { medals: boolean[]; secretUnlocked: boolean; supremelyTrained: boolean } | null;
+}
+
+export interface ExtrasPatch {
+  contest?: number[];
+  ribbons?: Record<string, boolean>;
+  groundTile?: number;
+  shinyLeaf?: number;
+  walkingMood?: number;
+  nSparkle?: boolean;
+  pokestarFame?: number;
+  formArgument?: number;
+  hyperTraining?: boolean[];
+  htName?: string;
+  htGender?: Gender;
+  currentHandler?: number;
+  htFriendship?: number;
+  otAffection?: number;
+  htAffection?: number;
+  country?: number;
+  region?: number;
+  consoleRegion?: number;
+  geo?: [number, number][];
+  fullness?: number;
+  enjoyment?: number;
+  otMemory?: Memory;
+  htMemory?: Memory;
+  medals?: boolean[];
+  secretUnlocked?: boolean;
+  supremelyTrained?: boolean;
 }
 
 export interface Trainer {
@@ -334,6 +410,7 @@ export interface PokemonPatch {
   isEgg?: boolean;
   markings?: number[];
   pokerus?: [number, number];
+  extras?: ExtrasPatch;
 }
 
 export interface TrainerPatch {
@@ -401,6 +478,19 @@ export interface SaveLists {
   locations: Named[];
   balls: Named[];
   types: string[];
+  /** [type, catégorie] de chaque attaque (index = attaque). */
+  moveMeta: ([number, MoveCat] | null)[];
+  characteristics: string[];
+  groundTiles: string[];
+  superTraining: string[];
+  memories: string[];
+  intensities: string[];
+  feelings: string[];
+  generalLocations: string[];
+  consoleRegions: string[];
+  countries: Named[];
+  /** [pays, région, nom] */
+  regions: [number, number, string][];
 }
 
 export interface StaticSettings {

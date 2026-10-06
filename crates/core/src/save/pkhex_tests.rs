@@ -235,3 +235,24 @@ fn real_sm_save_edit_and_resign() {
     let bad: Vec<_> = save.checksums().into_iter().filter(|c| !c.valid).map(|c| c.name).collect();
     assert_eq!(bad, ["bloc 6", "bloc 14"]);
 }
+
+#[test]
+fn real_pkm_files_extras_are_plausible() {
+    for x in &PKM_FILES {
+        let pk = Pokemon::from_bytes(x.format, x.bytes).unwrap();
+        let name = x.file;
+        let e = pk.extras();
+        assert!(e.characteristic < 30, "{name}");
+        if let Some(t) = e.ground_tile {
+            assert!((t as usize) < crate::dex::ground_tile_names().len(), "{name} : terrain {t}");
+        }
+        if let Some(h) = &e.handler {
+            for m in [h.ot_memory, h.ht_memory] {
+                assert!((m.id as usize) < crate::dex::memory_texts().len(), "{name} : souvenir {}", m.id);
+                assert!(m.intensity < 8 && m.feeling < 25, "{name} : {m:?}");
+            }
+            assert!(h.country == 0 || crate::dex::country_names().iter().any(|&(c, _)| c == h.country), "{name} : pays {}", h.country);
+            assert!(h.current <= 1, "{name}");
+        }
+    }
+}

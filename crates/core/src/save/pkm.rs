@@ -44,6 +44,8 @@ pub enum PkmError {
     NatureFromPid,
     #[error("valeur hors limites pour « {field} » : {value}")]
     OutOfRange { field: &'static str, value: u32 },
+    #[error("{0}")]
+    Invalid(String),
 }
 
 /// Format de Pokémon (lié à la génération de la sauvegarde).
@@ -1545,3 +1547,7 @@ pub(super) mod tests {
         assert!(boxed.summary(None).level_estimated);
     }
 }
+
+#[path = "pkm_extra.rs"]
+mod extra;
+pub use extra::{ExtrasPatch, Handler, Memory, PokemonExtras, RibbonState, SuperTraining};

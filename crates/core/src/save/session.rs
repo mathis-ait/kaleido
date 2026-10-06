@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::edit::TrainerPatch;
+use super::pkm::{ExtrasPatch, PokemonExtras};
 use super::{
     calc_stats, exp_for_level, Gender, GrowthRate, PkmDate, PkmFormat, Pokemon, PokemonSummary, SaveError, SaveFile, SaveVersion, ShinyMode, Trainer,
     BOX_SLOTS, PARTY_SLOTS,
@@ -66,6 +67,8 @@ pub struct PokemonDetails {
     /// Valeur de chromatique (TSV) du dresseur d'origine, et du Pokémon (PSV).
     pub tsv: u16,
     pub psv: u16,
+    /// Concours, rubans, caractéristique, soigneur, souvenirs, Super Training…
+    pub extras: PokemonExtras,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -131,6 +134,7 @@ pub struct PokemonPatch {
     pub is_egg: Option<bool>,
     pub markings: Option<[u8; 6]>,
     pub pokerus: Option<(u8, u8)>,
+    pub extras: Option<ExtrasPatch>,
 }
 
 pub struct SaveSession {
@@ -166,6 +170,7 @@ fn details(p: &Pokemon) -> PokemonDetails {
         pokerus_days: days,
         tsv: (p.tid() ^ p.sid()) >> shift,
         psv: (((pid >> 16) ^ (pid & 0xFFFF)) >> shift) as u16,
+        extras: p.extras(),
     }
 }
 
@@ -811,6 +816,9 @@ pub(crate) fn apply_patch(game: Game, mut p: Pokemon, patch: &PokemonPatch) -> R
     }
     if let Some((strain, days)) = patch.pokerus {
         p.set_pokerus(strain, days);
+    }
+    if let Some(x) = &patch.extras {
+        p.apply_extras(x).map_err(invalid)?;
     }
     if let Some(exp) = patch.exp {
         p.set_exp(exp);

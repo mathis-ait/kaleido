@@ -131,6 +131,81 @@ pub fn ribbon_names() -> &'static [(&'static str, &'static str)] {
     &RIBBONS
 }
 
+// --- Fiche Pokémon : caractéristiques, terrains, Super Training, souvenirs, pays 3DS ---
+
+text_list!(CHARACTERISTICS, "Character.txt");
+text_list!(GROUND_TILES, "GroundTile.txt");
+text_list!(SUPER_TRAINING, "SuperTraining.txt");
+text_list!(MEMORIES, "Memories.txt");
+text_list!(INTENSITIES, "Intensity.txt");
+text_list!(FEELINGS6, "Feeling6.txt");
+text_list!(GENERAL_LOCATIONS, "GenLoc.txt");
+text_list!(CONSOLE_REGIONS, "Console3DS.txt");
+
+/// Lignes « id\tnom » ou « pays\tid\tnom » des pays et régions 3DS (`locale3DS` de PKHeX).
+fn tabbed(text: &'static str, columns: usize) -> Vec<Vec<&'static str>> {
+    lines(text).into_iter().map(|l| l.splitn(columns, '\t').collect::<Vec<_>>()).filter(|c| c.len() == columns).collect()
+}
+
+static COUNTRIES: LazyLock<Vec<(u8, &'static str)>> = LazyLock::new(|| {
+    tabbed(include_str!("../../data/pkhex/text/Countries3DS.txt"), 2).into_iter().filter_map(|c| Some((c[0].parse().ok()?, c[1]))).collect()
+});
+
+static REGIONS: LazyLock<Vec<(u8, u8, &'static str)>> = LazyLock::new(|| {
+    tabbed(include_str!("../../data/pkhex/text/Regions3DS.txt"), 3)
+        .into_iter()
+        .filter_map(|c| Some((c[0].parse().ok()?, c[1].parse().ok()?, c[2])))
+        .collect()
+});
+
+/// Caractéristiques 0-29 (« Il adore manger. »…), par statistique (ordre du jeu) puis IV % 5.
+pub fn characteristic_names() -> &'static [&'static str] {
+    &CHARACTERISTICS
+}
+
+/// Types de terrain de rencontre Gen 4 à 6 (`GroundTileType`), entrées vides = inutilisées.
+pub fn ground_tile_names() -> &'static [&'static str] {
+    &GROUND_TILES
+}
+
+/// Médailles du Super Training : 30 entraînements (bits 2 à 31) puis 8 distribués.
+pub fn super_training_names() -> &'static [&'static str] {
+    &SUPER_TRAINING
+}
+
+/// Souvenirs Gen 6/7 : phrases avec {0} Pokémon, {1} dresseur, {2} variable, {3} ressenti, {4} intensité.
+pub fn memory_texts() -> &'static [&'static str] {
+    &MEMORIES
+}
+
+pub fn memory_intensities() -> &'static [&'static str] {
+    &INTENSITIES
+}
+
+pub fn memory_feelings() -> &'static [&'static str] {
+    &FEELINGS6
+}
+
+/// Lieux génériques des souvenirs (« à la maison »…).
+pub fn general_locations() -> &'static [&'static str] {
+    &GENERAL_LOCATIONS
+}
+
+/// Régions de la console 3DS (0 = Japon, 1 = Amériques, 2 = Europe, 4 = Chine…).
+pub fn console_region_names() -> &'static [&'static str] {
+    &CONSOLE_REGIONS
+}
+
+/// Pays des 3DS (identifiant, nom français).
+pub fn country_names() -> &'static [(u8, &'static str)] {
+    &COUNTRIES
+}
+
+/// Régions des pays des 3DS (pays, identifiant, nom français).
+pub fn region_names() -> &'static [(u8, u8, &'static str)] {
+    &REGIONS
+}
+
 // --- Lieux de rencontre ---------------------------------------------------------
 
 /// Lieux d'une génération : banques de PKHeX (0, 2000, 3000 en Gen 4 ; 0, 30000, 40000, 60000 ensuite).

@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import Tip from "../../components/Tip.vue";
 import { lists } from "../../saveStore";
 import type { SlotView } from "../../types";
-import { hiddenPowerType, natureEffect, STAT_LABELS } from "../refdata";
+import { hiddenPowerType, ivsForHiddenPower, natureEffect, STAT_LABELS } from "../refdata";
 import { apply, num } from "./edit";
 
 const props = defineProps<{ p: SlotView }>();
@@ -23,7 +23,21 @@ const evTotal = computed(() => evs.value.reduce((a, b) => a + (Number(b) || 0), 
 const base = computed(() => props.p.speciesData?.baseStats ?? null);
 const baseTotal = computed(() => base.value?.reduce((a, b) => a + b, 0) ?? 0);
 const maxStat = computed(() => Math.max(...(props.p.stats ?? [1]), 1));
-const hp = computed(() => lists.types[hiddenPowerType(props.p.ivs)] ?? "");
+const hpType = computed(() => hiddenPowerType(props.p.ivs));
+/** Types possibles de la Puissance Cachée : Combat (1) à Ténèbres (16). */
+const hpTypes = computed(() => lists.types.slice(1, 17).map((label, i) => ({ value: i + 1, label })));
+function setHiddenPower(type: number) {
+  if (type !== hpType.value) apply({ ivs: ivsForHiddenPower(props.p.ivs, type) });
+}
+const characteristic = computed(() => lists.characteristics[props.p.extras.characteristic] ?? "");
+
+/** Gen 7 : Hyper Training, dans l'ordre des lignes (PV, Att, Déf, Atq Spé, Déf Spé, Vit). */
+const hyper = computed(() => props.p.extras.hyperTraining);
+function toggleHyper(i: number) {
+  const v = [...(hyper.value ?? [])];
+  v[i] = !v[i];
+  apply({ extras: { hyperTraining: v } });
+}
 
 function commit(kind: "ivs" | "evs", i: number) {
   const arr = kind === "ivs" ? ivs.value : evs.value;
@@ -53,7 +67,8 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
         <span class="c">IV <Tip term="iv" /></span>
         <span class="c">EV <Tip term="ev" /></span>
         <span class="c">Total</span>
-        <span />
+        <span v-if="hyper" class="c">Hyper <Tip term="hyperTraining" /></span>
+        <span v-else />
       </div>
       <div v-for="(label, i) in STAT_LABELS" :key="label" class="row">
         <span class="name" :class="{ up: effect?.up === i, down: effect?.down === i }">
@@ -74,7 +89,19 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
         />
         <input v-model="evs[i]" class="sv-input c" type="number" min="0" max="252" step="4" :aria-label="`EV ${label}`" @change="commit('evs', i)" />
         <strong class="c total">{{ p.stats ? p.stats[i] : "—" }}</strong>
-        <span class="bar"><span :style="{ width: `${((p.stats?.[i] ?? 0) / maxStat) * 100}%` }" :class="{ up: effect?.up === i, down: effect?.down === i }" /></span>
+        <span class="bar-cell">
+          <span class="bar"><span :style="{ width: `${((p.stats?.[i] ?? 0) / maxStat) * 100}%` }" :class="{ up: effect?.up === i, down: effect?.down === i }" /></span>
+          <button
+            v-if="hyper"
+            class="hyper"
+            :class="{ on: hyper[i] }"
+            :aria-pressed="hyper[i]"
+            :title="hyper[i] ? 'Entraînée par l’Hyper Training (compte comme 31)' : 'Entraîner avec l’Hyper Training'"
+            @click="toggleHyper(i)"
+          >
+            HT
+          </button>
+        </span>
       </div>
       <div class="row foot">
         <span>Total</span>
@@ -93,7 +120,18 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
         <button class="sv-btn" @click="apply({ ivs: randomIvs() })">Au hasard</button>
         <button class="sv-btn" title="Pour Distorsion" @click="apply({ ivs: [31, 31, 31, 31, 31, 0] })">Vitesse à 0</button>
       </div>
-      <p class="sv-help">Puissance Cachée : <strong>{{ hp }}</strong> <Tip term="hiddenPower" /></p>
+      <label class="sv-field hp">
+        <span>Puissance Cachée <Tip term="hiddenPower" /></span>
+        <select class="sv-select" :value="hpType" @change="setHiddenPower(Number(($event.target as HTMLSelectElement).value))">
+          <option v-for="t in hpTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+        </select>
+      </label>
+      <p class="sv-help">Choisir un type ajuste la parité des IV (± 1 point) <Tip term="hiddenPowerType" /></p>
+      <p class="sv-help">Caractéristique : <strong>{{ characteristic }}</strong> <Tip term="characteristic" /></p>
+      <div v-if="hyper" class="sv-row">
+        <button class="sv-btn" @click="apply({ extras: { hyperTraining: p.ivs.map((iv) => iv < 31) } })">Hyper Training sur les IV &lt; 31</button>
+        <button class="sv-btn" @click="apply({ extras: { hyperTraining: [false, false, false, false, false, false] } })">Retirer l'Hyper Training</button>
+      </div>
 
       <h3 class="sv-section-title">EV</h3>
       <div class="sv-row">
@@ -179,6 +217,37 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
 .total {
   font-size: 16px;
   font-variant-numeric: tabular-nums;
+}
+
+.bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-cell .bar {
+  flex: 1;
+}
+
+.hyper {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hyper.on {
+  border-color: #ffc94d;
+  background: color-mix(in srgb, #ffc94d 22%, transparent);
+  color: #ffd877;
+}
+
+.hp {
+  margin-bottom: 4px;
 }
 
 .bar {

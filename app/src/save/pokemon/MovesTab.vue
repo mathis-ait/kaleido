@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import Combo from "../../components/Combo.vue";
+import CategoryIcon from "../../components/CategoryIcon.vue";
+import Combo, { type ComboOption } from "../../components/Combo.vue";
 import Tip from "../../components/Tip.vue";
 import TypeBadge from "../../components/TypeBadge.vue";
 import { lists, notify } from "../../saveStore";
@@ -58,15 +59,31 @@ async function suggest() {
   apply({ moves: s.moves, pp: s.pp, ppUps: [0, 0, 0, 0] });
 }
 
-// Attaques apprenables (par niveau et par reproduction).
-const learnset = ref<{ levelup: [number, number][]; egg: number[] } | null>(null);
+// Attaques apprenables : par niveau, par reproduction, et toutes celles du jeu (CT, donneurs…).
+type Learnset = { levelup: [number, number][]; egg: number[]; learnable: number[] };
+const learnset = ref<Learnset | null>(null);
 watch(
-  () => [props.p.species, props.p.form],
+  () => [props.p.species, props.p.form, props.p.level],
   async () => {
-    learnset.value = await invoke<{ levelup: [number, number][]; egg: number[] }>("save_learnset", { species: props.p.species, form: props.p.form }).catch(() => null);
+    learnset.value = await invoke<Learnset>("save_learnset", { species: props.p.species, form: props.p.form, level: props.p.level }).catch(() => null);
   },
   { immediate: true },
 );
+
+const CATS = ["physical", "special", "status"] as const;
+
+/** Attaques de la liste : apprenables en tête (en vert), avec type et catégorie. */
+const moveOptions = computed<ComboOption[]>(() => {
+  const ok = new Set(learnset.value?.learnable ?? []);
+  const decorate = (o: { value: number; label: string }, good: boolean): ComboOption => {
+    const meta = lists.moveMeta[o.value];
+    return { ...o, good, type: meta ? typeTag(meta[0]) : undefined, category: meta ? (CATS.includes(meta[1]) ? meta[1] : undefined) : undefined };
+  };
+  const good = lists.moves.filter((o) => ok.has(o.value)).map((o) => decorate(o, true));
+  const rest = lists.moves.filter((o) => !ok.has(o.value)).map((o) => decorate(o, false));
+  return [...good, ...rest];
+});
+const learnableCount = computed(() => learnset.value?.learnable.length ?? 0);
 
 function pick(id: number) {
   const empty = props.p.moves.findIndex((m) => !m);
@@ -84,12 +101,14 @@ const name = (id: number) => lists.moveName[id] ?? `n°${id}`;
       <div v-for="r in rows" :key="r.i" class="move" :class="{ target: target === r.i }" @click="target = r.i">
         <span class="n">{{ r.i + 1 }}</span>
         <div class="pick-move">
-          <Combo v-model="models[r.i].value" :options="lists.moves" none-label="(Aucune)" placeholder="Choisir une attaque…" />
+          <Combo v-model="models[r.i].value" :options="moveOptions" none-label="(Aucune)" placeholder="Choisir une attaque…" />
         </div>
         <div class="meta">
           <template v-if="r.info">
             <TypeBadge :type="typeTag(r.info.typeId)" />
+            <CategoryIcon v-if="lists.moveMeta[r.id]" :cat="lists.moveMeta[r.id]![1]" />
             <small>{{ r.info.category }}</small>
+            <small v-if="learnset && r.id && !learnset.learnable.includes(r.id)" class="warn" title="Attaque que l'espèce ne peut pas apprendre dans ce jeu (hors événements et transferts)">Non apprenable</small>
             <small>Puiss. {{ r.info.power ?? "—" }}</small>
             <small>Préc. {{ r.info.accuracy ?? "—" }}</small>
           </template>
@@ -108,6 +127,10 @@ const name = (id: number) => lists.moveName[id] ?? `n°${id}`;
         <button class="sv-btn" @click="apply({ ppUps: [3, 3, 3, 3] }).then(refillPp)">PP Plus partout <Tip term="ppUps" /></button>
       </div>
       <p class="sv-help">« Attaques suggérées » reprend les 4 dernières attaques apprises par niveau, comme PKHeX.</p>
+      <p v-if="learnableCount" class="sv-help">
+        Dans la liste, les <span class="good">{{ learnableCount }} attaques apprenables</span> dans ce jeu (niveau, CT/CS, donneurs, Œuf) sont en tête, en vert.
+        <Tip term="learnable" />
+      </p>
     </div>
 
     <aside class="learn">
@@ -141,7 +164,7 @@ const name = (id: number) => lists.moveName[id] ?? `n°${id}`;
 
 .move {
   display: grid;
-  grid-template-columns: 26px minmax(200px, 1.3fr) minmax(0, 1fr) auto;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
@@ -166,10 +189,23 @@ const name = (id: number) => lists.moveName[id] ?? `n°${id}`;
 }
 
 .meta {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  min-height: 20px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
+}
+
+.meta small.warn {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.good {
+  color: #8ff0b5;
+  font-weight: 700;
 }
 
 .meta small,

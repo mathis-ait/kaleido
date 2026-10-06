@@ -48,6 +48,13 @@ function setHatched(on: boolean) {
   else apply({ eggLocation: 0, eggDate: null });
 }
 /** Lieu « Pension » par défaut, selon la génération (identifiants PKHeX). */
+/** Terrains de rencontre (Gen 4 à 6) : entrées non vides, plus la valeur actuelle si inconnue. */
+const groundTiles = computed(() => {
+  const cur = props.p.extras.groundTile;
+  const opts = lists.groundTiles.map((label, value) => ({ value, label })).filter((o) => o.label);
+  if (cur !== null && !opts.some((o) => o.value === cur)) opts.push({ value: cur, label: `Terrain n°${cur}` });
+  return opts;
+});
 const eggDefault = computed(() => ({ 4: 2000, 5: 60002, 6: 60002, 7: 60002 })[gen.value] ?? 0);
 </script>
 
@@ -70,6 +77,12 @@ const eggDefault = computed(() => ({ 4: 2000, 5: 60002, 6: 60002, 7: 60002 })[ge
     <div class="sv-field">
       <span class="sv-label">Niveau de rencontre <Tip term="metLevel" /></span>
       <input v-model="metLevel" class="sv-input" type="number" min="0" max="100" @change="commitMetLevel" />
+    </div>
+    <div v-if="p.extras.groundTile !== null" class="sv-field">
+      <span class="sv-label">Terrain de rencontre <Tip term="groundTile" /></span>
+      <select class="sv-select" :value="p.extras.groundTile" @change="apply({ extras: { groundTile: Number(($event.target as HTMLSelectElement).value) } })">
+        <option v-for="t in groundTiles" :key="t.value" :value="t.value">{{ t.label }}</option>
+      </select>
     </div>
     <div class="sv-field">
       <span class="sv-label">Date de rencontre <Tip term="metDate" /></span>

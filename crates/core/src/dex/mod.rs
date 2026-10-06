@@ -33,8 +33,10 @@ pub use moves::{move_info, move_info_in, MoveCategory, MoveInfo};
 pub(crate) use personal::personal_raw;
 pub use personal::{egg_moves, levelup, personal, PersonalInfo};
 pub use text::{
-    ability_name, ability_names, ball_name, ball_names, game_name, game_names, item_name, item_name_in, item_names, location_name, locations,
-    move_name, move_names, nature_name, nature_names, ribbon_name, ribbon_names, species_name, species_names, type_name, type_names,
+    ability_name, ability_names, ball_name, ball_names, characteristic_names, console_region_names, country_names, game_name, game_names,
+    general_locations, ground_tile_names, item_name, item_name_in, item_names, location_name, locations, memory_feelings, memory_intensities,
+    memory_texts, move_name, move_names, nature_name, nature_names, region_names, ribbon_name, ribbon_names, species_name, species_names,
+    super_training_names, type_name, type_names,
 };
 
 /// Groupe de versions dont les données diffèrent (une sauvegarde = un groupe).
