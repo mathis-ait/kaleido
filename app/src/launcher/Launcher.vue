@@ -81,7 +81,8 @@ function itemStyle(i: number) {
   const k = i - index.value;
   const abs = Math.abs(k);
   const sign = Math.sign(k);
-  const x = k === 0 ? 0 : sign * (250 + (abs - 1) * 168);
+  // Pendant un glisser, tout le carrousel suit la souris (décalage partiel avant le pas suivant).
+  const x = (k === 0 ? 0 : sign * (250 + (abs - 1) * 168)) + dragShift.value;
   const rot = k === 0 ? 0 : -sign * 44;
   const z = k === 0 ? 40 : -140 - abs * 26;
   const scale = k === 0 ? 1.16 : 0.9;
@@ -97,11 +98,91 @@ function itemStyle(i: number) {
 const visible = computed(() => list.value.map((g, i) => ({ g, i })).filter(({ i }) => Math.abs(i - index.value) <= 7));
 
 function clickCover(i: number) {
+  // Fin d'un glisser : ce n'est pas un clic.
+  if (dragged) {
+    dragged = false;
+    return;
+  }
   if (i === index.value) play();
   else {
     index.value = i;
     sfx("move");
   }
+}
+
+// --- Glisser à la souris (ou au doigt), avec élan au lâcher
+
+/** Distance de glisser pour passer au jeu suivant. */
+const STEP = 170;
+const dragShift = ref(0);
+const dragging = ref(false);
+let drag: { start: number; anchor: number; lastX: number; lastT: number; v: number; id: number } | null = null;
+let dragged = false;
+let glide: number | undefined;
+
+function onDragStart(e: PointerEvent) {
+  if (e.button !== 0 || menuOpen.value || launching.value) return;
+  clearInterval(glide);
+  drag = { start: e.clientX, anchor: e.clientX, lastX: e.clientX, lastT: performance.now(), v: 0, id: e.pointerId };
+  dragged = false;
+}
+
+function onDragMove(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (!dragging.value) {
+    // Seuil : un clic qui bouge d'un pixel reste un clic.
+    if (Math.abs(e.clientX - drag.start) < 8) return;
+    dragging.value = true;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* pointeur déjà relâché */
+    }
+  }
+  const now = performance.now();
+  const dt = Math.max(1, now - drag.lastT);
+  drag.v = 0.7 * drag.v + 0.3 * ((e.clientX - drag.lastX) / dt);
+  drag.lastX = e.clientX;
+  drag.lastT = now;
+  let dx = e.clientX - drag.anchor;
+  while (Math.abs(dx) >= STEP) {
+    const dir = dx > 0 ? -1 : 1;
+    const before = index.value;
+    move(dir);
+    // Au bord de la liste, on ne déplace plus l'ancre : le carrousel résiste.
+    if (index.value === before) break;
+    drag.anchor += dir === -1 ? STEP : -STEP;
+    dx = e.clientX - drag.anchor;
+  }
+  // Résistance aux extrémités.
+  const atEdge = (dx > 0 && index.value === 0) || (dx < 0 && index.value === list.value.length - 1);
+  dragShift.value = atEdge ? dx * 0.25 : dx * 0.85;
+}
+
+function onDragEnd(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const wasDragging = dragging.value;
+  const v = performance.now() - drag.lastT > 80 ? 0 : drag.v;
+  const shift = dragShift.value;
+  drag = null;
+  dragging.value = false;
+  dragShift.value = 0;
+  if (!wasDragging) return;
+  // Le clic qui suit le lâcher arrive avant ce délai : il est ignoré, pas les suivants.
+  dragged = true;
+  setTimeout(() => (dragged = false), 0);
+  // Plus de la moitié d'un pas : on termine le pas ; un lancer rapide ajoute de l'élan.
+  let steps = Math.abs(shift) > STEP / 2 ? -Math.sign(shift) : 0;
+  steps += -Math.round(Math.max(-5, Math.min(5, v * 2.2)));
+  if (!steps) return;
+  const dir = Math.sign(steps);
+  let left = Math.abs(steps);
+  move(dir);
+  left--;
+  glide = window.setInterval(() => {
+    if (left-- <= 0) return clearInterval(glide);
+    move(dir);
+  }, 90);
 }
 
 let wheelAt = 0;
@@ -279,6 +360,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  clearInterval(glide);
   window.removeEventListener("keydown", onKey);
   clearInterval(clock);
   stopMusic();
@@ -366,7 +448,14 @@ const meta = computed(() => {
       </div>
     </div>
 
-    <div class="stage">
+    <div
+      class="stage"
+      :class="{ dragging }"
+      @pointerdown="onDragStart"
+      @pointermove="onDragMove"
+      @pointerup="onDragEnd"
+      @pointercancel="onDragEnd"
+    >
       <div class="ring">
         <button
           v-for="{ g, i } in visible"
@@ -773,6 +862,24 @@ h1 {
   left: 50%;
   top: 47%;
   transform-style: preserve-3d;
+}
+
+.stage {
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.stage.dragging {
+  cursor: grabbing;
+}
+
+/* Pendant le glisser, les jaquettes suivent la souris sans traîner. */
+.stage.dragging .cover {
+  transition-duration: 0.12s;
+}
+
+.cover img {
+  -webkit-user-drag: none;
 }
 
 .cover {
