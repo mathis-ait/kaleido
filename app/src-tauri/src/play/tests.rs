@@ -241,7 +241,7 @@ fn plan_and_prepare_nds() {
     let existing = t.file("roms/Platine.sav", &[1u8; 32]);
     let mine = t.file("autre/ma partie.sav", &[9u8; 32]);
     let r = resolved(EmulatorId::Melonds, Some(exe), Profile::default(), Env::default());
-    let req = PlayRequest { emulator: EmulatorId::Melonds, rom: Some(rom), mod_romfs: None, save: Some(mine), replace_mod: false };
+    let req = PlayRequest { emulator: EmulatorId::Melonds, rom: Some(rom), mod_romfs: None, save: Some(mine), replace_mod: false, track_key: None };
     let p = plan(&req, &r, None);
     assert!(p.save_exists && p.save_conflict);
     let res = prepare_files(&req, &r, None, "S").unwrap();
@@ -261,7 +261,7 @@ fn plan_and_prepare_ctr() {
     let mine = t.file("ma.main", &[5u8; 8]);
     let r = resolved(EmulatorId::Azahar, Some(exe), Profile::default(), Env::default());
     let tid = Some(0x0004_0000_0011_C400);
-    let req = PlayRequest { emulator: EmulatorId::Azahar, rom: Some(game), mod_romfs: Some(romfs), save: Some(mine.clone()), replace_mod: false };
+    let req = PlayRequest { emulator: EmulatorId::Azahar, rom: Some(game), mod_romfs: Some(romfs), save: Some(mine.clone()), replace_mod: false, track_key: None };
     let p = plan(&req, &r, tid);
     assert!(!p.needs_game && !p.mod_exists && !p.save_exists);
     assert_eq!(p.title_id.as_deref(), Some("000400000011C400"));
@@ -342,4 +342,20 @@ fn find_rom_beside_save() {
     assert_eq!(play_find_rom(save.clone()), None);
     let rom = t.file("Noir.nds", b"r");
     assert_eq!(play_find_rom(save), Some(rom.display().to_string()));
+}
+
+#[test]
+fn azahar_play_time() {
+    let user = std::env::temp_dir().join(format!("kaleido-playtime-{}", std::process::id()));
+    fs::create_dir_all(user.join("sysdata")).unwrap();
+    let mut data = Vec::new();
+    for (id, secs) in [(0x0004_0000_0011_C400u64, 970u64), (0x0004_0000_0005_5E00, 39)] {
+        data.extend_from_slice(&id.to_le_bytes());
+        data.extend_from_slice(&secs.to_le_bytes());
+    }
+    fs::write(user.join("sysdata").join("play_time.bin"), data).unwrap();
+    assert_eq!(emulator_play_time(&user, 0x0004_0000_0011_C400), Some(970));
+    assert_eq!(emulator_play_time(&user, 0x0004_0000_0005_5E00), Some(39));
+    assert_eq!(emulator_play_time(&user, 0x0004_0000_0016_4800), None);
+    fs::remove_dir_all(&user).unwrap();
 }
