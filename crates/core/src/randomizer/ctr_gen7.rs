@@ -77,6 +77,11 @@ struct Gen7Info {
     ultra: bool,
 }
 
+/// Plus grand identifiant de talent (Soleil/Lune ou Ultra).
+pub(crate) fn max_ability(game: Game) -> u16 {
+    info(game).max_ability
+}
+
 fn info(game: Game) -> Gen7Info {
     if matches!(game, Game::UltraSun | Game::UltraMoon) {
         Gen7Info { max_ability: 233, gifts: "a/1/5/9", starter_text: 39, ultra: true }
@@ -86,7 +91,7 @@ fn info(game: Game) -> Gen7Info {
 }
 
 /// Capacités Z (UPR, GlobalConstants.zMoves) : jamais apprises par niveau.
-fn is_z_move(m: u16) -> bool {
+pub(crate) fn is_z_move(m: u16) -> bool {
     matches!(m, 622..=658 | 695..=703 | 719 | 723..=728)
 }
 

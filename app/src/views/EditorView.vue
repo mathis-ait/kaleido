@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Combo, { type ComboOption } from "../components/Combo.vue";
+import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import StatRadar from "../components/StatRadar.vue";
 import Tip from "../components/Tip.vue";
@@ -11,7 +12,7 @@ import TypeBadge from "../components/TypeBadge.vue";
 import { closeRom, editCount, editor, openRom, speciesEdit } from "../editor";
 import { addPaths, library } from "../library";
 import { nav } from "../nav";
-import { isRom, type BaseStats, type PokeTypeKey, type SpeciesEdit, type TypeTag } from "../types";
+import { isRom, type BaseStats, type CtrOutput, type PokeTypeKey, type SpeciesEdit, type TypeTag } from "../types";
 
 const STATS: { key: keyof BaseStats; label: string }[] = [
   { key: "hp", label: "PV" },
@@ -24,6 +25,10 @@ const STATS: { key: keyof BaseStats; label: string }[] = [
 
 const openableRoms = computed(() => library.items.filter(isRom));
 const readOnly = computed(() => !editor.data);
+/** Jeu 3DS : la sauvegarde produit un mod LayeredFS et/ou une ROM .3ds reconstruite. */
+const isCtr = computed(() => editor.overview?.game.platform === "3ds");
+/** Niveau minimal d'une attaque apprise : 0 (apprise à l'évolution) à partir de la Gen 7. */
+const minLevel = computed(() => ((editor.overview?.game.generation ?? 0) >= 7 ? 0 : 1));
 
 /** Recherche insensible à la casse et aux accents. */
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -174,7 +179,7 @@ const byLevel = (d: SpeciesEdit) => d.learnset.sort((a, b) => a.level - b.level)
 
 function setLevel(i: number, e: Event) {
   mutate((d) => {
-    d.learnset[i].level = clamp(numberOf(e), 1, 100);
+    d.learnset[i].level = clamp(numberOf(e), minLevel.value, 100);
     byLevel(d);
   });
 }
@@ -208,9 +213,23 @@ const saving = ref(false);
 const saveError = ref<string | null>(null);
 const saved = ref<{ path: string; count: number } | null>(null);
 
+/** 3DS : format de sortie et destination du dossier LayeredFS. */
+const ctrOutput = ref<CtrOutput>("layered_fs");
+const ctrTarget = ref<"luma" | "emulator">("luma");
+/** 3DS : fichiers produits par le dernier enregistrement. */
+const ctrSaved = ref<{ count: number; romfs: string | null; image: string | null; reopened: boolean } | null>(null);
+
+watch(
+  () => editor.overview?.path,
+  (path) => {
+    if (path !== ctrSaved.value?.image) ctrSaved.value = null;
+  },
+);
+
 async function saveRom() {
   const src = editor.overview?.path;
   if (!src || !editCount.value) return;
+  if (isCtr.value) return saveCtr(src);
   const output = await save({
     title: "Enregistrer la ROM modifiée",
     defaultPath: `${src.replace(/\.nds$/i, "")} - modifiée.nds`,
@@ -231,6 +250,42 @@ async function saveRom() {
     } else {
       saveError.value = `ROM enregistrée (${output}), mais impossible de la rouvrir : ${editor.error ?? "erreur inconnue"}`;
     }
+  } catch (e) {
+    saveError.value = String(e);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/**
+ * 3DS : écrit le mod LayeredFS et/ou la ROM reconstruite dans un dossier. Avec une ROM,
+ * la suite de l'édition se fait sur elle ; avec LayeredFS seul, les modifications restent
+ * en cours (un nouvel enregistrement réécrit le mod complet).
+ */
+async function saveCtr(src: string) {
+  const output = await open({ directory: true, title: ctrOutput.value === "layered_fs" ? "Choisis le dossier où créer le mod" : "Choisis le dossier où créer la ROM" });
+  if (typeof output !== "string") return;
+  saving.value = true;
+  saveError.value = null;
+  saved.value = null;
+  ctrSaved.value = null;
+  try {
+    const res = await invoke<{ count: number; romfs: string | null; image: string | null }>("rom_editor_save_ctr", {
+      path: src,
+      edits: Object.values(editor.edits),
+      output,
+      format: ctrOutput.value,
+      target: ctrTarget.value,
+    });
+    let reopened = false;
+    if (res.image) {
+      const keep = selectedId.value;
+      await addPaths([res.image]);
+      reopened = await openRom(res.image, true);
+      if (reopened) selectedId.value = keep;
+      else saveError.value = `ROM enregistrée (${res.image}), mais impossible de la rouvrir : ${editor.error ?? "erreur inconnue"}`;
+    }
+    ctrSaved.value = { ...res, reopened };
   } catch (e) {
     saveError.value = String(e);
   } finally {
@@ -283,14 +338,15 @@ async function saveRom() {
           <button class="btn" @click="closeRom">Changer de ROM</button>
           <button v-if="editCount" class="btn" @click="revertAll">Tout annuler</button>
           <button class="btn btn-primary" :disabled="!editCount || saving" @click="saveRom">
-            {{ saving ? "Enregistrement…" : "Enregistrer la ROM" }}
+            {{ saving ? "Enregistrement…" : !isCtr ? "Enregistrer la ROM" : ctrOutput === "layered_fs" ? "Enregistrer le mod 3DS" : "Enregistrer la ROM 3DS" }}
             <span v-if="editCount" class="count-badge">{{ editCount }}</span>
           </button>
         </div>
       </header>
 
       <p v-if="readOnly" class="notice">
-        L'édition de ce jeu n'est pas encore disponible : seuls Diamant, Perle, Platine, HeartGold, SoulSilver, Noire et Blanche sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
+        L'édition de ce jeu n'est pas encore disponible : seuls Diamant, Perle, Platine, HeartGold, SoulSilver, Noire, Blanche et, sur 3DS, X, Y,
+        Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil et Ultra-Lune sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
       </p>
       <div v-if="saveError" class="error">{{ saveError }}</div>
       <div v-else-if="editor.error" class="error">{{ editor.error }}</div>
@@ -300,6 +356,55 @@ async function saveRom() {
         </span>
         <button class="btn" @click="revealItemInDir(saved.path)">Afficher dans le dossier</button>
         <button class="close-x" aria-label="Fermer" @click="saved = null">×</button>
+      </div>
+      <div v-if="ctrSaved" class="success">
+        <span>
+          {{ ctrSaved.count }} Pokémon modifié{{ ctrSaved.count > 1 ? "s" : "" }}, ta ROM d'origine n'a pas été touchée.
+          <template v-if="ctrSaved.romfs">
+            <br />LayeredFS : <code class="path">{{ ctrSaved.romfs }}</code> —
+            {{ ctrTarget === "luma" ? "copie le dossier « luma » à la racine de ta carte SD et active « Game patching » dans Luma3DS." : "place le dossier du title ID dans le dossier « mods » de ton émulateur." }}
+          </template>
+          <template v-if="ctrSaved.image">
+            <br />ROM : <code class="path">{{ ctrSaved.image }}</code> — à ouvrir directement dans Azahar ou Citra.
+          </template>
+          <br />
+          {{
+            ctrSaved.reopened
+              ? "La suite de l'édition se fait sur cette ROM."
+              : "Les modifications restent en cours : un nouvel enregistrement réécrit le mod avec toutes les modifications."
+          }}
+        </span>
+        <button class="btn" @click="revealItemInDir(ctrSaved.image ?? ctrSaved.romfs ?? '')">Afficher dans le dossier</button>
+        <button class="close-x" aria-label="Fermer" @click="ctrSaved = null">×</button>
+      </div>
+
+      <div v-if="isCtr && !readOnly" class="ctr-output panel">
+        <span class="row-label">
+          Sortie 3DS
+          <Tip title="LayeredFS" text="Un dossier de mod léger : seules les archives modifiées sont écrites ; Luma3DS ou l'émulateur les charge à la place des originales. Ta ROM reste intacte." />
+          <Tip
+            title="Fichier .3ds"
+            text="Une copie complète et déchiffrée de ta ROM (environ sa taille), à ouvrir directement dans Azahar/Citra. Sur console, convertis-la en CIA ou préfère LayeredFS."
+          />
+        </span>
+        <Segmented
+          v-model="ctrOutput"
+          :options="[
+            { value: 'layered_fs', label: 'LayeredFS', hint: 'Un dossier de mod léger, ta ROM reste intacte' },
+            { value: 'rom3ds', label: 'Fichier .3ds', hint: 'Une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde' },
+            { value: 'both', label: 'Les deux' },
+          ]"
+        />
+        <template v-if="ctrOutput !== 'rom3ds'">
+          <span class="row-label">Dossier pour</span>
+          <Segmented
+            v-model="ctrTarget"
+            :options="[
+              { value: 'luma', label: 'Console (Luma3DS)', hint: 'Crée luma/titles/…/romfs : copie le dossier « luma » à la racine de la carte SD' },
+              { value: 'emulator', label: 'Émulateur', hint: 'Crée <title ID>/romfs : à placer dans le dossier « mods » de l\'émulateur (Azahar, Citra…)' },
+            ]"
+          />
+        </template>
       </div>
 
       <div class="workspace">
@@ -449,7 +554,16 @@ async function saveRom() {
                 <div v-for="(m, i) in cur.learnset" :key="`${i}-${m.level}-${m.move}`" class="move-row">
                   <label class="lvl">
                     <span>Niv.</span>
-                    <input type="number" min="1" max="100" class="field" :value="m.level" aria-label="Niveau" @change="setLevel(i, $event)" />
+                    <input
+                      type="number"
+                      :min="minLevel"
+                      max="100"
+                      class="field"
+                      :value="m.level"
+                      :title="m.level === 0 ? 'Niveau 0 : attaque apprise à l\'évolution' : undefined"
+                      aria-label="Niveau"
+                      @change="setLevel(i, $event)"
+                    />
                   </label>
                   <Combo :model-value="m.move" :options="moveOptions" @update:model-value="setMove(i, $event)" />
                   <button class="remove" title="Retirer cette attaque" @click="removeMove(i)">×</button>
@@ -554,6 +668,27 @@ h3 {
 
 .success span {
   flex: 1;
+}
+
+.success .path {
+  word-break: break-all;
+}
+
+.ctr-output {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 16px;
+  padding: 12px 16px;
+}
+
+.ctr-output .row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 13px;
 }
 
 .close-x {

@@ -76,7 +76,7 @@ fn paths(game: &GameRom) -> Result<DataPaths, RomError> {
 }
 
 /// Noms non vides d'un fichier de texte, identifiant compris entre 1 et `max`.
-fn choices(names: &[String], max: usize) -> Vec<Choice> {
+pub(crate) fn choices(names: &[String], max: usize) -> Vec<Choice> {
     names
         .iter()
         .enumerate()
@@ -87,11 +87,11 @@ fn choices(names: &[String], max: usize) -> Vec<Choice> {
         .collect()
 }
 
-fn type_choices(generation: u8) -> Vec<TypeChoice> {
+pub(crate) fn type_choices(generation: u8) -> Vec<TypeChoice> {
     (0..=u8::MAX).map_while(|i| PokeType::from_index(generation, i).map(|t| TypeChoice { index: i, tag: t.into() })).collect()
 }
 
-fn ability_slots(generation: u8) -> std::ops::Range<usize> {
+pub(crate) fn ability_slots(generation: u8) -> std::ops::Range<usize> {
     if generation <= 4 {
         0x16..0x18
     } else {
@@ -99,7 +99,7 @@ fn ability_slots(generation: u8) -> std::ops::Range<usize> {
     }
 }
 
-fn read_species(generation: u8, id: u16, personal: &[u8], learnset: &[u8]) -> Result<SpeciesData, RomError> {
+pub(crate) fn read_species(generation: u8, id: u16, personal: &[u8], learnset: &[u8]) -> Result<SpeciesData, RomError> {
     let p = Personal::new(generation, personal.to_vec()).ok_or_else(|| RomError::Layout(format!("fiche n°{id} trop courte")))?;
     let s = p.base_stats();
     let mut abilities = [0u16; 3];

@@ -15,6 +15,7 @@ pub mod pokemon;
 pub mod randomizer;
 pub mod rom;
 pub mod romedit;
+pub mod romedit_ctr;
 pub mod save;
 pub mod saves;
 pub mod showdown;

@@ -6,9 +6,10 @@ use std::sync::Mutex;
 
 use kaleido_core::detect::GameInfo;
 use kaleido_core::pokemon::Species;
-use kaleido_core::randomizer::ctr::LayeredFsTarget;
+use kaleido_core::randomizer::ctr::{CtrOutput, LayeredFsTarget};
 use kaleido_core::randomizer::{self, Outcome, PokemonRef, Preset, Settings};
 use kaleido_core::romedit::{self, EditorData, SpeciesData};
+use kaleido_core::romedit_ctr;
 use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
@@ -127,7 +128,7 @@ async fn open_rom(path: PathBuf, app: AppHandle) -> Result<RomOverview, String> 
                     file_count: game.romfs().files().len(),
                     verified: game.layout.verified,
                     can_randomize: randomizer::ctr::supports(game.game),
-                    can_edit: false,
+                    can_edit: romedit_ctr::supports(game),
                     species: game.species().map_err(|e| e.to_string())?,
                 },
             })
@@ -194,13 +195,13 @@ async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: Pat
     .await
 }
 
-/// Données modifiables de la ROM ouverte (DS uniquement pour l'instant).
+/// Données modifiables de la ROM ouverte (DS ou 3DS).
 #[tauri::command]
 async fn rom_editor_data(path: PathBuf, app: AppHandle) -> Result<EditorData, String> {
     blocking(move || {
         app.state::<OpenRom>().with(&path, |loaded| match loaded {
             Loaded::Nds(game) => romedit::read(game).map_err(|e| e.to_string()),
-            Loaded::Ctr(_) => Err("l'édition des jeux 3DS arrive bientôt".into()),
+            Loaded::Ctr(game) => romedit_ctr::read(game).map_err(|e| e.to_string()),
         })
     })
     .await
@@ -217,6 +218,30 @@ async fn rom_editor_save(path: PathBuf, edits: Vec<SpeciesData>, output: PathBuf
         let written = romedit::apply(&mut game, &edits).map_err(|e| e.to_string())?;
         game.save(&output).map_err(|e| e.to_string())?;
         Ok(written)
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CtrEditSaved {
+    /// Nombre d'espèces modifiées.
+    count: usize,
+    /// Dossier `romfs` du LayeredFS (si demandé).
+    romfs: Option<String>,
+    /// ROM `.3ds` / `.cxi` reconstruite (si demandée).
+    image: Option<String>,
+}
+
+/// Jeu 3DS : écrit les espèces modifiées dans un dossier LayeredFS et/ou une ROM
+/// reconstruite sous `output` (dossier), sans toucher à la ROM d'origine.
+#[tauri::command]
+async fn rom_editor_save_ctr(path: PathBuf, edits: Vec<SpeciesData>, output: PathBuf, format: CtrOutput, target: LayeredFsTarget) -> Result<CtrEditSaved, String> {
+    blocking(move || {
+        let game = CtrGameRom::open(&path).map_err(|e| e.to_string())?;
+        let (count, written) = romedit_ctr::save(&game, &edits, &output, format, target).map_err(|e| e.to_string())?;
+        let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
+        Ok(CtrEditSaved { count, romfs: show(written.romfs), image: show(written.image) })
     })
     .await
 }
@@ -261,6 +286,7 @@ fn main() {
             randomize_ctr,
             rom_editor_data,
             rom_editor_save,
+            rom_editor_save_ctr,
             parse_share_code,
             sprite_cache_info,
             clear_sprite_cache,
