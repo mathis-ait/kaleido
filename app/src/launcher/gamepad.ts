@@ -12,6 +12,10 @@ export function useGamepad(onAction: (a: PadAction) => void) {
   const connected = ref(false);
   let frame = 0;
   const held = new Map<PadAction, number>();
+  /** Actions vues relâchées au moins une fois : un bouton (ou un stick) déjà enfoncé à
+   * l'arrivée de la manette, ou bloqué par un pilote, ne déclenche rien. */
+  const armed = new Set<PadAction>();
+  let padId: string | null = null;
 
   const BUTTONS: [number, PadAction][] = [
     [0, "accept"],
@@ -27,8 +31,15 @@ export function useGamepad(onAction: (a: PadAction) => void) {
 
   function poll(now: number) {
     const pads = navigator.getGamepads?.() ?? [];
-    const pad = pads.find((p) => p && p.connected) ?? null;
+    // Une vraie manette (disposition « standard ») plutôt qu'un périphérique quelconque.
+    const live = pads.filter((p): p is Gamepad => !!p && p.connected);
+    const pad = live.find((p) => p.mapping === "standard") ?? live[0] ?? null;
     connected.value = !!pad;
+    if (pad && pad.id !== padId) {
+      padId = pad.id;
+      armed.clear();
+      held.clear();
+    }
     if (pad) {
       const active = new Set<PadAction>();
       for (const [i, action] of BUTTONS) if (pad.buttons[i]?.pressed) active.add(action);
@@ -37,7 +48,11 @@ export function useGamepad(onAction: (a: PadAction) => void) {
       if (x > 0.55) active.add("right");
       if (y < -0.55) active.add("up");
       if (y > 0.55) active.add("down");
+      for (const action of ["accept", "back", "prevTab", "nextTab", "menu", "up", "down", "left", "right"] as PadAction[]) {
+        if (!active.has(action)) armed.add(action);
+      }
       for (const action of active) {
+        if (!armed.has(action)) continue;
         const since = held.get(action);
         const repeats = ["left", "right", "up", "down"].includes(action);
         if (since === undefined) {

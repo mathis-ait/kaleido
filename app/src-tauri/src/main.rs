@@ -15,6 +15,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod bank;
+mod discover;
 mod battle;
 mod emusaves;
 mod gifts;
@@ -350,6 +351,8 @@ fn main() {
             library::game_status,
             library::emulators_running,
             library::library_scan_switch,
+            discover::discover_pc,
+            discover::emulator_locate,
             mods::mods_list,
             mods::mods_install,
             mods::mods_uninstall,

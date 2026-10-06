@@ -98,6 +98,12 @@ export const addFolder = (dir: string) =>
     if (!c.folders.includes(dir)) c.folders.push(dir);
   });
 
+/** Ajoute plusieurs dossiers d'un coup (une seule relecture). */
+export const addFolders = (dirs: string[]) =>
+  change((c) => {
+    for (const dir of dirs) if (!c.folders.includes(dir)) c.folders.push(dir);
+  });
+
 export const removeFolder = (dir: string) => change((c) => (c.folders = c.folders.filter((f) => f !== dir)));
 
 export const addFiles = (paths: string[], scan = true) =>

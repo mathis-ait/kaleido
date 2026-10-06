@@ -129,6 +129,8 @@ pub struct Env {
     pub local_appdata: Option<PathBuf>,
     /// Dossiers choisis par l'utilisateur (émulateurs « portables »).
     pub extra: Vec<PathBuf>,
+    /// Programmes déjà lancés sur ce PC (historique de Windows, voir `launched_programs`).
+    pub known_exes: Vec<PathBuf>,
 }
 
 impl Env {
@@ -136,8 +138,46 @@ impl Env {
         let var = |k: &str| std::env::var_os(k).map(PathBuf::from);
         let mut program_files: Vec<PathBuf> = ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"].iter().filter_map(|k| var(k)).collect();
         program_files.dedup();
-        Env { program_files, appdata: var("APPDATA"), local_appdata: var("LOCALAPPDATA"), extra: extra.iter().map(PathBuf::from).collect() }
+        Env {
+            program_files,
+            appdata: var("APPDATA"),
+            local_appdata: var("LOCALAPPDATA"),
+            extra: extra.iter().map(PathBuf::from).collect(),
+            known_exes: launched_programs(),
+        }
     }
+}
+
+/// Analyse la sortie de `reg query` sur le cache MUI du shell : chaque programme lancé
+/// depuis l'Explorateur y laisse une valeur `<chemin>.exe.FriendlyAppName`.
+pub fn parse_muicache(output: &str) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for line in output.lines() {
+        let Some(pos) = line.find(".exe.") else { continue };
+        let path = line[..pos + 4].trim();
+        if path.len() > 3 && path.as_bytes().get(1) == Some(&b':') && !out.iter().any(|p| p.as_os_str() == path) {
+            out.push(PathBuf::from(path));
+        }
+    }
+    out
+}
+
+/// Programmes lancés un jour sur ce PC (émulateurs « portables » dézippés n'importe où).
+/// Lu une fois par session : `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache`.
+pub fn launched_programs() -> Vec<PathBuf> {
+    static CACHE: OnceLock<Vec<PathBuf>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let mut cmd = std::process::Command::new("reg");
+            cmd.args(["query", r"HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"]);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            cmd.output().map(|o| parse_muicache(&String::from_utf8_lossy(&o.stdout))).unwrap_or_default()
+        })
+        .clone()
 }
 
 /// Nombre maximal d'entrées lues par dossier pendant la recherche.
@@ -178,7 +218,28 @@ pub fn detect_exe(id: EmulatorId, env: &Env) -> Option<PathBuf> {
             places.push(local.join(name));
         }
     }
-    places.iter().find_map(|p| scan_for_exe(p, id, 2)).or_else(|| env.extra.iter().find_map(|p| scan_for_exe(p, id, 3)))
+    places
+        .iter()
+        .find_map(|p| scan_for_exe(p, id, 2))
+        .or_else(|| env.extra.iter().find_map(|p| scan_for_exe(p, id, 3)))
+        .or_else(|| best_exe(id, known_exes_of(id, &env.known_exes)))
+}
+
+/// Exécutables de cet émulateur parmi `paths` (encore présents sur le disque).
+pub fn known_exes_of(id: EmulatorId, paths: &[PathBuf]) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .filter(|p| p.file_name().is_some_and(|n| id.matches_exe(&n.to_string_lossy().to_lowercase())))
+        .filter(|p| p.is_file())
+        .cloned()
+        .collect()
+}
+
+/// Parmi plusieurs copies : d'abord celles rangées dans un dossier au nom de l'émulateur
+/// (`Eden-Windows-…`, plutôt qu'une copie glissée dans le pack d'un jeu), puis la plus récente.
+pub fn best_exe(id: EmulatorId, paths: Vec<PathBuf>) -> Option<PathBuf> {
+    let named = |p: &PathBuf| p.parent().and_then(Path::file_name).is_some_and(|d| d.to_string_lossy().to_lowercase().contains(&id.name().to_lowercase()));
+    paths.into_iter().max_by_key(|p| (named(p), fs::metadata(p).and_then(|m| m.modified()).ok()))
 }
 
 // ---------------------------------------------------------------------------

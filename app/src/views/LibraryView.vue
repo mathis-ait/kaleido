@@ -7,10 +7,11 @@ import { audio } from "../launcher/audio";
 import Icon from "../components/Icon.vue";
 import Segmented from "../components/Segmented.vue";
 import ModsDialog from "../play/ModsDialog.vue";
+import DiscoverDialog from "../play/DiscoverDialog.vue";
 import { modsDialog } from "../play/mods";
 import { addFiles, addFolder, allGames, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { nav } from "../nav";
-import { PLATFORM_LABEL, RECOMMENDED, available, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
+import { PLATFORM_LABEL, RECOMMENDED, available, locateEmulator, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
 
 onMounted(() => {
   if (!games.loaded) loadGames();
@@ -55,6 +56,8 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 const ALTERNATIVE: Partial<Record<PlayPlatform, EmulatorId>> = { nds: "desmume" };
 const NAMES: Record<EmulatorId, string> = { melonds: "melonDS", desmume: "DeSmuME", azahar: "Azahar", citra: "Citra", lime3ds: "Lime3DS", eden: "Eden" };
 
+const discovering = ref(false);
+
 const consoles = computed(() =>
   (["nds", "3ds", "switch"] as PlayPlatform[]).map((platform) => {
     const ready = available(platform);
@@ -85,6 +88,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
       <div class="actions">
         <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier</button>
         <button class="btn" @click="pickFiles"><Icon name="plus" :size="16" /> Ajouter des jeux</button>
+        <button class="btn" title="Trouver les jeux et les émulateurs rangés n'importe où sur le PC" @click="discovering = true"><Icon name="search" :size="16" /> Rechercher sur ce PC</button>
         <button class="btn" :disabled="games.scanning" title="Relire les dossiers" @click="rescan"><Icon name="refresh" :size="16" /></button>
         <button class="btn" :title="audio.music ? 'Couper la musique au survol' : 'Musique au survol'" @click="audio.music = !audio.music">{{ audio.music ? "♪ Musique" : "♪ Coupée" }}</button>
         <button v-if="allGames.length" class="btn btn-primary" @click="libraryUi.mode = 'launcher'"><Icon name="play" :size="15" /> Mode lanceur</button>
@@ -114,6 +118,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
           <div class="emu-actions">
             <button class="btn btn-primary" @click="installEmulator(c.recommended)"><Icon name="download" :size="15" /> Installer {{ NAMES[c.recommended] }}</button>
             <button v-if="c.alternative" class="btn" @click="installEmulator(c.alternative)">ou {{ NAMES[c.alternative] }}</button>
+            <button class="btn" title="Choisir l'émulateur déjà présent sur ton PC" @click="locateEmulator(c.recommended, NAMES[c.recommended])"><Icon name="folder" :size="15" /> Localiser…</button>
           </div>
         </template>
         <p v-else class="emu-line dim">Recherche des émulateurs…</p>
@@ -158,13 +163,17 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
       <Icon name="grid" :size="36" />
       <h2>Ta bibliothèque est vide</h2>
       <p>Ajoute le dossier où tu ranges tes jeux DS, 3DS et Switch : Kaleido le relira à chaque ouverture et affichera tes jeux avec leur jaquette.</p>
-      <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier de jeux</button>
+      <div class="emu-actions">
+        <button class="btn btn-primary" @click="discovering = true"><Icon name="search" :size="16" /> Rechercher mes jeux sur ce PC</button>
+        <button class="btn" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier de jeux</button>
+      </div>
     </div>
 
     <p v-else class="empty dim">Aucun jeu ne correspond.</p>
 
   </section>
   <ModsDialog v-if="modsDialog.game" :key="modsDialog.game.path" />
+  <DiscoverDialog v-if="discovering" @close="discovering = false" />
 </template>
 
 <style scoped>

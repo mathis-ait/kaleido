@@ -36,7 +36,7 @@ fn detects_install_and_portable_folders() {
     let melon = t.file("Program Files/melonDS/melonDS.exe", b"MZ");
     let azahar = t.file("Local/Programs/Azahar/azahar.exe", b"MZ");
     let desmume = t.file("Portable/emus/DeSmuME 0.9.13/DeSmuME_0.9.13_x64.exe", b"MZ");
-    let env = Env { program_files: vec![pf], appdata: None, local_appdata: Some(t.0.join("Local")), extra: vec![t.0.join("Portable")] };
+    let env = Env { program_files: vec![pf], appdata: None, local_appdata: Some(t.0.join("Local")), extra: vec![t.0.join("Portable")], known_exes: vec![] };
     assert_eq!(detect_exe(EmulatorId::Melonds, &env), Some(melon));
     assert_eq!(detect_exe(EmulatorId::Azahar, &env), Some(azahar));
     assert_eq!(detect_exe(EmulatorId::Desmume, &env), Some(desmume));

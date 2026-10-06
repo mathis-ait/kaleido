@@ -190,6 +190,19 @@ export async function installEmulator(id: EmulatorId, reason?: string): Promise<
   }
 }
 
+/** « Localiser… » : l'utilisateur choisit lui-même l'exécutable d'un émulateur. */
+export async function locateEmulator(id: EmulatorId, name: string) {
+  const exe = await open({ title: `Où se trouve ${name} ?`, filters: [{ name: `${name} (programme)`, extensions: ["exe"] }] });
+  if (typeof exe !== "string") return false;
+  try {
+    applyState(await invoke<EmulatorsState>("emulator_locate", { id, exe }));
+    return true;
+  } catch (e) {
+    await message(String(e), { title: "Émulateur non enregistré", kind: "error" });
+    return false;
+  }
+}
+
 // --- Guide de première utilisation
 
 const GUIDE_KEY = "kaleido.play.guideSeen";

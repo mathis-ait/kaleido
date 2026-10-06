@@ -6,7 +6,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
 import { titleIdOf } from "../games";
-import { installEmulator, installs, loadEmulators, emus, PLATFORM_LABEL, RECOMMENDED } from "./play";
+import { installEmulator, installs, loadEmulators, locateEmulator, emus, PLATFORM_LABEL, RECOMMENDED } from "./play";
 import {
   CATEGORY_LABEL,
   CATEGORY_ORDER,
@@ -117,6 +117,10 @@ async function restoreTune() {
   } finally {
     tuneBusy.value = false;
   }
+}
+
+async function locate() {
+  if (await locateEmulator(emulatorId.value, plan.value?.emulator ?? "l'émulateur")) await load();
 }
 
 async function installEmu() {
@@ -259,6 +263,7 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
               <button class="btn btn-primary" :disabled="emulatorBusy" @click="installEmu">
                 <Icon name="download" :size="15" /> {{ emulatorBusy ? "Installation…" : `Installer ${plan?.emulator}` }}
               </button>
+              <button class="btn" :disabled="emulatorBusy" @click="locate"><Icon name="folder" :size="15" /> Localiser…</button>
             </template>
             <template v-else-if="plan">
               <p class="gpu">
