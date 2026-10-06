@@ -23,7 +23,7 @@ use serde::Serialize;
 use super::{types, Combatant};
 use crate::ctr_rom::CtrGameRom;
 use crate::data::learnsets::{self, Learnset};
-use crate::data::trainers::{read_team, TrainerPokemon, FLAG_MOVES};
+use crate::data::trainers::{read_team, read_team_with, TeamFormat, TrainerPokemon, FLAG_MOVES};
 use crate::data::DataPaths;
 use crate::dex::{self, PersonalInfo};
 use crate::games::Game;
@@ -106,9 +106,26 @@ pub struct RomTrainers {
 /// Fichiers de texte des noms et des classes de dresseurs (jeux DS).
 fn nds_text(game: Game) -> Option<(usize, usize)> {
     Some(match game {
+        Game::Diamond | Game::Pearl => (559, 560),
         Game::Platinum => (618, 619),
+        // UPR-ZX `TrainerNamesTextOffset` / `TrainerClassesTextOffset` (non vérifié).
+        Game::HeartGold | Game::SoulSilver => (729, 730),
         Game::Black | Game::White => (190, 191),
         Game::Black2 | Game::White2 => (382, 383),
+        _ => return None,
+    })
+}
+
+/// HeartGold / SoulSilver : rôle d'après le numéro du dresseur (`tagTrainersHGSS`
+/// d'UPR-ZX, non vérifié sur une ROM ; les classes de HGSS ne sont pas reprises ici).
+fn hgss_role(id: u16) -> Option<Role> {
+    Some(match id {
+        // Champions de Johto et de Kanto, puis leurs revanches.
+        20 | 21 | 30..=35 | 253..=259 | 261 | 0x2C8..=0x2D7 => Role::Gym,
+        245 | 246 | 247 | 418 | 0x2BE..=0x2C1 => Role::EliteFour,
+        244 | 0x2BD => Role::Champion,
+        // Silver : combats successifs (un dresseur par starter).
+        1 | 0x107 | 0x108 | 0x10A..=0x110 | 0x11E..=0x121 | 0x1EA..=0x1EC | 0x1F0..=0x1F2 | 0x2E0..=0x2E2 => Role::Rival,
         _ => return None,
     })
 }
@@ -129,8 +146,9 @@ fn role_of(game: Game, class: u16, name: &str) -> Option<Role> {
         return None;
     }
     match game {
-        // pret/pokeplatinum, `trainer_classes.h`.
-        Game::Platinum => Some(match class {
+        // pret/pokeplatinum, `trainer_classes.h` ; mêmes classes en Diamant / Perle
+        // (vérifié sur Diamant ADAF : champions, Conseil 4, Cynthia, Team Galaxie).
+        Game::Platinum | Game::Diamond | Game::Pearl => Some(match class {
             62 | 64 | 74..=79 => Role::Gym,
             63 => Role::Rival,
             65..=68 => Role::EliteFour,
@@ -194,12 +212,8 @@ impl RomTrainers {
 
     pub fn from_nds(rom: &GameRom) -> Result<Self, RomError> {
         let game = rom.game;
-        let unsupported = || {
-            RomError::Unsupported(format!(
-                "{} : dresseurs non pris en charge (Platine, Noire/Blanche et Noire 2 / Blanche 2 seulement)",
-                game.name_fr()
-            ))
-        };
+        let unsupported = || RomError::Unsupported(format!("{} : dresseurs non pris en charge", game.name_fr()));
+        let format = TeamFormat::for_game(game);
         let paths = DataPaths::for_game(game).ok_or_else(unsupported)?;
         let (names_file, classes_file) = nds_text(game).ok_or_else(unsupported)?;
         let generation = game.generation();
@@ -214,13 +228,14 @@ impl RomTrainers {
             if i == 0 || d.len() < 4 {
                 continue;
             }
-            let Some(team) = read_team(generation, d, p) else {
+            let Some(team) = read_team_with(format, d, p) else {
                 continue;
             };
             if team.pokemon.is_empty() {
                 continue;
             }
             let class_id = d[1] as u16;
+            let hgss = matches!(game, Game::HeartGold | Game::SoulSilver);
             // Platine : type de combat (u32) en 0x10 ; Gen 5 : octet 2 (0 simple, 1 double, 2 triple, 3 rotatif).
             let double = if generation == 4 { d.get(0x10).is_some_and(|&b| b == 2) } else { d[2] != 0 };
             let name = names.get(i).cloned().unwrap_or_default();
@@ -228,7 +243,7 @@ impl RomTrainers {
                 id: i as u16,
                 class_id,
                 class_name: classes.get(class_id as usize).cloned().unwrap_or_default(),
-                role: role_of(game, class_id, &name),
+                role: if hgss { hgss_role(i as u16).filter(|_| !name.trim().is_empty()) } else { role_of(game, class_id, &name) },
                 name,
                 double,
                 custom_moves: team.flags & FLAG_MOVES != 0,
@@ -378,7 +393,12 @@ impl RomTrainers {
 
         // Nature et talent.
         let (nature, ability) = if generation == 4 {
-            let female = self.game == Game::Platinum && PT_FEMALE_CLASSES.contains(&t.class_id);
+            // Diamant / Perle : classes identiques à celles de Platine (n° 0-97), même calcul.
+            // HGSS : classes différentes, non reprises (nature approximative pour les dresseuses).
+            let female = matches!(self.game, Game::Platinum | Game::Diamond | Game::Pearl) && PT_FEMALE_CLASSES.contains(&t.class_id);
+            if matches!(self.game, Game::HeartGold | Game::SoulSilver) {
+                notes.push("HeartGold / SoulSilver : nature calculée comme pour un dresseur masculin (classes non vérifiées).".into());
+            }
             let pid = gen4_pid(p.difficulty, p.level, p.species, t.id, t.class_id, female);
             ((pid % 25) as u8, ability_slot(&info, if pid & 1 == 1 { 1 } else { 0 }))
         } else {

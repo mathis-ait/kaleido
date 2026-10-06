@@ -1,4 +1,5 @@
-//! Pokémon fixes, dons et échanges en jeu (Platine, Noire, Blanche, Noire 2, Blanche 2).
+//! Pokémon fixes, dons et échanges en jeu (Diamant, Perle, Platine, HeartGold,
+//! SoulSilver, Noire, Blanche, Noire 2, Blanche 2 ; HGSS d'après UPR-ZX, non vérifié sur une ROM).
 //!
 //! Portage de `StaticPokemonRandomizer` et `TradeRandomizer` de l'Universal
 //! Pokémon Randomizer (FVX), avec ses emplacements (`StaticPokemon{}`,
@@ -12,9 +13,9 @@
 //!
 //! - Noire 2 / Blanche 2 : formes imposées (Kyurem Noir / Blanc, Vivaldaim) remises à 0.
 //!
-//! Non pris en charge : vagabonds de Platine (l'UPR ajoute une routine à l'ARM9),
-//! musique des légendaires (correctif IPS de l'UPR), formes alternatives, Passages
-//! Cachés et équipes du PWT de Noire 2 / Blanche 2.
+//! Non pris en charge : vagabonds de Diamant / Perle / Platine / HGSS (l'UPR ajoute ou
+//! modifie une routine de l'ARM9), musique des légendaires (correctif IPS de l'UPR),
+//! formes alternatives, Passages Cachés et équipes du PWT de Noire 2 / Blanche 2.
 
 mod access;
 mod tables;
@@ -95,13 +96,16 @@ pub struct Listing {
 }
 
 fn supported(game: Game) -> bool {
-    matches!(game, Game::Platinum | Game::Black | Game::White | Game::Black2 | Game::White2)
+    matches!(
+        game,
+        Game::Diamond | Game::Pearl | Game::Platinum | Game::HeartGold | Game::SoulSilver | Game::Black | Game::White | Game::Black2 | Game::White2
+    )
 }
 
 /// Lit les rencontres fixes et les échanges, sans rien modifier.
 pub fn list(game: &GameRom) -> Result<Listing, RomError> {
     if !supported(game.game) {
-        return Err(RomError::Unsupported("Pokémon fixes : Platine, Noire, Blanche, Noire 2 et Blanche 2 seulement".into()));
+        return Err(RomError::Unsupported("Pokémon fixes : jeu non pris en charge".into()));
     }
     let mut files = access::Files::load(game)?;
     let (entries, mut notes) = access::entries(game, &mut files, game.layout.species_count);
@@ -111,8 +115,7 @@ pub fn list(game: &GameRom) -> Result<Listing, RomError> {
             let ok = files.patch_distortion_world(game)?;
             notes.push(format!("correctif du Monde Distorsion : {}", if ok { "code reconnu" } else { "code introuvable" }));
         }
-        Game::Black2 | Game::White2 => {}
-        _ => {
+        Game::Black | Game::White => {
             // Seulement sur une ROM d'origine (le code corrigé ne ressemble plus à l'original).
             let index = if game.game == Game::Black { tables::BW_BOX_LEGENDARY_BLACK } else { tables::BW_BOX_LEGENDARY_WHITE };
             if entries.iter().any(|e| e.index == index && e.species == [643, 644][index - tables::BW_BOX_LEGENDARY_BLACK]) {
@@ -120,6 +123,7 @@ pub fn list(game: &GameRom) -> Result<Listing, RomError> {
                 notes.push(format!("correctif du légendaire de la boîte : {done}/2 emplacements reconnus"));
             }
         }
+        _ => {}
     }
     let statics = entries.into_iter().map(|e| StaticEncounter { index: e.index, kind: e.def.kind, species: e.species, levels: e.levels }).collect();
     let trades = trades::load(game)?.map(|t| t.list).unwrap_or_default();
@@ -370,5 +374,14 @@ mod tests {
         assert!(b2.iter().all(|d| !d.species.is_empty()));
         assert!(b2.iter().filter(|d| d.kind == Kind::Egg).all(|d| d.levels.is_empty()));
         assert!(tables::B2W2_FORMS.iter().all(|(i, _)| b2[*i].kind == Kind::Static));
+        let dp = tables::diamond_pearl("ADAF");
+        let hgss = tables::heartgold_soulsilver();
+        assert_eq!(dp.len(), 17 + 7);
+        assert_eq!(tables::diamond_pearl("XXXX").len(), 17, "fossiles ignorés si la langue est inconnue");
+        assert_eq!(hgss.len(), 37 + 7);
+        assert_eq!(dp.iter().filter(|d| d.kind == Kind::Egg).count(), 2);
+        assert_eq!(hgss.iter().filter(|d| d.kind == Kind::Egg).count(), 3);
+        assert!(dp.iter().chain(&hgss).all(|d| !d.species.is_empty() && (d.kind == Kind::Egg) == d.levels.is_empty()));
+        assert_eq!(tables::HGSS_TRADE_PERSON_TEXTS.len(), 11);
     }
 }

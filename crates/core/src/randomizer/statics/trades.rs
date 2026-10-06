@@ -1,5 +1,6 @@
-//! Échanges en jeu : Platine (`fld_trade.narc`), Noire/Blanche (`a/1/6/5`) et
-//! Noire 2 / Blanche 2 (`a/1/6/3`, même format).
+//! Échanges en jeu : Diamant / Perle / Platine (`fld_trade.narc`, sous `resource/fra/`
+//! dans les ROMs françaises), HeartGold / SoulSilver (`a/1/1/2`, non vérifié),
+//! Noire/Blanche (`a/1/6/5`) et Noire 2 / Blanche 2 (`a/1/6/3`). Même format en Gen 4.
 //! Portage de `getInGameTrades` / `setInGameTrades` (Gen4RomHandler, Gen5RomHandler)
 //! et de `TradeRandomizer` de l'Universal Pokémon Randomizer.
 
@@ -14,6 +15,7 @@ use crate::text::{gen4, gen5};
 const PT_TRADES: &str = "fielddata/pokemon_trade/fld_trade.narc";
 const BW_TRADES: &str = "a/1/6/5";
 const B2W2_TRADES: &str = "a/1/6/3";
+const HGSS_TRADES: &str = "a/1/1/2";
 
 /// Position des champs (u32) dans une entrée d'échange.
 struct Fields {
@@ -85,15 +87,27 @@ fn text_slots(gen: u8, entry: usize, total: usize) -> (usize, usize) {
 fn text_file_index(game: Game) -> usize {
     match game {
         Game::Black2 | Game::White2 => tables::B2W2_TRADE_TEXT,
-        _ if game.generation() <= 4 => tables::PT_TRADE_TEXT,
+        Game::Diamond | Game::Pearl => tables::DP_TRADE_TEXT,
+        Game::HeartGold | Game::SoulSilver => tables::HGSS_TRADE_TEXT,
+        Game::Platinum => tables::PT_TRADE_TEXT,
         _ => tables::BW_TRADE_TEXT,
+    }
+}
+
+/// Dialogues des personnes qui proposent les échanges (0 = aucun), dans l'ordre des échanges lus.
+fn person_texts(game: Game) -> &'static [usize] {
+    match game {
+        Game::Platinum => &tables::PT_TRADE_PERSON_TEXTS,
+        Game::Diamond | Game::Pearl => &tables::DP_TRADE_PERSON_TEXTS,
+        Game::HeartGold | Game::SoulSilver => &tables::HGSS_TRADE_PERSON_TEXTS,
+        _ => &[],
     }
 }
 
 /// Lit les échanges du jeu (`None` si le jeu n'est pas pris en charge).
 pub(super) fn load(game: &GameRom) -> Result<Option<Trades>, RomError> {
     let (path, unused): (String, &[usize]) = match game.game {
-        Game::Platinum => {
+        Game::Platinum | Game::Diamond | Game::Pearl => {
             // Les ROMs françaises rangent certaines archives sous `resource/fra/…`.
             let path = if game.rom().file_id(PT_TRADES).is_some() {
                 PT_TRADES.to_string()
@@ -105,6 +119,8 @@ pub(super) fn load(game: &GameRom) -> Result<Option<Trades>, RomError> {
             };
             (path, &[])
         }
+        // Shuckie et Kenya (entrées 6 et 7) sont des dons scriptés pour l'UPR : ignorés.
+        Game::HeartGold | Game::SoulSilver => (HGSS_TRADES.into(), &tables::HGSS_TRADES_UNUSED),
         Game::Black => (BW_TRADES.into(), &tables::BLACK_TRADES_UNUSED),
         Game::White => (BW_TRADES.into(), &tables::WHITE_TRADES_UNUSED),
         Game::Black2 => (B2W2_TRADES.into(), &tables::BLACK2_TRADES_UNUSED),
@@ -247,23 +263,31 @@ pub(super) fn write(
 
     let name = |id: u16| names.get(id as usize).cloned().unwrap_or_default();
     match game.game {
-        Game::Platinum => {
+        Game::Platinum | Game::Diamond | Game::Pearl | Game::HeartGold | Game::SoulSilver => {
             // Dialogues des personnes (`IngameTradePersonTextOffsets`).
-            for ((&text, old), new) in tables::PT_TRADE_PERSON_TEXTS.iter().zip(old).zip(&list) {
+            let hgss = matches!(game.game, Game::HeartGold | Game::SoulSilver);
+            for (i, ((&text, old), new)) in person_texts(game.game).iter().zip(old).zip(&list).enumerate() {
+                if text == 0 {
+                    continue;
+                }
                 let mut pairs = vec![(name(old.given), name(new.given))];
                 if old.requested != new.requested {
                     pairs.push((name(old.requested), name(new.requested)));
                 }
-                edit_text(game, text, |lines| {
-                    let mut changed = false;
-                    for line in lines.iter_mut() {
-                        if let Some(n) = replace_words(line, &pairs) {
-                            *line = n;
-                            changed = true;
+                // HGSS : le dialogue du 7e échange existe en double (fichier suivant), comme dans l'UPR.
+                let files: &[usize] = if hgss && i == 6 { &[text, text + 1] } else { &[text] };
+                for &file in files {
+                    edit_text(game, file, |lines| {
+                        let mut changed = false;
+                        for line in lines.iter_mut() {
+                            if let Some(n) = replace_words(line, &pairs) {
+                                *line = n;
+                                changed = true;
+                            }
                         }
-                    }
-                    changed
-                })?;
+                        changed
+                    })?;
+                }
             }
         }
         Game::Black | Game::White => {

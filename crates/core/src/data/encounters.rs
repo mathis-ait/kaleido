@@ -4,11 +4,51 @@
 //!   puis remplacements (essaims, jour/nuit, Pokéradar, slots double-jeu GBA) en
 //!   espèces u32 ; enfin Surf, Éclate-Roc, Canne, Super Canne, Méga Canne :
 //!   taux u32 + 5 × (max u8, min u8, u16, espèce u32).
+//!   Diamant / Perle : même format (vérifié sur Diamant ADAF, `d_enc_data.narc`).
+//! - HeartGold / SoulSilver (d'après UPR-ZX `getEncountersHGSS`, non vérifié sur une
+//!   ROM) : 196 octets par zone. Taux u8 (herbe, Surf, Éclate-Roc, Canne, Super Canne,
+//!   Méga Canne), 2 octets, 12 niveaux d'herbe u8, puis 3 × 12 espèces u16 (matin,
+//!   jour, nuit) ; radio Hoenn / Sinnoh (4 × u16) ; Surf 5, Éclate-Roc 2, cannes 3 × 5
+//!   emplacements (min u8, max u8, espèce u16) ; essaims (4 × u16).
 //! - Noire/Blanche : 232 octets par saison (1 ou 4 saisons par zone). 8 octets de
 //!   taux, puis 56 emplacements (espèce u16 avec forme en bits 11-15, min u8, max u8).
 //! - Soleil/Lune et Ultra : voir [`alola_tables`] (archive `EA` de tables jour/nuit avec SOS).
 
 use super::{put_u16, u16_at};
+use crate::games::Game;
+
+/// Format des fichiers de rencontres d'un jeu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// Diamant, Perle, Platine.
+    Sinnoh,
+    /// HeartGold, SoulSilver.
+    Johto,
+    Gen5,
+    /// X / Y et Rubis Oméga / Saphir Alpha.
+    Oras,
+    /// Soleil / Lune et Ultra-Soleil / Ultra-Lune.
+    Alola,
+}
+
+impl Format {
+    /// Format par défaut d'une génération (Gen 4 : Diamant / Perle / Platine).
+    pub fn for_generation(generation: u8) -> Self {
+        match generation {
+            ..=4 => Format::Sinnoh,
+            5 => Format::Gen5,
+            6 => Format::Oras,
+            _ => Format::Alola,
+        }
+    }
+
+    pub fn for_game(game: Game) -> Self {
+        match game {
+            Game::HeartGold | Game::SoulSilver => Format::Johto,
+            _ => Self::for_generation(game.generation()),
+        }
+    }
+}
 
 /// Un emplacement de rencontre modifiable, repéré par sa position dans le fichier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,16 +69,25 @@ pub(crate) enum SlotKind {
     U16Form,
     /// Gen 7 : comme `U16Form`, mais les niveaux min/max sont ceux de la table, à cette position.
     TableLevels(usize),
+    /// Espèce u16 de HeartGold / SoulSilver (niveaux selon la position).
+    U16Johto,
 }
 
-/// Lit tous les emplacements non vides d'un fichier de zone (décompressé).
+/// Lit tous les emplacements non vides d'un fichier de zone (décompressé),
+/// au format par défaut de la génération (Gen 4 : Diamant / Perle / Platine).
 pub fn read(generation: u8, data: &[u8]) -> Vec<Slot> {
-    match generation {
-        ..=4 => read_platinum(data),
-        5 => read_bw(data),
-        6 if xy_section(data).is_some() => read_xy(data),
-        6 => read_oras(data),
-        _ => read_alola(data),
+    read_format(Format::for_generation(generation), data)
+}
+
+pub fn read_format(format: Format, data: &[u8]) -> Vec<Slot> {
+    match format {
+        Format::Sinnoh => read_platinum(data),
+        Format::Johto => read_hgss(data),
+        Format::Gen5 => read_bw(data),
+        // X / Y et ROSA partagent les fichiers « ZO » : la taille de la section 4 les distingue.
+        Format::Oras if xy_section(data).is_some() => read_xy(data),
+        Format::Oras => read_oras(data),
+        Format::Alola => read_alola(data),
     }
 }
 
@@ -69,6 +118,56 @@ fn read_xy(d: &[u8]) -> Vec<Slot> {
             (species != 0).then_some(Slot { offset: at, species, min_level: d[at + 2], max_level: d[at + 3], kind: SlotKind::U16Form })
         })
         .collect()
+}
+
+/// HeartGold / SoulSilver : positions des blocs (UPR-ZX `getEncountersHGSS`).
+pub const HGSS_ZONE_SIZE: usize = 196;
+pub const HGSS_GRASS: usize = 20;
+pub const HGSS_RADIO: usize = 92;
+pub const HGSS_WATER: usize = 100;
+pub const HGSS_SWARMS: usize = 188;
+/// Nombre d'emplacements de Surf, Éclate-Roc, Canne, Super Canne, Méga Canne.
+pub const HGSS_WATER_SLOTS: [usize; 5] = [5, 2, 5, 5, 5];
+
+fn read_hgss(d: &[u8]) -> Vec<Slot> {
+    if d.len() < HGSS_ZONE_SIZE {
+        return Vec::new();
+    }
+    let mut slots = Vec::new();
+    let mut push = |offset: usize, min: u8, max: u8| {
+        let species = u16_at(d, offset);
+        if species != 0 {
+            slots.push(Slot { offset, species, min_level: min, max_level: max, kind: SlotKind::U16Johto });
+        }
+    };
+    let levels = &d[8..20];
+    let (low, high) = (levels.iter().copied().filter(|&l| l > 0).min().unwrap_or(1), levels.iter().copied().max().unwrap_or(1));
+    if d[0] != 0 {
+        for time in 0..3 {
+            for (i, &level) in levels.iter().enumerate() {
+                push(HGSS_GRASS + time * 24 + i * 2, level, level);
+            }
+        }
+    }
+    // Radio Hoenn / Sinnoh : remplacent des emplacements d'herbe.
+    for i in 0..4 {
+        push(HGSS_RADIO + i * 2, low, high);
+    }
+    let mut at = HGSS_WATER;
+    for (area, &count) in HGSS_WATER_SLOTS.iter().enumerate() {
+        for i in 0..count {
+            let e = at + i * 4;
+            if d[1 + area] != 0 {
+                push(e + 2, d[e], d[e + 1]);
+            }
+        }
+        at += count * 4;
+    }
+    // Essaims (herbe, Surf), pêche de nuit, essaim de pêche : niveaux d'herbe à titre indicatif.
+    for i in 0..4 {
+        push(HGSS_SWARMS + i * 2, low, high);
+    }
+    slots
 }
 
 /// Rubis Oméga / Saphir Alpha : fichier de zone « ZO » ; la section 4 (offset u32
@@ -198,6 +297,7 @@ pub fn set_species(data: &mut [u8], slot: &Slot, species: u16) {
     match slot.kind {
         SlotKind::U32 => data[slot.offset..slot.offset + 4].copy_from_slice(&(species as u32).to_le_bytes()),
         SlotKind::U16Form | SlotKind::TableLevels(_) => put_u16(data, slot.offset, species & 0x07FF),
+        SlotKind::U16Johto => put_u16(data, slot.offset, species),
     }
 }
 
@@ -215,6 +315,16 @@ pub fn scale_levels(data: &mut [u8], slot: &Slot, factor: f32) {
         SlotKind::TableLevels(at) => {
             data[at] = scale(slot.min_level);
             data[at + 1] = scale(slot.max_level);
+        }
+        SlotKind::U16Johto => {
+            if (HGSS_GRASS..HGSS_RADIO).contains(&slot.offset) {
+                // Niveaux d'herbe communs aux trois moments de la journée : calculés
+                // depuis le niveau d'origine, l'écriture est la même pour les trois.
+                data[8 + (slot.offset - HGSS_GRASS) / 2 % 12] = scale(slot.min_level);
+            } else if (HGSS_WATER..HGSS_SWARMS).contains(&slot.offset) {
+                data[slot.offset - 2] = scale(slot.min_level);
+                data[slot.offset - 1] = scale(slot.max_level);
+            }
         }
         SlotKind::U32 => {
             if slot.offset >= 0xCC {
@@ -282,6 +392,33 @@ mod tests {
         }
         assert_eq!((d[day], d[day + 1]), (4, 6));
         assert_eq!(u16_at(&d, day + 0x0C + 40), 10); // forme remise à zéro
+    }
+
+    #[test]
+    fn hgss_zone() {
+        let mut d = vec![0u8; HGSS_ZONE_SIZE];
+        d[0] = 30; // herbe
+        d[1] = 10; // Surf
+        d[8] = 3; // niveau du 1er emplacement d'herbe
+        d[20..22].copy_from_slice(&16u16.to_le_bytes()); // matin
+        d[44..46].copy_from_slice(&19u16.to_le_bytes()); // jour
+        d[68..70].copy_from_slice(&163u16.to_le_bytes()); // nuit
+        d[100..104].copy_from_slice(&[20, 30, 54, 0]); // Surf : Psykokwak 20-30
+        d[120..124].copy_from_slice(&[5, 6, 74, 0]); // Éclate-Roc sans taux : ignoré
+        let slots = read_format(Format::Johto, &d);
+        let species: Vec<u16> = slots.iter().map(|s| s.species).collect();
+        assert_eq!(species, vec![16, 19, 163, 54]);
+        assert_eq!((slots[3].min_level, slots[3].max_level), (20, 30));
+        for s in &slots {
+            scale_levels(&mut d, s, 2.0);
+        }
+        assert_eq!(d[8], 6, "niveau d'herbe partagé, mis à l'échelle une seule fois");
+        assert_eq!((d[100], d[101]), (40, 60));
+        set_species(&mut d, &slots[2], 25);
+        assert_eq!(u16_at(&d, 68), 25);
+        assert!(read(4, &d).iter().all(|s| s.kind == SlotKind::U32), "Gen 4 par défaut : Sinnoh");
+        assert_eq!(Format::for_game(Game::SoulSilver), Format::Johto);
+        assert_eq!(Format::for_game(Game::Diamond), Format::Sinnoh);
     }
 
     #[test]

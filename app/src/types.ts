@@ -162,7 +162,10 @@ export interface Outcome {
 }
 
 /** Jeux pris en charge par le randomizer. */
-export const RANDOMIZABLE = ["platinum", "black", "white", "black2", "white2", "x", "y", "omega_ruby", "alpha_sapphire", "sun", "moon", "ultra_sun", "ultra_moon"];
+export const RANDOMIZABLE = [
+  "diamond", "pearl", "platinum", "heart_gold", "soul_silver", "black", "white", "black2", "white2",
+  "x", "y", "omega_ruby", "alpha_sapphire", "sun", "moon", "ultra_sun", "ultra_moon",
+];
 
 /** Fichiers ouvrables dans l'éditeur et le randomizer (ROM DS, ROM 3DS, dossier 3DS). */
 export const isRom = (d: Detection) => ["nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;

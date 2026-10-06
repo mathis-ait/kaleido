@@ -12,6 +12,9 @@ pub mod shops;
 pub mod starters;
 pub mod trainers;
 
+#[cfg(test)]
+mod gen4_tests;
+
 use crate::games::Game;
 
 /// Emplacement des données pour le randomizer.
@@ -42,6 +45,28 @@ impl DataPaths {
                 move_names: 647,
                 max_ability: 123,
                 starters: starters::StarterLocation::Platinum,
+            }),
+            // Vérifié sur Diamant (ADAF) ; chemins de Perle d'après UPR-ZX (gen4_offsets.ini).
+            Game::Diamond | Game::Pearl => Some(Self {
+                encounters: if game == Game::Diamond { "fielddata/encountdata/d_enc_data.narc" } else { "fielddata/encountdata/p_enc_data.narc" },
+                trainer_data: "poketool/trainer/trdata.narc",
+                trainer_pokemon: "poketool/trainer/trpoke.narc",
+                learnsets: "poketool/personal/wotbl.narc",
+                evolutions: "poketool/personal/evo.narc",
+                move_names: 588,
+                max_ability: 123,
+                starters: starters::StarterLocation::DiamondPearl,
+            }),
+            // Non vérifié (pas de ROM) : d'après UPR-ZX, `[HeartGold (U)]` / `[SoulSilver (U)]`.
+            Game::HeartGold | Game::SoulSilver => Some(Self {
+                encounters: if game == Game::HeartGold { "a/0/3/7" } else { "a/1/3/6" },
+                trainer_data: "a/0/5/5",
+                trainer_pokemon: "a/0/5/6",
+                learnsets: "a/0/3/3",
+                evolutions: "a/0/3/4",
+                move_names: 750,
+                max_ability: 123,
+                starters: starters::StarterLocation::HeartGoldSoulSilver,
             }),
             Game::Black | Game::White => Some(Self {
                 encounters: "a/1/2/6",

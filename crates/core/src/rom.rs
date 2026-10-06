@@ -55,7 +55,9 @@ impl NdsLayout {
             verified,
         };
         Some(match game {
-            Diamond | Pearl => gen4("msgdata/msg.narc", 362, 552, "poketool/personal/personal.narc", false),
+            // Diamant vérifié (ADAF) ; Perle a ses propres fiches (UPR-ZX), non vérifiées.
+            Diamond => gen4("msgdata/msg.narc", 362, 552, "poketool/personal/personal.narc", true),
+            Pearl => gen4("msgdata/msg.narc", 362, 552, "poketool/personal_pearl/personal.narc", false),
             Platinum => gen4("msgdata/pl_msg.narc", 412, 610, "poketool/personal/pl_personal.narc", true),
             HeartGold | SoulSilver => gen4("a/0/2/7", 237, 720, "a/0/0/2", false),
             Black | White => gen5(70, 182, true),

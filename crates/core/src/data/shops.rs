@@ -1,4 +1,4 @@
-//! Boutiques (Gen 4 Platine, Gen 5 Noire/Blanche).
+//! Boutiques (Gen 4 Diamant / Perle / Platine / HGSS, Gen 5 Noire/Blanche).
 //!
 //! Portage de `getShops` / `setShops` de l'Universal Pokémon Randomizer :
 //!
@@ -9,6 +9,11 @@
 //!   tailles (un octet par boutique), dont les positions dépendent de la langue ;
 //! - Noire 2 / Blanche 2 (archive `a/2/8/2`) : un fichier par boutique, liste de `u16`
 //!   (32 boutiques ; vérifié sur Noire 2, IREF).
+//! - Diamant / Perle et HeartGold / SoulSilver (ARM9) : comme UPR-ZX (`getShopItems`),
+//!   listes de `u16` terminées par `FFFF`, à la suite les unes des autres juste après le
+//!   motif `ShopDataPrefix` (dépend de la langue). Les boutiques de décorations et de
+//!   sceaux (`SkipShops`) sont parcourues sans être lues ; celles de CT sont lues mais
+//!   jamais modifiées. Vérifié sur Diamant (ADAF) ; HGSS non vérifié.
 //!
 //! Contrairement à l'UPR, les boutiques gardent leur taille : les objets sont réécrits
 //! sur place, sans déplacer les listes.
@@ -164,10 +169,128 @@ const B2W2_TM_SHOPS: [usize; 5] = [7, 10, 12, 17, 24];
 const B2W2_REGULAR_SHOPS: [usize; 6] = [0, 1, 2, 3, 4, 5];
 const B2W2_MAIN_GAME_SHOPS: [usize; 17] = [9, 11, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31];
 
+/// Boutique d'une liste « à la suite » (Diamant / Perle, HGSS) : nom, nature
+/// (`None` = boutique ignorée : décorations, sceaux…), aventure principale.
+type SeqShop = (&'static str, Option<ShopKind>, bool);
+
+const SP: Option<ShopKind> = Some(ShopKind::Special);
+const TM: Option<ShopKind> = Some(ShopKind::Tm);
+
+/// Diamant / Perle : `dpShopNames`, `SkipShops` et `MainGameShops` d'UPR-ZX (28 boutiques lues).
+const DP_SHOPS: [SeqShop; 28] = [
+    ("Rivamar (comptoir secondaire)", SP, true),
+    ("Féli-Cité (comptoir secondaire)", SP, true),
+    ("Floraville (comptoir secondaire)", SP, true),
+    ("Charbourg (comptoir secondaire)", SP, true),
+    ("Vestigion (comptoir secondaire)", SP, true),
+    ("Vestigion (herboriste)", SP, true),
+    ("Frimapic (comptoir secondaire)", SP, true),
+    ("Bonville (comptoir secondaire)", SP, true),
+    ("Verchamps (comptoir secondaire)", SP, true),
+    ("Célestia (comptoir secondaire)", SP, true),
+    ("Unionpolis (comptoir secondaire)", SP, true),
+    ("Joliberges (comptoir secondaire)", SP, true),
+    ("Centre Commercial de Voilaroc (décorations 1)", None, true),
+    ("Centre Commercial de Voilaroc (décorations 2)", None, true),
+    ("Centre Commercial de Voilaroc (vitamines)", SP, true),
+    ("Centre Commercial de Voilaroc (CT 1)", TM, true),
+    ("Marché de Rivamar (sceaux 1)", None, false),
+    ("Marché de Rivamar (sceaux 2)", None, false),
+    ("Marché de Rivamar (sceaux 3)", None, false),
+    ("Marché de Rivamar (sceaux 4)", None, false),
+    ("Centre Commercial de Voilaroc (CT 2)", TM, true),
+    ("Marché de Rivamar (sceaux 5)", None, false),
+    ("Marché de Rivamar (sceaux 6)", None, false),
+    ("Marché de Rivamar (sceaux 7)", None, false),
+    ("Ligue Pokémon (comptoir secondaire)", SP, true),
+    ("Centre Commercial de Voilaroc (objets X)", SP, true),
+    ("Centre Commercial de Voilaroc (soins)", SP, true),
+    ("Centre Commercial de Voilaroc (Poké Balls…)", SP, true),
+];
+
+/// HeartGold / SoulSilver : `hgssShopNames`, `SkipShops` et `MainGameShops` d'UPR-ZX (40 boutiques lues).
+const HGSS_SHOPS: [SeqShop; 40] = [
+    ("Ville Griotte (comptoir secondaire)", SP, true),
+    ("Azuria (comptoir secondaire)", SP, false),
+    ("Rosalia (comptoir secondaire)", SP, true),
+    ("Centre Commercial de Céladopole (lettres)", SP, false),
+    ("Safrania (comptoir secondaire)", SP, false),
+    ("Mauville (comptoir secondaire)", SP, true),
+    ("Ebenelle (comptoir secondaire)", SP, true),
+    ("Oliville (comptoir secondaire)", SP, true),
+    ("Parmanie (comptoir secondaire)", SP, false),
+    ("Lavanville (comptoir secondaire)", SP, false),
+    ("Argenta (comptoir secondaire)", SP, false),
+    ("Jadielle (comptoir secondaire)", SP, false),
+    ("Écorcia (comptoir secondaire)", SP, true),
+    ("Acajou (avant la planque)", SP, false),
+    ("Entrée du Parc Safari (sud-ouest)", SP, true),
+    ("Doublonville (herboriste)", SP, false),
+    ("Irisia (pharmacie)", SP, true),
+    ("Décorations 1", None, false),
+    ("Décorations 2", None, false),
+    ("Centre Commercial de Doublonville (vitamines)", SP, true),
+    ("Centre Commercial de Céladopole (vitamines)", SP, false),
+    ("Place du Mont Sélénite", SP, false),
+    ("Sceaux 1", None, false),
+    ("Sceaux 2", None, false),
+    ("Sceaux 3", None, false),
+    ("Sceaux 4", None, false),
+    ("Sceaux 5", None, false),
+    ("Sceaux 6", None, false),
+    ("Boutique inutilisée", None, false),
+    ("Sceaux 7", None, false),
+    ("Dôme Pokéathlon (cartes de données 25-27)", None, false),
+    ("Centre Commercial de Doublonville (objets X)", SP, true),
+    ("Centre Commercial de Céladopole (objets X)", SP, false),
+    ("Acajou (après la planque)", SP, true),
+    ("Centre Commercial de Doublonville (soins)", SP, true),
+    ("Centre Commercial de Céladopole (soins)", SP, false),
+    ("Centre Commercial de Doublonville (Poké Balls…)", SP, true),
+    ("Centre Commercial de Doublonville (CT)", TM, false),
+    ("Centre Commercial de Céladopole (Poké Balls…)", SP, false),
+    ("Céladopole (CT)", TM, false),
+];
+
+/// `ShopDataPrefix` d'UPR-ZX selon le code du jeu.
+fn sequential_prefix(code: &str) -> Option<[u8; 16]> {
+    let hex = match code {
+        "ADAE" | "APAE" => "391104027511040285AF0302A5AF0302",
+        "ADAF" | "APAF" | "ADAD" | "APAD" | "ADAS" | "APAS" | "ADAI" | "APAI" => "BD110402CDAF0302EDAF0302DD110402",
+        "ADAJ" | "APAJ" => "F11A040249BD030219BD0302FDBC0302",
+        "ADAK" | "APAK" => "E1150402F1B3030211B4030201160402",
+        "IPKE" | "IPGE" | "IPKF" | "IPGF" | "IPKD" | "IPGD" | "IPGS" | "IPKI" | "IPGI" => "298E0402618E0402998E0402B98E0402",
+        "IPKS" => "218E0402598E0402918E0402B18E0402",
+        "IPKJ" | "IPGJ" => "E57C040235770402CD1C200251320402",
+        "IPKK" => "858F04028D8F0402958F0402B58F0402",
+        "IPGK" => "7D8F0402858F04028D8F0402AD8F0402",
+        _ => return None,
+    };
+    let mut out = [0u8; 16];
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Layout {
-    Platinum { size: usize, pointer: usize, special_table: usize, special_count: usize },
-    BlackWhite { pointers: usize, sizes: usize, count: usize },
+    Platinum {
+        size: usize,
+        pointer: usize,
+        special_table: usize,
+        special_count: usize,
+    },
+    BlackWhite {
+        pointers: usize,
+        sizes: usize,
+        count: usize,
+    },
+    /// Listes à la suite après un motif de l'ARM9 (Diamant / Perle, HGSS).
+    Sequential {
+        prefix: [u8; 16],
+        shops: &'static [SeqShop],
+    },
     Black2White2,
 }
 
@@ -195,6 +318,8 @@ fn layout(game: &GameRom) -> Option<Layout> {
         (Game::White, "IRAK") => bw(0x56288, 0x516C6),
         // Archive des boutiques : même emplacement dans toutes les langues (UPR `File<ShopItems>`).
         (Game::Black2 | Game::White2, _) => Layout::Black2White2,
+        (Game::Diamond | Game::Pearl, _) => Layout::Sequential { prefix: sequential_prefix(code)?, shops: &DP_SHOPS },
+        (Game::HeartGold | Game::SoulSilver, _) => Layout::Sequential { prefix: sequential_prefix(code)?, shops: &HGSS_SHOPS },
         _ => return None,
     })
 }
@@ -312,6 +437,36 @@ pub fn read(game: &GameRom) -> Result<Vec<Shop>, RomError> {
             }
             shops
         }
+        Layout::Sequential { prefix, shops: defs } => {
+            let arm9 = game.rom().arm9_decompressed()?;
+            let mut hits = arm9.windows(prefix.len()).enumerate().filter(|(_, w)| *w == prefix).map(|(i, _)| i);
+            let (Some(found), None) = (hits.next(), hits.next()) else { return Err(bad()) };
+            let mut at = found + prefix.len();
+            let mut shops = Vec::new();
+            for (i, &(name, kind, main_game)) in defs.iter().enumerate() {
+                let (mut items, mut positions) = (Vec::new(), Vec::new());
+                loop {
+                    let id = rd16(&arm9, at)?;
+                    if id == 0xFFFF {
+                        break;
+                    }
+                    if positions.len() > 64 {
+                        return Err(bad());
+                    }
+                    // Les 0 sont ignorés (comme l'UPR) et restent en place.
+                    if id != 0 {
+                        items.push(id);
+                        positions.push(at);
+                    }
+                    at += 2;
+                }
+                at += 2;
+                if let Some(kind) = kind {
+                    shops.push(Shop { index: i, name, kind, main_game, items, source: ShopSource::Arm9, positions });
+                }
+            }
+            shops
+        }
     };
     if shops.iter().any(|s| s.items.is_empty() || s.items.iter().any(|&i| i == 0 || i > 1000)) {
         return Err(bad());
@@ -389,5 +544,12 @@ mod tests {
         assert!(PT_TM_SHOPS.iter().all(|&i| i <= 20));
         assert!(BW_TM_SHOPS.iter().chain(&BW_MAIN_GAME_SHOPS).all(|&i| i < BW_SHOP_NAMES.len()));
         assert!(B2W2_TM_SHOPS.iter().chain(&B2W2_MAIN_GAME_SHOPS).all(|&i| i < B2W2_SHOP_NAMES.len()));
+        // SkipShops d'UPR-ZX : décorations, sceaux (et CT, gardées mais jamais modifiées).
+        let skipped = |defs: &[SeqShop]| defs.iter().enumerate().filter(|(_, d)| d.1 != SP).map(|(i, _)| i).collect::<Vec<_>>();
+        assert_eq!(skipped(&DP_SHOPS), vec![12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
+        assert_eq!(skipped(&HGSS_SHOPS), vec![17, 18, 22, 23, 24, 25, 26, 27, 28, 29, 30, 37, 39]);
+        assert_eq!(sequential_prefix("ADAF").map(|p| p[0]), Some(0xBD));
+        assert_eq!(sequential_prefix("IPGK").map(|p| p[12]), Some(0xAD));
+        assert!(sequential_prefix("CPUF").is_none());
     }
 }

@@ -107,6 +107,63 @@ const PT_TM_TEXTS: [(usize, &[usize]); 12] = [
     (88, &[574]),
     (92, &[500]),
 ];
+/// Diamant / Perle (`TMText{}` de `[Diamond (U)]`, UPR-ZX ; mêmes fichiers en français).
+const DP_TM_TEXTS: [(usize, &[usize]); 11] = [
+    (42, &[538]),
+    (48, &[54]),
+    (56, &[466]),
+    (63, &[135]),
+    (66, &[453]),
+    (67, &[90]),
+    (76, &[60]),
+    (77, &[437]),
+    (78, &[419]),
+    (88, &[518]),
+    (92, &[449]),
+];
+/// HeartGold / SoulSilver (`TMText{}` de `[HeartGold (U)]`, UPR-ZX ; non vérifié).
+const HGSS_TM_TEXTS: [(usize, &[usize]); 29] = [
+    (1, &[574]),
+    (3, &[469]),
+    (5, &[380]),
+    (7, &[622]),
+    (10, &[627]),
+    (11, &[67]),
+    (12, &[386]),
+    (19, &[492]),
+    (23, &[606]),
+    (29, &[534]),
+    (30, &[614]),
+    (34, &[485]),
+    (36, &[403]),
+    (37, &[370]),
+    (44, &[378]),
+    (45, &[582]),
+    (47, &[372]),
+    (48, &[531]),
+    (50, &[53]),
+    (51, &[558]),
+    (57, &[345]),
+    (59, &[129, 631]),
+    (70, &[56]),
+    (80, &[462]),
+    (83, &[397]),
+    (84, &[514]),
+    (85, &[452]),
+    (89, &[567]),
+    (92, &[454]),
+];
+
+/// Dialogues qui nomment l'attaque d'une CT, et largeur des descriptions d'objets.
+fn tm_texts(game: Game) -> (&'static [(usize, &'static [usize])], usize) {
+    match game {
+        Game::Platinum => (&PT_TM_TEXTS, GEN4_CHARS_PER_LINE),
+        Game::Diamond | Game::Pearl => (&DP_TM_TEXTS, GEN4_CHARS_PER_LINE),
+        // `hgssTextCharsPerLine`.
+        Game::HeartGold | Game::SoulSilver => (&HGSS_TM_TEXTS, 36),
+        _ => (&[], GEN4_CHARS_PER_LINE),
+    }
+}
 
 /// Ensemble des attaques du jeu.
 struct MoveTable {
@@ -312,6 +369,9 @@ fn species_entries(ctx: &Ctx) -> Vec<usize> {
 fn description_texts(game: Game) -> Option<(usize, usize)> {
     match game {
         Game::Platinum => Some((391, 646)),
+        // Diamant / Perle vérifiés sur Diamant ADAF ; HGSS d'après UPR-ZX.
+        Game::Diamond | Game::Pearl => Some((343, 587)),
+        Game::HeartGold | Game::SoulSilver => Some((221, 749)),
         Game::Black | Game::White => Some((53, 202)),
         Game::Black2 | Game::White2 => Some((63, 402)),
         _ => None,
@@ -361,26 +421,25 @@ fn update_tm_texts(game: &mut GameRom, spec: &MachineSpec, table: &MoveTable, ol
     let gen = spec.generation;
     let mut narc = game.narc(game.layout.text_archive)?;
     let descriptions = game.text_file(move_desc)?;
+    let (dialogs, width) = tm_texts(game.game);
     edit_text(&mut narc.files, gen, item_desc, |lines| {
         for (i, &mv) in new.iter().enumerate() {
             let (Some(line), Some(desc)) = (lines.get_mut(spec.tm_item(i) as usize), descriptions.get(mv as usize)) else { continue };
-            *line = if gen <= 4 { rewrap(desc, GEN4_CHARS_PER_LINE) } else { desc.clone() };
+            *line = if gen <= 4 { rewrap(desc, width) } else { desc.clone() };
         }
     })?;
-    if game.game == Game::Platinum {
-        for (tm, files) in PT_TM_TEXTS {
-            let (Some(&o), Some(&n)) = (old.get(tm - 1), new.get(tm - 1)) else { continue };
-            let (from, to) = (table.name(o).to_string(), table.name(n).to_string());
-            if o == n || from.is_empty() {
-                continue;
-            }
-            for &file in files {
-                edit_text(&mut narc.files, gen, file, |lines| {
-                    for line in lines.iter_mut() {
-                        *line = line.replace(&from, &to);
-                    }
-                })?;
-            }
+    for &(tm, files) in dialogs {
+        let (Some(&o), Some(&n)) = (old.get(tm - 1), new.get(tm - 1)) else { continue };
+        let (from, to) = (table.name(o).to_string(), table.name(n).to_string());
+        if o == n || from.is_empty() {
+            continue;
+        }
+        for &file in files {
+            edit_text(&mut narc.files, gen, file, |lines| {
+                for line in lines.iter_mut() {
+                    *line = line.replace(&from, &to);
+                }
+            })?;
         }
     }
     game.replace_narc(game.layout.text_archive, &narc)
@@ -400,7 +459,7 @@ pub(crate) fn apply(game: &mut GameRom, ctx: &mut Ctx, settings: &MoveSettings, 
         return Ok(());
     }
     let gen = ctx.gen;
-    let spec = MachineSpec::for_generation(gen).ok_or_else(|| RomError::Unsupported("CT/CS : génération non prise en charge".into()))?;
+    let spec = MachineSpec::for_game(game.game).ok_or_else(|| RomError::Unsupported("CT/CS : génération non prise en charge".into()))?;
     let paths = DataPaths::for_game(game.game).ok_or_else(|| RomError::Unsupported("CT/CS : jeu non pris en charge".into()))?;
     let data_path = machines::move_data_path(game.game).ok_or_else(|| RomError::Unsupported("CT/CS : données d'attaques inconnues".into()))?;
     let names = game.text_file(paths.move_names)?;

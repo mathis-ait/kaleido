@@ -94,6 +94,124 @@ pub fn platinum() -> Vec<Def> {
 
 const PT_FOSSIL_TABLE: u32 = 0xEBFFC;
 
+/// Diamant / Perle : `StaticPokemon{}` de `[Diamond (U)]` (UPR-ZX), copiées par toutes
+/// les versions traduites (`CopyStaticPokemon=1`) ; vérifiées sur Diamant (ADAF).
+/// Archive des scripts : `scr_seq_release.narc`.
+pub fn diamond_pearl(code: &str) -> Vec<Def> {
+    use Kind::{Egg, Static};
+    let mut out = vec![
+        script(Static, &[(342, 0x261), (342, 0x2BE)], &[(342, 0x2C0)]), // Étourmi (Lac Vérité)
+        script(Static, &[(230, 0x4AE), (230, 0xE9A), (230, 0xECE), (230, 0x1201), (230, 0x1235)], &[(230, 0xEE4), (230, 0x124B)]), // Dialga
+        script(Static, &[(230, 0x4B4), (230, 0xEA0), (230, 0xED4), (230, 0x1207), (230, 0x123B)], &[(230, 0xEE4), (230, 0x124B)]), // Palkia
+        script(Static, &[(352, 0x39), (352, 0x48)], &[(352, 0x4A)]),    // Créhelf
+        script(Static, &[(348, 0x81), (348, 0x90)], &[(348, 0x92)]),    // Créfadet
+        script(Static, &[(278, 0x16F), (278, 0x17E)], &[(278, 0x180)]), // Heatran
+        script(Static, &[(309, 0x88), (309, 0x94)], &[(309, 0x96)]),    // Regigigas
+        script(Static, &[(283, 0x50), (283, 0x5F)], &[(283, 0x61)]),    // Giratina
+        script(Static, &[(354, 0x40)], &[(354, 0x42)]),                 // Darkrai
+        script(Static, &[(302, 0x39), (302, 0x48)], &[(302, 0x4A)]),    // Shaymin
+        script(Static, &[(232, 0x45), (232, 0x53), (232, 0x62)], &[(232, 0x64)]), // Arceus
+        script(Static, &[(112, 0xB5)], &[(112, 0xB7)]),                 // Évoli
+        script(Egg, &[(90, 0x568)], &[]),                               // Ptiravi (œuf)
+        script(Egg, &[(321, 0x332)], &[]),                              // Riolu (œuf)
+        script(Static, &[(210, 0x1C5), (210, 0x1D6)], &[(210, 0x1D8)]), // Baudrive
+        script(Static, &[(329, 0x74), (329, 0x80)], &[(329, 0x82)]),    // Motisma
+        script(Static, &[(406, 0x153), (406, 0x160)], &[(406, 0x162)]), // Spiritomb
+    ];
+    // Fossiles : table de l'ARM9 (`FossilTableOffset`, selon la langue) ; niveau dans le script 63.
+    let table = match code {
+        "ADAE" | "APAE" => Some(0xF450C),
+        "ADAF" | "APAF" => Some(0xF4550),
+        "ADAD" | "APAD" => Some(0xF4520),
+        "ADAS" | "APAS" => Some(0xF455C),
+        "ADAI" | "APAI" => Some(0xF44C4),
+        "ADAJ" => Some(0xF6330),
+        "APAJ" => Some(0xF6334),
+        "ADAK" | "APAK" => Some(0xEFB5C),
+        _ => None,
+    };
+    if let Some(table) = table {
+        for f in 0..7 {
+            out.push(Def { species: vec![Loc::Arm9(table + 2 + f * 4)], levels: vec![Loc::Script(63, 0x41A)], kind: Kind::Fossil });
+        }
+    }
+    out
+}
+
+/// HeartGold / SoulSilver : `StaticPokemon{}` de `[HeartGold (U)]` (UPR-ZX), non vérifiées
+/// sur une ROM (chaque valeur est relue avant écriture). Archive des scripts : `a/0/1/2`.
+/// Ignorés : Giratina Originel (forme), lots du Casino (textes du menu), Shuckie et
+/// Kenya (échanges), œuf mystère et vagabonds (code de l'overlay / de l'ARM9).
+pub fn heartgold_soulsilver() -> Vec<Def> {
+    use Kind::{Egg, Static};
+    let mut out = vec![
+        script(Static, &[(104, 0x108)], &[(104, 0x138), (104, 0x12C)]), // Lugia
+        script(Static, &[(21, 0xD1)], &[(21, 0xF5), (21, 0x101)]),      // Ho-Oh
+        script(
+            Static,
+            &[(216, 0x58F), (216, 0x6E8), (216, 0x708), (24, 0x67), (24, 0xB4), (24, 0x314), (24, 0x320), (24, 0xD4)],
+            &[(216, 0x70A), (24, 0x322)],
+        ), // Suicune
+        script(Static, &[(14, 0x2F), (14, 0x3B)], &[(14, 0x3D)]),       // Artikodin
+        script(Static, &[(191, 0x26B), (191, 0x277)], &[(191, 0x279)]), // Électhor
+        script(Static, &[(106, 0x2F), (106, 0x3B)], &[(106, 0x3D)]),    // Sulfura
+        script(Static, &[(11, 0x2F), (11, 0x3B)], &[(11, 0x3D)]),       // Mewtwo
+        script(Static, &[(134, 0xA3), (134, 0xB4)], &[(134, 0xB6)]),    // Kyogre
+        script(Static, &[(133, 0xA3), (133, 0xB4)], &[(133, 0xB6)]),    // Groudon
+        script(Static, &[(135, 0xDA), (135, 0xEB), (135, 0x62), (135, 0x98)], &[(135, 0xED)]), // Rayquaza
+        script(Static, &[(131, 0x43A), (131, 0x67C), (131, 0x872), (131, 0x8E4), (131, 0x958), (131, 0x963)], &[(131, 0x965)]), // Dialga
+        script(Static, &[(131, 0x4A2), (131, 0x695), (131, 0x88D), (131, 0x8FA), (131, 0x97F), (131, 0x98A)], &[(131, 0x98C)]), // Palkia
+        script(Static, &[(750, 0x4CC)], &[(750, 0x4E3)]),               // Latias
+        script(Static, &[(750, 0x4B7)], &[(750, 0x4E3)]),               // Latios
+        script(Static, &[(243, 0x2FD), (243, 0x14B)], &[(243, 0x2FF), (243, 0x14D)]), // Simularbre
+        script(Static, &[(58, 0x61), (58, 0x6D)], &[(58, 0x6F)]),       // Lokhlass
+        script(Static, &[(938, 0x3CD), (938, 0x3DE)], &[(938, 0x3E0)]), // Léviator rouge
+        script(Static, &[(197, 0x6C), (197, 0x7D), (199, 0x26A), (199, 0x27B)], &[(197, 0x7F), (199, 0x27D)]), // Ronflex
+        script(
+            Static,
+            &[(89, 0xF3D), (89, 0x1078), (89, 0x10A5), (89, 0x112C), (89, 0x11B3)],
+            &[(89, 0xF3F), (89, 0x107A), (89, 0x10A7), (89, 0x112E), (89, 0x11B5)],
+        ), // Smogo (QG Rocket)
+        script(
+            Static,
+            &[(89, 0xF6A), (89, 0xFC4), (89, 0x101E), (89, 0x104B), (89, 0x1159), (89, 0x1186)],
+            &[(89, 0xF6C), (89, 0xFC6), (89, 0x1020), (89, 0x104D), (89, 0x115B), (89, 0x1188)],
+        ), // Voltorbe (QG Rocket)
+        script(
+            Static,
+            &[(89, 0xF97), (89, 0xFF1), (89, 0x10D2), (89, 0x10FF), (89, 0x11E0)],
+            &[(89, 0xF99), (89, 0xFF3), (89, 0x10D4), (89, 0x1101), (89, 0x11E2)],
+        ), // Racaillou (QG Rocket)
+        script(Static, &[(90, 0x784)], &[(90, 0x786)]),                 // Électrode (QG Rocket) 1
+        script(Static, &[(90, 0x7E8)], &[(90, 0x7EA)]),                 // Électrode 2
+        script(Static, &[(90, 0x84C)], &[(90, 0x84E)]),                 // Électrode 3
+        script(Static, &[(892, 0x61)], &[(892, 0x63)]),                 // Évoli
+        script(Static, &[(98, 0x71)], &[(98, 0x73)]),                   // Debugant
+        script(Static, &[(112, 0x4D1)], &[(112, 0x4D3)]),               // Minidraco
+        script(Static, &[(740, 0x66F), (740, 0x675), (740, 0x695), (740, 0x818), (740, 0x8BC)], &[(740, 0x86D)]), // Bulbizarre
+        script(Static, &[(740, 0x71D), (740, 0x723), (740, 0x743), (740, 0x833), (740, 0x8D7)], &[(740, 0x86D)]), // Carapuce
+        script(Static, &[(740, 0x7CB), (740, 0x7D1), (740, 0x7F1)], &[(740, 0x86D)]), // Salamèche
+        script(Static, &[(837, 0x28F)], &[(837, 0x2D1)]),               // Arcko
+        script(Static, &[(837, 0x2A8)], &[(837, 0x2D1)]),               // Poussifeu
+        script(Static, &[(837, 0x2B4)], &[(837, 0x2D1)]),               // Gobou
+        script(Egg, &[(860, 0x146), (860, 0x14D)], &[]),                // Œuf de Wattouat (Primo)
+        script(Egg, &[(860, 0x180), (860, 0x187)], &[]),                // Œuf d'Axoloto (Primo)
+        script(Egg, &[(860, 0x1BA), (860, 0x1C1)], &[]),                // Œuf de Limagma (Primo)
+        script(Static, &[(878, 0x90)], &[(878, 0x92)]),                 // Tentacool secret
+    ];
+    // Fossiles : table de l'overlay 21 (`FossilTableOvlNumber`), niveau dans le script 755.
+    for f in 0..7 {
+        out.push(Def {
+            species: vec![Loc::Overlay(HGSS_FOSSIL_OVERLAY, 0x130 + 2 + f * 4)],
+            levels: vec![Loc::Script(755, 0x58D)],
+            kind: Kind::Fossil,
+        });
+    }
+    out
+}
+
+pub const HGSS_FOSSIL_OVERLAY: u32 = 21;
+
 /// Noire/Blanche : `StaticPokemon{}` puis `StaticPokemonFakeBall{}` de `[Black (U)]`.
 pub fn black_white() -> Vec<Def> {
     use Kind::{Egg, Fossil, Static};
@@ -314,4 +432,13 @@ pub const BW_TRADE_SCRIPTS: [(u16, &[(u32, u32)]); 5] = [
 pub const PT_TRADE_TEXT: usize = 370;
 /// Dialogues des personnes qui proposent les échanges (Platine).
 pub const PT_TRADE_PERSON_TEXTS: [usize; 4] = [74, 97, 180, 643];
+/// Diamant / Perle : textes des échanges et dialogues (`IngameTradesTextOffset`,
+/// `IngameTradePersonTextOffsets` ; vérifiés sur Diamant ADAF).
+pub const DP_TRADE_TEXT: usize = 326;
+pub const DP_TRADE_PERSON_TEXTS: [usize; 4] = [67, 89, 171, 584];
+/// HeartGold / SoulSilver (non vérifié) : 0 = pas de dialogue ; entrées 6 et 7
+/// (Shuckie, Kenya) traitées à part par l'UPR et ignorées ici.
+pub const HGSS_TRADE_TEXT: usize = 200;
+pub const HGSS_TRADE_PERSON_TEXTS: [usize; 11] = [562, 596, 608, 634, 0, 0, 344, 463, 535, 47, 537];
+pub const HGSS_TRADES_UNUSED: [usize; 2] = [6, 7];
 pub const BW_TRADE_TEXT: usize = 35;

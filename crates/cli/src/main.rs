@@ -50,7 +50,9 @@ Outils DS :
   starters  <rom>                       Starters actuels
   tms       <rom> [n° espèce]           CT/CS, donneurs de capacités et compatibilité d'une espèce
   items     <rom> [autre.nds]           Objets ramassables et boutiques (ou différences avec une autre ROM)
-  statics   <rom>                       Pokémon fixes, dons et échanges en jeu";
+  statics   <rom>                       Pokémon fixes, dons et échanges en jeu
+  hexcode   <rom> <arm9|n° overlay> <début> <longueur>   Vidage du code décompressé (début en hexa)
+  findcode  <rom> <octets hexa>         Cherche des octets dans l'ARM9 et les overlays décompressés";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -95,6 +97,8 @@ fn main() -> ExitCode {
             );
             Ok(())
         }),
+        ["hexcode", rom, part, start, len] => hex_code(&open(rom), part, start, len),
+        ["findcode", rom, pattern] => find_code(&open(rom), pattern),
         ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["info3ds", rom] => ctr::info(&ctr::open(rom)),
         ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
@@ -447,7 +451,7 @@ fn tms(path: &str, species: u16) -> CliResult {
     let game = kaleido_core::GameRom::open(Path::new(path))?;
     let gen = game.generation();
     let paths = kaleido_core::data::DataPaths::for_game(game.game).ok_or("jeu non pris en charge")?;
-    let spec = MachineSpec::for_generation(gen).ok_or("génération non prise en charge")?;
+    let spec = MachineSpec::for_game(game.game).ok_or("génération non prise en charge")?;
     let moves = game.text_file(paths.move_names)?;
     let names = game.text_file(game.layout.species_names)?;
     let move_data = Narc::parse(game.rom().file_by_path(machines::move_data_path(game.game).ok_or("données d'attaques inconnues")?)?)?.files;
@@ -677,6 +681,37 @@ fn search(rom: &NdsRom, values: &str) -> CliResult {
             if all && !data[at..].starts_with(&as_u16) {
                 println!("{name} @ {at:#X} (proches)");
             }
+        }
+    }
+    Ok(())
+}
+
+/// Code décompressé : « arm9 » ou numéro d'overlay.
+fn code_part(rom: &NdsRom, part: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    Ok(if part == "arm9" { rom.arm9_decompressed()? } else { rom.overlay(part.parse()?)? })
+}
+
+fn hex_code(rom: &NdsRom, part: &str, start: &str, len: &str) -> CliResult {
+    let data = code_part(rom, part)?;
+    let start = usize::from_str_radix(start.trim_start_matches("0x"), 16)?;
+    let end = (start + len.parse::<usize>()?).min(data.len());
+    println!("{part} : {} octets", data.len());
+    for (i, row) in data[start.min(end)..end].chunks(16).enumerate() {
+        let hex: Vec<String> = row.iter().map(|b| format!("{b:02X}")).collect();
+        let words: Vec<String> = row.chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_le_bytes([c[0], c[1]]).to_string()).collect();
+        println!("{:06X}  {:<48} | {}", start + i * 16, hex.join(" "), words.join(" "));
+    }
+    Ok(())
+}
+
+fn find_code(rom: &NdsRom, pattern: &str) -> CliResult {
+    let needle: Vec<u8> = (0..pattern.len() / 2).map(|i| u8::from_str_radix(&pattern[i * 2..i * 2 + 2], 16)).collect::<Result<_, _>>()?;
+    let mut parts = vec!["arm9".to_string()];
+    parts.extend(rom.overlays().iter().map(|o| o.id.to_string()));
+    for part in parts {
+        let data = code_part(rom, &part)?;
+        for at in data.windows(needle.len()).enumerate().filter(|(_, w)| *w == needle.as_slice()).map(|(i, _)| i) {
+            println!("{part} @ {at:#X}");
         }
     }
     Ok(())

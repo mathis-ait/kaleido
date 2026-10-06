@@ -22,7 +22,7 @@ pub struct NuzlockeView {
     pub state: RunState,
     /// Fichier où l'état est enregistré.
     pub state_file: String,
-    /// La sauvegarde ouverte est-elle d'un jeu pris en charge (Platine, Noire, Blanche) ?
+    /// La sauvegarde ouverte est-elle d'un jeu pris en charge (Gen 4, Noire, Blanche) ?
     pub supported: bool,
     pub save_game: String,
     pub report: Option<Report>,
@@ -32,7 +32,7 @@ pub struct NuzlockeView {
 
 fn supported(version: kaleido_core::save::SaveVersion) -> bool {
     use kaleido_core::save::SaveVersion::*;
-    matches!(version, Platinum | BlackWhite | Black2White2)
+    matches!(version, DiamondPearl | Platinum | HeartGoldSoulSilver | BlackWhite | Black2White2)
 }
 
 /// Lit la ROM (ou la reprend du cache) hors du fil de l'interface.

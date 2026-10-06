@@ -290,7 +290,7 @@ async function saveRom() {
       </header>
 
       <p v-if="readOnly" class="notice">
-        L'édition de ce jeu n'est pas encore disponible : seuls Platine, Noire et Blanche sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
+        L'édition de ce jeu n'est pas encore disponible : seuls Diamant, Perle, Platine, HeartGold, SoulSilver, Noire et Blanche sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
       </p>
       <div v-if="saveError" class="error">{{ saveError }}</div>
       <div v-else-if="editor.error" class="error">{{ editor.error }}</div>

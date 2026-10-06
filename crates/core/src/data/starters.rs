@@ -1,6 +1,11 @@
 //! Pokémon de départ.
 //!
 //! - Platine : tableau de 3 espèces u32 dans l'overlay 78, à l'offset 0x1BC0.
+//! - Diamant / Perle : même tableau dans l'overlay 64, à l'offset 0x1B88 (UPR-ZX
+//!   `StarterPokemonOffset` ; vérifié sur Diamant ADAF : 387, 390, 393), même code
+//!   d'affichage et mêmes scripts du rival que Platine (autres fichiers).
+//! - HeartGold / SoulSilver (non vérifié, d'après UPR-ZX) : 3 espèces u32 dans l'ARM9,
+//!   13 octets avant le motif `hgssStarterCodeSuffix` ; cris dans l'overlay 61.
 //! - Noire/Blanche, trois endroits :
 //!   - overlay 223 : tableau de 3 espèces u16 de l'écran de choix ;
 //!   - script 304 : commandes `57 00 00 <espèce>` (sprite / cri sur l'écran de choix) ;
@@ -18,6 +23,8 @@ use kaleido_formats::narc::Narc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarterLocation {
     Platinum,
+    DiamondPearl,
+    HeartGoldSoulSilver,
     BlackWhite,
     Black2White2,
 }
@@ -25,6 +32,22 @@ pub enum StarterLocation {
 const PT_OVERLAY: u32 = 78;
 const PT_OFFSET: usize = 0x1BC0;
 const PT_ORIGINAL: [u16; 3] = [387, 390, 393];
+const DP_OVERLAY: u32 = 64;
+const DP_OFFSET: usize = 0x1B88;
+
+/// HeartGold / SoulSilver (UPR-ZX `Gen4Constants`).
+const HGSS_CODE_SUFFIX: [u8; 8] = [0x03, 0x03, 0x1A, 0x12, 0x01, 0x23, 0x00, 0x00];
+const HGSS_ORIGINAL: [u16; 3] = [152, 155, 158];
+const HGSS_STARTER_OVERLAY: u32 = 61;
+const HGSS_CRIES_PREFIX: [u8; 32] = [
+    0x00, 0x04, 0x00, 0x0C, 0x10, 0xBD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
+];
+
+/// Position du tableau des starters de HGSS dans l'ARM9 décompressé.
+fn hgss_table(arm9: &[u8]) -> Option<usize> {
+    find_unique(arm9, &HGSS_CODE_SUFFIX).and_then(|p| p.checked_sub(13)).filter(|&p| p + 10 <= arm9.len())
+}
 
 const BW_OVERLAY: u32 = 223;
 const BW_OFFSET: usize = 0x3170;
@@ -81,11 +104,19 @@ fn mismatch() -> RomError {
 pub fn read(game: &GameRom, location: StarterLocation) -> Result<[u16; 3], RomError> {
     let mut out = [0; 3];
     match location {
-        StarterLocation::Platinum => {
-            let ovl = game.rom().overlay(PT_OVERLAY)?;
+        StarterLocation::Platinum | StarterLocation::DiamondPearl => {
+            let (overlay, offset) = if location == StarterLocation::Platinum { (PT_OVERLAY, PT_OFFSET) } else { (DP_OVERLAY, DP_OFFSET) };
+            let ovl = game.rom().overlay(overlay)?;
             for (i, s) in out.iter_mut().enumerate() {
-                let at = PT_OFFSET + i * 4;
+                let at = offset + i * 4;
                 *s = u32::from_le_bytes(ovl.get(at..at + 4).ok_or_else(mismatch)?.try_into().unwrap()) as u16;
+            }
+        }
+        StarterLocation::HeartGoldSoulSilver => {
+            let arm9 = game.rom().arm9_decompressed()?;
+            let at = hgss_table(&arm9).ok_or_else(mismatch)?;
+            for (i, s) in out.iter_mut().enumerate() {
+                *s = u16::from_le_bytes([arm9[at + i * 4], arm9[at + i * 4 + 1]]);
             }
         }
         StarterLocation::BlackWhite => {
@@ -118,23 +149,52 @@ pub fn read(game: &GameRom, location: StarterLocation) -> Result<[u16; 3], RomEr
     Ok(out)
 }
 
-/// Platine : portage de `Gen4RomHandler.setStarters` de l'Universal Pokémon Randomizer
-/// (code ARM de l'écran de choix, scripts du rival et des combats en duo, textes).
+/// Platine, Diamant et Perle : portage de `Gen4RomHandler.setStarters` de l'Universal
+/// Pokémon Randomizer (code ARM de l'écran de choix, scripts du rival et des combats
+/// en duo, textes).
 mod platinum {
     use super::{find_unique, mismatch, GameRom, Narc, RomError};
 
-    const SCRIPTS: &str = "fielddata/script/scr_seq.narc";
-    const TEXT_ARCHIVE: &str = "msgdata/pl_msg.narc";
+    /// Fichiers propres à chaque jeu (UPR-ZX `gen4_offsets.ini` et `Gen4Constants`).
+    pub(super) struct Config {
+        scripts: &'static str,
+        text_archive: &'static str,
+        rival_files: &'static [usize],
+        /// Premières commandes possibles du script visé par le saut (combat du rival…).
+        rival_targets: &'static [u16],
+        tag_files: &'static [usize],
+        starter_screen_text: usize,
+        pokedex_category_text: usize,
+    }
+
+    pub(super) const PLATINUM: Config = Config {
+        scripts: "fielddata/script/scr_seq.narc",
+        text_archive: "msgdata/pl_msg.narc",
+        rival_files: &[31, 36, 112, 123, 186, 427, 429, 1096],
+        rival_targets: &[0xE5, 0x28F, 0x125],
+        tag_files: &[2, 136, 201, 236],
+        starter_screen_text: 360,
+        pokedex_category_text: 711,
+    };
+
+    /// Diamant / Perle (`dpFilesWithRivalScript`, `dpFilesWithTagScript` ; textes 320 et
+    /// 621 vérifiés sur Diamant ADAF).
+    pub(super) const DIAMOND_PEARL: Config = Config {
+        scripts: "fielddata/script/scr_seq_release.narc",
+        text_archive: "msgdata/msg.narc",
+        rival_files: &[34, 90, 118, 180, 195, 394],
+        rival_targets: &[0xE5, 0x28F],
+        tag_files: &[2, 131, 230],
+        starter_screen_text: 320,
+        pokedex_category_text: 621,
+    };
+
     const GRAPHICS_PREFIX: [u8; 8] = [0x00, 0x02, 0x22, 0x40, 0x21, 0x04, 0x12, 0x0C];
     const GRAPHICS_PREFIX_INNER: [u8; 8] = [0x02, 0x90, 0x03, 0x90, 0x02, 0x20, 0x00, 0x02];
-    const RIVAL_FILES: [usize; 8] = [31, 36, 112, 123, 186, 427, 429, 1096];
     const RIVAL_MAGIC: [u8; 13] = [0xDE, 0x00, 0x0C, 0x80, 0x11, 0x00, 0x0C, 0x80, 0x83, 0x01, 0x1C, 0x00, 0x01];
-    const TAG_FILES: [usize; 4] = [2, 136, 201, 236];
     const TAG_MAGIC1: [u8; 8] = [0xDE, 0x00, 0x0C, 0x80, 0x28, 0x00, 0x04, 0x80];
     const TAG_MAGIC2: [u8; 9] = [0x11, 0x00, 0x0C, 0x80, 0x86, 0x01, 0x1C, 0x00, 0x01];
     const TURTWIG: u16 = 387;
-    const STARTER_SCREEN_TEXT: usize = 360;
-    const POKEDEX_CATEGORY_TEXT: usize = 711;
 
     fn rd(d: &[u8], at: usize) -> u16 {
         u16::from_le_bytes([d[at], d[at + 1]])
@@ -199,15 +259,15 @@ mod platinum {
     }
 
     /// Scripts du rival (« si starter == Tortipouss… ») et combats en duo.
-    pub(super) fn patch_scripts(game: &mut GameRom, starters: [u16; 3]) -> Result<(), RomError> {
-        let mut narc = Narc::parse(game.rom().file_by_path(SCRIPTS)?)?;
+    pub(super) fn patch_scripts(game: &mut GameRom, cfg: &Config, starters: [u16; 3]) -> Result<(), RomError> {
+        let mut narc = Narc::parse(game.rom().file_by_path(cfg.scripts)?)?;
         let positions = |f: &[u8], m: &[u8]| -> Vec<usize> { f.windows(m.len()).enumerate().filter(|(_, w)| *w == m).map(|(i, _)| i).collect() };
         let target = |f: &[u8], jump_loc: usize| -> Option<usize> {
             let jump_to = rd32(f, jump_loc) as i64 + jump_loc as i64 + 4;
             usize::try_from(jump_to).ok().filter(|&t| t + 2 <= f.len())
         };
 
-        for &n in &RIVAL_FILES {
+        for &n in cfg.rival_files {
             let Some(file) = narc.files.get_mut(n) else { continue };
             for base in positions(file, &RIVAL_MAGIC) {
                 let jump_loc = base + RIVAL_MAGIC.len();
@@ -215,7 +275,7 @@ mod platinum {
                     continue;
                 }
                 let Some(to) = target(file, jump_loc) else { continue };
-                if ![0xE5, 0x28F, 0x125].contains(&rd(file, to)) {
+                if !cfg.rival_targets.contains(&rd(file, to)) {
                     continue; // pas un script du rival
                 }
                 wr(file, base + 0x8, starters[0]);
@@ -223,7 +283,7 @@ mod platinum {
             }
         }
 
-        for &n in &TAG_FILES {
+        for &n in cfg.tag_files {
             let Some(file) = narc.files.get_mut(n) else { continue };
             for base in positions(file, &TAG_MAGIC1) {
                 let second = base + TAG_MAGIC1.len() + 2;
@@ -240,18 +300,18 @@ mod platinum {
                 wr(file, base + 0xE, starters[1]);
             }
         }
-        game.rom_mut().replace_file_by_path(SCRIPTS, narc.to_bytes())?;
+        game.rom_mut().replace_file_by_path(cfg.scripts, narc.to_bytes())?;
         Ok(())
     }
 
     /// Écran de choix : « {catégorie} {nom} » ; la question qui suit reste celle du jeu,
     /// ce qui fonctionne dans toutes les langues.
-    pub(super) fn patch_texts(game: &mut GameRom, starters: [u16; 3]) -> Result<(), RomError> {
+    pub(super) fn patch_texts(game: &mut GameRom, cfg: &Config, starters: [u16; 3]) -> Result<(), RomError> {
         use crate::text::gen4::MsgFile;
         let names = game.text_file(game.layout.species_names)?;
-        let categories = game.text_file(POKEDEX_CATEGORY_TEXT)?;
-        let mut narc = Narc::parse(game.rom().file_by_path(TEXT_ARCHIVE)?)?;
-        let Some(file) = narc.files.get_mut(STARTER_SCREEN_TEXT) else { return Ok(()) };
+        let categories = game.text_file(cfg.pokedex_category_text)?;
+        let mut narc = Narc::parse(game.rom().file_by_path(cfg.text_archive)?)?;
+        let Some(file) = narc.files.get_mut(cfg.starter_screen_text) else { return Ok(()) };
         let msg = MsgFile::parse(file)?;
         let mut lines = msg.strings();
         const RESET: &str = "{VAR:FF00,0000}";
@@ -264,7 +324,75 @@ mod platinum {
             lines[i + 1] = new;
         }
         *file = MsgFile::from_strings(msg.seed, &lines)?.to_bytes();
-        game.rom_mut().replace_file_by_path(TEXT_ARCHIVE, narc.to_bytes())?;
+        game.rom_mut().replace_file_by_path(cfg.text_archive, narc.to_bytes())?;
+        Ok(())
+    }
+}
+
+/// HeartGold / SoulSilver : portage de la branche HGSS de `Gen4RomHandler.setStarters`
+/// (UPR-ZX). Non vérifié sur une vraie ROM : chaque motif est contrôlé avant écriture.
+mod hgss {
+    use super::{find_unique, mismatch, GameRom, Narc, RomError, StarterLabels, HGSS_CRIES_PREFIX, HGSS_STARTER_OVERLAY};
+
+    const SCRIPTS: &str = "a/0/1/2";
+    const RIVAL_FILES: [usize; 7] = [7, 23, 96, 110, 819, 850, 866];
+    /// `StoreStarter2 0x800C ; If 0x800C == 152 ; CheckLR B_!=` (`hgssRivalScriptMagic`).
+    const RIVAL_MAGIC: [u8; 13] = [0xCE, 0x00, 0x0C, 0x80, 0x11, 0x00, 0x0C, 0x80, 0x98, 0x00, 0x1C, 0x00, 0x05];
+    const CYNDAQUIL: u8 = 155;
+    const STARTER_SCREEN_TEXT: usize = 190;
+
+    /// Scripts du rival : « si starter == Germignon… sinon si starter == Héricendre… ».
+    pub(super) fn patch_scripts(game: &mut GameRom, starters: [u16; 3]) -> Result<(), RomError> {
+        let mut narc = Narc::parse(game.rom().file_by_path(SCRIPTS)?)?;
+        for &n in &RIVAL_FILES {
+            let Some(file) = narc.files.get_mut(n) else { continue };
+            let Some(base) = find_unique(file, &RIVAL_MAGIC) else { continue };
+            if base + 17 > file.len() {
+                continue;
+            }
+            file[base + 8..base + 10].copy_from_slice(&starters[0].to_le_bytes());
+            let jump = i32::from_le_bytes(file[base + 13..base + 17].try_into().unwrap()) as i64;
+            let Some(second) = usize::try_from(jump + base as i64 + 17).ok().filter(|&s| s + 6 <= file.len()) else { continue };
+            if file[second] == 0x11 && file[second + 4] == CYNDAQUIL {
+                file[second + 4..second + 6].copy_from_slice(&starters[1].to_le_bytes());
+            }
+        }
+        game.rom_mut().replace_file_by_path(SCRIPTS, narc.to_bytes())?;
+        Ok(())
+    }
+
+    /// Cris de l'écran de choix (overlay 61, `starterCriesPrefix`).
+    pub(super) fn patch_cries(game: &mut GameRom, starters: [u16; 3]) -> Result<(), RomError> {
+        let mut ovl = game.rom().overlay(HGSS_STARTER_OVERLAY)?;
+        let Some(at) = find_unique(&ovl, &HGSS_CRIES_PREFIX).map(|p| p + HGSS_CRIES_PREFIX.len()).filter(|&p| p + 12 <= ovl.len()) else {
+            return Err(mismatch());
+        };
+        for (i, &s) in starters.iter().enumerate() {
+            ovl[at + i * 4..at + i * 4 + 4].copy_from_slice(&(s as u32).to_le_bytes());
+        }
+        game.rom_mut().replace_overlay(HGSS_STARTER_OVERLAY, ovl)?;
+        Ok(())
+    }
+
+    /// Textes du Prof. Orme sur l'écran de choix (lignes 1-3 et 4-6 du fichier 190).
+    pub(super) fn patch_texts(game: &mut GameRom, labels: &StarterLabels) -> Result<(), RomError> {
+        use crate::text::gen4::MsgFile;
+        let archive = game.layout.text_archive;
+        let mut narc = Narc::parse(game.rom().file_by_path(archive)?)?;
+        let Some(file) = narc.files.get_mut(STARTER_SCREEN_TEXT) else { return Ok(()) };
+        let msg = MsgFile::parse(file)?;
+        let mut lines = msg.strings();
+        if lines.len() < 7 {
+            return Ok(());
+        }
+        for (i, (type_name, name)) in labels.iter().enumerate() {
+            let color = if i == 0 { 3 } else { i };
+            let shown = format!("{{VAR:FF00,{color:04X}}}{name}{{VAR:FF00,0000}}");
+            lines[i + 1] = format!("Prof. Orme : tu choisis {shown},\nle Pokémon de type {type_name} ?");
+            lines[i + 4] = format!("{shown}, le Pokémon de type\n{type_name}, est dans cette Poké Ball !");
+        }
+        *file = MsgFile::from_strings(msg.seed, &lines)?.to_bytes();
+        game.rom_mut().replace_file_by_path(archive, narc.to_bytes())?;
         Ok(())
     }
 }
@@ -300,19 +428,38 @@ fn find_unique(data: &[u8], pattern: &[u8]) -> Option<usize> {
 /// Pour Noire/Blanche, suit `Gen5RomHandler.setStarters` de l'Universal Pokémon Randomizer.
 pub fn write(game: &mut GameRom, location: StarterLocation, starters: [u16; 3], labels: &StarterLabels) -> Result<(), RomError> {
     match location {
-        StarterLocation::Platinum => {
+        StarterLocation::Platinum | StarterLocation::DiamondPearl => {
             if read(game, location)? != PT_ORIGINAL {
                 return Err(mismatch());
             }
-            let mut ovl = game.rom().overlay(PT_OVERLAY)?;
+            let (overlay, offset, cfg) = if location == StarterLocation::Platinum {
+                (PT_OVERLAY, PT_OFFSET, &platinum::PLATINUM)
+            } else {
+                (DP_OVERLAY, DP_OFFSET, &platinum::DIAMOND_PEARL)
+            };
+            let mut ovl = game.rom().overlay(overlay)?;
             for (i, s) in starters.iter().enumerate() {
-                let at = PT_OFFSET + i * 4;
+                let at = offset + i * 4;
                 ovl[at..at + 4].copy_from_slice(&(*s as u32).to_le_bytes());
             }
             platinum::patch_graphics_code(&mut ovl, starters)?;
-            game.rom_mut().replace_overlay(PT_OVERLAY, ovl)?;
-            platinum::patch_scripts(game, starters)?;
-            platinum::patch_texts(game, starters)?;
+            game.rom_mut().replace_overlay(overlay, ovl)?;
+            platinum::patch_scripts(game, cfg, starters)?;
+            platinum::patch_texts(game, cfg, starters)?;
+        }
+        StarterLocation::HeartGoldSoulSilver => {
+            if read(game, location)? != HGSS_ORIGINAL {
+                return Err(mismatch());
+            }
+            let mut arm9 = game.rom().arm9_decompressed()?;
+            let at = hgss_table(&arm9).ok_or_else(mismatch)?;
+            for (i, s) in starters.iter().enumerate() {
+                arm9[at + i * 4..at + i * 4 + 2].copy_from_slice(&s.to_le_bytes());
+            }
+            game.rom_mut().replace_arm9(&arm9)?;
+            hgss::patch_scripts(game, starters)?;
+            hgss::patch_texts(game, labels)?;
+            hgss::patch_cries(game, starters)?;
         }
         StarterLocation::BlackWhite => {
             if read(game, location)? != BW_ORIGINAL {
@@ -466,5 +613,29 @@ mod black2 {
             game.rom_mut().replace_file_by_path(BW_STORY_TEXT, story.to_bytes())?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hgss_table_before_code_suffix() {
+        // Germignon, Héricendre, Kaiminus (u32), un octet, puis le motif de l'UPR.
+        let mut arm9 = vec![0xAAu8; 32];
+        let table = arm9.len();
+        for s in HGSS_ORIGINAL {
+            arm9.extend((s as u32).to_le_bytes());
+        }
+        arm9.push(0);
+        arm9.extend(HGSS_CODE_SUFFIX);
+        arm9.extend([0; 8]);
+        assert_eq!(hgss_table(&arm9), Some(table));
+        // Motif en double : refus.
+        let mut twice = arm9.clone();
+        twice.extend(HGSS_CODE_SUFFIX);
+        assert_eq!(hgss_table(&twice), None);
+        assert_eq!(hgss_table(&HGSS_CODE_SUFFIX), None);
     }
 }

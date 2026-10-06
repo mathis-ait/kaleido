@@ -133,7 +133,9 @@ export const linkRom = (rom: string | null) => invoke<NuzlockeView>("nuzlocke_li
 
 /** Jeux de ROM qui correspondent à une version de sauvegarde (`SaveView.version`). */
 export const ROM_GAMES: Record<string, string[]> = {
+  diamond_pearl: ["diamond", "pearl"],
   platinum: ["platinum"],
+  heart_gold_soul_silver: ["heart_gold", "soul_silver"],
   black_white: ["black", "white"],
   black2_white2: ["black2", "white2"],
 };
