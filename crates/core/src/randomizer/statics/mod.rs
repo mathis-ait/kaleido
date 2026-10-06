@@ -1,5 +1,5 @@
 //! Pokémon fixes, dons et échanges en jeu (Diamant, Perle, Platine, HeartGold,
-//! SoulSilver, Noire, Blanche, Noire 2, Blanche 2 ; HGSS d'après UPR-ZX, non vérifié sur une ROM).
+//! SoulSilver, Noire, Blanche, Noire 2, Blanche 2).
 //!
 //! Portage de `StaticPokemonRandomizer` et `TradeRandomizer` de l'Universal
 //! Pokémon Randomizer (FVX), avec ses emplacements (`StaticPokemon{}`,

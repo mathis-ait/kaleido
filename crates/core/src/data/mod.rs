@@ -57,7 +57,7 @@ impl DataPaths {
                 max_ability: 123,
                 starters: starters::StarterLocation::DiamondPearl,
             }),
-            // Non vérifié (pas de ROM) : d'après UPR-ZX, `[HeartGold (U)]` / `[SoulSilver (U)]`.
+            // D'après UPR-ZX, `[HeartGold (U)]` / `[SoulSilver (U)]` ; vérifié sur SoulSilver (IPGF).
             Game::HeartGold | Game::SoulSilver => Some(Self {
                 encounters: if game == Game::HeartGold { "a/0/3/7" } else { "a/1/3/6" },
                 trainer_data: "a/0/5/5",

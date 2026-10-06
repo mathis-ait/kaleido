@@ -108,7 +108,7 @@ fn nds_text(game: Game) -> Option<(usize, usize)> {
     Some(match game {
         Game::Diamond | Game::Pearl => (559, 560),
         Game::Platinum => (618, 619),
-        // UPR-ZX `TrainerNamesTextOffset` / `TrainerClassesTextOffset` (non vérifié).
+        // Vérifié sur SoulSilver (IPGF).
         Game::HeartGold | Game::SoulSilver => (729, 730),
         Game::Black | Game::White => (190, 191),
         Game::Black2 | Game::White2 => (382, 383),
@@ -116,19 +116,14 @@ fn nds_text(game: Game) -> Option<(usize, usize)> {
     })
 }
 
-/// HeartGold / SoulSilver : rôle d'après le numéro du dresseur (`tagTrainersHGSS`
-/// d'UPR-ZX, non vérifié sur une ROM ; les classes de HGSS ne sont pas reprises ici).
-fn hgss_role(id: u16) -> Option<Role> {
-    Some(match id {
-        // Champions de Johto et de Kanto, puis leurs revanches.
-        20 | 21 | 30..=35 | 253..=259 | 261 | 0x2C8..=0x2D7 => Role::Gym,
-        245 | 246 | 247 | 418 | 0x2BE..=0x2C1 => Role::EliteFour,
-        244 | 0x2BD => Role::Champion,
-        // Silver : combats successifs (un dresseur par starter).
-        1 | 0x107 | 0x108 | 0x10A..=0x110 | 0x11E..=0x121 | 0x1EA..=0x1EC | 0x1F0..=0x1F2 | 0x2E0..=0x2E2 => Role::Rival,
-        _ => return None,
-    })
-}
+/// Classes féminines de HeartGold / SoulSilver. Les classes 0 à 61 suivent l'ordre de
+/// Platine ; les suivantes sont déduites des noms et des dresseurs de la ROM française
+/// de SoulSilver (sbires Rocket, Blanche, Jasmine, Sandra, Prof, Sœur Parasol, Médium,
+/// Interviewer, Star, Marion, Ondine, Erika, Jeannine, Morgane, Ariane…).
+const HGSS_FEMALE_CLASSES: [u16; 41] = [
+    1, 3, 5, 7, 8, 10, 13, 17, 18, 21, 22, 25, 26, 30, 33, 35, 36, 40, 43, 45, 50, 54, 56, 61, 62, 70, 74, 76, 77, 80, 82, 84, 85, 88, 99, 101, 103,
+    105, 106, 107, 114,
+];
 
 /// Classes féminines de Platine (pret/pokeplatinum, `trainer_class_genders.h`) :
 /// elles changent le PID, donc la nature.
@@ -138,7 +133,7 @@ const PT_FEMALE_CLASSES: [u16; 45] = [
 ];
 
 /// Rôle d'après la classe de dresseur (identifiants vérifiés sur les ROM :
-/// Platine Europe, Blanche France, Rubis Oméga Europe). Les entrées sans nom
+/// Platine Europe, Diamant et SoulSilver France, Blanche France, Rubis Oméga Europe). Les entrées sans nom
 /// (dresseurs factices de la ROM) ne sont jamais importantes.
 fn role_of(game: Game, class: u16, name: &str) -> Option<Role> {
     let name = name.trim();
@@ -155,6 +150,18 @@ fn role_of(game: Game, class: u16, name: &str) -> Option<Role> {
             69 => Role::Champion,
             72 | 87 | 88 => Role::Admin,
             86 => Role::Boss,
+            _ => return None,
+        }),
+        // Classes de HeartGold / SoulSilver (texte 730, vérifié sur SoulSilver IPGF) :
+        // champions de Johto (66-76) et de Kanto (98, 103-108, Blue 110), Conseil 4,
+        // Peter, Silver, commandants et Giovanni.
+        Game::HeartGold | Game::SoulSilver => Some(match class {
+            66 | 67 | 70 | 72..=76 | 98 | 103..=108 | 110 => Role::Gym,
+            23 => Role::Rival,
+            87..=89 | 112 => Role::EliteFour,
+            86 => Role::Champion,
+            114 | 116..=118 => Role::Admin,
+            124 => Role::Boss,
             _ => return None,
         }),
         // Classes de Noire/Blanche (texte 191).
@@ -235,7 +242,6 @@ impl RomTrainers {
                 continue;
             }
             let class_id = d[1] as u16;
-            let hgss = matches!(game, Game::HeartGold | Game::SoulSilver);
             // Platine : type de combat (u32) en 0x10 ; Gen 5 : octet 2 (0 simple, 1 double, 2 triple, 3 rotatif).
             let double = if generation == 4 { d.get(0x10).is_some_and(|&b| b == 2) } else { d[2] != 0 };
             let name = names.get(i).cloned().unwrap_or_default();
@@ -243,7 +249,7 @@ impl RomTrainers {
                 id: i as u16,
                 class_id,
                 class_name: classes.get(class_id as usize).cloned().unwrap_or_default(),
-                role: if hgss { hgss_role(i as u16).filter(|_| !name.trim().is_empty()) } else { role_of(game, class_id, &name) },
+                role: role_of(game, class_id, &name),
                 name,
                 double,
                 custom_moves: team.flags & FLAG_MOVES != 0,
@@ -394,13 +400,20 @@ impl RomTrainers {
         // Nature et talent.
         let (nature, ability) = if generation == 4 {
             // Diamant / Perle : classes identiques à celles de Platine (n° 0-97), même calcul.
-            // HGSS : classes différentes, non reprises (nature approximative pour les dresseuses).
-            let female = matches!(self.game, Game::Platinum | Game::Diamond | Game::Pearl) && PT_FEMALE_CLASSES.contains(&t.class_id);
-            if matches!(self.game, Game::HeartGold | Game::SoulSilver) {
-                notes.push("HeartGold / SoulSilver : nature calculée comme pour un dresseur masculin (classes non vérifiées).".into());
-            }
+            // HGSS : liste propre (classes déduites de la ROM), même calcul.
+            let hgss = matches!(self.game, Game::HeartGold | Game::SoulSilver);
+            let female = match self.game {
+                Game::Platinum | Game::Diamond | Game::Pearl => PT_FEMALE_CLASSES.contains(&t.class_id),
+                Game::HeartGold | Game::SoulSilver => HGSS_FEMALE_CLASSES.contains(&t.class_id),
+                _ => false,
+            };
             let pid = gen4_pid(p.difficulty, p.level, p.species, t.id, t.class_id, female);
-            ((pid % 25) as u8, ability_slot(&info, if pid & 1 == 1 { 1 } else { 0 }))
+            // HGSS : talent imposé par l'octet « genre/talent » (bits 4-5 : 2 = second, UPR-ZX).
+            let second = if hgss && p.gender_ability >> 4 & 3 != 0 { p.gender_ability >> 4 & 3 == 2 } else { pid & 1 == 1 };
+            if hgss && p.gender_ability != 0 {
+                notes.push("Genre ou talent imposé par le dresseur : la nature peut différer légèrement du calcul.".into());
+            }
+            ((pid % 25) as u8, ability_slot(&info, if second { 1 } else { 0 }))
         } else {
             notes.push("Nature inconnue (calcul du jeu non reproduit) : Hardi (neutre) supposée.".into());
             let slot = match (p.gender_ability >> 4) & 3 {

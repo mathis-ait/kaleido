@@ -121,7 +121,9 @@ const DP_TM_TEXTS: [(usize, &[usize]); 11] = [
     (88, &[518]),
     (92, &[449]),
 ];
-/// HeartGold / SoulSilver (`TMText{}` de `[HeartGold (U)]`, UPR-ZX ; non vérifié).
+/// HeartGold / SoulSilver (`TMText{}` de `[HeartGold (U)]`, UPR-ZX ; vérifié sur SoulSilver
+/// IPGF : chaque fichier nomme bien l'attaque, parfois en majuscules ; CT10 et CT34 sont
+/// écrites autrement dans les dialogues, « Puissance Cachée » et un dialogue sans le nom).
 const HGSS_TM_TEXTS: [(usize, &[usize]); 29] = [
     (1, &[574]),
     (3, &[469]),
@@ -436,8 +438,10 @@ fn update_tm_texts(game: &mut GameRom, spec: &MachineSpec, table: &MoveTable, ol
         }
         for &file in files {
             edit_text(&mut narc.files, gen, file, |lines| {
+                // Le nom peut aussi être écrit en majuscules (HGSS : « C'EST HURLEMENT ! »).
+                let (from_upper, to_upper) = (from.to_uppercase(), to.to_uppercase());
                 for line in lines.iter_mut() {
-                    *line = line.replace(&from, &to);
+                    *line = line.replace(&from, &to).replace(&from_upper, &to_upper);
                 }
             })?;
         }

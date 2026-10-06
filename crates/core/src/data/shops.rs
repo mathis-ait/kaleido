@@ -13,7 +13,7 @@
 //!   listes de `u16` terminées par `FFFF`, à la suite les unes des autres juste après le
 //!   motif `ShopDataPrefix` (dépend de la langue). Les boutiques de décorations et de
 //!   sceaux (`SkipShops`) sont parcourues sans être lues ; celles de CT sont lues mais
-//!   jamais modifiées. Vérifié sur Diamant (ADAF) ; HGSS non vérifié.
+//!   jamais modifiées. Vérifié sur Diamant (ADAF) et SoulSilver (IPGF).
 //!
 //! Contrairement à l'UPR, les boutiques gardent leur taille : les objets sont réécrits
 //! sur place, sans déplacer les listes.

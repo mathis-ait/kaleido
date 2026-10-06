@@ -243,6 +243,7 @@ mod tests {
     fn edit_real_roms() {
         for name in [
             "Pokemon - Version Diamant (France) (Rev 5).nds",
+            "Pokemon - Version Argent SoulSilver (France).nds",
             "Pokemon - Platinum Version (Europe).nds",
             "Pokemon - Version Blanche (France) (NDSi Enhanced).nds",
             "Pokemon - Version Noire 2 (France) (NDSi Enhanced).nds",

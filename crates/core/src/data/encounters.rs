@@ -5,8 +5,8 @@
 //!   espèces u32 ; enfin Surf, Éclate-Roc, Canne, Super Canne, Méga Canne :
 //!   taux u32 + 5 × (max u8, min u8, u16, espèce u32).
 //!   Diamant / Perle : même format (vérifié sur Diamant ADAF, `d_enc_data.narc`).
-//! - HeartGold / SoulSilver (d'après UPR-ZX `getEncountersHGSS`, non vérifié sur une
-//!   ROM) : 196 octets par zone. Taux u8 (herbe, Surf, Éclate-Roc, Canne, Super Canne,
+//! - HeartGold / SoulSilver (UPR-ZX `getEncountersHGSS`, vérifié sur SoulSilver IPGF :
+//!   Route 29 = Roucool, Fouinette, Rattata et Hoothoot la nuit) : 196 octets par zone. Taux u8 (herbe, Surf, Éclate-Roc, Canne, Super Canne,
 //!   Méga Canne), 2 octets, 12 niveaux d'herbe u8, puis 3 × 12 espèces u16 (matin,
 //!   jour, nuit) ; radio Hoenn / Sinnoh (4 × u16) ; Surf 5, Éclate-Roc 2, cannes 3 × 5
 //!   emplacements (min u8, max u8, espèce u16) ; essaims (4 × u16).
@@ -150,22 +150,44 @@ fn read_hgss(d: &[u8]) -> Vec<Slot> {
         }
     }
     // Radio Hoenn / Sinnoh : remplacent des emplacements d'herbe.
-    for i in 0..4 {
-        push(HGSS_RADIO + i * 2, low, high);
+    if d[0] != 0 {
+        for i in 0..4 {
+            push(HGSS_RADIO + i * 2, low, high);
+        }
     }
+    // Niveaux extrêmes de chaque bloc d'eau (pour les essaims).
+    let mut ranges = [(u8::MAX, 0u8); 5];
     let mut at = HGSS_WATER;
     for (area, &count) in HGSS_WATER_SLOTS.iter().enumerate() {
         for i in 0..count {
             let e = at + i * 4;
             if d[1 + area] != 0 {
                 push(e + 2, d[e], d[e + 1]);
+                ranges[area] = (ranges[area].0.min(d[e]), ranges[area].1.max(d[e + 1]));
             }
         }
         at += count * 4;
     }
-    // Essaims (herbe, Surf), pêche de nuit, essaim de pêche : niveaux d'herbe à titre indicatif.
-    for i in 0..4 {
-        push(HGSS_SWARMS + i * 2, low, high);
+    let range = |areas: &[usize]| {
+        let (min, max) = areas.iter().fold((u8::MAX, 0), |(a, b), &i| (a.min(ranges[i].0), b.max(ranges[i].1)));
+        if max == 0 {
+            (1, 1)
+        } else {
+            (min, max)
+        }
+    };
+    // Essaim d'herbe, essaim de Surf, pêche de nuit, essaim de pêche (vérifié sur SoulSilver :
+    // Ville Griotte, Stari la nuit à la canne ; Mauville, essaim de Barbicha).
+    let blocks: [(bool, (u8, u8)); 4] = [
+        (d[0] != 0, (low, high)),
+        (d[1] != 0, range(&[0])),
+        (d[3..6].iter().any(|&r| r != 0), range(&[2, 3, 4])),
+        (d[3..6].iter().any(|&r| r != 0), range(&[2, 3, 4])),
+    ];
+    for (i, (active, (min, max))) in blocks.into_iter().enumerate() {
+        if active {
+            push(HGSS_SWARMS + i * 2, min, max);
+        }
     }
     slots
 }

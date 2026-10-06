@@ -59,7 +59,8 @@ impl NdsLayout {
             Diamond => gen4("msgdata/msg.narc", 362, 552, "poketool/personal/personal.narc", true),
             Pearl => gen4("msgdata/msg.narc", 362, 552, "poketool/personal_pearl/personal.narc", false),
             Platinum => gen4("msgdata/pl_msg.narc", 412, 610, "poketool/personal/pl_personal.narc", true),
-            HeartGold | SoulSilver => gen4("a/0/2/7", 237, 720, "a/0/0/2", false),
+            // Vérifié sur SoulSilver (IPGF) ; HeartGold a les mêmes emplacements (UPR-ZX).
+            HeartGold | SoulSilver => gen4("a/0/2/7", 237, 720, "a/0/0/2", true),
             Black | White => gen5(70, 182, true),
             Black2 | White2 => gen5(90, 374, true),
             _ => return None,

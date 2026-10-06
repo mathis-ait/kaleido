@@ -51,15 +51,17 @@ Tout est en français, avec des bulles « i » qui expliquent chaque terme techn
 
 | Fonction | Jeux | État |
 |---|---|---|
-| Randomizer → ROM `.nds` | Platine, Noire, Blanche | ✓ |
+| Randomizer → ROM `.nds` | Diamant, Perle, Platine, HeartGold, SoulSilver, Noire, Blanche | ✓ (vérifié sur Diamant et SoulSilver) |
 | Randomizer → mod LayeredFS ou `.3ds` reconstruit | Rubis Oméga, Saphir Alpha, X, Y | ✓ (vérifié sur Rubis Oméga et Y) |
 | Randomizer → mod LayeredFS ou `.3ds` reconstruit | Soleil, Lune, Ultra-Soleil, Ultra-Lune | ✓ (vérifié sur Lune et Ultra-Soleil) |
-| Éditeur de ROM | Platine, Noire, Blanche | ✓ (autres jeux : Pokédex en lecture seule) |
+| Éditeur de ROM | Diamant, Perle, Platine, HeartGold, SoulSilver, Noire, Blanche | ✓ (autres jeux : Pokédex en lecture seule) |
 | Éditeur de sauvegardes | Gen 4 à 7 (DPPt, HGSS, NB, N2B2, XY, ROSA, SL, USUL) | ✓ |
 | Switch | Let's Go, Épée / Bouclier, Légendes Arceus | plus tard |
 
-Diamant / Perle, HGSS, Noire 2 / Blanche 2 et X / Y utilisent des emplacements de données
+Perle, Noire 2 / Blanche 2 et X / Y utilisent des emplacements de données
 pas encore vérifiés sur une vraie ROM : ils sont marqués « Non vérifié » dans l'application.
+En Gen 4, les emplacements ont été vérifiés sur Diamant et SoulSilver (Perle et HeartGold ne
+diffèrent que par quelques archives, d'après UPR-ZX).
 En Gen 7, les emplacements ont été vérifiés sur Lune et Ultra-Soleil (Soleil et Ultra-Lune ne
 diffèrent que par l'archive des rencontres).
 
@@ -261,13 +263,13 @@ cargo run --release -p kaleido-cli -- check3ds  "rom.3ds"                       
 
 - [x] Bibliothèque, détection des fichiers, thèmes
 - [x] Formats DS et 3DS, textes Gen 4 à 7
-- [x] Randomizer Platine, Noire, Blanche, ROSA et X / Y
+- [x] Randomizer Diamant, Perle, Platine, HeartGold, SoulSilver, Noire, Blanche, ROSA et X / Y
 - [x] Éditeur de ROM : Pokémon (statistiques, types, talents, capture, attaques apprises)
 - [x] Éditeur de sauvegardes Gen 4 à 7, légalité, Cadeaux mystère, banque, Nuzlocke, combat, équipes Smogon
 - [ ] Éditeur de ROM : dresseurs, rencontres sauvages, évolutions
 - [ ] Préréglages IronMon, patchs de confort (texte rapide, Repousse réutilisable…)
 - [x] Randomizer X / Y et Gen 7 (Soleil, Lune, Ultra-Soleil, Ultra-Lune)
-- [ ] Randomizer HGSS, Noire 2 / Blanche 2
+- [ ] Randomizer Noire 2 / Blanche 2
 - [ ] Rubans et souvenirs, Gen 1 à 3, Switch
 
 ## Crédits

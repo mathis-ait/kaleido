@@ -10,8 +10,8 @@
 //!     `28 00 08 80 <objet>` au début du script (scripts 25, 238, 321, 325 et 326 ignorés) ;
 //!   - Diamant / Perle : script 370 de `scr_seq_release.narc`, même commande
 //!     (scripts 40 et 196 ignorés ; vérifié sur Diamant ADAF) ;
-//!   - HeartGold / SoulSilver (non vérifié) : script 141 de `a/0/1/2`,
-//!     `29 00 08 80 <objet>` (script 58 ignoré) ;
+//!   - HeartGold / SoulSilver : script 141 de `a/0/1/2`, `29 00 08 80 <objet>`
+//!     (script 58 ignoré ; vérifié sur SoulSilver IPGF) ;
 //!   - Noire/Blanche : script 864 de `a/0/5/7`, `28 00 0C 80 <objet>` 2 octets après le début ;
 //! - les objets cachés :
 //!   - Gen 4 : table de l'ARM9, entrées de 8 octets (`u16` objet en tête) : 257 en
@@ -103,10 +103,16 @@ impl ItemLayout {
                 })
             }
             // Mêmes commandes que Noire/Blanche (vérifié sur Noire 2, IREF).
-            Game::Black2 | Game::White2 => {
-                Some(Self { gen: 5, item_names: 64, scripts: "a/0/5/6", ball_script: 1240, ball_skip: &[], hidden: HiddenItems::Script(1241), set_var: 0x28 })
-            }
-            // Non vérifié (pas de ROM) : UPR-ZX, `[HeartGold (U)]` et versions traduites.
+            Game::Black2 | Game::White2 => Some(Self {
+                gen: 5,
+                item_names: 64,
+                scripts: "a/0/5/6",
+                ball_script: 1240,
+                ball_skip: &[],
+                hidden: HiddenItems::Script(1241),
+                set_var: 0x28,
+            }),
+            // UPR-ZX, `[HeartGold (U)]` et versions traduites ; vérifié sur SoulSilver (IPGF).
             Game::HeartGold | Game::SoulSilver => {
                 let (hidden, names) = match code {
                     "IPKE" | "IPGE" => (0xFA558, 222),
