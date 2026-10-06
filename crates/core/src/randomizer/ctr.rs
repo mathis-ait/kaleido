@@ -1,4 +1,4 @@
-//! Randomizer 3DS (Rubis Oméga / Saphir Alpha) : mêmes réglages que sur DS. Le
+//! Randomizer 3DS (Rubis Oméga / Saphir Alpha, X / Y) : mêmes réglages que sur DS. Le
 //! résultat est un dossier LayeredFS (seuls les fichiers modifiés sont écrits),
 //! à utiliser avec Luma3DS sur console ou dans le dossier « mods » d'un émulateur,
 //! et/ou une ROM `.3ds` déchiffrée complète, reconstruite avec ces fichiers
@@ -8,6 +8,8 @@
 //! modifie la table des dons de `DllField.cro` et l'écran de choix de
 //! `DllPoke3Select.cro`, sans toucher à `static.crr` : Luma3DS (patch des jeux activé)
 //! et les émulateurs ne vérifient pas ces signatures.
+//!
+//! X / Y : starters, rencontres et dresseurs ont leurs propres formats (`ctr_xy.rs`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -16,7 +18,7 @@ use kaleido_formats::garc::Garc;
 use kaleido_formats::lz;
 use serde::{Deserialize, Serialize};
 
-use super::{apply_personal, randomize_trainers, randomize_wild, share_code, Ctx, Outcome, Settings, Sources, WildMode};
+use super::{apply_personal, ctr_xy, randomize_trainers, randomize_wild, share_code, Ctx, Outcome, Settings, Sources, WildMode};
 use crate::ctr_rom::CtrGameRom;
 use crate::data::encounters;
 use crate::games::Game;
@@ -48,7 +50,7 @@ pub fn preview_starters(game: &CtrGameRom, settings: &Settings, seed: u64) -> Re
     }
     let (mut ctx, _) = load(game, settings)?;
     apply_personal(&mut ctx, settings, seed, &mut String::new());
-    let chosen = super::choose_starters(&ctx, settings, seed, ORIGINAL_STARTERS);
+    let chosen = super::choose_starters(&ctx, settings, seed, original_starters(game.game));
     Ok(chosen.iter().map(|&id| super::PokemonRef { id, name: ctx.name(id).to_string() }).collect())
 }
 
@@ -143,15 +145,24 @@ pub struct CtrWritten {
 }
 
 pub fn supports(game: Game) -> bool {
-    matches!(game, Game::OmegaRuby | Game::AlphaSapphire)
+    matches!(game, Game::OmegaRuby | Game::AlphaSapphire) || ctr_xy::is_xy(game)
 }
 
 fn unsupported() -> RomError {
-    RomError::Unsupported("le randomizer 3DS prend en charge Rubis Oméga et Saphir Alpha pour l'instant".into())
+    RomError::Unsupported("le randomizer 3DS prend en charge Rubis Oméga, Saphir Alpha, X et Y pour l'instant".into())
+}
+
+/// Starters d'origine du jeu.
+fn original_starters(game: Game) -> [u16; 3] {
+    if ctr_xy::is_xy(game) {
+        ctr_xy::ORIGINAL_STARTERS
+    } else {
+        ORIGINAL_STARTERS
+    }
 }
 
 /// Entrées d'une archive GARC (première sous-entrée de chacune).
-fn entries(garc: &Garc) -> Vec<Vec<u8>> {
+pub(super) fn entries(garc: &Garc) -> Vec<Vec<u8>> {
     (0..garc.len()).map(|i| garc.file(i).map(<[u8]>::to_vec).unwrap_or_default()).collect()
 }
 
@@ -167,7 +178,7 @@ fn load(game: &CtrGameRom, settings: &Settings) -> Result<(Ctx, Garc), RomError>
         personal: entries(&personal),
         evolutions: &evolutions,
         learnsets: &learnsets,
-        max_ability: ORAS_MAX_ABILITY,
+        max_ability: if ctr_xy::is_xy(game.game) { ctr_xy::MAX_ABILITY } else { ORAS_MAX_ABILITY },
     };
     Ok((Ctx::new(src, settings)?, personal))
 }
@@ -222,11 +233,17 @@ pub fn randomize(
     }
 
     // 2. Starters.
-    let starters = super::choose_starters(&ctx, settings, seed, ORIGINAL_STARTERS);
-    if starters != ORIGINAL_STARTERS {
-        write_starters(game, &ctx, starters, &mut files)?;
+    let xy = ctr_xy::is_xy(game.game);
+    let originals = original_starters(game.game);
+    let starters = super::choose_starters(&ctx, settings, seed, originals);
+    if starters != originals {
+        if xy {
+            ctr_xy::write_starters(game, &ctx, starters, &mut files)?;
+        } else {
+            write_starters(game, &ctx, starters, &mut files)?;
+        }
         let _ = writeln!(log, "== Starters ==");
-        for (old, new) in ORIGINAL_STARTERS.iter().zip(starters) {
+        for (old, new) in originals.iter().zip(starters) {
             let _ = writeln!(log, "{} → {}", ctx.name(*old), ctx.name(new));
         }
         let _ = writeln!(log);
@@ -255,7 +272,10 @@ pub fn randomize(
 
     // 3. Pokémon sauvages : fichiers de zone compressés en LZ11 + copie concaténée « EN ».
     let mut wild_slots = 0;
-    if settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100 {
+    if xy && (settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100) {
+        wild_slots = ctr_xy::randomize_wild(game, &ctx, settings, seed, &mut files, &mut log)?;
+    }
+    if !xy && (settings.wild != WildMode::Unchanged || settings.wild_level_percent != 100) {
         let mut garc = game.garc(l.encounters)?;
         let raw = entries(&garc);
         let decompressed: Vec<Option<Vec<u8>>> = raw.iter().map(|d| if lz::is_lz11(d) { lz::decompress(d).ok() } else { None }).collect();
@@ -299,7 +319,10 @@ pub fn randomize(
 
     // 4. Dresseurs.
     let mut trainer_pokemon = 0;
-    if super::trainers_changed(settings) {
+    if xy && super::trainers_changed(settings) {
+        trainer_pokemon = ctr_xy::randomize_trainers(game, &ctx, settings, seed, &mut files, &mut log)?;
+    }
+    if !xy && super::trainers_changed(settings) {
         let mut trdata_garc = game.garc(l.trainer_data)?;
         let mut trpoke_garc = game.garc(l.trainer_pokemon)?;
         let mut trdata = entries(&trdata_garc);

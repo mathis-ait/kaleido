@@ -584,3 +584,17 @@ fn omega_ruby_trainers() {
     assert_eq!(champion.role, Some(trainers::Role::Champion));
     assert_eq!(r.team(561).unwrap().len(), 2);
 }
+
+/// Pokémon Y : fiches de 0x14 octets — Violette (première championne) et Dianthéa.
+#[test]
+fn pokemon_y_trainers() {
+    let Some(path) = rom("Pokemon Y (Europe) (En,Ja,Fr,De,Es,It,Ko).3ds") else {
+        return;
+    };
+    let r = trainers::RomTrainers::open(&path).unwrap();
+    let viola = r.trainer(6).unwrap();
+    assert_eq!((viola.name.as_str(), viola.class_name.as_str()), ("Violette", "Championne"));
+    let team: Vec<(u16, u16)> = viola.team.iter().map(|p| (p.species, p.level)).collect();
+    assert_eq!(team, [(283, 10), (666, 12)]); // Arakdo, Prismillon
+    assert_eq!(r.trainer(276).unwrap().team.len(), 6);
+}

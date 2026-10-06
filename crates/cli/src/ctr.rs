@@ -32,21 +32,91 @@ pub fn randomize(path: &str, preset: &str, seed: u64, out: &str) -> CliResult {
     let Some(romfs) = written.romfs else { return Ok(()) };
     println!("LayeredFS → {}", romfs.display());
 
-    // Relecture : une zone et un dresseur, depuis les fichiers écrits.
+    // Relecture : une zone et un dresseur, depuis les fichiers écrits
+    // (ROSA : zone 100 et Roxanne ; X / Y : Route 2 et Violette).
     let names = game.text_file(game.layout.species_names)?;
     let l = game.layout;
+    let (zone_id, trainer_id) = if matches!(game.game, kaleido_core::Game::X | kaleido_core::Game::Y) { (259, 6) } else { (100, 561) };
     if let Ok(data) = std::fs::read(romfs.join(l.encounters)) {
         let garc = Garc::parse(&data)?;
-        let zone = lz::decompress(garc.file(100).ok_or("zone 100 absente")?)?;
+        let zone = lz::decompress(garc.file(zone_id).ok_or("zone absente")?)?;
         let slots: Vec<_> =
             encounters::read(6, &zone).iter().map(|s| format!("{} {}-{}", names[s.species as usize], s.min_level, s.max_level)).collect();
-        println!("Zone 100 relue : {}", slots.join(", "));
+        println!("Zone {zone_id} relue : {}", slots.join(", "));
     }
     if let (Ok(d), Ok(p)) = (std::fs::read(romfs.join(l.trainer_data)), std::fs::read(romfs.join(l.trainer_pokemon))) {
         let (d, p) = (Garc::parse(&d)?, Garc::parse(&p)?);
-        let team = trainers::read_team(6, d.file(561).unwrap_or_default(), p.file(561).unwrap_or_default()).ok_or("dresseur 561 illisible")?;
+        let trdata = trdata_gen6(game.game, d.file(trainer_id).unwrap_or_default());
+        let team = trainers::read_team(6, &trdata, p.file(trainer_id).unwrap_or_default()).ok_or("dresseur illisible")?;
         let list: Vec<_> = team.pokemon.iter().map(|t| format!("{} niv. {} {:?}", names[t.species as usize], t.level, t.moves)).collect();
-        println!("Dresseur 561 relu : {}", list.join(" ; "));
+        println!("Dresseur {trainer_id} relu : {}", list.join(" ; "));
+    }
+    Ok(())
+}
+
+/// Fiche de dresseur lisible par `trainers::read_team(6, …)` (X / Y : fiche convertie).
+fn trdata_gen6(game: kaleido_core::Game, d: &[u8]) -> Vec<u8> {
+    use kaleido_core::Game;
+    if matches!(game, Game::X | Game::Y) {
+        kaleido_core::data::trainers::xy_trdata_as_oras(d)
+    } else {
+        d.to_vec()
+    }
+}
+
+/// `wild3ds` : emplacements de rencontre de chaque zone (Gen 6), ou d'une seule entrée.
+pub fn wild(path: &str, only: Option<usize>) -> CliResult {
+    use kaleido_core::data::encounters;
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let names = game.text_file(game.layout.species_names)?;
+    let garc = game.garc(game.layout.encounters)?;
+    for i in 0..garc.len() {
+        if only.is_some_and(|n| n != i) {
+            continue;
+        }
+        let Some(raw) = garc.file(i) else { continue };
+        let Ok(zone) = (if lz::is_lz11(raw) { lz::decompress(raw) } else { Ok(raw.to_vec()) }) else { continue };
+        let slots = encounters::read(6, &zone);
+        if slots.is_empty() {
+            continue;
+        }
+        let list: Vec<_> =
+            slots.iter().map(|s| format!("{} {}-{}", names.get(s.species as usize).map_or("?", String::as_str), s.min_level, s.max_level)).collect();
+        println!("Zone {i:3} ({} emplacements) : {}", slots.len(), list.join(", "));
+    }
+    Ok(())
+}
+
+/// `trainers3ds` : équipes des dresseurs (Gen 6), ou d'un seul.
+pub fn trainers(path: &str, only: Option<usize>) -> CliResult {
+    use kaleido_core::data::trainers;
+    let game = kaleido_core::CtrGameRom::open(Path::new(path))?;
+    let l = game.layout;
+    let names = game.text_file(l.species_names)?;
+    let tnames = game.text_file(l.trainer_names)?;
+    let (d, p) = (game.garc(l.trainer_data)?, game.garc(l.trainer_pokemon)?);
+    for i in 1..d.len().min(p.len()) {
+        if only.is_some_and(|n| n != i) {
+            continue;
+        }
+        let trdata = trdata_gen6(game.game, d.file(i).unwrap_or_default());
+        let Some(team) = trainers::read_team(6, &trdata, p.file(i).unwrap_or_default()) else {
+            println!("{i:4} : illisible");
+            continue;
+        };
+        let list: Vec<_> = team
+            .pokemon
+            .iter()
+            .map(|t| {
+                format!(
+                    "{} niv. {}{}",
+                    names.get(t.species as usize).map_or("?", String::as_str),
+                    t.level,
+                    if t.form != 0 { format!(" (forme {})", t.form) } else { String::new() }
+                )
+            })
+            .collect();
+        println!("{i:4} {:<14} drapeaux {:02X} : {}", tnames.get(i).map_or("", String::as_str), team.flags, list.join(" ; "));
     }
     Ok(())
 }

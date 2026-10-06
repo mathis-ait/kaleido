@@ -1,12 +1,15 @@
 //! Un jeu 3DS ouvert : relie le RomFS (image ou dossier extrait) à l'emplacement
 //! des données de chaque jeu, rangées dans des archives GARC (`a/x/y/z`).
 //!
-//! Formats relevés sur Rubis Oméga (Europe, Rev 2), à vérifier sur X/Y :
+//! Formats relevés sur Rubis Oméga (Europe, Rev 2) ; ceux de X/Y (vérifiés sur
+//! Pokémon Y Europe) sont décrits dans `randomizer/ctr_xy.rs`, `data::trainers` et
+//! `data::encounters` :
 //!
 //! - **Dresseurs** (`trdata`, 0x18 octets) : `u16` drapeaux (bit 0 : attaques,
 //!   bit 1 : objets) @0, `u16` classe @2, `u8` nombre de Pokémon @7, 4 × `u16` objets
 //!   @8, `u32` IA @0x10, `u8` multiplicateur d'argent @0x15. L'octet @4 serait le type
-//!   de combat (non vérifié). X/Y : 0x14 octets avec drapeaux et classe sur un octet (non vérifié).
+//!   de combat (non vérifié). X/Y : 0x14 octets, drapeaux @0, classe @1, type de combat
+//!   @2 et nombre @3 sur un octet chacun (vérifié).
 //! - **Équipe** (`trpoke`) : 8 octets par Pokémon — `u8` IV, `u8` talent/sexe, `u16`
 //!   niveau, `u16` espèce, `u16` forme — puis `u16` objet si bit 1, puis 4 × `u16`
 //!   attaques si bit 0 (8, 10, 16 ou 18 octets).
@@ -92,7 +95,8 @@ impl CtrLayout {
                 species_count: 721,
                 verified: true,
             },
-            // D'après pk3DS : archives décalées d'un cran par rapport à ROSA (non vérifié).
+            // Vérifié sur Pokémon Y (Europe) : noms, fiches, textes, dresseurs, rencontres ;
+            // X identique d'après l'Universal Pokémon Randomizer (gen6_offsets.ini).
             X | Y => CtrLayout {
                 text: "a/0/7/5",
                 story_text: "a/0/8/3",
@@ -111,7 +115,7 @@ impl CtrLayout {
                 trainer_data: "a/0/3/8",
                 trainer_pokemon: "a/0/4/0",
                 species_count: 721,
-                verified: false,
+                verified: true,
             },
             // D'après pk3DS / pkNX (non vérifié).
             Sun | Moon | UltraSun | UltraMoon => {
@@ -216,6 +220,8 @@ mod tests {
         }
         let oras = CtrLayout::for_game(Game::AlphaSapphire).unwrap();
         assert!(oras.verified && oras.species_count == 721);
+        let xy = CtrLayout::for_game(Game::Y).unwrap();
+        assert!(xy.verified && xy.personal == "a/2/1/8");
         assert_eq!(CtrLayout::for_game(Game::UltraMoon).unwrap().species_count, 807);
         assert_eq!(CtrLayout::for_game(Game::Sun).unwrap().species_count, 802);
     }

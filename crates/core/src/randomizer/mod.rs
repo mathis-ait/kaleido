@@ -6,6 +6,7 @@
 //! bouleverse pas les autres parties.
 
 pub mod ctr;
+mod ctr_xy;
 mod extras;
 pub mod items;
 pub mod moves;

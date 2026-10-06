@@ -72,7 +72,7 @@ useShell(() => ({
         K.O., qui attaque en premier.
       </p>
       <p class="sv-help">
-        Jeux pris en charge : Platine, Noir / Blanc, Rubis Oméga / Saphir Alpha (X / Y à l'essai). La ROM doit être du même jeu que la
+        Jeux pris en charge : Platine, Noir / Blanc, Rubis Oméga / Saphir Alpha, X / Y. La ROM doit être du même jeu que la
         sauvegarde ({{ view?.game }}).
       </p>
       <div v-if="candidates.length" class="cands">

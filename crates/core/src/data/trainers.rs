@@ -139,9 +139,62 @@ pub fn write_team(generation: u8, team: &Team, trdata: &mut [u8]) -> Vec<u8> {
     out
 }
 
+/// X / Y : fiche `trdata` de 0x14 octets — `u8` drapeaux @0, `u8` classe @1, `u8` type
+/// de combat @2, `u8` nombre de Pokémon @3, 4 × `u16` objets @4, IA @0xC, `u8`
+/// multiplicateur d'argent @0x11 (Universal Pokémon Randomizer, Gen6RomHandler.getTrainers ;
+/// vérifié sur Pokémon Y : Violette n°6, Surskit niv. 10 et Prismillon niv. 12). Les
+/// équipes (`trpoke`) ont le même format qu'en Rubis Oméga / Saphir Alpha.
+///
+/// Renvoie une fiche au format de Rubis Oméga / Saphir Alpha (0x18 octets : drapeaux
+/// @0, classe @2, type de combat @6, nombre @7), lisible par [`read_team`] avec la
+/// génération 6 ; vide si la fiche est trop courte.
+pub fn xy_trdata_as_oras(d: &[u8]) -> Vec<u8> {
+    if d.len() < 4 {
+        return Vec::new();
+    }
+    let mut out = vec![0u8; 0x18];
+    out[0] = d[0];
+    out[2] = d[1];
+    out[6] = d[2];
+    out[7] = d[3];
+    out
+}
+
+/// Recopie dans une fiche X / Y les drapeaux et le nombre de Pokémon d'une fiche
+/// obtenue par [`xy_trdata_as_oras`] puis modifiée par [`write_team`].
+pub fn xy_trdata_update(d: &mut [u8], oras: &[u8]) {
+    if d.len() >= 4 && oras.len() >= 8 {
+        d[0] = oras[0];
+        d[3] = oras[7];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xy_trainer_roundtrip() {
+        // Violette (Pokémon Y, dresseur n°6) : attaques personnalisées, 2 Pokémon.
+        let mut trdata = [0x01, 0x04, 0x00, 0x02, 0x11, 0, 0, 0, 0, 0, 0, 0, 0x05, 0, 0, 0, 0, 0x28, 0, 0];
+        let trpoke = [
+            0x96, 0x00, 0x0A, 0x00, 0x1B, 0x01, 0x00, 0x00, 0x62, 0x00, 0x91, 0x00, 0x5A, 0x01, 0x00, 0x00, 0x96, 0x00, 0x0C, 0x00, 0x9A, 0x02, 0x06,
+            0x00, 0x6A, 0x00, 0x63, 0x02, 0x21, 0x00, 0x00, 0x00,
+        ];
+        let oras = xy_trdata_as_oras(&trdata);
+        let team = read_team(6, &oras, &trpoke).unwrap();
+        let summary: Vec<(u16, u16, u16)> = team.pokemon.iter().map(|p| (p.species, p.form, p.level)).collect();
+        assert_eq!(summary, [(283, 0, 10), (666, 6, 12)]); // Arakdo, Prismillon (forme 6)
+        assert_eq!(team.pokemon[0].moves, [98, 145, 346, 0]);
+        let mut oras = oras;
+        let mut short = team.clone();
+        short.pokemon.truncate(1);
+        let written = write_team(6, &short, &mut oras);
+        assert_eq!(written, trpoke[..16]);
+        xy_trdata_update(&mut trdata, &oras);
+        assert_eq!((trdata[0], trdata[1], trdata[3], trdata[0x11]), (0x01, 0x04, 1, 0x28));
+        assert!(xy_trdata_as_oras(&[]).is_empty());
+    }
 
     #[test]
     fn platinum_team_with_moves() {
