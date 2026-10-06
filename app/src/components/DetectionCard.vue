@@ -15,6 +15,7 @@ const KIND_LABELS: Record<FileKind, string> = {
   ctr_dump: "Dossier extrait",
   save: "Sauvegarde",
   unknown: "Inconnu",
+  switch_game: "Jeu Switch",
 };
 
 const platformLabel = computed(() => (props.item.platform === "nds" ? "DS" : props.item.platform === "3ds" ? "3DS" : null));

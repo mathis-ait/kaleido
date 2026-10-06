@@ -4,18 +4,21 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "./Icon.vue";
 import { openRom } from "../editor";
-import { allGames, hideGame } from "../games";
+import { allGames, hideGame, titleIdOf } from "../games";
 import { removeItem } from "../library";
 import { nav } from "../nav";
 import { RANDOMIZABLE, isKaleidoRom, type Detection } from "../types";
-import { RECOMMENDED, defaultEmulator, emus, installs, openGameSave, play, type PlayPlatform } from "../play/play";
+import { PLATFORM_LABEL, PLATFORM_SHORT, RECOMMENDED, defaultEmulator, emus, installs, openGameSave, play, type PlayPlatform } from "../play/play";
+import { openMods } from "../play/mods";
 
 const props = defineProps<{ game: Detection }>();
 
-const platform = computed<PlayPlatform>(() => (props.game.platform === "3ds" ? "3ds" : "nds"));
+const platform = computed<PlayPlatform>(() => (props.game.platform === "3ds" ? "3ds" : props.game.platform === "switch" ? "switch" : "nds"));
+const isSwitch = computed(() => platform.value === "switch");
 const randomized = computed(() => isKaleidoRom(props.game));
 /** Les boîtes DS existent en français ; les autres langues prennent la boîte européenne. */
 const coverSrc = computed(() => {
+  if (isSwitch.value) return convertFileSrc(`nx-${titleIdOf(props.game)}.png`, "cover");
   const id = props.game.game?.id;
   if (!id) return null;
   const english = platform.value === "nds" && !props.game.isFrench;
@@ -80,12 +83,12 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
         <img class="art" :class="{ loaded: coverLoaded }" :src="coverSrc" :alt="game.title" loading="lazy" @load="coverLoaded = true" @error="coverFailed = true" />
       </template>
       <div v-else class="placeholder">
-        <span class="ph-platform">{{ platform === "nds" ? "Nintendo DS" : "Nintendo 3DS" }}</span>
+        <span class="ph-platform">{{ PLATFORM_LABEL[platform] }}</span>
         <span class="ph-title">{{ shortTitle }}</span>
       </div>
 
       <div class="badges">
-        <span class="badge">{{ platform === "nds" ? "DS" : "3DS" }}</span>
+        <span class="badge">{{ PLATFORM_SHORT[platform] }}</span>
         <span v-if="randomized" class="badge prism" :title="game.kaleido ? `Seed ${game.kaleido.seed}` : 'ROM générée par Kaleido'">✨ Randomisée</span>
         <span v-if="game.kind === 'ctr_dump'" class="badge" title="Dossier : joué comme mod par-dessus le jeu d'origine">Mod</span>
       </div>
@@ -102,11 +105,15 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
         <p :title="game.path">{{ game.language ?? game.fileName }}</p>
       </div>
       <div class="more">
+        <button class="icon-btn" aria-label="Mods et réglages" title="Mods et réglages (60 FPS, textures HD, réglages optimaux…)" @click="openMods(game)">
+          <Icon name="wand" :size="16" />
+        </button>
         <button class="icon-btn" aria-label="Plus d'actions" title="Plus d'actions" @click="menuOpen = !menuOpen">⋯</button>
         <div v-if="menuOpen" class="menu panel" @click="menuOpen = false">
-          <button @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
+          <button @click="openMods(game)"><Icon name="wand" :size="15" /> Mods et réglages</button>
+          <button v-if="!isSwitch" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
           <button v-if="canRandomize" @click="randomize"><Icon name="dice" :size="15" /> Randomiser</button>
-          <button @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
+          <button v-if="!isSwitch" @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
           <button @click="revealItemInDir(game.path)"><Icon name="folder" :size="15" /> Afficher le fichier</button>
           <button class="danger" @click.stop="remove"><Icon name="x" :size="15" /> Retirer de la bibliothèque</button>
         </div>
@@ -289,6 +296,8 @@ h3 {
 
 .more {
   position: relative;
+  display: flex;
+  gap: 2px;
 }
 
 .icon-btn {
