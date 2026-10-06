@@ -407,7 +407,7 @@ useShell(() => ({
   padding: 10px 14px;
   border-radius: 12px;
   background: color-mix(in srgb, #22c55e 18%, transparent);
-  color: #c9ffe0;
+  color: var(--ok);
 }
 
 .created span {

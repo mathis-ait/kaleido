@@ -204,7 +204,7 @@ const name = (id: number) => lists.moveName[id] ?? `n°${id}`;
 }
 
 .good {
-  color: #8ff0b5;
+  color: var(--ok);
   font-weight: 700;
 }
 

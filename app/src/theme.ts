@@ -12,6 +12,8 @@ export const THEMES: Theme[] = [
   { id: "nuit", name: "Prisme Nuit", description: "Sombre, reflets de kaléidoscope", swatch: ["#0c0e1a", "#8b5cf6", "#22d3ee", "#f472b6"] },
   { id: "jour", name: "Prisme Jour", description: "Clair et lumineux", swatch: ["#f5f6fb", "#7c3aed", "#0891b2", "#db2777"] },
   { id: "ds", name: "Console DS", description: "Gris argent et bleu Nintendo DS", swatch: ["#d9dde3", "#2f6fd6", "#5aa0ff", "#1d2a3a"] },
+  { id: "reseau", name: "Réseau", description: "Grille sombre et néons cyan, façon PSS de Pokémon X et Y", swatch: ["#10161f", "#2fd3e6", "#ff5d8f", "#1c2735"] },
+  { id: "pixel", name: "Pixel", description: "Quatre verts et angles droits, façon Game Boy", swatch: ["#0f380f", "#9bbc0f", "#8bac0f", "#306230"] },
 ];
 
 const STORAGE_KEY = "kaleido.theme";

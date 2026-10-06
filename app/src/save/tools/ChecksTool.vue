@@ -201,6 +201,6 @@ li.warn {
 }
 
 li.ok {
-  color: #8ff0b5;
+  color: var(--ok);
 }
 </style>

@@ -457,7 +457,7 @@ const locationText = computed(() => {
 .legal.ok {
   border-color: #6ee7a8;
   background: color-mix(in srgb, #22c55e 20%, transparent);
-  color: #c9ffe0;
+  color: var(--ok);
 }
 
 .legal.warn {
@@ -598,7 +598,7 @@ const locationText = computed(() => {
 .verdict.ok {
   border-color: #6ee7a8;
   background: color-mix(in srgb, #22c55e 14%, transparent);
-  color: #c9ffe0;
+  color: var(--ok);
 }
 
 .verdict.warn {
@@ -643,7 +643,7 @@ const locationText = computed(() => {
 }
 
 .report li.ok {
-  color: #8ff0b5;
+  color: var(--ok);
 }
 
 .fade-enter-active,

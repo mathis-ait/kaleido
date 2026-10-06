@@ -7,6 +7,8 @@ import Toggle from "../components/Toggle.vue";
 import EmulatorSettings from "../play/EmulatorSettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { checkUpdate, updates } from "../updates";
 
 /** Pokémon des aperçus : un classique, une forme, un sprite femelle, un chromatique. */
 const DEMO: { id: number; form?: number; gender?: "female"; label: string }[] = [
@@ -132,6 +134,27 @@ onMounted(refresh);
 
     <h2>Émulateurs</h2>
     <EmulatorSettings />
+
+    <h2>Mises à jour</h2>
+    <div class="update panel">
+      <div class="update-row">
+        <div>
+          <strong>Kaleido {{ updates.info?.current ?? "" }}</strong>
+          <p v-if="updates.checking" class="lead small">Recherche d'une nouvelle version…</p>
+          <p v-else-if="updates.error" class="lead small bad">{{ updates.error }}</p>
+          <p v-else-if="updates.info?.newer" class="lead small good">Kaleido {{ updates.info.latest }} est disponible{{ updates.info.name ? ` : ${updates.info.name}` : "" }}.</p>
+          <p v-else-if="updates.info?.latest" class="lead small">Tu as la dernière version ({{ updates.info.latest }}).</p>
+          <p v-else-if="updates.info" class="lead small">Aucune version publiée pour l'instant.</p>
+          <p v-else class="lead small">Vérifie s'il existe une version plus récente sur GitHub.</p>
+        </div>
+        <div class="update-actions">
+          <button v-if="updates.info?.newer" class="btn btn-primary" @click="openUrl(updates.info.url)">Télécharger</button>
+          <button class="btn" :disabled="updates.checking" @click="checkUpdate">Vérifier maintenant</button>
+        </div>
+      </div>
+      <pre v-if="updates.info?.newer && updates.info.notes" class="notes">{{ updates.info.notes }}</pre>
+      <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement. Rien d'autre n'est envoyé." />
+    </div>
   </section>
 </template>
 
@@ -153,6 +176,51 @@ h2 {
 .lead {
   color: var(--text-dim);
   font-size: 16px;
+}
+
+.update {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.update-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.update-row .small {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.good {
+  color: #3ccf7a;
+}
+
+.bad {
+  color: var(--danger);
+}
+
+.notes {
+  max-height: 200px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  font: inherit;
+  font-size: 13px;
+  white-space: pre-wrap;
 }
 
 .themes {

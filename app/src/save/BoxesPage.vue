@@ -683,7 +683,7 @@ dd {
 }
 
 dd.ok {
-  color: #8ff0b5;
+  color: var(--ok);
 }
 
 dd.bad {

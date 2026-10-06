@@ -261,7 +261,7 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
 }
 
 .ok {
-  color: #8ff0b5;
+  color: var(--ok);
   font-weight: 600;
 }
 

@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import { initTheme } from "./theme";
+import { initUpdates } from "./updates";
 import "./styles/main.css";
 
 import { editor, openRom } from "./editor";
@@ -12,6 +13,7 @@ import { currentTheme } from "./theme";
 
 initTheme();
 createApp(App).mount("#app");
+initUpdates();
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).
 if (import.meta.env.DEV) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { library } from "../library";
+import { updates } from "../updates";
 import type { ViewId } from "../types";
 import KaleidoLogo from "./KaleidoLogo.vue";
 
@@ -41,6 +42,7 @@ const items: { id: ViewId; label: string; icon: string }[] = [
         <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
       </svg>
       <span>Apparence</span>
+      <span v-if="updates.info?.newer" class="update-dot" :title="`Kaleido ${updates.info.latest} est disponible`" />
     </button>
   </aside>
 </template>
@@ -80,6 +82,17 @@ nav {
   flex-direction: column;
   gap: 4px;
   flex: 1;
+}
+
+.update-dot {
+  position: absolute;
+  top: 8px;
+  left: 28px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--sidebar);
+  border-radius: 50%;
+  background: #3ccf7a;
 }
 
 .nav-item {

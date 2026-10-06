@@ -24,6 +24,7 @@ mod saves;
 mod showdown;
 mod sprites;
 mod teams;
+mod updates;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
 enum Loaded {
@@ -328,6 +329,7 @@ fn main() {
             showdown::smogon_sets,
             teams::teams_list,
             teams::teams_get,
+            updates::check_update,
             emusaves::emulator_saves,
             gifts::gifts_search,
             gifts::gifts_overview,

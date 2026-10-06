@@ -284,7 +284,7 @@ onBeforeUnmount(close);
 }
 
 .combo-list li.good {
-  color: #8ff0b5;
+  color: var(--ok);
   background: color-mix(in srgb, #3ccf7a 12%, transparent);
 }
 

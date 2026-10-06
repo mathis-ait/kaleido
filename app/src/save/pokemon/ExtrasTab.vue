@@ -296,8 +296,8 @@ section .sv-help {
 }
 
 .mark.leaf.on {
-  border-color: #8ff0b5;
-  background: color-mix(in srgb, #8ff0b5 18%, transparent);
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
   filter: none;
   opacity: 1;
 }
@@ -358,7 +358,7 @@ dd {
 }
 
 .ok {
-  color: #8ff0b5;
+  color: var(--ok);
 }
 
 .bad {

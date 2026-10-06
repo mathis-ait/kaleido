@@ -103,6 +103,81 @@
   color: var(--on-accent);
 }
 
+:root[data-theme="reseau"] {
+  --bg: #10161f;
+  --bg-glow-1: rgba(47, 211, 230, 0.16);
+  --bg-glow-2: rgba(255, 93, 143, 0.1);
+  --sidebar: #0b1017;
+  --panel: rgba(28, 39, 53, 0.82);
+  --panel-hover: rgba(47, 211, 230, 0.12);
+  --border: rgba(47, 211, 230, 0.22);
+  --text: #e9f6fb;
+  --text-dim: #8fa6b8;
+  --accent: #2fd3e6;
+  --accent-2: #5ce1ff;
+  --accent-3: #ff5d8f;
+  --on-accent: #06222a;
+  --warn: #ffd166;
+  --warn-bg: rgba(255, 209, 102, 0.14);
+  --danger: #ff6b81;
+  --shadow: 0 0 0 1px rgba(47, 211, 230, 0.08), 0 10px 30px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+/* Grille lumineuse du PSS. */
+:root[data-theme="reseau"] body {
+  background:
+    repeating-linear-gradient(0deg, rgba(47, 211, 230, 0.06) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(90deg, rgba(47, 211, 230, 0.06) 0 1px, transparent 1px 36px),
+    radial-gradient(900px 600px at 10% 0%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(800px 600px at 100% 100%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+}
+
+:root[data-theme="pixel"] {
+  --bg: #9bbc0f;
+  --bg-glow-1: transparent;
+  --bg-glow-2: transparent;
+  --sidebar: #0f380f;
+  --panel: #8bac0f;
+  --panel-hover: #a7c728;
+  --border: #306230;
+  --text: #0f380f;
+  --text-dim: #306230;
+  --accent: #0f380f;
+  --accent-2: #306230;
+  --accent-3: #306230;
+  --on-accent: #9bbc0f;
+  --warn: #0f380f;
+  --warn-bg: rgba(15, 56, 15, 0.12);
+  --danger: #5a1a0a;
+  --shadow: 4px 4px 0 #306230;
+  --radius: 4px;
+  --radius-sm: 2px;
+  --font-display: "Cascadia Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+
+/* Écran de Game Boy : trame de pixels, pas de flou. */
+:root[data-theme="pixel"] body {
+  background:
+    repeating-linear-gradient(0deg, rgba(15, 56, 15, 0.05) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(90deg, rgba(15, 56, 15, 0.05) 0 2px, transparent 2px 4px),
+    var(--bg);
+  image-rendering: pixelated;
+}
+
+:root[data-theme="pixel"] * {
+  backdrop-filter: none !important;
+}
+
+:root[data-theme="pixel"] .sidebar {
+  --text: #9bbc0f;
+  --text-dim: #8bac0f;
+  --panel-hover: rgba(155, 188, 15, 0.12);
+  --border: rgba(155, 188, 15, 0.25);
+}
+
 /* La barre latérale du thème DS est sombre : on y inverse le texte. */
 :root[data-theme="ds"] .sidebar {
   --text: #e8eef6;
@@ -117,6 +192,23 @@
   --radius-sm: 10px;
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Vert « tout va bien » (légal, attaques apprenables…), lisible sur chaque fond. */
+:root {
+  --ok: #8ff0b5;
+}
+
+:root[data-theme="jour"] {
+  --ok: #15803d;
+}
+
+:root[data-theme="ds"] {
+  --ok: #1d7a3e;
+}
+
+:root[data-theme="pixel"] {
+  --ok: #0f380f;
 }
 
 /* Surface opaque (menus déroulants, fenêtres) : la transparence du verre y nuit à la lisibilité. */
@@ -135,6 +227,14 @@
 
 :root[data-theme="lagon"] {
   --surface: #0f4fa8;
+}
+
+:root[data-theme="reseau"] {
+  --surface: #17212d;
+}
+
+:root[data-theme="pixel"] {
+  --surface: #a7c728;
 }
 
 /* ---------- Base ---------- */
