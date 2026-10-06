@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::play::{self, EmulatorId, EmulatorsState};
 
-const USER_AGENT: &str = concat!("Kaleido/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mathis-ait/kaleido)");
+pub(crate) const USER_AGENT: &str =concat!("Kaleido/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mathis-ait/kaleido)");
 
 // ---------------------------------------------------------------------------
 // Dossiers de la bibliothèque
@@ -68,6 +68,16 @@ pub async fn library_scan(config: LibraryConfig) -> Result<Vec<kaleido_core::det
             .filter(|d| d.game.is_some() && !matches!(d.kind, kaleido_core::detect::FileKind::Save | kaleido_core::detect::FileKind::Unknown))
             .collect();
         Ok(games)
+    })
+    .await
+}
+
+/// Jeux Switch des dossiers et fichiers suivis.
+#[tauri::command]
+pub async fn library_scan_switch(config: LibraryConfig, app: AppHandle) -> Result<Vec<crate::switch::SwitchGame>, String> {
+    crate::blocking(move || {
+        let roots: Vec<PathBuf> = config.folders.iter().chain(&config.files).map(PathBuf::from).collect();
+        Ok(crate::switch::scan(&app, &roots, &config.hidden))
     })
     .await
 }
@@ -126,6 +136,10 @@ fn libretro_url(repo: &str, name: &str) -> String {
 /// définition (768×680), libretro, GameTDB en taille moyenne (400×352), puis la
 /// boîte européenne.
 pub fn cover_urls(game: &str) -> Vec<String> {
+    // Jeu Switch (`nx-<title ID>`) : icône officielle.
+    if let Some(tid) = switch_cover_id(game) {
+        return vec![format!("https://api.nlib.cc/nx/{tid}/icon/512/512")];
+    }
     let Some(s) = cover_sources(game) else { return Vec::new() };
     let (platform, code) = s.tdb;
     let mut urls = vec![format!("{GAMETDB_URL}/{platform}/coverHQ/FR/{code}.jpg")];
@@ -133,6 +147,12 @@ pub fn cover_urls(game: &str) -> Vec<String> {
     urls.push(format!("{GAMETDB_URL}/{platform}/coverM/FR/{code}.jpg"));
     urls.extend(s.eu.map(|n| libretro_url(s.repo, n)));
     urls
+}
+
+/// `nx-01001f5010dfa000` → « 01001F5010DFA000 ».
+fn switch_cover_id(key: &str) -> Option<String> {
+    let tid = key.strip_prefix("nx-")?;
+    (tid.len() == 16 && tid.bytes().all(|b| b.is_ascii_hexdigit())).then(|| tid.to_ascii_uppercase())
 }
 
 fn covers_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -189,7 +209,7 @@ pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) 
     let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png");
     // Ancien format `<jeu>-en` : la boîte française est désormais toujours servie.
     let game = key.strip_suffix("-en").unwrap_or(key).to_string();
-    let valid = !game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    let valid = switch_cover_id(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &game)) } else { Err("nom invalide".into()) };
     match result {
         Ok(data) => Response::builder()
@@ -352,15 +372,20 @@ pub fn emulators_running() -> Vec<&'static str> {
 // ---------------------------------------------------------------------------
 // Installation des émulateurs
 
-/// Dépôt GitHub officiel et archive Windows 64 bits de chaque émulateur installable.
+/// Dépôt officiel (GitHub, ou Forgejo d'Eden) et archive Windows 64 bits de chaque émulateur installable.
 fn source(id: EmulatorId) -> Option<(&'static str, fn(&str) -> bool)> {
     Some(match id {
         EmulatorId::Melonds => ("melonDS-emu/melonDS", |n| n.contains("windows-x86_64") && n.ends_with(".zip")),
         EmulatorId::Azahar => ("azahar-emu/azahar", |n| n.starts_with("azahar-windows-msvc-") && n.ends_with(".zip") && !n.contains("installer")),
         EmulatorId::Desmume => ("TASEmulators/desmume", |n| n.ends_with("-win64.zip")),
+        // Version MSVC : conseillée par Eden pour Pokémon Écarlate / Violet.
+        EmulatorId::Eden => (EDEN_RELEASES, |n| n.starts_with("Eden-Windows-") && n.ends_with("-amd64-msvc-standard.zip")),
         _ => return None,
     })
 }
+
+/// Versions stables d'Eden (API Forgejo, mêmes champs que GitHub).
+const EDEN_RELEASES: &str = "https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases/latest";
 
 #[derive(Deserialize)]
 struct Release {
@@ -388,13 +413,14 @@ pub struct EmulatorDownload {
 }
 
 fn latest_release(repo: &str) -> Result<Release, String> {
-    let response = ureq::get(&format!("https://api.github.com/repos/{repo}/releases/latest"))
+    let url = if repo.starts_with("https://") { repo.to_string() } else { format!("https://api.github.com/repos/{repo}/releases/latest") };
+    let response = ureq::get(&url)
         .set("User-Agent", USER_AGENT)
         .set("Accept", "application/vnd.github+json")
         .timeout(Duration::from_secs(15))
         .call()
-        .map_err(|e| format!("impossible de joindre GitHub : {e}"))?;
-    serde_json::from_reader(response.into_reader()).map_err(|e| format!("réponse de GitHub illisible : {e}"))
+        .map_err(|e| format!("impossible de joindre le site de l'émulateur : {e}"))?;
+    serde_json::from_reader(response.into_reader()).map_err(|e| format!("réponse du site de l'émulateur illisible : {e}"))
 }
 
 fn find_download(id: EmulatorId) -> Result<(Release, usize), String> {
@@ -447,7 +473,45 @@ pub fn safe_entry_path(name: &str) -> Option<PathBuf> {
     (!out.as_os_str().is_empty()).then_some(out)
 }
 
-fn extract_zip(archive: &Path, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
+/// Télécharge `url` dans `dest` en signalant la progression (octets reçus, total attendu).
+/// Le fichier n'apparaît sous son nom qu'une fois complet.
+pub(crate) fn download_to(url: &str, dest: &Path, expected: u64, mut progress: impl FnMut(u64, u64)) -> Result<u64, String> {
+    let response = ureq::get(url).set("User-Agent", USER_AGENT).call().map_err(|e| format!("téléchargement impossible : {e}"))?;
+    let total = response.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(expected);
+    let mut reader = response.into_reader();
+    let part = dest.with_extension("part");
+    let mut out = fs::File::create(&part).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 256 * 1024];
+    let (mut done, mut last) = (0u64, 0u64);
+    progress(0, total);
+    let result = loop {
+        let n = match reader.read(&mut buf) {
+            Ok(n) => n,
+            Err(e) => break Err(format!("téléchargement interrompu : {e}")),
+        };
+        if n == 0 {
+            break Ok(());
+        }
+        if let Err(e) = out.write_all(&buf[..n]) {
+            break Err(e.to_string());
+        }
+        done += n as u64;
+        if done - last >= 512 * 1024 {
+            last = done;
+            progress(done, total);
+        }
+    };
+    drop(out);
+    if let Err(e) = result {
+        let _ = fs::remove_file(&part);
+        return Err(e);
+    }
+    progress(done, total);
+    fs::rename(&part, dest).map_err(|e| e.to_string())?;
+    Ok(done)
+}
+
+pub(crate) fn extract_zip(archive: &Path, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let file = fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("archive illisible : {e}"))?;
     let total = zip.len() as u64;
@@ -485,30 +549,7 @@ pub async fn emulator_install(id: EmulatorId, app: AppHandle) -> Result<Emulator
 
         // Téléchargement dans un fichier temporaire, avec progression.
         let archive = root.join(format!("{}.download", asset.name));
-        let response = ureq::get(&asset.browser_download_url)
-            .set("User-Agent", USER_AGENT)
-            .call()
-            .map_err(|e| format!("téléchargement impossible : {e}"))?;
-        let total = response.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(asset.size);
-        let mut reader = response.into_reader();
-        let mut out = fs::File::create(&archive).map_err(|e| e.to_string())?;
-        let mut buf = vec![0u8; 256 * 1024];
-        let (mut done, mut last) = (0u64, 0u64);
-        emit("download", 0, total);
-        loop {
-            let n = reader.read(&mut buf).map_err(|e| format!("téléchargement interrompu : {e}"))?;
-            if n == 0 {
-                break;
-            }
-            out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-            done += n as u64;
-            if done - last >= 512 * 1024 {
-                last = done;
-                emit("download", done, total);
-            }
-        }
-        drop(out);
-        emit("download", done, total);
+        download_to(&asset.browser_download_url, &archive, asset.size, |d, t| emit("download", d, t))?;
 
         let extracted = extract_zip(&archive, &dest, |d, t| emit("extract", d, t));
         let _ = fs::remove_file(&archive);
@@ -517,9 +558,11 @@ pub async fn emulator_install(id: EmulatorId, app: AppHandle) -> Result<Emulator
         let exe = play::scan_for_exe(&dest, id, 3).ok_or_else(|| format!("{} introuvable dans l'archive téléchargée", id.name()))?;
         let mut config = play::load_config(&app);
         config.profiles.entry(id).or_default().exe = Some(exe);
-        let preferred = if id.is_ctr() { &mut config.preferred_ctr } else { &mut config.preferred_nds };
-        if preferred.is_none() {
-            *preferred = Some(id);
+        if !id.is_switch() {
+            let preferred = if id.is_ctr() { &mut config.preferred_ctr } else { &mut config.preferred_nds };
+            if preferred.is_none() {
+                *preferred = Some(id);
+            }
         }
         play::store_config(&app, &config)?;
         Ok(play::state_of(config))
@@ -545,6 +588,8 @@ mod tests {
         assert!(x[0].ends_with("/3ds/coverHQ/FR/EKJP.jpg"));
         assert!(x.last().unwrap().contains("Pokemon%20X%20%28Europe%29"));
         assert!(cover_urls("emerald").is_empty());
+        assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
+        assert!(switch_cover_id("nx-0100").is_none());
     }
 
     #[test]

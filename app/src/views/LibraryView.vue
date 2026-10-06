@@ -6,9 +6,11 @@ import Launcher from "../launcher/Launcher.vue";
 import { audio } from "../launcher/audio";
 import Icon from "../components/Icon.vue";
 import Segmented from "../components/Segmented.vue";
+import ModsDialog from "../play/ModsDialog.vue";
+import { modsDialog } from "../play/mods";
 import { addFiles, addFolder, allGames, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { nav } from "../nav";
-import { RECOMMENDED, available, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
+import { PLATFORM_LABEL, RECOMMENDED, available, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
 
 onMounted(() => {
   if (!games.loaded) loadGames();
@@ -24,7 +26,7 @@ const shown = computed(() => {
   return allGames.value
     .filter((g) => filter.value === "all" || g.platform === filter.value)
     .filter((g) => !q || g.title.toLowerCase().includes(q) || g.fileName.toLowerCase().includes(q))
-    .sort((a, b) => (a.generation ?? 0) - (b.generation ?? 0) || a.title.localeCompare(b.title, "fr"));
+    .sort((a, b) => (a.generation ?? 10) - (b.generation ?? 10) || a.title.localeCompare(b.title, "fr"));
 });
 
 async function pickFolder() {
@@ -36,7 +38,7 @@ async function pickFiles() {
   const picked = await open({
     multiple: true,
     title: "Ajouter des jeux",
-    filters: [{ name: "ROMs DS et 3DS", extensions: ["nds", "3ds", "cci", "cxi"] }],
+    filters: [{ name: "Jeux DS, 3DS et Switch", extensions: ["nds", "3ds", "cci", "cxi", "xci", "nsp", "xcz", "nsz"] }],
   });
   if (picked) await addFiles(Array.isArray(picked) ? picked : [picked]);
 }
@@ -51,10 +53,10 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // --- Émulateurs
 
 const ALTERNATIVE: Partial<Record<PlayPlatform, EmulatorId>> = { nds: "desmume" };
-const NAMES: Record<EmulatorId, string> = { melonds: "melonDS", desmume: "DeSmuME", azahar: "Azahar", citra: "Citra", lime3ds: "Lime3DS" };
+const NAMES: Record<EmulatorId, string> = { melonds: "melonDS", desmume: "DeSmuME", azahar: "Azahar", citra: "Citra", lime3ds: "Lime3DS", eden: "Eden" };
 
 const consoles = computed(() =>
-  (["nds", "3ds"] as PlayPlatform[]).map((platform) => {
+  (["nds", "3ds", "switch"] as PlayPlatform[]).map((platform) => {
     const ready = available(platform);
     const recommended = RECOMMENDED[platform];
     const alternative = ALTERNATIVE[platform];
@@ -78,7 +80,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
     <header>
       <div>
         <h1>Bibliothèque</h1>
-        <p class="lead">Tes jeux, prêts à lancer. Kaleido retrouve leurs jaquettes et s'occupe des émulateurs.</p>
+        <p class="lead">Tes jeux, prêts à lancer. Kaleido retrouve leurs jaquettes, s'occupe des émulateurs et installe les mods en un clic.</p>
       </div>
       <div class="actions">
         <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier</button>
@@ -92,7 +94,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
     <div class="emulators">
       <div v-for="c in consoles" :key="c.platform" class="emu panel">
         <div class="emu-head">
-          <span class="console">{{ c.platform === "nds" ? "Nintendo DS" : "Nintendo 3DS" }}</span>
+          <span class="console">{{ PLATFORM_LABEL[c.platform] }}</span>
           <span v-if="c.ready.length" class="ok"><Icon name="check" :size="14" /> Prêt</span>
           <span v-else-if="emus.loaded" class="missing">Aucun émulateur</span>
         </div>
@@ -134,6 +136,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
           { value: 'all', label: `Tous (${allGames.length})` },
           { value: 'nds', label: 'DS' },
           { value: '3ds', label: '3DS' },
+          { value: 'switch', label: 'Switch' },
         ]"
       />
       <label class="search">
@@ -154,12 +157,14 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
     <div v-else-if="!allGames.length" class="empty panel">
       <Icon name="grid" :size="36" />
       <h2>Ta bibliothèque est vide</h2>
-      <p>Ajoute le dossier où tu ranges tes ROMs DS et 3DS : Kaleido le relira à chaque ouverture et affichera tes jeux avec leur jaquette.</p>
+      <p>Ajoute le dossier où tu ranges tes jeux DS, 3DS et Switch : Kaleido le relira à chaque ouverture et affichera tes jeux avec leur jaquette.</p>
       <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier de jeux</button>
     </div>
 
     <p v-else class="empty dim">Aucun jeu ne correspond.</p>
+
   </section>
+  <ModsDialog v-if="modsDialog.game" :key="modsDialog.game.path" />
 </template>
 
 <style scoped>
@@ -204,7 +209,7 @@ h1 {
 
 .emulators {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr auto;
   align-items: stretch;
   gap: 14px;
 }

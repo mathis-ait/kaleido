@@ -10,18 +10,52 @@ export interface LibraryConfig {
   hidden: string[];
 }
 
+/** Miroir de `SwitchGame` (switch.rs). */
+export interface SwitchGame {
+  path: string;
+  fileName: string;
+  titleId: string;
+  title: string;
+  size: number;
+  hasUpdate: boolean;
+}
+
 /** Bibliothèque de jeux : dossiers et fichiers mémorisés d'une session à l'autre. */
 export const games = reactive({
   loaded: false,
   scanning: false,
   config: { folders: [], files: [], hidden: [] } as LibraryConfig,
   found: [] as Detection[],
+  switchFound: [] as SwitchGame[],
   error: null as string | null,
 });
 
+/** Jeu Switch présenté comme les autres jeux de la bibliothèque. */
+function switchDetection(g: SwitchGame): Detection {
+  return {
+    path: g.path,
+    fileName: g.fileName,
+    kind: "switch_game",
+    title: g.title,
+    game: null,
+    platform: "switch",
+    generation: null,
+    language: g.hasUpdate ? "Mise à jour trouvée" : null,
+    isFrench: false,
+    size: g.size,
+    details: [{ label: "Title ID", value: g.titleId }],
+    warnings: [],
+    kaleido: null,
+    fingerprint: null,
+  };
+}
+
+/** Title ID d'un jeu (Switch, 3DS), tel que l'affiche la détection. */
+export const titleIdOf = (d: Detection) => d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toUpperCase() ?? null;
+
 /** Jeux suivis, plus les ROMs ouvertes pendant la session (sans doublon). */
 export const allGames = computed(() => {
-  const list = [...games.found];
+  const list = [...games.found, ...games.switchFound.map(switchDetection)];
   for (const d of library.items) {
     if (isRom(d) && !games.config.hidden.includes(d.path) && !list.some((g) => g.path === d.path)) list.push(d);
   }
@@ -38,7 +72,12 @@ export async function rescan() {
   games.scanning = true;
   games.error = null;
   try {
-    games.found = await invoke<Detection[]>("library_scan", { config: games.config });
+    const [found, switchFound] = await Promise.all([
+      invoke<Detection[]>("library_scan", { config: games.config }),
+      invoke<SwitchGame[]>("library_scan_switch", { config: games.config }).catch(() => [] as SwitchGame[]),
+    ]);
+    games.found = found;
+    games.switchFound = switchFound;
   } catch (e) {
     games.error = String(e);
   } finally {
@@ -76,6 +115,7 @@ export async function hideGame(path: string) {
     if (!c.hidden.includes(path)) c.hidden.push(path);
   }, false);
   games.found = games.found.filter((g) => g.path !== path);
+  games.switchFound = games.switchFound.filter((g) => g.path !== path);
 }
 
 // Les ROMs ouvertes (ou générées par le randomizer) restent dans la bibliothèque.

@@ -7,7 +7,8 @@ import Icon from "../components/Icon.vue";
 import { openRom } from "../editor";
 import { hideGame, libraryUi } from "../games";
 import { removeItem } from "../library";
-import { RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators } from "../play/play";
+import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators } from "../play/play";
+import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
 import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
@@ -19,11 +20,12 @@ const props = defineProps<{ games: Detection[] }>();
 
 // --- Onglets
 
-type Tab = "all" | "nds" | "3ds";
+type Tab = "all" | "nds" | "3ds" | "switch";
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "Tous" },
   { id: "nds", label: "Nintendo DS" },
   { id: "3ds", label: "Nintendo 3DS" },
+  { id: "switch", label: "Nintendo Switch" },
 ];
 const tab = ref<Tab>("all");
 const list = computed(() => props.games.filter((g) => tab.value === "all" || g.platform === tab.value));
@@ -214,7 +216,7 @@ const playLabel = computed(() => {
     const p = installing.value;
     return p.step === "download" && p.total ? `Téléchargement ${formatMo(p.done)} / ${formatMo(p.total)}` : "Installation…";
   }
-  if (emus.loaded && !emulator.value && game.value) return platformOf(game.value) === "nds" ? "Installer melonDS et jouer" : "Installer Azahar et jouer";
+  if (emus.loaded && !emulator.value && game.value) return `Installer ${{ nds: "melonDS", "3ds": "Azahar", switch: "Eden" }[platformOf(game.value)]} et jouer`;
   return "Jouer";
 });
 
@@ -252,9 +254,10 @@ const menu = computed(() => {
   const g = game.value;
   if (!g) return [];
   const items: { label: string; icon: string; run: () => void; danger?: boolean }[] = [];
+  items.push({ label: "Mods et réglages", icon: "wand", run: () => openMods(g) });
   if (statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
   if (canRandomize(g)) items.push({ label: "Randomiser", icon: "dice", run: () => randomize(g) });
-  items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
+  if (g.platform !== "switch") items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
   items.push({ label: "Afficher le fichier", icon: "folder", run: () => revealItemInDir(g.path) });
   items.push({
     label: "Retirer de la bibliothèque",
@@ -292,6 +295,8 @@ async function setImmersive(on: boolean) {
 // --- Clavier et manette
 
 function action(a: PadAction) {
+  // La fenêtre « Mods et réglages » garde le clavier et la manette.
+  if (modsDialog.game) return;
   if (launching.value) return;
   if (menuOpen.value) {
     if (a === "up") menuIndex.value = (menuIndex.value - 1 + menu.value.length) % menu.value.length;
@@ -373,7 +378,7 @@ const date = computed(() => now.value.toLocaleDateString("fr-FR", { weekday: "lo
 const meta = computed(() => {
   const g = game.value;
   if (!g) return [];
-  const parts = [platformOf(g) === "nds" ? "Nintendo DS" : "Nintendo 3DS"];
+  const parts = [PLATFORM_LABEL[platformOf(g)]];
   if (g.generation) parts.push(`${g.generation}ᵉ génération`);
   if (g.language) parts.push(g.language.replace("Multilingue (français inclus)", "Multilingue"));
   return parts;
@@ -433,6 +438,7 @@ const meta = computed(() => {
               <span class="key light">{{ padConnected ? "A" : "Entrée" }}</span>
             </button>
             <button v-if="status?.saveExists" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
+            <button class="ghost" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods</button>
             <button class="ghost icon" title="Plus d'actions" @click="openMenu">⋯</button>
           </div>
           <p v-if="notice" class="notice">{{ notice }}</p>
@@ -496,7 +502,7 @@ const meta = computed(() => {
           <div class="sheet-head">
             <img v-if="coverUrl(game)" :src="coverUrl(game)!" alt="" />
             <div>
-              <p>{{ platformOf(game) === "nds" ? "Nintendo DS" : "Nintendo 3DS" }}</p>
+              <p>{{ PLATFORM_LABEL[platformOf(game)] }}</p>
               <h3>{{ game.title }}</h3>
             </div>
           </div>

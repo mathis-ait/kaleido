@@ -20,12 +20,15 @@ mod emusaves;
 mod gifts;
 mod legality;
 mod library;
+mod mods;
 mod nuzlocke;
 mod play;
 mod saves;
 mod showdown;
 mod sprites;
+mod switch;
 mod teams;
+mod tuning;
 mod updates;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
@@ -346,6 +349,16 @@ fn main() {
             library::music_title_theme,
             library::game_status,
             library::emulators_running,
+            library::library_scan_switch,
+            mods::mods_list,
+            mods::mods_install,
+            mods::mods_uninstall,
+            mods::mods_toggle_other,
+            mods::cheats_list,
+            mods::cheats_set,
+            tuning::tune_plan,
+            tuning::tune_apply,
+            tuning::tune_restore,
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
             nuzlocke::nuzlocke_link_rom,

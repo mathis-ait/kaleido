@@ -2,8 +2,8 @@ export type ViewId = "home" | "library" | "randomizer" | "editor" | "saves" | "s
 
 // Miroir des types sérialisés par `kaleido_core::detect`.
 
-export type FileKind = "nds_rom" | "ctr_rom" | "ctr_dump" | "save" | "unknown";
-export type Platform = "nds" | "3ds";
+export type FileKind = "nds_rom" | "ctr_rom" | "ctr_dump" | "save" | "unknown" | "switch_game";
+export type Platform = "nds" | "3ds" | "switch";
 
 export interface GameInfo {
   id: string;

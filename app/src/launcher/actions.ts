@@ -1,16 +1,19 @@
 import { reactive } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { allGames } from "../games";
+import { allGames, titleIdOf } from "../games";
 import { nav } from "../nav";
 import { isKaleidoRom, RANDOMIZABLE, type Detection } from "../types";
 import { openGameSave, play, type PlayOptions, type PlayPlatform } from "../play/play";
 
 /** Actions communes à la grille et au lanceur. */
 
-export const platformOf = (d: Detection): PlayPlatform => (d.platform === "3ds" ? "3ds" : "nds");
+export const platformOf = (d: Detection): PlayPlatform => (d.platform === "3ds" ? "3ds" : d.platform === "switch" ? "switch" : "nds");
 
-/** Jaquette (boîte française en priorité, voir library.rs). */
-export const coverUrl = (d: Detection) => (d.game ? convertFileSrc(`${d.game.id}.png`, "cover") : null);
+/** Jaquette (boîte française en priorité, icône officielle pour la Switch ; voir library.rs). */
+export function coverUrl(d: Detection) {
+  if (d.platform === "switch") return convertFileSrc(`nx-${titleIdOf(d)}.png`, "cover");
+  return d.game ? convertFileSrc(`${d.game.id}.png`, "cover") : null;
+}
 
 /** Un dossier 3DS (mod LayeredFS ou jeu extrait) se joue par-dessus le jeu d'origine. */
 export function playOptions(d: Detection): PlayOptions {
@@ -84,7 +87,14 @@ export interface GameStatus {
 export const statuses = reactive<Record<string, GameStatus>>({});
 const pending = new Set<string>();
 
+const EMPTY_STATUS: GameStatus = { emulator: null, savePath: null, saveExists: false, trainer: null, saveSeconds: null, emulatorSeconds: null, kaleidoSeconds: null };
+
 export async function refreshStatus(d: Detection) {
+  // Switch : Eden range ses sauvegardes lui-même, rien à lire.
+  if (d.platform === "switch") {
+    statuses[d.path] ??= { ...EMPTY_STATUS };
+    return;
+  }
   if (pending.has(d.path)) return;
   pending.add(d.path);
   const o = playOptions(d);

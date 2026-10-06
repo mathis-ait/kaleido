@@ -8,8 +8,8 @@ import type { SaveView, SlotView } from "../types";
 
 // Miroir des types de `play.rs`.
 
-export type EmulatorId = "melonds" | "desmume" | "azahar" | "citra" | "lime3ds";
-export type PlayPlatform = "nds" | "3ds";
+export type EmulatorId = "melonds" | "desmume" | "azahar" | "citra" | "lime3ds" | "eden";
+export type PlayPlatform = "nds" | "3ds" | "switch";
 
 export interface EmulatorInfo {
   id: EmulatorId;
@@ -129,7 +129,7 @@ export const available = (platform: PlayPlatform) => emus.list.filter((e) => e.p
 /** Émulateur par défaut pour une plateforme (préféré s'il est trouvé, sinon le premier trouvé). */
 export function defaultEmulator(platform: PlayPlatform): EmulatorInfo | null {
   const list = available(platform);
-  const preferred = platform === "nds" ? emus.config.preferredNds : emus.config.preferredCtr;
+  const preferred = platform === "nds" ? emus.config.preferredNds : platform === "3ds" ? emus.config.preferredCtr : null;
   return list.find((e) => e.id === preferred) ?? list[0] ?? null;
 }
 
@@ -145,9 +145,12 @@ export interface EmulatorDownload {
 }
 
 /** Émulateur installé quand on veut jouer sans en avoir. */
-export const RECOMMENDED: Record<PlayPlatform, EmulatorId> = { nds: "melonds", "3ds": "azahar" };
+export const RECOMMENDED: Record<PlayPlatform, EmulatorId> = { nds: "melonds", "3ds": "azahar", switch: "eden" };
 /** Émulateurs que Kaleido sait télécharger et installer. */
-export const INSTALLABLE: EmulatorId[] = ["melonds", "azahar", "desmume"];
+export const INSTALLABLE: EmulatorId[] = ["melonds", "azahar", "desmume", "eden"];
+
+export const PLATFORM_LABEL: Record<PlayPlatform, string> = { nds: "Nintendo DS", "3ds": "Nintendo 3DS", switch: "Nintendo Switch" };
+export const PLATFORM_SHORT: Record<PlayPlatform, string> = { nds: "DS", "3ds": "3DS", switch: "Switch" };
 
 export interface InstallProgress {
   step: "info" | "download" | "extract";
@@ -172,7 +175,7 @@ export async function installEmulator(id: EmulatorId, reason?: string): Promise<
   try {
     const info = await invoke<EmulatorDownload>("emulator_download_info", { id });
     const ok = await ask(
-      `${reason ? reason + "\n\n" : ""}Kaleido peut télécharger ${info.name} ${info.version} (${formatMo(info.size)}) depuis sa page officielle sur GitHub et l'installer dans son propre dossier. Rien d'autre n'est modifié sur ton PC.`,
+      `${reason ? reason + "\n\n" : ""}Kaleido peut télécharger ${info.name} ${info.version} (${formatMo(info.size)}) depuis sa page officielle et l'installer dans son propre dossier. Rien d'autre n'est modifié sur ton PC.`,
       { title: `Installer ${info.name}`, okLabel: "Télécharger et installer", cancelLabel: "Annuler" },
     );
     if (!ok) return false;
@@ -393,12 +396,14 @@ async function pickGame(platform: PlayPlatform) {
     last = undefined;
   }
   const picked = await open({
-    title: platform === "3ds" ? "Choisis le jeu 3DS d'origine à lancer" : "Choisis la ROM DS à lancer",
+    title: platform === "3ds" ? "Choisis le jeu 3DS d'origine à lancer" : platform === "switch" ? "Choisis le jeu Switch à lancer" : "Choisis la ROM DS à lancer",
     defaultPath: platform === "3ds" ? last : undefined,
     filters:
       platform === "3ds"
         ? [{ name: "Jeu 3DS", extensions: ["3ds", "cci", "cxi", "app"] }]
-        : [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+        : platform === "switch"
+          ? [{ name: "Jeu Switch", extensions: ["xci", "nsp", "xcz", "nsz"] }]
+          : [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
   });
   if (typeof picked !== "string") return null;
   if (platform === "3ds") {
@@ -436,7 +441,7 @@ export async function play(o: PlayOptions): Promise<PlayResult | null> {
   if (!emu && !o.emulator) {
     // Aucun émulateur pour cette console : on propose d'installer le recommandé.
     const id = RECOMMENDED[o.platform];
-    if (!(await installEmulator(id, `Aucun émulateur ${o.platform === "nds" ? "DS" : "3DS"} n'a été trouvé sur ce PC.`))) return null;
+    if (!(await installEmulator(id, `Aucun émulateur ${PLATFORM_SHORT[o.platform]} n'a été trouvé sur ce PC.`))) return null;
     emu = defaultEmulator(o.platform);
   }
   if (!emu) {

@@ -48,10 +48,12 @@ pub enum EmulatorId {
     Azahar,
     Citra,
     Lime3ds,
+    Eden,
 }
 
 impl EmulatorId {
-    pub const ALL: [EmulatorId; 5] = [EmulatorId::Melonds, EmulatorId::Desmume, EmulatorId::Azahar, EmulatorId::Citra, EmulatorId::Lime3ds];
+    pub const ALL: [EmulatorId; 6] =
+        [EmulatorId::Melonds, EmulatorId::Desmume, EmulatorId::Azahar, EmulatorId::Citra, EmulatorId::Lime3ds, EmulatorId::Eden];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -60,6 +62,7 @@ impl EmulatorId {
             EmulatorId::Azahar => "Azahar",
             EmulatorId::Citra => "Citra",
             EmulatorId::Lime3ds => "Lime3DS",
+            EmulatorId::Eden => "Eden",
         }
     }
 
@@ -67,8 +70,14 @@ impl EmulatorId {
         matches!(self, EmulatorId::Azahar | EmulatorId::Citra | EmulatorId::Lime3ds)
     }
 
+    pub fn is_switch(self) -> bool {
+        self == EmulatorId::Eden
+    }
+
     fn platform(self) -> &'static str {
-        if self.is_ctr() {
+        if self.is_switch() {
+            "switch"
+        } else if self.is_ctr() {
             "3ds"
         } else {
             "nds"
@@ -84,6 +93,7 @@ impl EmulatorId {
             EmulatorId::Azahar => matches!(lower, "azahar.exe" | "azahar-qt.exe"),
             EmulatorId::Citra => matches!(lower, "citra-qt.exe" | "citra.exe"),
             EmulatorId::Lime3ds => matches!(lower, "lime3ds.exe" | "lime3ds-gui.exe" | "lime3ds-qt.exe"),
+            EmulatorId::Eden => lower == "eden.exe",
         }
     }
 
@@ -95,15 +105,17 @@ impl EmulatorId {
             EmulatorId::Azahar => &["Azahar"],
             EmulatorId::Citra => &["Citra"],
             EmulatorId::Lime3ds => &["Lime3DS"],
+            EmulatorId::Eden => &["Eden"],
         }
     }
 
-    /// Dossier utilisateur dans `%APPDATA%` (émulateurs 3DS).
+    /// Dossier utilisateur dans `%APPDATA%` (émulateurs 3DS et Switch).
     fn data_dir_name(self) -> Option<&'static str> {
         match self {
             EmulatorId::Azahar => Some("Azahar"),
             EmulatorId::Citra => Some("Citra"),
             EmulatorId::Lime3ds => Some("Lime3DS"),
+            EmulatorId::Eden => Some("eden"),
             _ => None,
         }
     }
@@ -300,7 +312,7 @@ pub struct Resolved {
 pub fn default_emulator(config: &PlayConfig, env: &Env, ctr: bool) -> Option<Resolved> {
     let preferred = if ctr { config.preferred_ctr } else { config.preferred_nds };
     let found = |id: EmulatorId| Some(resolve(id, config, env)).filter(|r| r.exe.is_some());
-    preferred.filter(|id| id.is_ctr() == ctr).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(|id| id.is_ctr() == ctr).find_map(found))
+    preferred.filter(|id| id.is_ctr() == ctr).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(|id| id.is_ctr() == ctr && !id.is_switch()).find_map(found))
 }
 
 pub fn resolve(id: EmulatorId, config: &PlayConfig, env: &Env) -> Resolved {
@@ -792,7 +804,7 @@ pub struct EmulatorsState {
 }
 
 fn info(r: &Resolved) -> EmulatorInfo {
-    let data_dir = if r.id.is_ctr() { r.ctr_user_dir() } else { r.nds_save_dir() };
+    let data_dir = if r.id.is_ctr() || r.id.is_switch() { r.ctr_user_dir() } else { r.nds_save_dir() };
     EmulatorInfo {
         id: r.id,
         name: r.id.name(),
@@ -920,7 +932,10 @@ pub fn plan(req: &PlayRequest, r: &Resolved, title_id: Option<u64>) -> PlayPlan 
     if r.exe.is_none() {
         p.warnings.push(format!("{} est introuvable : choisis son exécutable dans Paramètres → Émulateurs.", r.id.name()));
     }
-    if r.id.is_ctr() {
+    if r.id.is_switch() {
+        // Eden range lui-même ses sauvegardes (NAND émulée) : rien à préparer.
+        p.needs_game = req.rom.as_ref().is_none_or(|g| !g.is_file());
+    } else if r.id.is_ctr() {
         p.needs_game = req.rom.as_ref().is_none_or(|g| !g.is_file());
         p.title_id = title_id.map(|t| format!("{t:016X}"));
         let Some(user) = r.ctr_user_dir() else {
@@ -959,6 +974,9 @@ pub fn plan(req: &PlayRequest, r: &Resolved, title_id: Option<u64>) -> PlayPlan 
 /// Prépare les fichiers (sauvegarde, mod) sans lancer l'émulateur.
 pub fn prepare_files(req: &PlayRequest, r: &Resolved, title_id: Option<u64>, stamp: &str) -> Result<PlayResult, String> {
     let mut out = PlayResult { emulator: r.id.name(), ..Default::default() };
+    if r.id.is_switch() {
+        return Ok(out);
+    }
     if r.id.is_ctr() {
         let user = r.ctr_user_dir().ok_or("dossier utilisateur de l'émulateur introuvable")?;
         let tid = title_id.ok_or("title ID du jeu inconnu")?;
@@ -990,8 +1008,12 @@ pub fn prepare_files(req: &PlayRequest, r: &Resolved, title_id: Option<u64>, sta
     Ok(out)
 }
 
-fn launch(exe: &Path, game: &Path) -> Result<std::process::Child, String> {
+fn launch(exe: &Path, game: &Path, id: EmulatorId) -> Result<std::process::Child, String> {
     let mut cmd = std::process::Command::new(exe);
+    // Eden (comme yuzu) attend `-g <jeu>`.
+    if id.is_switch() {
+        cmd.arg("-g");
+    }
     cmd.arg(game);
     // DeSmuME résout ses dossiers relatifs (Battery…) depuis son propre dossier.
     if let Some(dir) = exe.parent() {
@@ -1066,7 +1088,7 @@ pub async fn play_rom(request: PlayRequest, app: AppHandle) -> Result<PlayResult
         let game = request.rom.clone().filter(|g| g.is_file()).ok_or("choisis le fichier du jeu à lancer")?;
         let tid = if r.id.is_ctr() { request_title_id(&request) } else { None };
         let result = prepare_files(&request, &r, tid, &timestamp(SystemTime::now()))?;
-        let child = launch(&exe, &game)?;
+        let child = launch(&exe, &game, r.id)?;
         let key = request.track_key.clone().unwrap_or_else(|| game.display().to_string());
         track_session(app.clone(), key, child);
         Ok(result)
