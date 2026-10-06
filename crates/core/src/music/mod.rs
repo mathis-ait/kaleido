@@ -11,6 +11,7 @@ use crate::games::Game;
 
 pub mod ctr;
 pub mod nds;
+pub mod nx;
 
 /// Son PCM 16 bits stéréo entrelacé.
 #[derive(Debug, Clone, PartialEq)]
