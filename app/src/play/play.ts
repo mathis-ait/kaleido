@@ -43,6 +43,7 @@ interface PlayRequest {
   modRomfs?: string | null;
   save?: string | null;
   replaceMod?: boolean;
+  trackKey?: string | null;
 }
 
 export interface PlayPlan {
@@ -378,6 +379,8 @@ export interface PlayOptions {
   modRomfs?: string | null;
   /** Sauvegarde à installer avant de lancer. */
   save?: string | null;
+  /** Jeu de la bibliothèque dont on compte le temps de jeu. */
+  trackKey?: string | null;
 }
 
 const LAST_GAME_KEY = "kaleido.play.lastGame3ds";
@@ -409,7 +412,7 @@ async function pickGame(platform: PlayPlatform) {
 }
 
 function request(o: PlayOptions, emulator: EmulatorId, replaceMod = false): PlayRequest {
-  return { emulator, rom: o.rom, modRomfs: o.modRomfs ?? null, save: o.save ?? null, replaceMod };
+  return { emulator, rom: o.rom, modRomfs: o.modRomfs ?? null, save: o.save ?? null, replaceMod, trackKey: o.trackKey ?? null };
 }
 
 /** Ce que l'émulateur choisi fera de cette partie (chemin de la sauvegarde…). */

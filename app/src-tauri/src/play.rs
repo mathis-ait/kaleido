@@ -296,6 +296,13 @@ pub struct Resolved {
     pub env: Env,
 }
 
+/// Émulateur utilisé par défaut pour une console : le préféré s'il est trouvé, sinon le premier trouvé.
+pub fn default_emulator(config: &PlayConfig, env: &Env, ctr: bool) -> Option<Resolved> {
+    let preferred = if ctr { config.preferred_ctr } else { config.preferred_nds };
+    let found = |id: EmulatorId| Some(resolve(id, config, env)).filter(|r| r.exe.is_some());
+    preferred.filter(|id| id.is_ctr() == ctr).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(|id| id.is_ctr() == ctr).find_map(found))
+}
+
 pub fn resolve(id: EmulatorId, config: &PlayConfig, env: &Env) -> Resolved {
     let profile = config.profiles.get(&id).cloned().unwrap_or_default();
     let chosen = profile.exe.clone().filter(|p| p.is_file());
@@ -864,6 +871,9 @@ pub struct PlayRequest {
     /// Remplacer (après copie de sécurité) un mod déjà installé.
     #[serde(default)]
     pub replace_mod: bool,
+    /// Jeu de la bibliothèque dont on chronomètre la partie (sinon : la ROM).
+    #[serde(default)]
+    pub track_key: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -872,8 +882,8 @@ pub struct PlayPlan {
     emulator: &'static str,
     exe: Option<String>,
     /// Sauvegarde que l'émulateur lira et écrira.
-    save_path: Option<String>,
-    save_exists: bool,
+    pub(crate) save_path: Option<String>,
+    pub(crate) save_exists: bool,
     /// La sauvegarde choisie remplacera un fichier existant (qui sera mis de côté).
     save_conflict: bool,
     title_id: Option<String>,
@@ -900,7 +910,7 @@ fn title_id_of_game(game: &Path) -> Option<u64> {
     d.details.iter().find(|x| x.label == "Title ID").and_then(|x| parse_title_id(&x.value))
 }
 
-fn request_title_id(req: &PlayRequest) -> Option<u64> {
+pub(crate) fn request_title_id(req: &PlayRequest) -> Option<u64> {
     req.mod_romfs.as_deref().and_then(title_id_of_romfs).or_else(|| req.rom.as_deref().and_then(title_id_of_game))
 }
 
@@ -980,14 +990,59 @@ pub fn prepare_files(req: &PlayRequest, r: &Resolved, title_id: Option<u64>, sta
     Ok(out)
 }
 
-fn launch(exe: &Path, game: &Path) -> Result<(), String> {
+fn launch(exe: &Path, game: &Path) -> Result<std::process::Child, String> {
     let mut cmd = std::process::Command::new(exe);
     cmd.arg(game);
     // DeSmuME résout ses dossiers relatifs (Battery…) depuis son propre dossier.
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
-    cmd.spawn().map(|_| ()).map_err(|e| format!("impossible de lancer {} : {e}", exe.display()))
+    cmd.spawn().map_err(|e| format!("impossible de lancer {} : {e}", exe.display()))
+}
+
+// ---------------------------------------------------------------------------
+// Temps de jeu
+
+/// Temps de jeu compté par Azahar / Citra / Lime3DS : `<user>/sysdata/play_time.bin`
+/// (anciennement `<user>/log/`), suite de paires (title ID, secondes) en u64 little-endian
+/// (src/common/play_time_manager.cpp).
+pub fn emulator_play_time(user: &Path, title_id: u64) -> Option<u64> {
+    let data = fs::read(user.join("sysdata").join("play_time.bin")).or_else(|_| fs::read(user.join("log").join("play_time.bin"))).ok()?;
+    data.chunks_exact(16).find_map(|c| {
+        let id = u64::from_le_bytes(c[..8].try_into().unwrap());
+        (id == title_id).then(|| u64::from_le_bytes(c[8..].try_into().unwrap()))
+    })
+}
+
+fn playtime_path(app: &AppHandle) -> Option<PathBuf> {
+    Some(app.path().app_config_dir().ok()?.join("playtime.json"))
+}
+
+/// Temps passé dans l'émulateur pour les parties lancées par Kaleido (secondes, par jeu).
+pub fn tracked_play_time(app: &AppHandle) -> BTreeMap<String, u64> {
+    playtime_path(app).and_then(|p| fs::read(p).ok()).and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default()
+}
+
+/// Attend la fermeture de l'émulateur puis ajoute la durée de la partie.
+fn track_session(app: AppHandle, key: String, mut child: std::process::Child) {
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let _ = child.wait();
+        let seconds = start.elapsed().as_secs();
+        // Moins de 10 s : l'émulateur n'a pas démarré le jeu (erreur, fermé aussitôt).
+        if seconds < 10 {
+            return;
+        }
+        let Some(path) = playtime_path(&app) else { return };
+        let mut all = tracked_play_time(&app);
+        *all.entry(key).or_default() += seconds;
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        if let Ok(json) = serde_json::to_vec_pretty(&all) {
+            let _ = fs::write(path, json);
+        }
+    });
 }
 
 #[tauri::command]
@@ -1011,7 +1066,9 @@ pub async fn play_rom(request: PlayRequest, app: AppHandle) -> Result<PlayResult
         let game = request.rom.clone().filter(|g| g.is_file()).ok_or("choisis le fichier du jeu à lancer")?;
         let tid = if r.id.is_ctr() { request_title_id(&request) } else { None };
         let result = prepare_files(&request, &r, tid, &timestamp(SystemTime::now()))?;
-        launch(&exe, &game)?;
+        let child = launch(&exe, &game)?;
+        let key = request.track_key.clone().unwrap_or_else(|| game.display().to_string());
+        track_session(app.clone(), key, child);
         Ok(result)
     })
     .await

@@ -7,7 +7,7 @@ import { hideGame } from "../games";
 import { removeItem } from "../library";
 import { isKaleidoRom, type Detection } from "../types";
 import { RECOMMENDED, defaultEmulator, emus, installs, type PlayPlatform } from "../play/play";
-import { canRandomize as canRandomizeGame, coverUrl, launchGame, openSaveOf, randomize as randomizeGame } from "../launcher/actions";
+import { canRandomize as canRandomizeGame, coverUrl, formatDuration, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf } from "../launcher/actions";
 import { audio, previewMusic, stopMusic } from "../launcher/audio";
 
 const props = defineProps<{ game: Detection }>();
@@ -70,6 +70,8 @@ async function remove() {
 }
 
 const canRandomize = computed(() => canRandomizeGame(props.game));
+const gameStatus = computed(() => statusOf(props.game));
+const time = computed(() => playTime(gameStatus.value));
 const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
 </script>
 
@@ -100,12 +102,12 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
     <div class="meta">
       <div class="text">
         <h3 :title="game.title">{{ game.title }}</h3>
-        <p :title="game.path">{{ game.language ?? game.fileName }}</p>
+        <p :title="time ? `Temps de jeu ${time.source}` : game.path">{{ time ? `${formatDuration(time.seconds)} de jeu` : (game.language ?? game.fileName) }}</p>
       </div>
       <div class="more">
         <button class="icon-btn" aria-label="Plus d'actions" title="Plus d'actions" @click="menuOpen = !menuOpen">⋯</button>
         <div v-if="menuOpen" class="menu panel" @click="menuOpen = false">
-          <button @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
+          <button v-if="gameStatus?.saveExists" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
           <button v-if="canRandomize" @click="randomize"><Icon name="dice" :size="15" /> Randomiser</button>
           <button @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
           <button @click="revealItemInDir(game.path)"><Icon name="folder" :size="15" /> Afficher le fichier</button>

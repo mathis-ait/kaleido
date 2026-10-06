@@ -10,7 +10,7 @@ import { removeItem } from "../library";
 import { RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators } from "../play/play";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
-import { canRandomize, coverUrl, lastPlayed, launchGame, openSaveOf, platformOf, randomize, timeAgo } from "./actions";
+import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
 import { audio, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
 import { dominantColor } from "./color";
 import { useGamepad, type PadAction } from "./gamepad";
@@ -122,6 +122,10 @@ function onTilt(e: PointerEvent) {
 
 // --- Actions
 
+/** Sauvegarde et temps de jeu du jeu sélectionné. */
+const status = computed(() => (game.value ? statusOf(game.value) : null));
+const time = computed(() => playTime(status.value));
+
 const emulator = computed(() => (game.value && emus.loaded ? defaultEmulator(platformOf(game.value)) : null));
 const installing = computed(() => (game.value ? installs[RECOMMENDED[platformOf(game.value)]] ?? null : null));
 const playLabel = computed(() => {
@@ -165,9 +169,8 @@ const menuIndex = ref(0);
 const menu = computed(() => {
   const g = game.value;
   if (!g) return [];
-  const items: { label: string; icon: string; run: () => void; danger?: boolean }[] = [
-    { label: "Ouvrir sa sauvegarde", icon: "save", run: openSave },
-  ];
+  const items: { label: string; icon: string; run: () => void; danger?: boolean }[] = [];
+  if (statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
   if (canRandomize(g)) items.push({ label: "Randomiser", icon: "dice", run: () => randomize(g) });
   items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
   items.push({ label: "Afficher le fichier", icon: "folder", run: () => revealItemInDir(g.path) });
@@ -281,7 +284,7 @@ onUnmounted(() => {
   if (libraryUi.immersive) setImmersive(false);
 });
 
-const time = computed(() => now.value.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+const clockText = computed(() => now.value.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
 const date = computed(() => now.value.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
 
 const meta = computed(() => {
@@ -321,7 +324,7 @@ const meta = computed(() => {
             <path v-else d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
           </svg>
         </button>
-        <span class="clock" :title="date">{{ time }}</span>
+        <span class="clock" :title="date">{{ clockText }}</span>
       </div>
     </header>
 
@@ -335,8 +338,10 @@ const meta = computed(() => {
           <p class="sub">
             <span v-if="isKaleidoRom(game)" class="tag">Randomisée<template v-if="game.kaleido"> · seed {{ game.kaleido.seed }}</template></span>
             <span v-if="game.kind === 'ctr_dump'">Mod joué par-dessus le jeu d'origine</span>
+            <span v-if="status?.trainer">Dresseur {{ status.trainer }}</span>
+            <span v-if="time" :title="`Temps de jeu ${time.source}`">{{ formatDuration(time.seconds) }} de jeu</span>
             <span v-if="lastPlayed[game.path]">Dernière partie {{ timeAgo(lastPlayed[game.path]) }}</span>
-            <span v-else class="dim">{{ game.fileName }}</span>
+            <span v-if="status && !status.saveExists && !lastPlayed[game.path]" class="dim">Pas encore de partie</span>
           </p>
           <div class="cta">
             <button class="play" :disabled="!!installing" @click="play">
@@ -344,7 +349,7 @@ const meta = computed(() => {
               <span>{{ playLabel }}</span>
               <span class="key light">{{ padConnected ? "A" : "Entrée" }}</span>
             </button>
-            <button class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
+            <button v-if="status?.saveExists" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
             <button class="ghost icon" title="Plus d'actions" @click="openMenu">⋯</button>
           </div>
           <p v-if="notice" class="notice">{{ notice }}</p>

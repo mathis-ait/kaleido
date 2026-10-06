@@ -340,6 +340,7 @@ fn main() {
             library::emulator_download_info,
             library::emulator_install,
             library::music_title_theme,
+            library::game_status,
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
             nuzlocke::nuzlocke_link_rom,

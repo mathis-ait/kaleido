@@ -204,6 +204,62 @@ pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) 
 }
 
 // ---------------------------------------------------------------------------
+// État d'un jeu : sauvegarde et temps de jeu
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameStatus {
+    /// Émulateur utilisé par défaut pour ce jeu.
+    emulator: Option<&'static str>,
+    /// Sauvegarde que l'émulateur utilise pour ce jeu.
+    save_path: Option<String>,
+    save_exists: bool,
+    /// Nom du dresseur de la sauvegarde.
+    trainer: Option<String>,
+    /// Temps de jeu affiché par le jeu (carte de dresseur), en secondes.
+    save_seconds: Option<u64>,
+    /// Temps compté par l'émulateur (Azahar, Citra, Lime3DS).
+    emulator_seconds: Option<u64>,
+    /// Temps passé dans l'émulateur pour les parties lancées par Kaleido.
+    kaleido_seconds: Option<u64>,
+}
+
+/// Sauvegarde, dresseur et temps de jeu d'un jeu de la bibliothèque.
+#[tauri::command]
+pub async fn game_status(rom: Option<PathBuf>, mod_romfs: Option<PathBuf>, ctr: bool, key: String, app: AppHandle) -> Result<GameStatus, String> {
+    crate::blocking(move || {
+        let mut status = GameStatus { kaleido_seconds: play::tracked_play_time(&app).get(&key).copied(), ..Default::default() };
+        let config = play::load_config(&app);
+        let Some(r) = play::default_emulator(&config, &play::Env::system(&config.search_dirs), ctr) else { return Ok(status) };
+        status.emulator = Some(r.id.name());
+        let request = play::PlayRequest { emulator: r.id, rom, mod_romfs, save: None, replace_mod: false, track_key: None };
+        let tid = if ctr { play::request_title_id(&request) } else { None };
+        let plan = play::plan(&request, &r, tid);
+        status.save_exists = plan.save_exists;
+        status.save_path = plan.save_path;
+        if let (Some(tid), Some(user)) = (tid, r.ctr_user_dir()) {
+            status.emulator_seconds = play::emulator_play_time(&user, tid).filter(|&s| s > 0);
+        }
+        if status.save_exists {
+            let trainer = status
+                .save_path
+                .as_ref()
+                .and_then(|p| fs::read(p).ok())
+                .and_then(|bytes| kaleido_core::save::session::SaveSession::open(&bytes).ok())
+                .and_then(|s| s.view().ok())
+                .map(|v| v.trainer);
+            if let Some(t) = trainer {
+                let pt = &t.play_time;
+                status.save_seconds = Some(pt.hours as u64 * 3600 + pt.minutes as u64 * 60 + pt.seconds as u64);
+                status.trainer = Some(t.name);
+            }
+        }
+        Ok(status)
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
 // Musique de l'écran titre
 
 /// Durée de l'extrait joué dans le lanceur (il boucle).

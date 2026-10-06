@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { allGames } from "../games";
 import { nav } from "../nav";
 import { isKaleidoRom, RANDOMIZABLE, type Detection } from "../types";
@@ -15,10 +15,10 @@ export const coverUrl = (d: Detection) => (d.game ? convertFileSrc(`${d.game.id}
 /** Un dossier 3DS (mod LayeredFS ou jeu extrait) se joue par-dessus le jeu d'origine. */
 export function playOptions(d: Detection): PlayOptions {
   const platform = platformOf(d);
-  if (d.kind !== "ctr_dump") return { platform, rom: d.path, modRomfs: null };
+  if (d.kind !== "ctr_dump") return { platform, rom: d.path, modRomfs: null, trackKey: d.path };
   const modRomfs = /[\\/]romfs$/i.test(d.path) ? d.path : `${d.path}\\romfs`;
   const base = allGames.value.find((g) => g.kind === "ctr_rom" && g.game?.id === d.game?.id && !isKaleidoRom(g));
-  return { platform, rom: base?.path ?? null, modRomfs };
+  return { platform, rom: base?.path ?? null, modRomfs, trackKey: d.path };
 }
 
 const LAST_PLAYED_KEY = "kaleido.library.lastPlayed";
@@ -65,4 +65,66 @@ export function timeAgo(ms: number): string {
   if (s < 2 * 86400) return "hier";
   if (s < 30 * 86400) return `il y a ${Math.round(s / 86400)} jours`;
   return new Date(ms).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+}
+
+// --- Sauvegarde et temps de jeu
+
+/** Miroir de `GameStatus` (library.rs). */
+export interface GameStatus {
+  emulator: string | null;
+  savePath: string | null;
+  saveExists: boolean;
+  trainer: string | null;
+  saveSeconds: number | null;
+  emulatorSeconds: number | null;
+  kaleidoSeconds: number | null;
+}
+
+/** État de chaque jeu, par chemin (rempli à la demande). */
+export const statuses = reactive<Record<string, GameStatus>>({});
+const pending = new Set<string>();
+
+export async function refreshStatus(d: Detection) {
+  if (pending.has(d.path)) return;
+  pending.add(d.path);
+  const o = playOptions(d);
+  try {
+    statuses[d.path] = await invoke<GameStatus>("game_status", { rom: o.rom, modRomfs: o.modRomfs ?? null, ctr: o.platform === "3ds", key: d.path });
+  } catch {
+    // Jeu illisible : rien à afficher (et on ne redemande pas à chaque rendu).
+    statuses[d.path] ??= { emulator: null, savePath: null, saveExists: false, trainer: null, saveSeconds: null, emulatorSeconds: null, kaleidoSeconds: null };
+  } finally {
+    pending.delete(d.path);
+  }
+}
+
+/** Charge l'état d'un jeu s'il n'est pas encore connu. */
+export function statusOf(d: Detection): GameStatus | null {
+  if (!statuses[d.path]) void refreshStatus(d);
+  return statuses[d.path] ?? null;
+}
+
+// Au retour dans Kaleido (après une partie), les sauvegardes et compteurs ont pu changer.
+window.addEventListener("focus", () => {
+  for (const path of Object.keys(statuses)) {
+    const d = allGames.value.find((g) => g.path === path);
+    if (d) void refreshStatus(d);
+  }
+});
+
+/** Temps de jeu le plus fiable : celui du jeu, sinon celui de l'émulateur, sinon celui de Kaleido. */
+export function playTime(s: GameStatus | null): { seconds: number; source: string } | null {
+  if (!s) return null;
+  if (s.saveSeconds) return { seconds: s.saveSeconds, source: "compté par le jeu (carte de dresseur)" };
+  if (s.emulatorSeconds) return { seconds: s.emulatorSeconds, source: `compté par ${s.emulator ?? "l'émulateur"}` };
+  if (s.kaleidoSeconds) return { seconds: s.kaleidoSeconds, source: "parties lancées depuis Kaleido" };
+  return null;
+}
+
+/** « 42 h 17 », « 35 min ». */
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h === 0) return `${Math.max(1, m)} min`;
+  return `${h} h ${String(m).padStart(2, "0")}`;
 }
