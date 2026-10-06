@@ -52,7 +52,7 @@ Tout est en français, avec des bulles « i » qui expliquent chaque terme techn
 | Fonction | Jeux | État |
 |---|---|---|
 | Randomizer → ROM `.nds` | Platine, Noire, Blanche | ✓ |
-| Randomizer → mod LayeredFS ou `.3ds` reconstruit | Rubis Oméga, Saphir Alpha | ✓ (starters inchangés) |
+| Randomizer → mod LayeredFS ou `.3ds` reconstruit | Rubis Oméga, Saphir Alpha, X, Y | ✓ (starters inchangés) |
 | Éditeur de ROM | Platine, Noire, Blanche | ✓ (autres jeux : Pokédex en lecture seule) |
 | Éditeur de sauvegardes | Gen 4 à 7 (DPPt, HGSS, NB, N2B2, XY, ROSA, SL, USUL) | ✓ |
 | Switch | Let's Go, Épée / Bouclier, Légendes Arceus | plus tard |
@@ -225,16 +225,30 @@ cargo run --release -p kaleido-cli -- check3ds  "rom.3ds"                       
 
 </details>
 
+<details>
+<summary>Emplacements des données vérifiés dans Pokémon Y (X d'après l'Universal Pokémon Randomizer)</summary>
+
+| Données | Archive | Format |
+|---|---|---|
+| Textes du jeu (FR) | `a/0/7/5` | espèces n°80, talents n°34, capacités n°13, objets n°96, types n°17, dresseurs n°21, classes n°20 |
+| Fiches « personal » | `a/2/1/8` | 0x40 octets par espèce/forme ; la dernière entrée est la table complète |
+| Attaques par niveau, évolutions | `a/2/1/4`, `a/2/1/5` | comme ROSA |
+| Rencontres sauvages | `a/0/1/2` | zones `ZO` (LZ11), section 4 de 0x188 octets (94 emplacements) ; Pokémon qui tombent et buissons dans `DllField.cro` @ `0xF4270` / `0xF40CC` |
+| Dresseurs | `a/0/3/8` (trdata, 0x14 octets), `a/0/4/0` (trpoke) | voir `crates/core/src/data/trainers.rs` |
+| Starters | `DllField.cro` @ `0xF805C`, `DllPoke3Select.cro` | table des dons, 0x18 octets par entrée ; voir `randomizer/ctr_xy.rs` |
+
+</details>
+
 ### Feuille de route
 
 - [x] Bibliothèque, détection des fichiers, thèmes
 - [x] Formats DS et 3DS, textes Gen 4 à 7
-- [x] Randomizer Platine, Noire, Blanche et ROSA
+- [x] Randomizer Platine, Noire, Blanche, ROSA et X / Y
 - [x] Éditeur de ROM : Pokémon (statistiques, types, talents, capture, attaques apprises)
 - [x] Éditeur de sauvegardes Gen 4 à 7, légalité, Cadeaux mystère, banque, Nuzlocke, combat, équipes Smogon
 - [ ] Éditeur de ROM : dresseurs, rencontres sauvages, évolutions
 - [ ] Préréglages IronMon, patchs de confort (texte rapide, Repousse réutilisable…)
-- [ ] Randomizer HGSS, Noire 2 / Blanche 2, X / Y, Gen 7
+- [ ] Randomizer HGSS, Noire 2 / Blanche 2, Gen 7
 - [ ] Rubans et souvenirs, Gen 1 à 3, Switch
 
 ## Crédits

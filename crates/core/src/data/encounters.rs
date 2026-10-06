@@ -33,8 +33,38 @@ pub fn read(generation: u8, data: &[u8]) -> Vec<Slot> {
     match generation {
         ..=4 => read_platinum(data),
         5 => read_bw(data),
+        _ if xy_section(data).is_some() => read_xy(data),
         _ => read_oras(data),
     }
+}
+
+/// X / Y : fichier de zone « ZO » (LZ11, comme Rubis Oméga / Saphir Alpha), mais la
+/// section 4 (de `u32` @0x10 à `u32` @0x14) fait exactement 0x188 octets : 0x10 octets
+/// de taux, puis 94 emplacements au format Gen 5 : herbe 12, fleurs jaunes 12, fleurs
+/// violettes 12, fleurs rouges 12, hautes herbes 12, Surf 5, Éclate-Roc 5, cannes 3×3,
+/// hordes 3×5 (Universal Pokémon Randomizer, Gen6RomHandler.getEncountersXY ; vérifié
+/// sur Pokémon Y). Les zones de Rubis Oméga / Saphir Alpha n'ont jamais cette taille.
+pub const XY_RATES: usize = 0x10;
+pub const XY_SLOTS: usize = 94;
+
+pub fn xy_section(d: &[u8]) -> Option<std::ops::Range<usize>> {
+    if d.len() < 0x18 || &d[..2] != b"ZO" {
+        return None;
+    }
+    let start = u32::from_le_bytes(d[0x10..0x14].try_into().unwrap()) as usize;
+    let end = u32::from_le_bytes(d[0x14..0x18].try_into().unwrap()) as usize;
+    (end.checked_sub(start) == Some(XY_RATES + XY_SLOTS * 4) && end <= d.len()).then_some(start..end)
+}
+
+fn read_xy(d: &[u8]) -> Vec<Slot> {
+    let Some(section) = xy_section(d) else { return Vec::new() };
+    (0..XY_SLOTS)
+        .filter_map(|i| {
+            let at = section.start + XY_RATES + i * 4;
+            let species = u16_at(d, at) & 0x07FF;
+            (species != 0).then_some(Slot { offset: at, species, min_level: d[at + 2], max_level: d[at + 3], kind: SlotKind::U16Form })
+        })
+        .collect()
 }
 
 /// Rubis Oméga / Saphir Alpha : fichier de zone « ZO » ; la section 4 (offset u32
@@ -160,6 +190,22 @@ mod tests {
         assert_eq!(slots[1].offset, 240);
         set_species(&mut d, &slots[0], 25);
         assert_eq!(read(5, &d)[0].species, 25);
+    }
+
+    #[test]
+    fn xy_zone_slots() {
+        // Zone X/Y minimale : en-tête ZO, section 4 de 0x188 octets en 0x18.
+        let mut d = vec![0u8; 0x18 + 0x188];
+        d[..2].copy_from_slice(b"ZO");
+        d[0x10..0x14].copy_from_slice(&0x18u32.to_le_bytes());
+        d[0x14..0x18].copy_from_slice(&(0x18u32 + 0x188).to_le_bytes());
+        let at = 0x18 + XY_RATES + 93 * 4; // dernier emplacement (horde rare)
+        d[at..at + 4].copy_from_slice(&[0x8D, 0x02, 3, 5]); // Feunnec 3-5
+        let slots = read(6, &d);
+        assert_eq!(slots, vec![Slot { offset: at, species: 653, min_level: 3, max_level: 5, kind: SlotKind::U16Form }]);
+        // Une section d'une autre taille est lue comme une zone de Rubis Oméga / Saphir Alpha.
+        d[0x14..0x18].copy_from_slice(&(0x18u32 + 0x104).to_le_bytes());
+        assert!(xy_section(&d).is_none());
     }
 
     #[test]

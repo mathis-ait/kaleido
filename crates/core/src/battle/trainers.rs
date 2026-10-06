@@ -236,7 +236,16 @@ impl RomTrainers {
         // Gen 6 : couples (attaque u16, niveau u16) comme en Gen 5.
         let learnsets = entries(l.levelup)?.iter().map(|d| learnsets::read(5, d)).collect();
         let mut trainers = Vec::new();
+        // X / Y : fiche de 0x14 octets, convertie au format de Rubis Oméga / Saphir Alpha.
+        let xy = matches!(game, crate::games::Game::X | crate::games::Game::Y);
         for (i, (d, p)) in trdata.iter().zip(&trpoke).enumerate() {
+            let converted;
+            let d = if xy {
+                converted = crate::data::trainers::xy_trdata_as_oras(d);
+                &converted
+            } else {
+                d
+            };
             if i == 0 || d.len() < 8 {
                 continue;
             }
