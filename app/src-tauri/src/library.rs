@@ -303,6 +303,53 @@ pub async fn music_title_theme(path: PathBuf, game: String, app: AppHandle) -> R
 }
 
 // ---------------------------------------------------------------------------
+// Émulateurs en cours d'exécution
+
+/// Noms des émulateurs connus présents dans la liste des processus Windows.
+fn running_emulators() -> Vec<&'static str> {
+    let mut cmd = std::process::Command::new("tasklist");
+    cmd.args(["/FO", "CSV", "/NH"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW : pas de console qui clignote toutes les deux secondes.
+        cmd.creation_flags(0x0800_0000);
+    }
+    let Ok(out) = cmd.output() else { return Vec::new() };
+    let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
+    let exes: Vec<&str> = text.lines().filter_map(|l| l.split(',').next()).map(|c| c.trim_matches('"')).collect();
+    let mut found: Vec<&'static str> = EmulatorId::ALL.into_iter().filter(|id| exes.iter().any(|e| id.matches_exe(e))).map(|id| id.name()).collect();
+    found.dedup();
+    found
+}
+
+/// Dernier état connu (pour la commande `emulators_running`).
+static RUNNING: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
+/// Surveille les émulateurs (toutes les 2 s) et émet `emulators-running` à chaque changement :
+/// le lanceur coupe sa musique pendant qu'on joue.
+pub fn watch_emulators(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        let now = running_emulators();
+        let changed = {
+            let mut last = RUNNING.lock().unwrap();
+            let changed = *last != now;
+            *last = now.clone();
+            changed
+        };
+        if changed {
+            let _ = app.emit("emulators-running", now);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    });
+}
+
+#[tauri::command]
+pub fn emulators_running() -> Vec<&'static str> {
+    RUNNING.lock().unwrap().clone()
+}
+
+// ---------------------------------------------------------------------------
 // Installation des émulateurs
 
 /// Dépôt GitHub officiel et archive Windows 64 bits de chaque émulateur installable.

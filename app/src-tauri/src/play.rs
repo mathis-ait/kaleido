@@ -76,7 +76,7 @@ impl EmulatorId {
     }
 
     /// Nom du fichier exécutable (en minuscules) reconnu pour cet émulateur.
-    fn matches_exe(self, lower: &str) -> bool {
+    pub(crate) fn matches_exe(self, lower: &str) -> bool {
         match self {
             EmulatorId::Melonds => lower == "melonds.exe",
             // Les archives officielles s'appellent par exemple `DeSmuME_0.9.13_x64.exe`.

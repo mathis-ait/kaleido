@@ -144,7 +144,8 @@ async function play() {
   const g = game.value;
   if (!g || launching.value || installing.value) return;
   sfx("select");
-  stopMusic();
+  // Sans l'oublier : la musique reprend quand on ferme l'émulateur et revient dans Kaleido.
+  stopMusic(false);
   launching.value = { cover: coverUrl(g), title: g.title, status: "Lancement…" };
   const emu = await launchGame(g);
   if (emu) {
@@ -355,7 +356,11 @@ const meta = computed(() => {
           <p v-if="notice" class="notice">{{ notice }}</p>
         </div>
       </Transition>
-      <div class="now-playing" :class="{ on: audio.playing === game.path, loading: audio.loading === game.path }">
+      <div v-if="audio.running.length" class="now-playing on ingame">
+        <span class="dot" />
+        <span>En jeu dans {{ audio.running.join(", ") }} · musique en pause</span>
+      </div>
+      <div v-else class="now-playing" :class="{ on: audio.playing === game.path, loading: audio.loading === game.path }">
         <span class="eq"><i /><i /><i /><i /></span>
         <span>{{ audio.loading === game.path ? "Chargement de la musique…" : "Thème de l'écran titre" }}</span>
       </div>
@@ -690,6 +695,13 @@ h1 {
 .now-playing.loading {
   opacity: 1;
   transform: none;
+}
+
+.ingame .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
 }
 
 .eq {

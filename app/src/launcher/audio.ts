@@ -1,5 +1,6 @@
 import { reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Detection } from "../types";
 
 /**
@@ -22,6 +23,28 @@ export const audio = reactive({
   /** Jeu dont la musique joue. */
   playing: null as string | null,
   loading: null as string | null,
+  /** Émulateurs ouverts : pas de musique pendant qu'on joue. */
+  running: [] as string[],
+});
+
+// --- Silence pendant le jeu et quand Kaleido n'est pas au premier plan
+
+/** Dernier jeu dont on voulait la musique, pour la reprendre au retour. */
+let wanted: Detection | null = null;
+const silenced = () => audio.running.length > 0 || !document.hasFocus();
+
+invoke<string[]>("emulators_running")
+  .then((r) => (audio.running = r))
+  .catch(() => undefined);
+listen<string[]>("emulators-running", (e) => {
+  audio.running = e.payload;
+  if (e.payload.length) stopMusic(false);
+  else if (wanted) previewMusic(wanted, 800);
+}).catch(() => undefined);
+
+window.addEventListener("blur", () => stopMusic(false));
+window.addEventListener("focus", () => {
+  if (wanted && !audio.running.length) previewMusic(wanted, 500);
 });
 
 watch(
@@ -85,18 +108,19 @@ function stopCurrent(fade = 0.5) {
 
 /** Joue la musique de `d` après un court délai (on ne lance rien en faisant défiler vite). */
 export function previewMusic(d: Detection | null, wait = 650) {
+  wanted = d;
   const id = ++request;
   clearTimeout(delay);
   if (current && current.path === d?.path) return;
   stopCurrent();
   audio.loading = null;
-  if (!d?.game || !audio.music) return;
+  if (!d?.game || !audio.music || silenced()) return;
   delay = window.setTimeout(async () => {
     audio.loading = d.path;
     const buffer = await load(d);
     if (id !== request) return;
     audio.loading = null;
-    if (!buffer) return;
+    if (!buffer || silenced()) return;
     const c = context();
     const source = c.createBufferSource();
     source.buffer = buffer;
@@ -111,7 +135,9 @@ export function previewMusic(d: Detection | null, wait = 650) {
   }, wait);
 }
 
-export function stopMusic() {
+/** Coupe la musique ; `forget` : ne pas la reprendre au retour dans Kaleido. */
+export function stopMusic(forget = true) {
+  if (forget) wanted = null;
   request++;
   clearTimeout(delay);
   audio.loading = null;

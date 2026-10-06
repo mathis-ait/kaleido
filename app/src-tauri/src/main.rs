@@ -277,6 +277,10 @@ fn main() {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(sprites::handle(&app, &request)));
         })
+        .setup(|app| {
+            library::watch_emulators(app.handle().clone());
+            Ok(())
+        })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(library::handle_cover(&app, &request)));
@@ -341,6 +345,7 @@ fn main() {
             library::emulator_install,
             library::music_title_theme,
             library::game_status,
+            library::emulators_running,
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
             nuzlocke::nuzlocke_link_rom,
