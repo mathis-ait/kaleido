@@ -105,6 +105,23 @@ pub struct Settings {
     /// par défaut, pour que les codes restent identiques.
     #[serde(default, skip_serializing_if = "super::ctr::CtrOutput::is_default")]
     pub ctr_output: super::ctr::CtrOutput,
+    /// X / Y : Bulbizarre, Salamèche et Carapuce offerts par le Professeur Platane.
+    /// Omis quand inchangé, pour que les anciens codes de partage restent identiques.
+    #[serde(default, skip_serializing_if = "StarterMode::is_unchanged")]
+    pub kanto_starters: StarterMode,
+    /// Pokémon de Kanto choisis à la main (mode `Custom`).
+    #[serde(default, skip_serializing_if = "is_unset")]
+    pub custom_kanto_starters: [u16; 3],
+}
+
+fn is_unset(v: &[u16; 3]) -> bool {
+    v.iter().all(|&s| s == 0)
+}
+
+impl StarterMode {
+    pub fn is_unchanged(&self) -> bool {
+        *self == StarterMode::Unchanged
+    }
 }
 
 impl Default for Settings {
@@ -121,6 +138,8 @@ impl Default for Settings {
             items: Default::default(),
             statics: Default::default(),
             ctr_output: Default::default(),
+            kanto_starters: StarterMode::Unchanged,
+            custom_kanto_starters: [0; 3],
             starters: StarterMode::Unchanged,
             wild: WildMode::Unchanged,
             wild_similar_strength: true,

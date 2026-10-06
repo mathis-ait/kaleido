@@ -248,6 +248,18 @@ pub fn randomize(
         }
         let _ = writeln!(log);
     }
+    // X / Y : Bulbizarre, Salamèche et Carapuce du Professeur Platane.
+    if xy && settings.kanto_starters != super::StarterMode::Unchanged {
+        let kanto = super::choose_second_trio(&ctx, settings, seed, ctr_xy::KANTO_STARTERS, &starters);
+        if kanto != ctr_xy::KANTO_STARTERS {
+            ctr_xy::write_kanto(game, kanto, &mut files)?;
+            let _ = writeln!(log, "== Pokémon de Kanto (Professeur Platane) ==");
+            for (old, new) in ctr_xy::KANTO_STARTERS.iter().zip(kanto) {
+                let _ = writeln!(log, "{} → {}", ctx.name(*old), ctx.name(new));
+            }
+            let _ = writeln!(log);
+        }
+    }
 
     // Évolutions et attaques apprises (avant les dresseurs, qui s'en servent).
     if settings.easy_evolutions {

@@ -6,7 +6,7 @@
 //! - **Starters** : `DllField.cro`, table des dons à 0xF805C, 0x18 octets par entrée
 //!   (`u16` espèce @0, `u8` forme @4, `u8` niveau @5) : Marisson, Feunnec, Grenousse
 //!   (niv. 5), puis Bulbizarre, Salamèche, Carapuce (niv. 10, dons du Professeur Platane,
-//!   non modifiés). Écran de choix : `DllPoke3Select.cro`, table à (`u16` @0xB8) + 0x10,
+//!   option `kanto_starters` ; UPR : `StarterIndices=[0,1,2,3,4,5]`). Écran de choix : `DllPoke3Select.cro`, table à (`u16` @0xB8) + 0x10,
 //!   pas de 0x54 (`u16` espèce @0, `u8` forme @2) ; textes « Pokémon de type … » : fichier 63.
 //! - **Rencontres** : fichiers de zone `ZO` (LZ11), voir `data::encounters::xy_section` ;
 //!   pas de copie concaténée comme en ROSA (la dernière entrée de l'archive est la table
@@ -32,6 +32,8 @@ use crate::rom::RomError;
 pub(super) const MAX_ABILITY: u16 = 188;
 
 pub(super) const ORIGINAL_STARTERS: [u16; 3] = [650, 653, 656];
+/// Bulbizarre, Salamèche, Carapuce : dons n° 3 à 5, affichés en 4e à 6e position de l'écran de choix.
+pub(super) const KANTO_STARTERS: [u16; 3] = [1, 4, 7];
 const FIELD_CRO: &str = "DllField.cro";
 const GIFT_TABLE: usize = 0xF805C;
 const GIFT_SIZE: usize = 0x18;
@@ -74,15 +76,28 @@ fn put(files: &mut Vec<(String, Vec<u8>)>, path: &str, data: Vec<u8>) {
 
 /// Écrit les starters dans les deux modules `.cro` et le texte de l'écran de choix.
 pub(super) fn write_starters(game: &CtrGameRom, ctx: &Ctx, starters: [u16; 3], files: &mut Vec<(String, Vec<u8>)>) -> Result<(), RomError> {
+    write_trio(game, starters, 0, ORIGINAL_STARTERS, files)?;
+    write_starter_text(game, ctx, starters, files)
+}
+
+/// Écrit les Pokémon de Kanto du Professeur Platane (dons n° 3 à 5, même écran de choix).
+pub(super) fn write_kanto(game: &CtrGameRom, starters: [u16; 3], files: &mut Vec<(String, Vec<u8>)>) -> Result<(), RomError> {
+    write_trio(game, starters, 3, KANTO_STARTERS, files)
+}
+
+/// Remplace trois dons consécutifs (à partir de `first`) dans `DllField.cro` et l'écran de choix,
+/// après avoir vérifié qu'on y trouve bien les espèces d'origine.
+fn write_trio(game: &CtrGameRom, starters: [u16; 3], first: usize, originals: [u16; 3], files: &mut Vec<(String, Vec<u8>)>) -> Result<(), RomError> {
     let bad = || RomError::Layout("emplacement des starters inattendu (révision du jeu différente ?)".into());
     let mut gift = current(game, files, FIELD_CRO)?;
     let mut display = current(game, files, DISPLAY_CRO)?;
     let display_table = u16_at(&display, DISPLAY_POINTER).ok_or_else(bad)? as usize + DISPLAY_EXTRA;
 
-    for (i, &s) in starters.iter().enumerate() {
+    for (k, &s) in starters.iter().enumerate() {
+        let i = first + k;
         let g = GIFT_TABLE + i * GIFT_SIZE;
         let d = display_table + i * DISPLAY_SIZE;
-        if u16_at(&gift, g) != Some(ORIGINAL_STARTERS[i]) || u16_at(&display, d) != Some(ORIGINAL_STARTERS[i]) {
+        if u16_at(&gift, g) != Some(originals[k]) || u16_at(&display, d) != Some(originals[k]) {
             return Err(bad());
         }
         gift[g..g + 2].copy_from_slice(&s.to_le_bytes());
@@ -92,7 +107,10 @@ pub(super) fn write_starters(game: &CtrGameRom, ctx: &Ctx, starters: [u16; 3], f
     }
     put(files, FIELD_CRO, gift);
     put(files, DISPLAY_CRO, display);
+    Ok(())
+}
 
+fn write_starter_text(game: &CtrGameRom, ctx: &Ctx, starters: [u16; 3], files: &mut Vec<(String, Vec<u8>)>) -> Result<(), RomError> {
     // Texte en français : « Pokémon de type {type} » puis le nom (variable du jeu).
     let l = game.layout;
     let mut garc = game.garc(l.text)?;

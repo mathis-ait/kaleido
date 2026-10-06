@@ -78,6 +78,11 @@ fn xy_formats() {
     let cro = game.romfs().read("DllField.cro").unwrap();
     let gifts: Vec<(u16, u8)> = (0..6).map(|i| (u16_at(&cro, 0xF805C + i * 0x18), cro[0xF805C + i * 0x18 + 5])).collect();
     assert_eq!(gifts, [(650, 5), (653, 5), (656, 5), (1, 10), (4, 10), (7, 10)]);
+    // Écran de choix : les trois starters puis les trois Pokémon de Kanto du Professeur Platane.
+    let display = game.romfs().read("DllPoke3Select.cro").unwrap();
+    let table = u16_at(&display, 0xB8) as usize + 0x10;
+    let shown: Vec<u16> = (0..6).map(|i| u16_at(&display, table + i * 0x54)).collect();
+    assert_eq!(shown, [650, 653, 656, 1, 4, 7]);
 
     // Rencontres : 53 zones (comme l'Universal Pokémon Randomizer) ; Route 2 = zone 259.
     let garc = game.garc(l.encounters).unwrap();
@@ -138,6 +143,7 @@ fn xy_randomize_layeredfs_and_rom3ds() {
         settings.random_movesets = true;
         settings.easy_evolutions = true;
         settings.starters = StarterMode::Random;
+        settings.kanto_starters = StarterMode::Triangle;
         settings.ctr_output = CtrOutput::Both;
         let (outcome, written) = ctr::randomize(&game, &settings, 7, &out, LayeredFsTarget::Luma).unwrap();
         // 53 zones de l'archive + 62 rencontres fixées de DllField.cro.
@@ -175,6 +181,15 @@ fn xy_randomize_layeredfs_and_rom3ds() {
         let table = u16_at(&display, 0xB8) as usize + 0x10;
         let shown: Vec<u16> = (0..3).map(|i| u16_at(&display, table + i * 0x54)).collect();
         assert_eq!(shown, starters);
+        // Pokémon de Kanto du Professeur Platane : remplacés partout, niveau 10 conservé,
+        // sans doublon avec les starters.
+        let kanto: Vec<u16> = (3..6).map(|i| u16_at(&cro, 0xF805C + i * 0x18)).collect();
+        assert_ne!(kanto, [1, 4, 7]);
+        assert!(kanto.iter().all(|k| !starters.contains(k)), "{kanto:?} / {starters:?}");
+        assert!((3..6).all(|i| cro[0xF805C + i * 0x18 + 5] == 10));
+        let kanto_shown: Vec<u16> = (3..6).map(|i| u16_at(&display, table + i * 0x54)).collect();
+        assert_eq!(kanto_shown, kanto);
+        assert!(outcome.log.contains("Pokémon de Kanto"));
         let text = new.text_file(63).unwrap();
         assert!(text[1].starts_with("Pokémon de type "));
         let (old_garc, new_garc) = (game.garc(l.encounters).unwrap(), new.garc(l.encounters).unwrap());

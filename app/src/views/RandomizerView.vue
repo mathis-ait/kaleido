@@ -29,6 +29,8 @@ import {
 const defaults = (): RandomizerSettings => ({
   starters: "triangle",
   customStarters: [0, 0, 0],
+  kantoStarters: "unchanged",
+  customKantoStarters: [0, 0, 0],
   wild: "area",
   wildSimilarStrength: true,
   wildLevelPercent: 100,
@@ -104,6 +106,9 @@ const speciesId = (name: string) => {
   return i > 0 ? i : 0;
 };
 watch(customNames, (names) => (settings.customStarters = names.map(speciesId)), { deep: true });
+/** X / Y : Pokémon de Kanto du Professeur Platane, choisis à la main. */
+const customKantoNames = ref(["", "", ""]);
+watch(customKantoNames, (names) => (settings.customKantoStarters = names.map(speciesId)), { deep: true });
 
 const newSeed = () => Math.floor(Math.random() * 4_294_967_295);
 const seed = ref(newSeed());
@@ -122,6 +127,8 @@ const showLog = ref(false);
 const roms = computed(() => library.items.filter((d) => isRom(d) && !isKaleidoRom(d)));
 const selected = computed(() => roms.value.find((r) => r.path === romPath.value) ?? null);
 const isCtr = computed(() => selected.value?.platform === "3ds");
+/** Pokémon X / Y : second trio de starters (Professeur Platane). */
+const isXy = computed(() => ["x", "y"].includes(selected.value?.game?.id ?? ""));
 const target = ref<"luma" | "emulator">("luma");
 const lastWasCtr = ref(false);
 /** 3DS : jeu d'origine à lancer avec le mod (bouton « Jouer »). */
@@ -300,6 +307,9 @@ const changes = computed<Change[]>(() => {
 
   const chosen = s.starters === "custom" ? customNames.value.filter((n) => n.trim()).join(", ") : "";
   add("starters", s.starters !== d.starters, `Starters : ${lab(STARTER_OPTS, s.starters).toLowerCase()}${chosen ? ` (${chosen})` : ""}`);
+  const kanto = s.kantoStarters;
+  const kantoChosen = kanto === "custom" ? customKantoNames.value.filter((n) => n.trim()).join(", ") : "";
+  add("starters", isXy.value && kanto !== "unchanged", `Pokémon de Kanto : ${lab(STARTER_OPTS, kanto).toLowerCase()}${kantoChosen ? ` (${kantoChosen})` : ""}`);
 
   add("wild", s.wild !== d.wild, `Pokémon sauvages : ${lab(WILD_OPTS, s.wild).toLowerCase()}`);
   flag("wild", "Sauvages de puissance similaire", s.wildSimilarStrength, d.wildSimilarStrength);
@@ -356,7 +366,8 @@ const tabLabel = (id: TabId) => TABS.find((t) => t.id === id)?.label ?? id;
 
 const presets = ref<Preset[]>([]);
 function applyPreset(p: Preset) {
-  Object.assign(settings, JSON.parse(JSON.stringify(p.settings)) as RandomizerSettings);
+  // Les réglages absents (Pokémon de Kanto inchangés) sont omis : on repart des valeurs par défaut.
+  Object.assign(settings, { kantoStarters: "unchanged", customKantoStarters: [0, 0, 0] }, JSON.parse(JSON.stringify(p.settings)) as RandomizerSettings);
   customNames.value = ["", "", ""];
 }
 
@@ -397,7 +408,7 @@ async function importCode() {
   shareError.value = !parsed;
   if (parsed) {
     seed.value = parsed[0];
-    Object.assign(settings, parsed[1]);
+    Object.assign(settings, { kantoStarters: "unchanged", customKantoStarters: [0, 0, 0] }, parsed[1]);
     shareInput.value = "";
   }
 }
@@ -638,6 +649,32 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               </datalist>
             </div>
             <p class="dim note">L'aperçu à droite se met à jour avec la seed : coche « Voir » pour découvrir tes starters.</p>
+
+            <template v-if="isXy">
+              <h3 class="kanto-title">
+                Pokémon de Kanto (Professeur Platane)
+                <Tip
+                  title="Pokémon de Kanto"
+                  text="Dans X et Y, le Professeur Platane offre à Illumis un second starter au choix : Bulbizarre, Salamèche ou Carapuce (niveau 10). Kaleido les remplace sans reprendre les starters ci-dessus ; le niveau 10 est conservé."
+                />
+              </h3>
+              <Segmented v-model="settings.kantoStarters" :options="STARTER_OPTS" />
+              <div v-if="settings.kantoStarters === 'custom'" class="custom-starters">
+                <label v-for="(_, i) in customKantoNames" :key="i">
+                  <Sprite v-if="settings.customKantoStarters?.[i]" :id="settings.customKantoStarters[i]" :size="44" />
+                  <input
+                    v-model="customKantoNames[i]"
+                    class="input"
+                    list="kaleido-species"
+                    :placeholder="['Au lieu de Bulbizarre', 'Au lieu de Salamèche', 'Au lieu de Carapuce'][i]"
+                    :class="{ invalid: customKantoNames[i] && !settings.customKantoStarters?.[i] }"
+                  />
+                </label>
+                <datalist v-if="settings.starters !== 'custom'" id="kaleido-species">
+                  <option v-for="n in speciesNames.slice(1, speciesCount + 1)" :key="n" :value="n" />
+                </datalist>
+              </div>
+            </template>
           </div>
 
           <!-- Pokémon sauvages -->
@@ -1362,6 +1399,10 @@ h3 {
 .row-label {
   color: var(--text-dim);
   font-weight: 600;
+}
+
+.kanto-title {
+  margin-top: 26px;
 }
 
 .custom-starters {

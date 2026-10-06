@@ -460,6 +460,21 @@ fn choose_starters(ctx: &Ctx, settings: &Settings, seed: u64, current: [u16; 3])
     out
 }
 
+/// Second trio de starters (X / Y : Pokémon de Kanto du Professeur Platane), tiré avec
+/// les mêmes règles que les starters mais sur un autre flux aléatoire, sans reprendre
+/// les espèces de `avoid` (les starters principaux).
+pub(crate) fn choose_second_trio(ctx: &Ctx, settings: &Settings, seed: u64, current: [u16; 3], avoid: &[u16]) -> [u16; 3] {
+    let trio = Settings { starters: settings.kanto_starters, custom_starters: settings.custom_kanto_starters, ..settings.clone() };
+    let mut out = current;
+    for attempt in 0..32u64 {
+        out = choose_starters(ctx, &trio, seed ^ 0x4B41_4E54_4F00 ^ attempt.wrapping_mul(0x9E37_79B9), current);
+        if trio.starters == StarterMode::Custom || !out.iter().any(|s| avoid.contains(s)) {
+            break;
+        }
+    }
+    out
+}
+
 fn scale_level(level: u16, percent: u16) -> u16 {
     ((level as u32 * percent as u32 + 50) / 100).clamp(1, 100) as u16
 }
