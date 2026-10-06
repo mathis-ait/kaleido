@@ -679,7 +679,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <h3>CT &amp; capacités <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
             <div class="row first">
               <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" hint="Les CS ne changent jamais" />
-              <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine uniquement" />
+              <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine, Noire 2 et Blanche 2" />
               <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" hint="Tunnel, Flash… restent à leur place" />
               <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" hint="Ces attaques infligent des dégâts fixes (20 et 40 PV) : très fortes en début de partie, elles cassent l'équilibre." />
             </div>

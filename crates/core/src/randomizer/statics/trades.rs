@@ -1,4 +1,5 @@
-//! Échanges en jeu : Platine (`fld_trade.narc`) et Noire/Blanche (`a/1/6/5`).
+//! Échanges en jeu : Platine (`fld_trade.narc`), Noire/Blanche (`a/1/6/5`) et
+//! Noire 2 / Blanche 2 (`a/1/6/3`, même format).
 //! Portage de `getInGameTrades` / `setInGameTrades` (Gen4RomHandler, Gen5RomHandler)
 //! et de `TradeRandomizer` de l'Universal Pokémon Randomizer.
 
@@ -12,6 +13,7 @@ use crate::text::{gen4, gen5};
 
 const PT_TRADES: &str = "fielddata/pokemon_trade/fld_trade.narc";
 const BW_TRADES: &str = "a/1/6/5";
+const B2W2_TRADES: &str = "a/1/6/3";
 
 /// Position des champs (u32) dans une entrée d'échange.
 struct Fields {
@@ -80,11 +82,11 @@ fn text_slots(gen: u8, entry: usize, total: usize) -> (usize, usize) {
     }
 }
 
-fn text_file_index(gen: u8) -> usize {
-    if gen <= 4 {
-        tables::PT_TRADE_TEXT
-    } else {
-        tables::BW_TRADE_TEXT
+fn text_file_index(game: Game) -> usize {
+    match game {
+        Game::Black2 | Game::White2 => tables::B2W2_TRADE_TEXT,
+        _ if game.generation() <= 4 => tables::PT_TRADE_TEXT,
+        _ => tables::BW_TRADE_TEXT,
     }
 }
 
@@ -105,12 +107,14 @@ pub(super) fn load(game: &GameRom) -> Result<Option<Trades>, RomError> {
         }
         Game::Black => (BW_TRADES.into(), &tables::BLACK_TRADES_UNUSED),
         Game::White => (BW_TRADES.into(), &tables::WHITE_TRADES_UNUSED),
+        Game::Black2 => (B2W2_TRADES.into(), &tables::BLACK2_TRADES_UNUSED),
+        Game::White2 => (B2W2_TRADES.into(), &tables::WHITE2_TRADES_UNUSED),
         _ => return Ok(None),
     };
     let gen = game.generation();
     let narc = game.narc(&path)?;
     let f = fields(gen);
-    let strings = game.text_file(text_file_index(gen))?;
+    let strings = game.text_file(text_file_index(game.game))?;
     let total = narc.files.len();
     let mut list = Vec::new();
     for (entry, data) in narc.files.iter().enumerate() {
@@ -141,7 +145,11 @@ pub(super) fn load(game: &GameRom) -> Result<Option<Trades>, RomError> {
 
 /// Modifie un fichier de l'archive de textes principale.
 fn edit_text(game: &mut GameRom, index: usize, edit: impl FnOnce(&mut Vec<String>) -> bool) -> Result<(), RomError> {
-    let archive = game.layout.text_archive;
+    edit_archive_text(game, game.layout.text_archive, index, edit)
+}
+
+/// Modifie un fichier d'une archive de textes (principale ou textes de l'histoire).
+fn edit_archive_text(game: &mut GameRom, archive: &str, index: usize, edit: impl FnOnce(&mut Vec<String>) -> bool) -> Result<(), RomError> {
     let mut narc = game.narc(archive)?;
     let Some(file) = narc.files.get_mut(index) else { return Ok(()) };
     if game.generation() <= 4 {
@@ -227,7 +235,7 @@ pub(super) fn write(
 
     // Surnoms (et dresseurs, inchangés).
     let list = std::mem::take(&mut trades.list);
-    edit_text(game, text_file_index(gen), |lines| {
+    edit_text(game, text_file_index(game.game), |lines| {
         for t in &list {
             let (nick, _) = text_slots(gen, t.entry, total);
             if let Some(line) = lines.get_mut(nick) {
@@ -276,6 +284,32 @@ pub(super) fn write(
                         files.set_u16(loc, value);
                     }
                 }
+            }
+        }
+        Game::Black2 | Game::White2 => {
+            // Dialogues des personnes (textes de l'histoire), regroupés par fichier : un même
+            // fichier sert à deux échanges (Capidextre, Alakazam) et un seul passage évite
+            // d'enchaîner les remplacements.
+            let mut by_file: std::collections::BTreeMap<usize, Vec<(String, String)>> = std::collections::BTreeMap::new();
+            for (o, n) in old.iter().zip(&list) {
+                let Some(&(_, text)) = tables::B2W2_TRADE_PERSON_TEXTS.iter().find(|(entry, _)| *entry == o.entry) else { continue };
+                let pairs = by_file.entry(text).or_default();
+                pairs.push((name(o.given), name(n.given)));
+                if o.requested != n.requested {
+                    pairs.push((name(o.requested), name(n.requested)));
+                }
+            }
+            for (text, pairs) in by_file {
+                edit_archive_text(game, tables::B2W2_STORY_TEXT, text, |lines| {
+                    let mut changed = false;
+                    for line in lines.iter_mut() {
+                        if let Some(n) = replace_words(line, &pairs) {
+                            *line = n;
+                            changed = true;
+                        }
+                    }
+                    changed
+                })?;
             }
         }
         _ => {}

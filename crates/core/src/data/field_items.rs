@@ -74,6 +74,10 @@ impl ItemLayout {
             Game::Black | Game::White => {
                 Some(Self { gen: 5, item_names: 54, scripts: "a/0/5/7", ball_script: 864, ball_skip: &[], hidden: HiddenItems::Script(865) })
             }
+            // Mêmes commandes que Noire/Blanche (vérifié sur Noire 2, IREF).
+            Game::Black2 | Game::White2 => {
+                Some(Self { gen: 5, item_names: 64, scripts: "a/0/5/6", ball_script: 1240, ball_skip: &[], hidden: HiddenItems::Script(1241) })
+            }
             _ => None,
         }
     }
@@ -241,7 +245,7 @@ pub fn write(game: &mut GameRom, items: &[FieldItem]) -> Result<(), RomError> {
 }
 
 pub(crate) fn unsupported() -> RomError {
-    RomError::Unsupported("objets et boutiques : Platine, Noire et Blanche seulement".into())
+    RomError::Unsupported("objets et boutiques : Platine, Noire, Blanche, Noire 2 et Blanche 2 seulement".into())
 }
 
 #[cfg(test)]

@@ -135,6 +135,7 @@ export const linkRom = (rom: string | null) => invoke<NuzlockeView>("nuzlocke_li
 export const ROM_GAMES: Record<string, string[]> = {
   platinum: ["platinum"],
   black_white: ["black", "white"],
+  black2_white2: ["black2", "white2"],
 };
 
 /** Règles, dans l'ordre d'affichage, avec leur bulle d'aide. */

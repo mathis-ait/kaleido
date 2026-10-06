@@ -53,6 +53,17 @@ impl DataPaths {
                 max_ability: 164,
                 starters: starters::StarterLocation::BlackWhite,
             }),
+            // Vérifié sur Noire 2 (IREF) ; NARC renumérotés d'après `gen5_offsets.ini` de l'UPR.
+            Game::Black2 | Game::White2 => Some(Self {
+                encounters: "a/1/2/7",
+                trainer_data: "a/0/9/1",
+                trainer_pokemon: "a/0/9/2",
+                learnsets: "a/0/1/8",
+                evolutions: "a/0/1/9",
+                move_names: 403,
+                max_ability: 164,
+                starters: starters::StarterLocation::Black2White2,
+            }),
             _ => None,
         }
     }

@@ -12,6 +12,8 @@ use crate::rom::{GameRom, RomError};
 const PT_SCRIPTS: &str = "fielddata/script/scr_seq.narc";
 const BW_SCRIPTS: &str = "a/0/5/7";
 const BW_MAPS: &str = "a/1/2/5";
+const B2W2_SCRIPTS: &str = "a/0/5/6";
+const B2W2_MAPS: &str = "a/1/2/6";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Part {
@@ -25,6 +27,7 @@ enum Part {
 pub(super) struct Files {
     scripts_path: &'static str,
     scripts: Narc,
+    maps_path: &'static str,
     maps: Option<Narc>,
     arm9: Option<Vec<u8>>,
     overlays: BTreeMap<u32, Vec<u8>>,
@@ -44,12 +47,14 @@ fn find_unique(data: &[u8], pattern: &[u8]) -> Option<usize> {
 impl Files {
     pub(super) fn load(game: &GameRom) -> Result<Self, RomError> {
         let bw = matches!(game.game, Game::Black | Game::White);
-        let scripts_path = if bw { BW_SCRIPTS } else { PT_SCRIPTS };
+        let b2w2 = matches!(game.game, Game::Black2 | Game::White2);
+        let (scripts_path, maps_path) = if b2w2 { (B2W2_SCRIPTS, B2W2_MAPS) } else { (if bw { BW_SCRIPTS } else { PT_SCRIPTS }, BW_MAPS) };
         let mut files = Files {
             scripts_path,
             scripts: game.narc(scripts_path)?,
-            maps: if bw { Some(game.narc(BW_MAPS)?) } else { None },
-            arm9: if bw { None } else { Some(game.rom().arm9_decompressed()?) },
+            maps_path,
+            maps: if bw || b2w2 { Some(game.narc(maps_path)?) } else { None },
+            arm9: if bw || b2w2 { None } else { Some(game.rom().arm9_decompressed()?) },
             overlays: BTreeMap::new(),
             dirty: BTreeSet::new(),
         };
@@ -123,7 +128,7 @@ impl Files {
                 Part::Scripts => game.replace_narc(self.scripts_path, &self.scripts)?,
                 Part::Maps => {
                     if let Some(maps) = &self.maps {
-                        game.replace_narc(BW_MAPS, maps)?;
+                        game.replace_narc(self.maps_path, maps)?;
                     }
                 }
                 Part::Arm9 => {
@@ -344,6 +349,7 @@ pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Ent
     let mut defs = match game.game {
         Game::Platinum => tables::platinum(),
         Game::Black | Game::White => tables::black_white(),
+        Game::Black2 | Game::White2 => tables::black2_white2(),
         _ => Vec::new(),
     };
     match game.game {
@@ -354,6 +360,7 @@ pub(super) fn entries(game: &GameRom, files: &mut Files, count: u16) -> (Vec<Ent
         Game::Platinum => {
             notes.push("vagabonds (Créfadet, Cresselia, oiseaux légendaires) non pris en charge : l'UPR ajoute pour cela du code à l'ARM9".into())
         }
+        Game::Black2 | Game::White2 => notes.push("Passages Cachés et Pokémon du PWT non modifiés".into()),
         _ => {}
     }
     let mut out = Vec::new();
@@ -374,6 +381,7 @@ mod tests {
         Files {
             scripts_path: BW_SCRIPTS,
             scripts: Narc::from_files(scripts),
+            maps_path: BW_MAPS,
             maps: None,
             arm9: None,
             overlays: BTreeMap::from([(tables::BW_ROAMER_OVERLAY, overlay10)]),

@@ -32,7 +32,7 @@ pub struct NuzlockeView {
 
 fn supported(version: kaleido_core::save::SaveVersion) -> bool {
     use kaleido_core::save::SaveVersion::*;
-    matches!(version, Platinum | BlackWhite)
+    matches!(version, Platinum | BlackWhite | Black2White2)
 }
 
 /// Lit la ROM (ou la reprend du cache) hors du fil de l'interface.

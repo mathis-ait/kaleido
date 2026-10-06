@@ -157,7 +157,7 @@ export interface Outcome {
 }
 
 /** Jeux pris en charge par le randomizer. */
-export const RANDOMIZABLE = ["platinum", "black", "white", "omega_ruby", "alpha_sapphire"];
+export const RANDOMIZABLE = ["platinum", "black", "white", "black2", "white2", "omega_ruby", "alpha_sapphire"];
 
 /** Fichiers ouvrables dans l'éditeur et le randomizer (ROM DS, ROM 3DS, dossier 3DS). */
 export const isRom = (d: Detection) => ["nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
