@@ -9,6 +9,7 @@ pub mod dex;
 pub mod games;
 pub mod gifts;
 pub mod legality;
+pub mod music;
 pub mod names;
 pub mod nuzlocke;
 pub mod pokemon;
