@@ -23,7 +23,8 @@ export const SAVE_PAGES: { id: SavePage; label: string; icon: string }[] = [
 export const saveState = reactive({
   path: null as string | null,
   view: null as SaveView | null,
-  page: "home" as SavePage,
+  // Aucune sauvegarde ouverte au démarrage : le gestionnaire (l'accueil a besoin d'une sauvegarde).
+  page: "manager" as SavePage,
   tool: null as SaveTool | null,
   box: 0,
   slots: [] as (SlotView | null)[],

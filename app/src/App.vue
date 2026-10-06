@@ -15,6 +15,10 @@ import { allGames, libraryUi } from "./games";
 
 const dragging = ref(false);
 const launcher = computed(() => nav.view === "library" && libraryUi.mode === "launcher" && allGames.value.length > 0);
+/** Pages plein cadre (sans marges, positionnées dans la zone de contenu). */
+const flush = computed(() => nav.view === "saves" || launcher.value);
+/** Le lanceur et la grille sont deux pages distinctes : passer de l'une à l'autre fait un fondu. */
+const pageKey = computed(() => (launcher.value ? "library-launcher" : nav.view));
 
 // Déposer un fichier fonctionne partout dans la fenêtre, quelle que soit la vue.
 let unlisten: (() => void) | undefined;
@@ -38,14 +42,18 @@ onUnmounted(() => unlisten?.());
 <template>
   <div class="shell" :class="{ compact: nav.view === 'saves', immersive: launcher && libraryUi.immersive }">
     <Sidebar v-if="!(launcher && libraryUi.immersive)" v-model="nav.view" :compact="nav.view === 'saves'" />
-    <main class="content" :class="{ flush: nav.view === 'saves' || launcher }">
+    <main class="content">
+      <!-- Chaque page garde sa propre mise en page pendant qu'elle disparaît : sans ça, une
+           page plein cadre qui s'efface sautait sur toute la fenêtre (et inversement). -->
       <Transition name="view" mode="out-in">
-        <HomeView v-if="nav.view === 'home'" key="home" />
-        <LibraryView v-else-if="nav.view === 'library'" key="library" />
-        <EditorView v-else-if="nav.view === 'editor'" key="editor" />
-        <RandomizerView v-else-if="nav.view === 'randomizer'" key="randomizer" />
-        <SavesView v-else-if="nav.view === 'saves'" key="saves" />
-        <SettingsView v-else-if="nav.view === 'settings'" key="settings" />
+        <div :key="pageKey" class="page" :class="{ flush }">
+          <HomeView v-if="nav.view === 'home'" />
+          <LibraryView v-else-if="nav.view === 'library'" />
+          <EditorView v-else-if="nav.view === 'editor'" />
+          <RandomizerView v-else-if="nav.view === 'randomizer'" />
+          <SavesView v-else-if="nav.view === 'saves'" />
+          <SettingsView v-else-if="nav.view === 'settings'" />
+        </div>
       </Transition>
     </main>
     <DropOverlay :visible="dragging" />
@@ -69,12 +77,19 @@ onUnmounted(() => unlisten?.());
 }
 
 .content {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   padding: 36px 44px 48px;
 }
 
-.content.flush {
-  position: relative;
+.page.flush {
   overflow: hidden;
   padding: 0;
 }
