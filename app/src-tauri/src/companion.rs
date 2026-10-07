@@ -324,7 +324,8 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
     // ROM : celle liée au Nuzlocke, sinon celle lancée depuis la bibliothèque.
     let mut state = nuzlocke::load_state(&t.path);
     let version = session.save.version();
-    let rom_path = state.rom_path.clone().map(PathBuf::from).or_else(|| t.rom.clone());
+    // La ROM lancée fait foi : un suivi Nuzlocke peut être resté lié à une autre ROM.
+    let rom_path = t.rom.clone().filter(|p| p.exists()).or_else(|| state.rom_path.clone().map(PathBuf::from));
     let info = rom_path.clone().and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
     let location = info.as_ref().and_then(|i| i.location_of_map(snap.map));
     let route = info.as_ref().zip(location).and_then(|(i, l)| i.route_of_location(l));
@@ -435,9 +436,9 @@ fn shiny_threshold(rom: Option<&Path>) -> Option<u32> {
     *map.entry(rom.to_path_buf()).or_insert_with(|| kaleido_core::data::shiny::rom_threshold(rom).map(u32::from))
 }
 
-/// ROM de la partie : celle liée au Nuzlocke, sinon celle lancée depuis la bibliothèque.
+/// ROM de la partie : celle lancée depuis la bibliothèque, sinon celle liée au Nuzlocke.
 fn rom_of(t: &Target) -> Option<PathBuf> {
-    nuzlocke::load_state(&t.path).rom_path.map(PathBuf::from).or_else(|| t.rom.clone())
+    t.rom.clone().filter(|p| p.exists()).or_else(|| nuzlocke::load_state(&t.path).rom_path.map(PathBuf::from))
 }
 
 fn merge_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
@@ -464,7 +465,8 @@ fn merge_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
 pub(crate) fn place_now(app: &AppHandle, version: kaleido_core::save::SaveVersion, generation: u8, map: u16) -> (Option<String>, Option<String>) {
     let Some(t) = current(app) else { return (None, None) };
     let state = nuzlocke::load_state(&t.path);
-    let rom_path = state.rom_path.clone().map(PathBuf::from).or_else(|| t.rom.clone());
+    // La ROM lancée fait foi : un suivi Nuzlocke peut être resté lié à une autre ROM.
+    let rom_path = t.rom.clone().filter(|p| p.exists()).or_else(|| state.rom_path.clone().map(PathBuf::from));
     let info = rom_path.and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
     let location = info.as_ref().and_then(|i| i.location_of_map(map));
     let route = info.as_ref().zip(location).and_then(|(i, l)| i.route_of_location(l));

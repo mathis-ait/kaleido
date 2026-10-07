@@ -171,7 +171,7 @@ fn main() {
                     match reader.tick(&src) {
                         Ok(Some(r)) => println!(
                             "équipe {:?} carte {:?} combat {:?}",
-                            r.party.iter().map(|p| p.species()).collect::<Vec<_>>(),
+                            r.party.iter().map(|p| (p.species(), p.shiny_xor(), p.tid(), p.sid())).collect::<Vec<_>>(),
                             r.map,
                             r.battle.map(|b| (b.wild, b.new, b.enemies.iter().map(|p| p.species()).collect::<Vec<_>>()))
                         ),
