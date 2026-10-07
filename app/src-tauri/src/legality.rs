@@ -1,8 +1,8 @@
 //! Commandes de légalité : vérifier, rendre légal, générer un Pokémon légal, base
 //! « Rencontres » (moteur : `kaleido_core::legality`).
 
-use kaleido_core::legality::{self, games_for, species_entries, species_index, EncounterEntry, GenerateRequest, Report, SpeciesEncounters, Verdict};
-use kaleido_core::save::session::{SaveView, Slot, SlotView};
+use kaleido_core::legality::{self, games_for, species_entries, species_index, Change, EncounterEntry, EncounterOption, GenerateRequest, Report, SpeciesEncounters, Verdict};
+use kaleido_core::save::session::{view_of, SaveView, Slot, SlotView};
 use kaleido_core::save::{self, BOX_SLOTS};
 use serde::Serialize;
 use tauri::State;
@@ -50,54 +50,119 @@ pub fn legality_check_all(state: State<'_, OpenSave>) -> Result<Vec<SlotReport>,
     })
 }
 
-/// Résultat de « Rendre légal ».
+/// Résultat de « Rendre légal » (appliqué).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegalizeResult {
     view: SlotView,
-    changes: Vec<String>,
+    changes: Vec<Change>,
     report: Report,
     success: bool,
+    encounter: Option<EncounterOption>,
 }
 
-/// « Rendre légal » un emplacement (une seule étape d'annulation).
+/// Aperçu de « Rendre légal » : le Pokémon avant et après, sans rien écrire.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegalizePreview {
+    before: SlotView,
+    after: SlotView,
+    changes: Vec<Change>,
+    report: Report,
+    success: bool,
+    /// Rencontre retenue (`None` : rencontre actuelle gardée).
+    encounter: Option<EncounterOption>,
+    /// Rencontres valides, la plus naturelle d'abord.
+    options: Vec<EncounterOption>,
+}
+
+fn occupied(s: &save::session::SaveSession, slot: Slot) -> Result<save::Pokemon, save::SaveError> {
+    s.get(slot)?.ok_or_else(|| save::SaveError::Invalid("emplacement vide".into()))
+}
+
+/// Aperçu de « Rendre légal » pour un emplacement, avec la rencontre `choice` (numéro
+/// d'une des `options`) ou celle choisie par le moteur.
 #[tauri::command]
-pub fn legality_legalize(slot: Slot, state: State<'_, OpenSave>) -> Result<LegalizeResult, String> {
+pub fn legality_legalize_preview(slot: Slot, choice: Option<usize>, state: State<'_, OpenSave>) -> Result<LegalizePreview, String> {
     state.with(|s| {
-        let pk = s.get(slot)?.ok_or_else(|| save::SaveError::Invalid("emplacement vide".into()))?;
-        let trainer = s.save.trainer();
-        let out = legality::legalize(&pk, s.game(), &trainer);
+        let pk = occupied(s, slot)?;
+        let game = s.game();
+        let out = legality::legalize_with(&pk, game, &s.save.trainer(), choice, true);
+        Ok(LegalizePreview {
+            before: view_of(game, slot, &pk),
+            after: view_of(game, slot, &out.pokemon),
+            changes: out.changes,
+            report: out.report,
+            success: out.success,
+            encounter: out.encounter,
+            options: out.options,
+        })
+    })
+}
+
+/// Applique « Rendre légal » (même résultat que l'aperçu, une seule étape d'annulation).
+#[tauri::command]
+pub fn legality_legalize_apply(slot: Slot, choice: Option<usize>, state: State<'_, OpenSave>) -> Result<LegalizeResult, String> {
+    state.with(|s| {
+        let pk = occupied(s, slot)?;
+        let game = s.game();
+        let out = legality::legalize_with(&pk, game, &s.save.trainer(), choice, false);
         if !out.changes.is_empty() {
             s.replace_pokemon(vec![(slot, out.pokemon.clone())])?;
         }
         Ok(LegalizeResult {
             view: s.view_slot(slot)?,
             changes: out.changes,
-            report: legality::analyze(&s.get(slot)?.unwrap_or(out.pokemon), s.game()),
+            report: legality::analyze(&s.get(slot)?.unwrap_or(out.pokemon), game),
             success: out.success,
+            encounter: out.encounter,
         })
     })
+}
+
+/// « Rendre légal » sans aperçu (ancienne commande, gardée pour les raccourcis).
+#[tauri::command]
+pub fn legality_legalize(slot: Slot, state: State<'_, OpenSave>) -> Result<LegalizeResult, String> {
+    legality_legalize_apply(slot, None, state)
+}
+
+/// Une ligne de l'aperçu groupé.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupItem {
+    slot: Slot,
+    before: SlotView,
+    after: SlotView,
+    changes: Vec<Change>,
+    success: bool,
+    encounter: Option<EncounterOption>,
 }
 
 /// Bilan de « Tout rendre légal ».
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegalizeAllResult {
-    view: SaveView,
+    /// État de la sauvegarde après application (`None` en aperçu).
+    view: Option<SaveView>,
     fixed: usize,
     failed: usize,
     untouched: usize,
+    /// Détail par Pokémon illégal traité.
+    items: Vec<GroupItem>,
 }
 
-/// Rend légaux tous les Pokémon illégaux (ou ceux de `slots`), en une seule étape d'annulation.
+/// Rend légaux tous les Pokémon illégaux (ou ceux de `slots`), en une seule étape
+/// d'annulation ; `preview` : calcule seulement le résultat, sans rien écrire.
 #[tauri::command]
-pub fn legality_legalize_all(slots: Option<Vec<Slot>>, state: State<'_, OpenSave>) -> Result<LegalizeAllResult, String> {
+pub async fn legality_legalize_all(slots: Option<Vec<Slot>>, preview: Option<bool>, state: State<'_, OpenSave>) -> Result<LegalizeAllResult, String> {
+    let preview = preview.unwrap_or(false);
     state.with(|s| {
         let game = s.game();
         let trainer = s.save.trainer();
         let targets = slots.unwrap_or_else(|| all_slots(s));
         let (mut fixed, mut failed, mut untouched) = (0, 0, 0);
         let mut changes = Vec::new();
+        let mut items = Vec::new();
         for slot in targets {
             let Some(pk) = s.get(slot)? else { continue };
             if legality::analyze(&pk, game).verdict != Verdict::Illegal {
@@ -105,6 +170,14 @@ pub fn legality_legalize_all(slots: Option<Vec<Slot>>, state: State<'_, OpenSave
                 continue;
             }
             let out = legality::legalize(&pk, game, &trainer);
+            items.push(GroupItem {
+                slot,
+                before: view_of(game, slot, &pk),
+                after: view_of(game, slot, &out.pokemon),
+                changes: out.changes,
+                success: out.success,
+                encounter: out.encounter,
+            });
             if out.success {
                 fixed += 1;
                 changes.push((slot, out.pokemon));
@@ -112,10 +185,10 @@ pub fn legality_legalize_all(slots: Option<Vec<Slot>>, state: State<'_, OpenSave
                 failed += 1;
             }
         }
-        if !changes.is_empty() {
+        if !preview && !changes.is_empty() {
             s.replace_pokemon(changes)?;
         }
-        Ok(LegalizeAllResult { view: s.view()?, fixed, failed, untouched })
+        Ok(LegalizeAllResult { view: if preview { None } else { Some(s.view()?) }, fixed, failed, untouched, items })
     })
 }
 
@@ -124,9 +197,10 @@ pub fn legality_legalize_all(slots: Option<Vec<Slot>>, state: State<'_, OpenSave
 #[serde(rename_all = "camelCase")]
 pub struct GenerateResult {
     view: SlotView,
-    changes: Vec<String>,
+    changes: Vec<Change>,
     report: Report,
     success: bool,
+    encounter: Option<EncounterOption>,
 }
 
 /// Crée un Pokémon légal (capture ou éclosion dans ce jeu) dans `slot`, ou dans le premier
@@ -149,7 +223,7 @@ pub fn legality_generate(
         let out = legality::generate_legal(s.game(), s.save.format(), &trainer, &request).map_err(save::SaveError::Invalid)?;
         let used = s.replace_pokemon(vec![(slot, out.pokemon)])?;
         let slot = used.first().copied().unwrap_or(slot);
-        Ok(GenerateResult { view: s.view_slot(slot)?, changes: out.changes, report: out.report, success: out.success })
+        Ok(GenerateResult { view: s.view_slot(slot)?, changes: out.changes, report: out.report, success: out.success, encounter: out.encounter })
     })
 }
 

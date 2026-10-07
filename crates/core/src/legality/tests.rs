@@ -385,14 +385,55 @@ fn debug_dump() {
 fn legal_samples_stay_legal_after_legalize() {
     let mut legal = Vec::new();
     files(&root().join("Legal"), &mut legal);
-    for p in legal.iter().take(30) {
+    // Mesure du PRD : tout le corpus légal reste légal (et intact) après « Rendre légal ».
+    let mut kept = 0;
+    let mut total = 0;
+    for p in &legal {
         let (pk, game) = load(p);
-        if analyze(&pk, game).verdict == Verdict::Illegal {
-            continue;
-        }
+        total += 1;
         let out = legalize(&pk, game, &trainer());
-        assert!(out.changes.is_empty(), "{} modifié : {:?}", p.display(), out.changes);
+        if analyze(&pk, game).verdict != Verdict::Illegal {
+            assert!(out.changes.is_empty(), "{} modifié : {:?}", p.display(), out.changes);
+        }
+        assert_ne!(analyze(&out.pokemon, game).verdict, Verdict::Illegal, "{} encore illégal", p.display());
+        kept += 1;
     }
+    println!("Corpus légal après « Rendre légal » : {kept}/{total} légaux");
+}
+
+/// Mesure du PRD : « Rendre légal » sur une équipe de 6 en moins de 2 s (mode release ;
+/// la limite est relâchée en debug, où le code n'est pas optimisé).
+#[test]
+fn prd_team_of_six_is_fast() {
+    let cases = [
+        (Game::Pt, PkmFormat::Gen4, 396u16, 20u8),
+        (Game::HGSS, PkmFormat::Gen4, 16, 25),
+        (Game::B2W2, PkmFormat::Gen5, 532, 30),
+        (Game::XY, PkmFormat::Gen6, 661, 30),
+        (Game::USUM, PkmFormat::Gen7, 731, 40),
+        (Game::Pt, PkmFormat::Gen4, 443, 40),
+    ];
+    let mut team = Vec::new();
+    for (game, format, species, level) in cases {
+        let req = GenerateRequest { species, level, ..Default::default() };
+        let mut pk = generate_legal(game, format, &trainer(), &req).unwrap().pokemon;
+        pk.set_moves([94, 0, 0, 0]);
+        pk.set_ball(1);
+        pk.set_met_location(1);
+        pk.refresh_checksum();
+        team.push((pk, game));
+    }
+    let start = std::time::Instant::now();
+    let mut legal = 0;
+    for (pk, game) in &team {
+        let out = super::legalize::legalize_with(pk, *game, &trainer(), None, true);
+        legal += out.success as usize;
+    }
+    let elapsed = start.elapsed();
+    println!("Équipe de 6 (aperçu complet) : {legal}/6 légaux en {elapsed:?}");
+    let limit = if cfg!(debug_assertions) { 20.0 } else { 2.0 };
+    assert!(elapsed.as_secs_f64() < limit, "{elapsed:?}");
+    assert_eq!(legal, 6);
 }
 
 fn codes(pk: &Pokemon, game: Game) -> Vec<&'static str> {
@@ -441,4 +482,29 @@ fn generated_gen6_has_ot_memory() {
     let out = generate_legal(Game::XY, PkmFormat::Gen6, &trainer(), &req).unwrap();
     assert_ne!(out.pokemon.extras().handler.unwrap().ot_memory.id, 0);
     assert!(!codes(&out.pokemon, Game::XY).contains(&"memory-ot-missing"));
+}
+
+/// Mesure du PRD : part des Pokémon illégaux de PKHeX rendus légaux par « Rendre légal ».
+#[test]
+fn prd_illegal_corpus_legalized() {
+    let mut illegal = Vec::new();
+    files(&root().join("Illegal"), &mut illegal);
+    let mut fixed = 0;
+    let (mut detected, mut detected_fixed) = (0, 0);
+    let mut lines = Vec::new();
+    for p in &illegal {
+        let (pk, game) = load(p);
+        let seen = analyze(&pk, game).verdict == Verdict::Illegal;
+        detected += seen as usize;
+        let out = legalize(&pk, game, &trainer());
+        if out.success && analyze(&out.pokemon, game).verdict != Verdict::Illegal {
+            fixed += 1;
+            detected_fixed += seen as usize;
+        } else {
+            lines.push(format!("ÉCHEC : {}", summary(p, &out.pokemon, game)));
+        }
+    }
+    println!("{}", lines.join("\n"));
+    println!("Illégaux rendus légaux : {fixed}/{} (dont {detected_fixed}/{detected} parmi ceux que Kaleido détecte)", illegal.len());
+    assert!(fixed * 100 >= illegal.len() * 90, "cible du PRD : 90 % ({fixed}/{})", illegal.len());
 }

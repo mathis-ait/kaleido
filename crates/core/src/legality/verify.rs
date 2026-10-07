@@ -10,6 +10,7 @@ use super::evolution::{self, Stage};
 use super::learn::{self, LearnQuery};
 use super::rng::{self, PidType};
 use crate::dex::{self, Game, PersonalInfo};
+use crate::save::pkm::PkmDate;
 use crate::save::{exp_for_level, Gender, PkmFormat, Pokemon};
 
 /// Gravité d'un résultat (Valide / Douteux / Illégal dans PKHeX).
@@ -819,6 +820,13 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     }
 }
 
+/// Les attaques à réapprendre actuelles conviennent-elles à la rencontre ?
+pub(crate) fn relearn_valid(ctx: &Ctx, e: &Encounter) -> bool {
+    let mut lines = Lines::default();
+    check_relearn(ctx, e, &mut lines);
+    lines.errors() == 0
+}
+
 fn check_relearn(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     if ctx.format < 6 {
         return;
@@ -1318,6 +1326,54 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
     if !pk.is_egg() && pk.met_date().is_none() && ctx.origin_generation() >= 4 {
         out.fishy("met-date", "Date de rencontre absente", "Les Pokémon capturés ont normalement une date.", TAB_MET);
     }
+    // Dates hors de la fenêtre de sortie du jeu.
+    let key = |d: PkmDate| (d.year, d.month, d.day);
+    if let (Some(met), Some(first)) = (pk.met_date(), earliest_met_date(pk)) {
+        if key(met) < key(first) {
+            out.fishy(
+                "met-date-early",
+                "Date de rencontre trop ancienne",
+                format!("Rencontre le {:02}/{:02}/{}, avant la sortie du jeu ({:02}/{:02}/{}).", met.day, met.month, met.year, first.day, first.month, first.year),
+                TAB_MET,
+            );
+        }
+        if let Some(egg) = pk.egg_date().filter(|_| pk.egg_location() != 0) {
+            if key(egg) > key(met) {
+                out.fishy("egg-date-late", "Œuf reçu après l'éclosion", "La date de l'œuf est postérieure à la date d'éclosion.", TAB_MET);
+            }
+        }
+    }
+}
+
+/// Sortie japonaise d'une version (`GameVersion` de PKHeX).
+pub(crate) fn release_date(version: u8) -> Option<PkmDate> {
+    let (year, month, day) = match version {
+        encounters::D | encounters::P => (2006, 9, 28),
+        encounters::PT => (2008, 9, 13),
+        encounters::HG | encounters::SS => (2009, 9, 12),
+        encounters::B | encounters::W => (2010, 9, 18),
+        encounters::B2 | encounters::W2 => (2012, 6, 23),
+        encounters::X | encounters::Y => (2013, 10, 12),
+        encounters::AS | encounters::OR => (2014, 11, 21),
+        encounters::SN | encounters::MN => (2016, 11, 18),
+        encounters::US | encounters::UM => (2017, 11, 17),
+        _ => return None,
+    };
+    Some(PkmDate { year, month, day })
+}
+
+/// Première date de rencontre possible : sortie du jeu d'origine, ou du premier jeu qui
+/// reçoit les transferts (Transfert Pokémon, Poké Transfert, Banque Pokémon).
+pub(crate) fn earliest_met_date(pk: &Pokemon) -> Option<PkmDate> {
+    let transfer = matches!(pk.met_location(), 30001 | 30002) && pk.format().generation() >= 5;
+    if transfer {
+        return Some(match pk.format().generation() {
+            5 => PkmDate { year: 2010, month: 9, day: 18 },
+            6 => PkmDate { year: 2013, month: 12, day: 25 },
+            _ => PkmDate { year: 2017, month: 1, day: 24 },
+        });
+    }
+    release_date(pk.version())
 }
 
 fn summarize(game_gen: u8, e: &Encounter) -> EncounterSummary {
