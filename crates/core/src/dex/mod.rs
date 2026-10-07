@@ -34,7 +34,7 @@ pub(crate) use personal::personal_raw;
 pub use personal::{egg_moves, levelup, personal, PersonalInfo};
 pub use text::{
     ability_name, ability_names, ball_name, ball_names, characteristic_names, console_region_names, country_names, game_name, game_names,
-    general_locations, ground_tile_names, item_name, item_name_in, item_names, location_name, locations, memory_feelings, memory_intensities,
+    general_locations, ground_tile_names, item_name, item_name_g1, item_name_g2, item_name_g3, item_name_in, item_names, location_name, GEN3_ITEM_FLAG, locations, memory_feelings, memory_intensities,
     memory_texts, move_name, move_names, nature_name, nature_names, region_names, ribbon_name, ribbon_names, species_name, species_names,
     super_training_names, type_name, type_names,
 };

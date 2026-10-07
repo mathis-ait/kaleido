@@ -18,9 +18,10 @@ use crate::gba_rom::{GbaGameRom, SPECIES_COUNT};
 use crate::games::Game;
 use crate::rom::RomError;
 
-/// Carte d'une sauvegarde Gen 3 : `banque << 8 | numéro` (voir `SaveFile::current_map`).
+/// Carte d'une sauvegarde Gen 3 : `numéro << 8 | banque`, soit le u16 lu par
+/// `SaveFile::current_map` (SaveBlock1 : banque puis numéro de carte).
 pub fn map_key(bank: u8, map: u8) -> u16 {
-    (bank as u16) << 8 | map as u16
+    (map as u16) << 8 | bank as u16
 }
 
 /// Ordre approximatif de l'histoire (sections de carte).

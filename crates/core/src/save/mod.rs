@@ -21,9 +21,11 @@
 //! Le Pokédex est géré par [`pokedex`].
 
 pub mod checksum;
+mod conv_tables;
 pub mod convert;
 pub mod diff;
 pub mod edit;
+mod gen3;
 mod gen4;
 mod gen5;
 mod gen6;
@@ -31,6 +33,7 @@ mod gen7;
 mod inventory;
 mod memecrypto;
 mod origin;
+pub mod pk3;
 pub mod pkm;
 pub mod pokedex;
 pub mod session;
@@ -58,6 +61,9 @@ pub const PARTY_SLOTS: usize = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveVersion {
+    RubySapphire,
+    Emerald,
+    FireRedLeafGreen,
     DiamondPearl,
     Platinum,
     HeartGoldSoulSilver,
@@ -72,6 +78,9 @@ pub enum SaveVersion {
 impl SaveVersion {
     pub fn label(self) -> &'static str {
         match self {
+            SaveVersion::RubySapphire => "Pokémon Rubis / Saphir",
+            SaveVersion::Emerald => "Pokémon Émeraude",
+            SaveVersion::FireRedLeafGreen => "Pokémon Rouge Feu / Vert Feuille",
             SaveVersion::DiamondPearl => "Pokémon Diamant / Perle",
             SaveVersion::Platinum => "Pokémon Platine",
             SaveVersion::HeartGoldSoulSilver => "Pokémon Or HeartGold / Argent SoulSilver",
@@ -86,6 +95,7 @@ impl SaveVersion {
 
     pub fn format(self) -> PkmFormat {
         match self {
+            SaveVersion::RubySapphire | SaveVersion::Emerald | SaveVersion::FireRedLeafGreen => PkmFormat::Gen3,
             SaveVersion::DiamondPearl | SaveVersion::Platinum | SaveVersion::HeartGoldSoulSilver => PkmFormat::Gen4,
             SaveVersion::BlackWhite | SaveVersion::Black2White2 => PkmFormat::Gen5,
             SaveVersion::XY | SaveVersion::OmegaRubyAlphaSapphire => PkmFormat::Gen6,
@@ -99,6 +109,9 @@ impl SaveVersion {
 
     pub fn kind(self) -> SaveKind {
         match self {
+            SaveVersion::RubySapphire => SaveKind::RubySapphire,
+            SaveVersion::Emerald => SaveKind::Emerald,
+            SaveVersion::FireRedLeafGreen => SaveKind::FireRedLeafGreen,
             SaveVersion::DiamondPearl => SaveKind::DiamondPearl,
             SaveVersion::Platinum => SaveKind::Platinum,
             SaveVersion::HeartGoldSoulSilver => SaveKind::HeartGoldSoulSilver,
@@ -217,6 +230,7 @@ struct Layout {
 
 #[derive(Debug, Clone)]
 enum Checks {
+    Gen3(gen3::Gen3Checks),
     Gen4(gen4::Gen4Checks),
     Gen5(gen5::NdsChecks),
     Ctr { blocks: Vec<gen6::CtrBlock>, gen7: bool },
@@ -225,6 +239,8 @@ enum Checks {
 impl Checks {
     fn fix(&self, data: &mut [u8]) {
         match self {
+            // Gen 3 : les secteurs sont recalculés en reconstituant le fichier (`to_bytes`).
+            Checks::Gen3(_) => {}
             Checks::Gen4(blocks) => gen4::fix(data, blocks),
             Checks::Gen5(table) => gen5::fix(data, table),
             Checks::Ctr { blocks, gen7 } => gen6::fix(data, blocks, *gen7),
@@ -233,6 +249,7 @@ impl Checks {
 
     fn verify(&self, data: &[u8]) -> Vec<BlockCheck> {
         match self {
+            Checks::Gen3(c) => gen3::verify(c, data),
             Checks::Gen4(blocks) => gen4::verify(data, blocks),
             Checks::Gen5(table) => gen5::verify(data, table),
             Checks::Ctr { blocks, gen7 } => gen6::verify(data, blocks, *gen7),
@@ -271,8 +288,20 @@ pub struct SaveFile {
 
 impl SaveFile {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, SaveError> {
-        let (body, trailer) = if bytes.len() == NDS_SAVE_SIZE + DESMUME_FOOTER { bytes.split_at(NDS_SAVE_SIZE) } else { (bytes, &[][..]) };
+        let (body, trailer) = if bytes.len() == NDS_SAVE_SIZE + DESMUME_FOOTER {
+            bytes.split_at(NDS_SAVE_SIZE)
+        } else if bytes.len() == gen3::FULL_SIZE + gen3::RTC_FOOTER {
+            // Pied d'horloge de mGBA (Rubis, Saphir, Émeraude), recopié tel quel.
+            bytes.split_at(gen3::FULL_SIZE)
+        } else {
+            (bytes, &[][..])
+        };
+        if let Some(version) = gen3::identify(body) {
+            let (layout, warnings, logical) = gen3::layout(version, body)?;
+            return Ok(Self { version, data: logical, trailer: trailer.to_vec(), layout, warnings });
+        }
         let version = match saves::identify(body).ok_or(SaveError::Unrecognized)? {
+            SaveKind::RubySapphire | SaveKind::Emerald | SaveKind::FireRedLeafGreen => return Err(SaveError::Unrecognized),
             SaveKind::DiamondPearl => SaveVersion::DiamondPearl,
             SaveKind::Platinum => SaveVersion::Platinum,
             SaveKind::HeartGoldSoulSilver => SaveVersion::HeartGoldSoulSilver,
@@ -294,6 +323,11 @@ impl SaveFile {
     /// Fichier complet : Pokémon déjà rechiffrés, sommes de contrôle recalculées,
     /// pied `.dsv` restitué s'il y en avait un.
     pub fn to_bytes(&self) -> Vec<u8> {
+        if let Checks::Gen3(c) = &self.layout.checks {
+            let mut out = gen3::assemble(c, &self.data);
+            out.extend_from_slice(&self.trailer);
+            return out;
+        }
         let mut out = self.data.clone();
         self.layout.checks.fix(&mut out);
         out.extend_from_slice(&self.trailer);
@@ -339,6 +373,18 @@ impl SaveFile {
     pub fn trainer(&self) -> Trainer {
         let t = &self.layout.trainer;
         let d = &self.data;
+        if self.format() == PkmFormat::Gen3 {
+            let key = gen3::security_key(self.version, d);
+            return Trainer {
+                name: crate::text::gen3::decode(&d[t.name..t.name + t.name_max + 1]),
+                tid: rd_u16(d, t.tid),
+                sid: rd_u16(d, t.sid),
+                display_id: rd_u16(d, t.tid) as u32,
+                gender: if rd_u8(d, t.gender) == 0 { Gender::Male } else { Gender::Female },
+                money: rd_u32(d, t.money) ^ key,
+                play_time: PlayTime { hours: rd_u16(d, t.hours), minutes: rd_u8(d, t.minutes), seconds: rd_u8(d, t.seconds) },
+            };
+        }
         let name = d.get(t.name..t.name + 2 * (t.name_max + 1)).map(|b| strings::decode(self.format(), b)).unwrap_or_default();
         let (tid, sid) = (rd_u16(d, t.tid), rd_u16(d, t.sid));
         let display_id = if self.generation() >= 7 { ((sid as u32) << 16 | tid as u32) % 1_000_000 } else { tid as u32 };
@@ -367,6 +413,9 @@ impl SaveFile {
     }
 
     pub fn badges(&self) -> Option<u8> {
+        if self.generation() == 3 {
+            return Some(gen3::badges(self.version, &self.data));
+        }
         if self.generation() == 7 {
             let at = self.layout.trainer.money + 4;
             return self.data.get(at..at + 4).map(|b| ((u32::from_le_bytes([b[0], b[1], b[2], b[3]]) >> 5) & 0xF) as u8);
@@ -375,6 +424,9 @@ impl SaveFile {
     }
 
     pub fn set_badges(&mut self, bits: u8) {
+        if self.generation() == 3 {
+            return gen3::set_badges(self.version, &mut self.data, bits);
+        }
         if let Some(b) = self.badges_offset().and_then(|at| self.data.get_mut(at)) {
             *b = bits;
         }
@@ -400,6 +452,10 @@ impl SaveFile {
             return Err(SaveError::BadBox(index));
         }
         let at = self.layout.box_names + index * self.layout.box_name_stride;
+        if self.format() == PkmFormat::Gen3 {
+            let bytes = self.data.get(at..at + self.layout.box_name_stride).ok_or(SaveError::Truncated("noms des boîtes"))?;
+            return Ok(crate::text::gen3::decode(bytes));
+        }
         let bytes = self.data.get(at..at + 2 * (self.layout.box_name_max + 1)).ok_or(SaveError::Truncated("noms des boîtes"))?;
         Ok(strings::decode(self.format(), bytes))
     }
@@ -649,8 +705,21 @@ pub fn demo_save() -> Result<Vec<u8>, SaveError> {
 }
 
 #[cfg(test)]
+mod gen3_tests;
+#[cfg(test)]
 mod pkhex_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]
 mod tests;
+
+/// Jeu d'une sauvegarde Gen 3 (128 Kio, 64 Kio ou avec le pied d'horloge de mGBA).
+pub fn gen3_version(data: &[u8]) -> Option<SaveVersion> {
+    gen3::identify(data)
+}
+
+/// Sauvegarde Gen 3 vide et valide (tests, démonstration).
+#[doc(hidden)]
+pub fn gen3_blank(version: SaveVersion) -> Vec<u8> {
+    gen3::blank(version)
+}

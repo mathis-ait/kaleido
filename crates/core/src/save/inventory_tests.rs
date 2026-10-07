@@ -17,6 +17,7 @@ const ALL: [SaveVersion; 9] = [
 
 fn blank(version: SaveVersion) -> Vec<u8> {
     match version {
+        SaveVersion::RubySapphire | SaveVersion::Emerald | SaveVersion::FireRedLeafGreen => super::super::gen3::blank(version),
         SaveVersion::DiamondPearl | SaveVersion::Platinum | SaveVersion::HeartGoldSoulSilver => gen4::blank(version, 0, 0),
         SaveVersion::BlackWhite | SaveVersion::Black2White2 => gen5::blank(version),
         SaveVersion::XY => gen6::blank(0x65600, &gen6::synthetic_lengths(version)).0,
@@ -34,6 +35,7 @@ fn item(id: u16, count: u16) -> InventoryItem {
 /// en Gen 4, bloc général sans son pied.
 fn bag_block_len(version: SaveVersion) -> usize {
     match version {
+        SaveVersion::RubySapphire | SaveVersion::Emerald | SaveVersion::FireRedLeafGreen => 0x360,
         SaveVersion::DiamondPearl => 0xC100 - 0x14 - 0x624,
         SaveVersion::Platinum => 0xCF2C - 0x14 - 0x630,
         SaveVersion::HeartGoldSoulSilver => 0xF628 - 0x10 - 0x644,

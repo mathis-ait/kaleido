@@ -119,6 +119,9 @@ enum Encoding {
     Pair,
     /// Champ de bits `u32` (Gen 7, `InventoryPouch7` / `InventoryItem7`).
     Packed7,
+    /// Gen 3 (`InventoryPouch3`) : `[id Gen 3 u16][quantité u16 XOR clé de sécurité]` ;
+    /// l'id est exposé comme sur les Pokémon (voir `pk3::item_exposed`).
+    Gen3,
 }
 
 /// Poche d'un jeu : offset relatif à la base du sac.
@@ -235,8 +238,38 @@ const USUM: &[PouchSpec] = &[
     fixed(K::RotoPowers, 0xDFC, 11, 999, USUM_ROTO),
 ];
 
+/// `PlayerBag3RS.GetPouches` (sans les objets du PC).
+const RS3: &[PouchSpec] = &[
+    fixed(K::Items, 0x0C8, 20, 99, G3_GENERAL),
+    fixed(K::KeyItems, 0x118, 20, 1, G3_KEY_RS),
+    fixed(K::Balls, 0x168, 16, 99, G3_BALLS),
+    fixed(K::TmHm, 0x1A8, 64, 99, G3_MACHINE),
+    fixed(K::Berries, 0x2A8, 46, 999, G3_BERRY),
+];
+
+/// `PlayerBag3E.GetPouches`.
+const E3: &[PouchSpec] = &[
+    fixed(K::Items, 0x0C8, 30, 99, G3_GENERAL),
+    fixed(K::KeyItems, 0x140, 30, 1, G3_KEY_E),
+    fixed(K::Balls, 0x1B8, 16, 99, G3_BALLS),
+    fixed(K::TmHm, 0x1F8, 64, 99, G3_MACHINE),
+    fixed(K::Berries, 0x2F8, 46, 999, G3_BERRY),
+];
+
+/// `PlayerBag3FRLG.GetPouches`.
+const FRLG3: &[PouchSpec] = &[
+    fixed(K::Items, 0x078, 42, 999, G3_GENERAL),
+    fixed(K::KeyItems, 0x120, 30, 1, G3_KEY_FRLG),
+    fixed(K::Balls, 0x198, 13, 999, G3_BALLS),
+    fixed(K::TmHm, 0x1CC, 58, 999, G3_MACHINE),
+    fixed(K::Berries, 0x2B4, 43, 999, G3_BERRY),
+];
+
 fn bag(version: SaveVersion) -> (Encoding, &'static [PouchSpec]) {
     match version {
+        SaveVersion::RubySapphire => (Encoding::Gen3, RS3),
+        SaveVersion::Emerald => (Encoding::Gen3, E3),
+        SaveVersion::FireRedLeafGreen => (Encoding::Gen3, FRLG3),
         SaveVersion::DiamondPearl => (Encoding::Pair, DP),
         SaveVersion::Platinum => (Encoding::Pair, PT),
         SaveVersion::HeartGoldSoulSilver => (Encoding::Pair, HGSS),
@@ -259,6 +292,8 @@ fn max_count_for(encoding: Encoding, spec: &PouchSpec, id: u16) -> u16 {
     match (encoding, spec.kind) {
         (Encoding::Pair, PouchKind::TmHm) if spec.max_count > 1 && ((420..=427).contains(&id) || id == 737) => 1,
         (Encoding::Packed7, PouchKind::KeyItems) if id == Z_RING => 2,
+        // CS de la Gen 3 (`ItemConverter.IsItemHM3`).
+        (Encoding::Gen3, PouchKind::TmHm) if (339..=346).contains(&super::pk3::item_raw(id)) => 1,
         _ => spec.max_count,
     }
 }
@@ -268,9 +303,13 @@ const NEW_FLAG: u32 = 0x4000_0000;
 /// Bits conservés tels quels en Gen 7 : indice d'espace libre (20 à 29) et bit 31.
 const KEEP_MASK: u32 = (0x3FF << 20) | 0x8000_0000;
 
-/// Lit un emplacement : `(objet, bits Gen 7 à conserver)`.
-fn read_slot(encoding: Encoding, d: &[u8], at: usize) -> (InventoryItem, u32) {
+/// Lit un emplacement : `(objet, bits Gen 7 à conserver)`. `key` : clé de sécurité Gen 3.
+fn read_slot(encoding: Encoding, key: u16, d: &[u8], at: usize) -> (InventoryItem, u32) {
     match encoding {
+        Encoding::Gen3 => {
+            let item = InventoryItem { id: super::pk3::item_exposed(rd_u16(d, at)), count: rd_u16(d, at + 2) ^ key, is_new: false, is_favorite: false };
+            (item, 0)
+        }
         Encoding::Pair => {
             let item = InventoryItem { id: rd_u16(d, at), count: rd_u16(d, at + 2), is_new: false, is_favorite: false };
             (item, 0)
@@ -283,8 +322,14 @@ fn read_slot(encoding: Encoding, d: &[u8], at: usize) -> (InventoryItem, u32) {
     }
 }
 
-fn encode_slot(encoding: Encoding, item: &InventoryItem, keep: u32) -> [u8; 4] {
+fn encode_slot(encoding: Encoding, key: u16, item: &InventoryItem, keep: u32) -> [u8; 4] {
     match encoding {
+        Encoding::Gen3 => {
+            let mut b = [0u8; 4];
+            b[..2].copy_from_slice(&super::pk3::item_raw(item.id).to_le_bytes());
+            b[2..].copy_from_slice(&(item.count ^ key).to_le_bytes());
+            b
+        }
         Encoding::Pair => {
             let mut b = [0u8; 4];
             b[..2].copy_from_slice(&item.id.to_le_bytes());
@@ -319,7 +364,17 @@ impl SaveFile {
     /// Emplacements occupés d'une poche, avec les bits Gen 7 à conserver.
     fn read_pouch(&self, encoding: Encoding, spec: &PouchSpec) -> Result<Vec<(InventoryItem, u32)>, SaveError> {
         let start = self.pouch_range(spec)?;
-        Ok((0..spec.capacity).map(|i| read_slot(encoding, &self.data, start + 4 * i)).filter(|(item, _)| occupied(encoding, item)).collect())
+        let key = self.bag_key(encoding);
+        Ok((0..spec.capacity).map(|i| read_slot(encoding, key, &self.data, start + 4 * i)).filter(|(item, _)| occupied(encoding, item)).collect())
+    }
+
+    /// Clé de sécurité des quantités (Gen 3 : 16 bits de poids faible de la clé ; 0 sinon).
+    fn bag_key(&self, encoding: Encoding) -> u16 {
+        if encoding == Encoding::Gen3 {
+            super::gen3::security_key(self.version, &self.data) as u16
+        } else {
+            0
+        }
     }
 
     /// Poches du sac, dans l'ordre où le jeu les stocke.
@@ -329,7 +384,8 @@ impl SaveFile {
             .iter()
             .map(|spec| {
                 let items = self.read_pouch(encoding, spec)?.into_iter().map(|(item, _)| item).collect();
-                Ok(Pouch { kind: spec.kind, capacity: spec.capacity, max_count: spec.max_count, allowed: spec.allowed.to_vec(), items })
+                let allowed = if encoding == Encoding::Gen3 { spec.allowed.iter().map(|&i| super::pk3::item_exposed(i)).collect() } else { spec.allowed.to_vec() };
+                Ok(Pouch { kind: spec.kind, capacity: spec.capacity, max_count: spec.max_count, allowed, items })
             })
             .collect()
     }
@@ -369,7 +425,8 @@ impl SaveFile {
             let mut bytes = vec![0u8; 4 * spec.capacity];
             for (i, item) in items.iter().enumerate() {
                 let previous = current.iter().find(|(c, _)| c.id == item.id);
-                if !spec.allowed.contains(&item.id) && previous.is_none() {
+                let raw_id = if encoding == Encoding::Gen3 { super::pk3::item_raw(item.id) } else { item.id };
+                if !spec.allowed.contains(&raw_id) && previous.is_none() {
                     return Err(SaveError::Invalid(format!("Poche « {label} » : l'objet n°{} n'y est pas admis.", item.id)));
                 }
                 if items[..i].iter().any(|other| other.id == item.id) {
@@ -383,7 +440,7 @@ impl SaveFile {
                     )));
                 }
                 let keep = previous.map_or(0, |(_, keep)| *keep);
-                bytes[4 * i..4 * i + 4].copy_from_slice(&encode_slot(encoding, item, keep));
+                bytes[4 * i..4 * i + 4].copy_from_slice(&encode_slot(encoding, self.bag_key(encoding), item, keep));
             }
             writes.push((start, bytes));
         }
@@ -396,6 +453,33 @@ impl SaveFile {
 
 // --- Objets admis par poche : listes `ReadOnlySpan<ushort>` des `ItemStorage*` de
 // PKHeX, recopiées telles quelles (même ordre).
+
+/// `ItemStorage3RS.General` (identifiants Gen 3).
+const G3_GENERAL: &[u16] = &[
+    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+    49, 50, 51, 63, 64, 65, 66, 67, 68, 69, 70, 71, 73, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84, 85, 86, 93, 94, 95, 96, 97, 98, 103, 104, 106, 107,
+    108, 109, 110, 111, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190,
+    191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+    219, 220, 221, 222, 223, 224, 225, 254, 255, 256, 257, 258,
+];
+/// `ItemStorage3RS.Key`.
+const G3_KEY_RS: &[u16] = &[259, 260, 261, 262, 263, 264, 265, 266, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288];
+/// `ItemStorage3E.Key`.
+const G3_KEY_E: &[u16] = &[259, 260, 261, 262, 263, 264, 265, 266, 268, 269, 270, 271, 272, 273, 274, 275, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 370, 371, 372, 375, 376];
+/// `ItemStorage3FRLG.Key`.
+const G3_KEY_FRLG: &[u16] = &[260, 261, 262, 263, 264, 265, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374];
+/// `ItemStorage3RS.Machine` (CT01 à CT50 puis CS01 à CS08).
+const G3_MACHINE: &[u16] = &[
+    289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317,
+    318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346,
+];
+/// `ItemStorage3RS.Berry`.
+const G3_BERRY: &[u16] = &[
+    133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161,
+    162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175,
+];
+/// `ItemStorage3RS.Balls`.
+const G3_BALLS: &[u16] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 /// `ItemStorage4.GeneralDP` (161 objets).
 const G4_GENERAL_DP: &[u16] = &[

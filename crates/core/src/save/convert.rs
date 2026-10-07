@@ -1,5 +1,6 @@
-//! Transfert d'un Pokémon vers une génération plus récente (PK4 → PK5 → PK6 → PK7),
-//! comme Poké Transfert (DS), Poké Transporteur et la Banque Pokémon (3DS).
+//! Transfert d'un Pokémon vers une génération plus récente (PK3 → PK4 → PK5 → PK6 → PK7),
+//! comme le Parc des Amis (DS), Poké Transfert (DS), Poké Transporteur et la Banque
+//! Pokémon (3DS). PK3 → PK4 : `PK3.ConvertToPK4` de PKHeX.
 //!
 //! Portage de PKHeX (kwsch/PKHeX, GPLv3, <https://github.com/kwsch/PKHeX>) :
 //! `PK4.ConvertToPK5`, `PK5.ConvertToPK6` (+ `GetTransferPID`, `GetTransferMetLocation4`,
@@ -21,6 +22,8 @@ use crate::dex::{self, Game};
 
 // --- Constantes de PKHeX (Locations.cs).
 
+/// « Parc des Amis » (Gen 4) : lieu de rencontre des Pokémon venus de la Gen 3 (`Locations.Transfer3`).
+pub const TRANSFER3: u16 = 55;
 /// « Poké Transfert » (Gen 5) : lieu de rencontre des Pokémon venus de la Gen 4.
 pub const TRANSFER4: u16 = 30001;
 /// Celebi événement transféré (Ilex non encore visité).
@@ -109,6 +112,7 @@ pub struct Compatibility {
 /// Jeu dont PKHeX utilise les fiches pour un format (`PKx.PersonalInfo`).
 pub fn data_game(f: PkmFormat) -> Game {
     match f {
+        PkmFormat::Gen3 => Game::E,
         PkmFormat::Gen4 => Game::HGSS,
         PkmFormat::Gen5 => Game::B2W2,
         PkmFormat::Gen6 => Game::ORAS,
@@ -119,6 +123,7 @@ pub fn data_game(f: PkmFormat) -> Game {
 /// Format des Pokémon d'un jeu.
 pub fn format_of(game: Game) -> PkmFormat {
     match game.generation() {
+        3 => PkmFormat::Gen3,
         4 => PkmFormat::Gen4,
         5 => PkmFormat::Gen5,
         6 => PkmFormat::Gen6,
@@ -128,6 +133,7 @@ pub fn format_of(game: Game) -> PkmFormat {
 
 fn next_format(f: PkmFormat) -> Option<PkmFormat> {
     match f {
+        PkmFormat::Gen3 => Some(PkmFormat::Gen4),
         PkmFormat::Gen4 => Some(PkmFormat::Gen5),
         PkmFormat::Gen5 => Some(PkmFormat::Gen6),
         PkmFormat::Gen6 => Some(PkmFormat::Gen7),
@@ -223,6 +229,47 @@ fn species_name_for(species: u16, language: u8, current: &str) -> String {
 }
 
 // =====================================================================================
+// PK3 → PK4 (Parc des Amis)
+// =====================================================================================
+
+/// `PK3.ConvertToPK4`. Le PK3 est déjà tenu au format PK4 en mémoire (voir `pk3`) :
+/// espèce, objet, textes, rubans de Hoenn, PID, IV, EV, attaques et origine sont repris
+/// tels quels, puis les règles du Parc des Amis sont appliquées.
+pub fn pk3_to_pk4(pk3: &Pokemon) -> Result<Pokemon, PkmError> {
+    debug_assert_eq!(pk3.format(), PkmFormat::Gen3);
+    let level = current_level(data_game(PkmFormat::Gen3), pk3);
+    let ball = pk3.ball();
+    let mut d = pk3.data()[..PkmFormat::Gen4.party_size()].to_vec();
+    // Section équipe vidée : un Pokémon du Parc des Amis arrive en boîte.
+    d[PkmFormat::Gen4.stored_size()..].fill(0);
+    // Bonheur remis à 70, marquages limités aux 4 premiers symboles.
+    d[0x14] = 70;
+    d[0x16] &= 0b1111;
+    // Plus d'œuf, surnom conservé (bit 31 de l'IV32).
+    let iv32 = rd32(&d, 0x38) & !(1 << 30);
+    d[0x38..0x3C].copy_from_slice(&iv32.to_le_bytes());
+    // Lieux et Ball relus par les accesseurs Gen 4 (champs DP / Platine / HGSS).
+    d[0x44..0x48].fill(0);
+    d[0x7E..0x82].fill(0);
+    d[0x83] = 0;
+    d[0x86] = 0;
+    let mut pk4 = Pokemon::from_decrypted(PkmFormat::Gen4, &d)?;
+    // Objet sans équivalent en Gen 4 : perdu (`ItemConverter.IsItemTransferable34`).
+    if pk4.held_item() & dex::GEN3_ITEM_FLAG != 0 {
+        pk4.set_held_item(0);
+    }
+    pk4.set_ball(if (1..=12).contains(&ball) { ball } else { 4 });
+    pk4.set_met_location(TRANSFER3);
+    pk4.set_met_level(level)?;
+    pk4.set_met_date(Some(today()));
+    if pk4.species() == SHEDINJA {
+        pk4.set_gender(Gender::Genderless);
+    }
+    pk4.refresh_checksum();
+    Ok(pk4)
+}
+
+// =====================================================================================
 // PK4 → PK5 (Poké Transfert)
 // =====================================================================================
 
@@ -253,7 +300,7 @@ pub fn pk4_to_pk5(pk4: &Pokemon) -> Result<Pokemon, PkmError> {
 
     // Données stockées copiées telles quelles (même disposition PK4 / PK5).
     let mut d = vec![0u8; PkmFormat::Gen5.party_size()];
-    d[..PkmFormat::Gen4.stored_size()].copy_from_slice(pk4.stored_data());
+    d[..PkmFormat::Gen4.stored_size()].copy_from_slice(&pk4.stored_data());
     // Bonheur du dresseur d'origine remis à 70.
     d[0x14] = 70;
     // Nature détachée du PID (0x41 = feuille brillante en Gen 4).
@@ -646,6 +693,9 @@ fn changes(from: PkmFormat, to: PkmFormat, p: &Pokemon) -> Vec<String> {
     let mut f = from;
     while f != to {
         match f {
+            PkmFormat::Gen3 => {
+                out.push("Gen 3 → 4 (Parc des Amis) : lieu de rencontre « Parc des Amis », date de rencontre = aujourd'hui, niveau de rencontre = niveau actuel, bonheur remis à 70 ; un objet sans équivalent en Gen 4 est perdu.".into());
+            }
             PkmFormat::Gen4 => {
                 out.push("Gen 4 → 5 (Poké Transfert) : lieu de rencontre « Poké Transfert », date de rencontre = aujourd'hui, niveau de rencontre = niveau actuel, bonheur remis à 70.".into());
                 if p.moves().iter().any(|m| HMS_DPPT.contains(m) || HMS_HGSS.contains(m)) {
@@ -707,6 +757,7 @@ pub fn convert_chain(p: &Pokemon, to: PkmFormat, ht: Option<&TransferTrainer>) -
     let mut cur = p.clone();
     while cur.format() != to {
         cur = match cur.format() {
+            PkmFormat::Gen3 => pk3_to_pk4(&cur)?,
             PkmFormat::Gen4 => pk4_to_pk5(&cur)?,
             PkmFormat::Gen5 => pk5_to_pk6(&cur, ht)?,
             PkmFormat::Gen6 => pk6_to_pk7(&cur)?,
@@ -740,6 +791,7 @@ pub fn convert_for(p: &Pokemon, game: Game, trainer: Option<&TransferTrainer>, s
 /// Détecte le format d'un fichier Pokémon d'après son extension ou sa taille.
 pub fn format_from_file(ext: Option<&str>, len: usize) -> Option<PkmFormat> {
     let by_ext = match ext.map(str::to_ascii_lowercase).as_deref() {
+        Some("pk3") => Some(PkmFormat::Gen3),
         Some("pk4") => Some(PkmFormat::Gen4),
         Some("pk5") => Some(PkmFormat::Gen5),
         Some("pk6") => Some(PkmFormat::Gen6),
@@ -747,6 +799,7 @@ pub fn format_from_file(ext: Option<&str>, len: usize) -> Option<PkmFormat> {
         _ => None,
     };
     by_ext.or(match len {
+        80 | 100 => Some(PkmFormat::Gen3),
         136 | 236 => Some(PkmFormat::Gen4),
         220 => Some(PkmFormat::Gen5),
         // 232 / 260 : PK6 ou PK7 ; sans extension on suppose la Gen 7 si la version l'indique.

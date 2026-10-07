@@ -164,6 +164,7 @@ pub struct Bank {
 
 fn format_of_gen(generation: u8) -> Option<PkmFormat> {
     match generation {
+        3 => Some(PkmFormat::Gen3),
         4 => Some(PkmFormat::Gen4),
         5 => Some(PkmFormat::Gen5),
         6 => Some(PkmFormat::Gen6),
@@ -346,7 +347,7 @@ impl Bank {
         let mut n = nanos;
         loop {
             let id = format!("{n:x}");
-            let taken = ["pk4", "pk5", "pk6", "pk7"].iter().any(|ext| self.root.join(POKEMON_DIR).join(format!("{id}.{ext}")).exists());
+            let taken = ["pk3", "pk4", "pk5", "pk6", "pk7"].iter().any(|ext| self.root.join(POKEMON_DIR).join(format!("{id}.{ext}")).exists());
             if !taken {
                 return id;
             }
@@ -371,7 +372,7 @@ impl Bank {
         };
         let id = self.new_id();
         let file = format!("{id}.pk{}", p.format().generation());
-        let mut stored = Pokemon::from_decrypted(p.format(), p.stored_data())?;
+        let mut stored = Pokemon::from_decrypted(p.format(), &p.stored_data())?;
         stored.refresh_checksum();
         std::fs::write(self.root.join(POKEMON_DIR).join(&file), stored.stored_data())?;
         *self.entry_mut(slot) = Some(entry_for(&stored, id, file, origin));
@@ -465,7 +466,7 @@ impl Bank {
         out
     }
 
-    /// Importe un fichier `.pk4` à `.pk7` (format déduit de l'extension, sinon de la taille).
+    /// Importe un fichier `.pk3` à `.pk7` (format déduit de l'extension, sinon de la taille).
     pub fn import_bytes(&mut self, bytes: &[u8], ext: Option<&str>, to: Option<BankSlot>, origin: &Origin) -> Result<BankSlot, BankError> {
         let format = match convert::format_from_file(ext, bytes.len()) {
             Some(f) => f,
@@ -543,7 +544,7 @@ pub fn withdraw_to_save(bank: &mut Bank, s: &mut SaveSession, from: BankSlot, to
     }
     let trainer = TransferTrainer::from(&s.save.trainer());
     let converted = convert::convert_for(&p, s.game(), Some(&trainer), strip)?;
-    let view = s.import(target, converted.stored_data())?;
+    let view = s.import(target, &converted.stored_data())?;
     if !copy {
         bank.remove(from)?;
     }

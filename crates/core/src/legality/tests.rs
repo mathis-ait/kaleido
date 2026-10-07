@@ -169,6 +169,10 @@ fn generate_from_database_entries() {
     let mut failures = Vec::new();
     let mut total = 0;
     for game in Game::ALL {
+        // Gen 3 : génération de Pokémon légaux pas encore prise en charge.
+        if game.generation() < 4 {
+            continue;
+        }
         let format = match game.generation() {
             4 => PkmFormat::Gen4,
             5 => PkmFormat::Gen5,

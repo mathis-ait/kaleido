@@ -1,4 +1,8 @@
-//! Pokémon des Gen 4 à 7 : formats PK4, PK5, PK6 et PK7 (d'après PKHeX.Core).
+//! Pokémon des Gen 3 à 7 : formats PK3, PK4, PK5, PK6 et PK7 (d'après PKHeX.Core).
+//!
+//! Le PK3 (Gen 3) a sa propre structure : il est converti à la lecture en un tampon au
+//! format PK4 (voir [`super::pk3`]), si bien que les accesseurs ci-dessous le traitent
+//! comme un Pokémon DS ; seuls le chiffrement et l'export repassent par le PK3.
 //!
 //! Structure commune : un en-tête de 8 octets (PID ou constante de chiffrement,
 //! drapeaux, somme de contrôle), quatre blocs A/B/C/D mélangés puis chiffrés, et,
@@ -52,6 +56,7 @@ pub enum PkmError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PkmFormat {
+    Gen3,
     Gen4,
     Gen5,
     Gen6,
@@ -61,6 +66,7 @@ pub enum PkmFormat {
 impl PkmFormat {
     pub fn generation(self) -> u8 {
         match self {
+            PkmFormat::Gen3 => 3,
             PkmFormat::Gen4 => 4,
             PkmFormat::Gen5 => 5,
             PkmFormat::Gen6 => 6,
@@ -70,7 +76,9 @@ impl PkmFormat {
 
     /// Taille d'un Pokémon en boîte.
     pub fn stored_size(self) -> usize {
-        if self.is_ds() {
+        if self == PkmFormat::Gen3 {
+            super::pk3::STORED_SIZE
+        } else if self.is_ds() {
             136
         } else {
             232
@@ -80,6 +88,7 @@ impl PkmFormat {
     /// Taille d'un Pokémon d'équipe (données stockées + statistiques).
     pub fn party_size(self) -> usize {
         match self {
+            PkmFormat::Gen3 => super::pk3::PARTY_SIZE,
             PkmFormat::Gen4 => 236,
             PkmFormat::Gen5 => 220,
             PkmFormat::Gen6 | PkmFormat::Gen7 => 260,
@@ -88,7 +97,9 @@ impl PkmFormat {
 
     /// Taille de chacun des quatre blocs mélangés.
     pub fn block_size(self) -> usize {
-        if self.is_ds() {
+        if self == PkmFormat::Gen3 {
+            12
+        } else if self.is_ds() {
             32
         } else {
             56
@@ -97,6 +108,7 @@ impl PkmFormat {
 
     pub fn label(self) -> &'static str {
         match self {
+            PkmFormat::Gen3 => "PK3",
             PkmFormat::Gen4 => "PK4",
             PkmFormat::Gen5 => "PK5",
             PkmFormat::Gen6 => "PK6",
@@ -104,8 +116,18 @@ impl PkmFormat {
         }
     }
 
+    /// Disposition DS (PK4 / PK5) en mémoire ; le PK3 est tenu au format PK4.
     fn is_ds(self) -> bool {
-        matches!(self, PkmFormat::Gen4 | PkmFormat::Gen5)
+        matches!(self, PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5)
+    }
+
+    /// Taille du tampon interne (le PK3 garde en plus une copie de ses octets d'origine).
+    fn buffer_size(self) -> usize {
+        if self == PkmFormat::Gen3 {
+            super::pk3::BUFFER_SIZE
+        } else {
+            self.party_size()
+        }
     }
 
     fn shiny_threshold(self) -> u32 {
@@ -409,11 +431,12 @@ pub struct PokemonSummary {
 impl Pokemon {
     /// Emplacement vide (espèce 0).
     pub fn blank(format: PkmFormat) -> Self {
-        Self { format, data: vec![0; format.party_size()] }
+        Self { format, data: vec![0; format.buffer_size()] }
     }
 
     fn check_size(format: PkmFormat, len: usize) -> Result<(), PkmError> {
-        if len == format.stored_size() || len == format.party_size() {
+        // Gen 3 : le tampon interne complet (`data()`) est aussi accepté par `from_decrypted`.
+        if len == format.stored_size() || len == format.party_size() || (format == PkmFormat::Gen3 && len == super::pk3::BUFFER_SIZE) {
             Ok(())
         } else {
             Err(PkmError::BadSize { format, got: len, stored: format.stored_size(), party: format.party_size() })
@@ -423,6 +446,12 @@ impl Pokemon {
     /// Données déjà déchiffrées (taille boîte ou équipe).
     pub fn from_decrypted(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format == PkmFormat::Gen3 {
+            if bytes.len() == super::pk3::BUFFER_SIZE {
+                return Ok(Self { format, data: bytes.to_vec() });
+            }
+            return Ok(Self { format, data: super::pk3::to_internal(bytes) });
+        }
         let mut data = vec![0; format.party_size()];
         data[..bytes.len()].copy_from_slice(bytes);
         Ok(Self { format, data })
@@ -431,6 +460,10 @@ impl Pokemon {
     /// Données chiffrées, telles que stockées dans une sauvegarde.
     pub fn from_encrypted(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format == PkmFormat::Gen3 {
+            let raw = super::pk3::decrypt(bytes);
+            return Self::from_decrypted(format, &raw[..bytes.len()]);
+        }
         let mut buf = bytes.to_vec();
         let bs = format.block_size();
         let end = HEADER + 4 * bs;
@@ -449,6 +482,9 @@ impl Pokemon {
     /// et du nom du dresseur en Gen 6/7).
     pub fn from_bytes(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format == PkmFormat::Gen3 {
+            return if super::pk3::looks_decrypted(bytes) { Self::from_decrypted(format, bytes) } else { Self::from_encrypted(format, bytes) };
+        }
         let encrypted = if format.is_ds() { le_u32(bytes, 0x64) != 0 } else { le_u16(bytes, 0x58) != 0 || le_u16(bytes, 0xC8) != 0 };
         if encrypted {
             Self::from_encrypted(format, bytes)
@@ -466,9 +502,14 @@ impl Pokemon {
         &self.data
     }
 
-    /// Données déchiffrées, taille boîte.
-    pub fn stored_data(&self) -> &[u8] {
-        &self.data[..self.format.stored_size()]
+    /// Données déchiffrées, taille boîte (PK3 reconstruit pour la Gen 3).
+    pub fn stored_data(&self) -> std::borrow::Cow<'_, [u8]> {
+        if self.format == PkmFormat::Gen3 {
+            let mut raw = super::pk3::from_internal(&self.data);
+            raw.truncate(super::pk3::STORED_SIZE);
+            return std::borrow::Cow::Owned(raw);
+        }
+        std::borrow::Cow::Borrowed(&self.data[..self.format.stored_size()])
     }
 
     pub fn is_empty(&self) -> bool {
@@ -484,6 +525,9 @@ impl Pokemon {
 
     /// Données chiffrées pour l'équipe (somme de contrôle recalculée).
     pub fn encrypt_party(&self) -> Vec<u8> {
+        if self.format == PkmFormat::Gen3 {
+            return super::pk3::encrypt(&super::pk3::from_internal(&self.data));
+        }
         let mut buf = self.data.clone();
         let chk = self.calc_checksum();
         buf[6..8].copy_from_slice(&chk.to_le_bytes());
@@ -498,11 +542,17 @@ impl Pokemon {
     }
 
     pub fn calc_checksum(&self) -> u16 {
+        if self.format == PkmFormat::Gen3 {
+            return super::pk3::checksum(&super::pk3::from_internal(&self.data));
+        }
         let end = HEADER + 4 * self.format.block_size();
         self.data[HEADER..end].as_chunks::<2>().0.iter().fold(0u16, |acc, w| acc.wrapping_add(u16::from_le_bytes([w[0], w[1]])))
     }
 
     pub fn checksum(&self) -> u16 {
+        if self.format == PkmFormat::Gen3 {
+            return self.u16(super::pk3::RAW_AT + 0x1C);
+        }
         self.u16(6)
     }
 
@@ -512,6 +562,12 @@ impl Pokemon {
 
     pub fn refresh_checksum(&mut self) {
         let chk = self.calc_checksum();
+        if self.format == PkmFormat::Gen3 {
+            // La copie d'origine reçoit tous les champs (et donc la somme qui leur correspond).
+            let raw = super::pk3::from_internal(&self.data);
+            self.data[super::pk3::RAW_AT..].copy_from_slice(&raw);
+            return;
+        }
         self.put_u16(6, chk);
     }
 
@@ -621,6 +677,16 @@ impl Pokemon {
     /// Emplacement du talent : 1, 2 ou 4 (caché). En Gen 4/5, déduit du PID.
     pub fn ability_number(&self) -> u8 {
         match self.format {
+            // Gen 3 : bit de talent stocké à part ; on le déduit du talent écrit.
+            PkmFormat::Gen3 => {
+                let p = crate::dex::personal(crate::dex::Game::E, self.species(), 0);
+                let (first, second) = p.map_or((0, 0), |p| (p.abilities[0], p.abilities[1]));
+                if second != 0 && first != second && self.ability() == second {
+                    2
+                } else {
+                    1
+                }
+            }
             PkmFormat::Gen4 => 1 << (self.pid() & 1),
             PkmFormat::Gen5 if self.u8(G5_HIDDEN_ABILITY) & 1 != 0 => 4,
             // Correction (PKHeX PKM.PIDAbility) : le bit 16 du PID ne compte que pour un Pokémon
@@ -637,7 +703,7 @@ impl Pokemon {
     /// Nature (0 = Hardi … 24 = Bizarre). En Gen 4, `PID % 25`.
     pub fn nature(&self) -> u8 {
         match self.format {
-            PkmFormat::Gen4 => (self.pid() % 25) as u8,
+            PkmFormat::Gen3 | PkmFormat::Gen4 => (self.pid() % 25) as u8,
             PkmFormat::Gen5 => self.u8(G5_NATURE),
             PkmFormat::Gen6 | PkmFormat::Gen7 => self.u8(G67_NATURE),
         }
@@ -648,7 +714,7 @@ impl Pokemon {
             return Err(PkmError::OutOfRange { field: "nature", value: v as u32 });
         }
         match self.format {
-            PkmFormat::Gen4 => return Err(PkmError::NatureFromPid),
+            PkmFormat::Gen3 | PkmFormat::Gen4 => return Err(PkmError::NatureFromPid),
             PkmFormat::Gen5 => self.put_u8(G5_NATURE, v),
             PkmFormat::Gen6 | PkmFormat::Gen7 => self.put_u8(G67_NATURE, v),
         }
@@ -1176,7 +1242,7 @@ impl Pokemon {
     /// Gen 4 : pas de talent caché, l'emplacement vient du bit 0 du PID (PID recalculé).
     /// Gen 5 : drapeau « talent caché », sinon bit 16 du PID (PID recalculé).
     pub fn set_ability_number(&mut self, n: u8) -> Result<(), PkmError> {
-        if !matches!(n, 1 | 2 | 4) || (n == 4 && self.format == PkmFormat::Gen4) {
+        if !matches!(n, 1 | 2 | 4) || (n == 4 && matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4)) {
             return Err(PkmError::OutOfRange { field: "emplacement de talent", value: n as u32 });
         }
         match self.format {
@@ -1192,8 +1258,8 @@ impl Pokemon {
                     self.reroll_pid(Some(self.is_shiny()), None, Some(n - 1));
                 }
             }
-            PkmFormat::Gen4 => {
-                if self.ability_number() != n {
+            PkmFormat::Gen3 | PkmFormat::Gen4 => {
+                if self.format == PkmFormat::Gen3 || self.ability_number() != n {
                     self.reroll_pid(Some(self.is_shiny()), Some(self.nature()), Some(n - 1));
                 }
             }
@@ -1207,7 +1273,7 @@ impl Pokemon {
         if nature >= 25 {
             return Err(PkmError::OutOfRange { field: "nature", value: nature as u32 });
         }
-        if self.format == PkmFormat::Gen4 {
+        if matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4) {
             if self.nature() != nature {
                 let slot = (self.ability_number() == 2) as u8;
                 self.reroll_pid(Some(self.is_shiny()), Some(nature), Some(slot));
@@ -1220,9 +1286,9 @@ impl Pokemon {
 
     /// Rend le Pokémon chromatique ou non (voir [`ShinyMode`]).
     pub fn set_shiny(&mut self, mode: ShinyMode) {
-        let gen4_nature = (self.format == PkmFormat::Gen4).then(|| self.nature());
+        let gen4_nature = matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4).then(|| self.nature());
         let slot = match self.format {
-            PkmFormat::Gen4 | PkmFormat::Gen5 if self.ability_number() != 4 => Some((self.ability_number() == 2) as u8),
+            PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5 if self.ability_number() != 4 => Some((self.ability_number() == 2) as u8),
             _ => None,
         };
         match mode {
@@ -1541,7 +1607,7 @@ pub(super) mod tests {
         assert_eq!(pk.party_level(), Some(100));
         assert_eq!(pk.party_stats().unwrap()[1], 394);
         assert_eq!(pk.level(None), Some(100));
-        let boxed = Pokemon::from_decrypted(PkmFormat::Gen6, pk.stored_data()).unwrap();
+        let boxed = Pokemon::from_decrypted(PkmFormat::Gen6, &pk.stored_data()).unwrap();
         assert_eq!(boxed.level(None), None);
         assert_eq!(boxed.level(Some(GrowthRate::Slow)), Some(100));
         assert!(boxed.summary(None).level_estimated);

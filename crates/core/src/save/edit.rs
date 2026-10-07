@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::{strings, Gender, SaveError, SaveFile};
+use super::{strings, Gender, PkmFormat, SaveError, SaveFile};
 
 /// Champs modifiables de la carte de dresseur (champs absents = inchangés).
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -34,8 +34,13 @@ impl SaveFile {
             if name.trim().is_empty() {
                 return Err(SaveError::Invalid("le nom du dresseur ne peut pas être vide".into()));
             }
-            let mut bytes = strings::encode(format, name, t.name_max).map_err(|e| SaveError::Invalid(e.to_string()))?;
-            bytes.resize(2 * (t.name_max + 1), 0);
+            let bytes = if format == PkmFormat::Gen3 {
+                crate::text::gen3::encode(name, t.name_max + 1, 0xFF)
+            } else {
+                let mut bytes = strings::encode(format, name, t.name_max).map_err(|e| SaveError::Invalid(e.to_string()))?;
+                bytes.resize(2 * (t.name_max + 1), 0);
+                bytes
+            };
             write(&mut self.data, t.name, &bytes, "nom du dresseur")?;
         }
         if let Some(v) = p.tid {
@@ -48,7 +53,9 @@ impl SaveFile {
             write(&mut self.data, t.gender, &[(g == Gender::Female) as u8], "sexe du dresseur")?;
         }
         if let Some(m) = p.money {
-            write(&mut self.data, t.money, &m.min(MAX_MONEY).to_le_bytes(), "argent")?;
+            // Gen 3 : 999 999 au plus, stocké XOR la clé de sécurité (Émeraude, RFVF).
+            let (max, key) = if format == PkmFormat::Gen3 { (999_999, super::gen3::security_key(self.version, &self.data)) } else { (MAX_MONEY, 0) };
+            write(&mut self.data, t.money, &(m.min(max) ^ key).to_le_bytes(), "argent")?;
         }
         if let Some(h) = p.hours {
             write(&mut self.data, t.hours, &h.min(999).to_le_bytes(), "temps de jeu")?;
@@ -67,8 +74,13 @@ impl SaveFile {
             return Err(SaveError::BadBox(index));
         }
         let max = self.layout.box_name_max;
-        let mut bytes = strings::encode(self.format(), name, max).map_err(|e| SaveError::Invalid(e.to_string()))?;
-        bytes.resize(2 * (max + 1), 0);
+        let bytes = if self.format() == PkmFormat::Gen3 {
+            crate::text::gen3::encode(name, max + 1, 0)
+        } else {
+            let mut bytes = strings::encode(self.format(), name, max).map_err(|e| SaveError::Invalid(e.to_string()))?;
+            bytes.resize(2 * (max + 1), 0);
+            bytes
+        };
         let at = self.layout.box_names + index * self.layout.box_name_stride;
         write(&mut self.data, at, &bytes, "noms des boîtes")
     }

@@ -123,7 +123,7 @@ const languages = computed(() => LANGUAGES.filter((l) => !l.since || gen.value >
       <select class="sv-select" :value="p.nature" @change="apply({ nature: Number(($event.target as HTMLSelectElement).value) })">
         <option v-for="(n, i) in NATURES" :key="i" :value="i">{{ n }} ({{ natureHint(i) }})</option>
       </select>
-      <p v-if="gen === 4" class="sv-help">En Gen 4 la nature vient du PID : il sera recalculé.</p>
+      <p v-if="gen <= 4" class="sv-help">En Gen {{ gen }} la nature vient du PID : il sera recalculé.</p>
     </div>
     <div class="sv-field gender">
       <span class="sv-label">Sexe <Tip term="gender" /></span>

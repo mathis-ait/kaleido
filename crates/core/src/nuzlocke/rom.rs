@@ -126,7 +126,7 @@ impl RomInfo {
 
     /// Lieu de la carte `map` (numéro lu dans la sauvegarde).
     pub fn location_of_map(&self, map: u16) -> Option<u16> {
-        self.map_locations.get(map as usize).copied()
+        self.map_locations.get(map as usize).copied().filter(|&l| l != u16::MAX)
     }
 
     /// Route Nuzlocke qui regroupe ce lieu.

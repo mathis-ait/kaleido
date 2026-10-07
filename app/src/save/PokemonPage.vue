@@ -28,16 +28,16 @@ const p = computed(() => saveState.selected);
 const view = computed(() => saveState.view!);
 
 const ALL_TABS = [
-  { id: "overview", label: "Aperçu", comp: OverviewTab, since: 4 },
-  { id: "met", label: "Rencontre", comp: MetTab, since: 4 },
-  { id: "stats", label: "Statistiques", comp: StatsTab, since: 4 },
-  { id: "moves", label: "Attaques", comp: MovesTab, since: 4 },
-  { id: "trainer", label: "Dresseur", comp: TrainerTab, since: 4 },
-  { id: "extras", label: "Extras", comp: ExtrasTab, since: 4 },
-  { id: "ribbons", label: "Rubans", comp: RibbonsTab, since: 4 },
+  { id: "overview", label: "Aperçu", comp: OverviewTab, since: 3 },
+  { id: "met", label: "Rencontre", comp: MetTab, since: 3 },
+  { id: "stats", label: "Statistiques", comp: StatsTab, since: 3 },
+  { id: "moves", label: "Attaques", comp: MovesTab, since: 3 },
+  { id: "trainer", label: "Dresseur", comp: TrainerTab, since: 3 },
+  { id: "extras", label: "Extras", comp: ExtrasTab, since: 3 },
+  { id: "ribbons", label: "Rubans", comp: RibbonsTab, since: 3 },
   { id: "memories", label: "Souvenirs", comp: MemoriesTab, since: 6 },
 ];
-/** Onglets du jeu ouvert : les souvenirs n'existent qu'à partir de la Gen 6. */
+/** Onglets du jeu ouvert (Gen 3 à 7) : les souvenirs n'existent qu'à partir de la Gen 6. */
 const TABS = computed(() => ALL_TABS.filter((t) => t.since <= view.value.generation));
 const tab = ref("overview");
 const current = computed(() => TABS.value.find((t) => t.id === tab.value) ?? TABS.value[0]);

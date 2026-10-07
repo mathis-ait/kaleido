@@ -308,7 +308,11 @@ fn from_save(kind: saves::SaveKind, data: &[u8]) -> Detection {
     let label = parsed.as_ref().map_or(kind.label(), |s| s.version().label());
     let mut d = Detection::new(FileKind::Save, format!("Sauvegarde · {label}"));
     d.generation = Some(kind.generation());
-    d.platform = Some(if kind.generation() <= 5 { Platform::Nds } else { Platform::N3ds });
+    d.platform = Some(match kind.generation() {
+        3 => Platform::Gba,
+        4 | 5 => Platform::Nds,
+        _ => Platform::N3ds,
+    });
     match &parsed {
         Some(save) => {
             let trainer = save.trainer();

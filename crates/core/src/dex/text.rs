@@ -25,6 +25,12 @@ text_list!(NATURES, "Natures.txt");
 text_list!(TYPES, "Types.txt");
 text_list!(GAMES, "Games.txt");
 text_list!(FORMS, "Forms.txt");
+text_list!(ITEMS_G1, "ItemsG1.txt");
+text_list!(ITEMS_G2, "ItemsG2.txt");
+text_list!(ITEMS_G3, "ItemsG3.txt");
+
+/// Objet Gen 3 sans équivalent Gen 4+ (objets rares surtout) : `GEN3_ITEM_FLAG | id Gen 3`.
+pub const GEN3_ITEM_FLAG: u16 = 0x8000;
 
 /// Entrée non vide d'une liste ; l'identifiant 0 (« aucun ») est exclu.
 fn lookup(list: &[&'static str], id: usize) -> Option<&'static str> {
@@ -50,7 +56,25 @@ pub fn ability_name(id: u16) -> Option<&'static str> {
 
 /// Nom de l'objet (noms actuels, Gen 5+).
 pub fn item_name(id: u16) -> Option<&'static str> {
+    if id & GEN3_ITEM_FLAG != 0 {
+        return item_name_g3(id & !GEN3_ITEM_FLAG);
+    }
     lookup(&ITEMS, id as usize)
+}
+
+/// Nom d'un objet Gen 3 (identifiant du jeu).
+pub fn item_name_g3(id: u16) -> Option<&'static str> {
+    lookup(&ITEMS_G3, id as usize)
+}
+
+/// Nom d'un objet Gen 2 (identifiant du jeu).
+pub fn item_name_g2(id: u8) -> Option<&'static str> {
+    lookup(&ITEMS_G2, id as usize)
+}
+
+/// Nom d'un objet Gen 1 (identifiant du jeu).
+pub fn item_name_g1(id: u8) -> Option<&'static str> {
+    lookup(&ITEMS_G1, id as usize)
 }
 
 /// Nom de l'objet tel qu'affiché dans le jeu : les Lettres 137-148 ont changé de nom après la Gen 4.

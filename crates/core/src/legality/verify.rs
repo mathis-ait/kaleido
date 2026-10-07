@@ -288,7 +288,8 @@ impl<'a> Ctx<'a> {
 
     /// Jeux traversés possibles (de la génération d'origine à celle de la sauvegarde).
     pub fn games(&self) -> Vec<Game> {
-        let from = self.origin_generation().max(4);
+        // Un Pokémon né en Gen 3 a pu apprendre ses attaques dans un jeu Gen 3.
+        let from = if self.origin_generation() == 3 { 3 } else { self.origin_generation().max(4) };
         Game::ALL.iter().copied().filter(|g| g.generation() >= from && g.generation() <= self.format).collect()
     }
 }
@@ -309,7 +310,7 @@ pub(crate) fn context(pk: &Pokemon, game: Game) -> Result<Ctx<'_>, Check> {
         detail: format!("Version n°{version} : ce jeu n'existe pas."),
         tab: Some(TAB_MET),
     })?;
-    let impossible = generation > format || (generation <= 2 && format != 7) || (generation == 3 && format < 4);
+    let impossible = generation > format || (generation <= 2 && format != 7);
     if impossible {
         return Err(Check {
             severity: Severity::Invalid,
@@ -321,12 +322,14 @@ pub(crate) fn context(pk: &Pokemon, game: Game) -> Result<Ctx<'_>, Check> {
     }
     let origin = match generation {
         1 | 2 => Origin::VirtualConsole { generation },
+        // Dans une sauvegarde Gen 3, le Pokémon est vérifié comme dans son jeu d'origine.
+        3 if format == 3 => Origin::Known { generation: 3, game: version_game(version).unwrap_or(game) },
         3 => Origin::Gen3,
         g => Origin::Known { generation: g, game: version_game(version).unwrap_or(game) },
     };
     let level = growth_level(pk, game);
     let chain = evolution::chain(format, pk.species(), pk.form(), level);
-    let met_replaced = (generation <= 4 && format >= 5) || (generation == 3 && format == 4) || generation <= 2;
+    let met_replaced = (generation <= 4 && format >= 5) || (generation == 3 && format == 4) || (generation <= 2 && format != generation);
     let pid = pk.pid();
     let (tid, sid) = (pk.tid(), pk.sid());
     Ok(Ctx {
@@ -890,6 +893,14 @@ pub(crate) fn learn_sources(ctx: &Ctx, e: Option<&Encounter>, mv: u16) -> Option
     if ctx.format >= 6 && relearn_moves(ctx.pk).contains(&mv) {
         return Some(learn::LearnMethod::Special);
     }
+    // Munja (Gen 3) : reçoit les attaques que Ninjask apprend au niveau de l'évolution de Ningale
+    // (20 au plus tôt, au plus le niveau actuel de Munja, qui garde l'expérience de Ningale).
+    if ctx.pk.species() == 292 && ctx.origin_generation() == 3 {
+        let lvl = ctx.level;
+        if ctx.games().into_iter().any(|g| dex::levelup(g, 291, 0).iter().any(|&(m, l)| m == mv && (20..=lvl).contains(&l))) {
+            return Some(learn::LearnMethod::Special);
+        }
+    }
     for game in ctx.games() {
         for st in &ctx.chain {
             if st.species > dex::max_species(game) {
@@ -1293,7 +1304,9 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
 
     // Objet tenu.
     let item = pk.held_item();
-    if item != 0 && (item > dex::max_item(game) || dex::item_name_in(game, item).is_none()) {
+    // Gen 3 : identifiant exposé (Gen 4+, ou drapeau Gen 3) ramené à celui du jeu.
+    let raw_item = if pk.format() == crate::save::PkmFormat::Gen3 { crate::save::pk3::item_raw(item) } else { item };
+    if item != 0 && (raw_item > dex::max_item(game) || dex::item_name_in(game, item).is_none()) {
         out.bad("item", "Objet inconnu", format!("L'objet n°{item} n'existe pas dans ce jeu."), TAB_OVERVIEW);
     }
 
@@ -1407,6 +1420,17 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
                             location_name(generation, pk.met_location()),
                             pk.met_level()
                         ),
+                        TAB_MET,
+                    );
+                    check_moves(&ctx, None, true, &mut out);
+                }
+                // Gen 3 : seules les rencontres sauvages sont connues (pas encore les Pokémon
+                // fixes, dons, échanges ni œufs des tables de PKHeX).
+                _ if generation == 3 => {
+                    out.fishy(
+                        "encounter-gen3",
+                        "Rencontre non vérifiable",
+                        "Ce Pokémon ne vient pas d'une rencontre sauvage connue : Kaleido ne connaît pas encore les Pokémon fixes, dons, échanges et œufs de la Gen 3.",
                         TAB_MET,
                     );
                     check_moves(&ctx, None, true, &mut out);

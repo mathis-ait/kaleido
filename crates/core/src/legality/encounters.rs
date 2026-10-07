@@ -473,7 +473,27 @@ const FRIEND_SAFARI: &[u16] = &[
 
 fn read_areas(data: &[u8], version: u8, generation: u8, out: &mut Vec<Encounter>) {
     for area in binlinker32(data) {
-        if generation == 4 {
+        if generation == 3 {
+            // `EncounterArea3` : lieu u8, (inutilisé), type, taux, emplacements de 10 octets
+            // (espèce u16, forme, n° d'emplacement, niveaux min et max, 4 octets de Méthode 1).
+            if area.len() < 4 {
+                continue;
+            }
+            let location = area[0] as u16;
+            let kind = if area[2] >= 6 { EncounterKind::Swarm } else { gen4_kind(area[2]) };
+            for s in area[4..].as_chunks::<10>().0 {
+                let species = u16_at(s, 0);
+                if species == 0 {
+                    continue;
+                }
+                let mut e = Encounter::base(kind, 3, vec![version], species, s[2], s[4], s[5], location);
+                // Parc Safari : Safari Ball.
+                if matches!(location, 57 | 136) {
+                    e.ball = Some(5);
+                }
+                out.push(e);
+            }
+        } else if generation == 4 {
             if area.len() < 6 {
                 continue;
             }
@@ -766,8 +786,10 @@ fn build(game: Game) -> Vec<Encounter> {
         Game::ORAS => &[(pkl!("or"), OR), (pkl!("as"), AS)],
         Game::SM => &[(pkl!("sn"), SN), (pkl!("mn"), MN)],
         Game::USUM => &[(pkl!("us"), US), (pkl!("um"), UM)],
-        // Gen 3 : rencontres lues par `gen3_encounters` (format `EncounterArea3`).
-        Game::RS | Game::E | Game::FRLG => &[],
+        // Gen 3 : herbes, surf, cannes, Éclate-Roc (format `EncounterArea3`).
+        Game::RS => &[(pkl!("r"), RU), (pkl!("s"), SA)],
+        Game::E => &[(pkl!("e"), EM)],
+        Game::FRLG => &[(pkl!("fr"), FR), (pkl!("lg"), LG)],
     };
     for &(data, version) in files {
         read_areas(data, version, generation, &mut out);
