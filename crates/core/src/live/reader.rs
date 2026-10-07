@@ -122,6 +122,8 @@ pub fn read_party_at(src: &dyn MemorySource, format: PkmFormat, slot0: u64) -> R
 pub struct Battle {
     /// Équipe adverse, dans l'ordre du jeu.
     pub enemies: Vec<Pokemon>,
+    /// Notre équipe telle que le combat la voit (PV à jour).
+    pub ours: Vec<Pokemon>,
     /// Sauvage (les Pokémon portent les identifiants du joueur) ou dresseur.
     pub wild: bool,
     /// Premier PID adverse jamais vu jusque-là : début d'une rencontre.
@@ -158,6 +160,9 @@ pub struct LiveReader {
     /// PID / constantes de chiffrement déjà vus chez l'adversaire.
     seen_enemies: HashSet<u32>,
     enemy_at: Option<u64>,
+    /// Copie de combat de notre équipe.
+    ours_at: Option<u64>,
+    fight: Option<Fight>,
     /// Ticks consécutifs sans équipe valide.
     misses: u32,
     /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
@@ -180,6 +185,8 @@ impl LiveReader {
             searched_at: None,
             seen_enemies: HashSet::new(),
             enemy_at: None,
+            ours_at: None,
+            fight: None,
             misses: 0,
             battle: true,
         }
@@ -331,9 +338,10 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let battle =
-            if self.battle && matches!(self.console, Console::Ds(_)) && tick % BATTLE_SCAN == 0 { self.scan_battle(src, &party.mons) } else { None };
-        Ok(Some(LiveRead { party: party.mons, map, badges, battle }))
+        let battle = if self.battle && matches!(self.console, Console::Ds(_)) { self.scan_battle(src, &party.mons, map, tick % BATTLE_SCAN == 0) } else { None };
+        // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
+        let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
+        Ok(Some(LiveRead { party, map, badges, battle }))
     }
 
     fn save_block_fields(&self, src: &dyn MemorySource) -> (Option<u16>, Option<u8>) {
@@ -345,65 +353,120 @@ impl LiveReader {
         (map, badges)
     }
 
-    /// Équipe adverse (DS) : en-tête `[6][n]` suivi de Pokémon qui ne sont pas à nous.
-    fn scan_battle(&mut self, src: &dyn MemorySource, ours: &[Pokemon]) -> Option<Battle> {
+    /// Combat (DS) : une copie de combat de notre équipe (en-tête `[6][n]`, hors bloc de
+    /// sauvegarde) suivie, dans les 4 Kio, de l'équipe adverse. Les équipes d'anciens combats
+    /// restent en RAM : seule celle qui suit notre copie de combat compte. Le combat est fini dès
+    /// que le jeu réécrit notre équipe dans le bloc de sauvegarde (expérience, PV) ou que la
+    /// carte change. Observé dans melonDS sur Blanche : copie à +0x8, adversaire à +0x560.
+    fn scan_battle(&mut self, src: &dyn MemorySource, ours: &[Pokemon], map: Option<u16>, full: bool) -> Option<Battle> {
         let Console::Ds(ram) = &self.console else { return None };
+        let (base, size) = (ram.base, ram.size as usize);
         let format = self.hints.format;
-        let mine: HashSet<[u8; 4]> = ours.iter().map(|p| key_of(p)).collect();
-        let copies: HashSet<u64> = self.copies.iter().map(|c| c.addr).collect();
-        let read = |slot0: u64| -> Option<Vec<Pokemon>> {
-            let p = read_party_at(src, format, slot0).ok().flatten()?;
-            p.mons.iter().all(|m| !mine.contains(&key_of(m))).then_some(p.mons)
-        };
-        // Adresse connue d'abord (pas besoin de relire 4 Mio si le combat continue).
-        let mut enemies = self.enemy_at.and_then(read);
-        if enemies.is_none() {
-            self.enemy_at = None;
-            let ram_bytes = src.read_vec(ram.base, ram.size as usize).ok()?;
-            let words = ram_bytes.as_chunks::<4>().0;
-            for i in 0..words.len().saturating_sub(2) {
-                if u32::from_le_bytes(words[i]) != PARTY_SLOTS as u32 {
+        let psize = format.party_size();
+        let mine: HashSet<u32> = ours.iter().map(|p| u32::from_le_bytes(key_of(p))).collect();
+        let is_ours = |p: &PartyAt| p.mons.first().is_some_and(|m| mine.contains(&u32::from_le_bytes(key_of(m))));
+        let is_foe = |p: &PartyAt| p.mons.iter().all(|m| !mine.contains(&u32::from_le_bytes(key_of(m))));
+        let save_raw = self.copies.iter().find(|c| c.save_block).map(|c| c.raw.clone()).unwrap_or_default();
+
+        // Combat suivi : on relit les deux adresses connues.
+        let mut found: Option<(u64, Vec<Pokemon>, u64, Vec<Pokemon>)> = None;
+        if let (Some(o), Some(e)) = (self.ours_at, self.enemy_at) {
+            let po = read_party_at(src, format, o).ok().flatten().filter(|p| is_ours(p));
+            let pe = read_party_at(src, format, e).ok().flatten().filter(|p| is_foe(p));
+            if let (Some(po), Some(pe)) = (po, pe) {
+                found = Some((o, po.mons, e, pe.mons));
+            }
+        }
+        if found.is_none() {
+            if !full {
+                return None;
+            }
+            let save_at = self.copies.iter().find(|c| c.save_block).map(|c| c.addr);
+            let bytes = src.read_vec(base, size).ok()?;
+            let words = bytes.as_chunks::<4>().0;
+            let header = |i: usize| u32::from_le_bytes(words[i]) == PARTY_SLOTS as u32 && (1..=PARTY_SLOTS as u32).contains(&u32::from_le_bytes(words[i + 1]));
+            'outer: for i in 0..words.len().saturating_sub(3) {
+                if !header(i) || !mine.contains(&u32::from_le_bytes(words[i + 2])) {
                     continue;
                 }
-                let n = u32::from_le_bytes(words[i + 1]);
-                if !(1..=PARTY_SLOTS as u32).contains(&n) {
+                let o = base + (i as u64 + 2) * 4;
+                if Some(o) == save_at {
                     continue;
                 }
-                let slot0 = ram.base + (i as u64 + 2) * 4;
-                if copies.contains(&slot0) {
-                    continue;
-                }
-                if let Some(e) = read(slot0) {
-                    // Plusieurs équipes adverses en RAM (ancien combat pas effacé) : on garde
-                    // celle qui contient un Pokémon jamais vu, sinon la première trouvée.
-                    let fresh = e.iter().any(|m| !self.seen_enemies.contains(&u32::from_le_bytes(key_of(m))));
-                    if enemies.is_none() || fresh {
-                        self.enemy_at = Some(slot0);
-                        enemies = Some(e);
-                        if fresh {
-                            break;
-                        }
+                let Some(po) = read_party_at(src, format, o).ok().flatten().filter(|p| is_ours(p)) else { continue };
+                // Après nos Pokémon (l'en-tête dit combien) : la place réservée aux 6 n'est pas garantie.
+                let start = i + 2 + po.mons.len() * psize / 4;
+                let end = (i + 0x1000 / 4).min(words.len().saturating_sub(2));
+                for j in start..end {
+                    if !header(j) {
+                        continue;
+                    }
+                    let e = base + (j as u64 + 2) * 4;
+                    if let Some(pe) = read_party_at(src, format, e).ok().flatten().filter(|p| is_foe(p)) {
+                        found = Some((o, po.mons, e, pe.mons));
+                        break 'outer;
                     }
                 }
             }
         }
-        let enemies = enemies?;
-        let new = enemies.iter().fold(false, |acc, m| self.seen_enemies.insert(u32::from_le_bytes(key_of(m))) | acc);
+        let Some((o, ours_now, e, enemies)) = found else {
+            self.ours_at = None;
+            self.enemy_at = None;
+            self.fight = None;
+            return None;
+        };
+        self.ours_at = Some(o);
+        self.enemy_at = Some(e);
+        let mut keys: Vec<u32> = enemies.iter().map(|m| u32::from_le_bytes(key_of(m))).collect();
+        keys.sort_unstable();
+        let new = match &mut self.fight {
+            Some(f) if f.keys == keys => {
+                if !f.over && (f.map != map || f.save_raw != save_raw) {
+                    f.over = true;
+                }
+                if f.over {
+                    return None;
+                }
+                false
+            }
+            _ => {
+                // Équipe déjà vue à l'attache : ancien combat resté en mémoire.
+                let stale = keys.iter().all(|k| self.seen_enemies.contains(k));
+                self.fight = Some(Fight { keys: keys.clone(), map, save_raw, over: stale });
+                if stale {
+                    return None;
+                }
+                true
+            }
+        };
+        self.seen_enemies.extend(keys);
         let (tid, sid) = (self.hints.tid, self.hints.sid);
         let wild = enemies.len() <= 2 && enemies.iter().all(|m| m.tid() == tid && m.sid() == sid);
-        Some(Battle { enemies, wild, new })
+        Some(Battle { enemies, ours: ours_now, wild, new })
     }
 
-    /// Marque comme déjà vus les adversaires présents en RAM au moment de l'attache : un ancien
-    /// combat resté en mémoire ne doit pas passer pour une nouvelle rencontre.
+    /// Marque comme terminé le combat présent en RAM au moment de l'attache : un ancien combat
+    /// resté en mémoire ne doit pas passer pour une nouvelle rencontre.
     pub fn prime_battle(&mut self, src: &dyn MemorySource) {
         let ours = self.copies.first().and_then(|c| read_party_at(src, self.hints.format, c.addr).ok().flatten()).map(|p| p.mons).unwrap_or_default();
-        if let Some(b) = self.scan_battle(src, &ours) {
-            for m in &b.enemies {
-                self.seen_enemies.insert(u32::from_le_bytes(key_of(m)));
-            }
+        let (map, _) = self.save_block_fields(src);
+        let _ = self.scan_battle(src, &ours, map, true);
+        if let Some(f) = &mut self.fight {
+            f.over = true;
+            self.seen_enemies.extend(f.keys.iter().copied());
         }
     }
+}
+
+/// Combat suivi d'un tick à l'autre.
+#[derive(Debug, Clone)]
+struct Fight {
+    /// Premiers mots des Pokémon adverses, triés.
+    keys: Vec<u32>,
+    /// Carte et équipe du bloc de sauvegarde au début du combat.
+    map: Option<u16>,
+    save_raw: Vec<u8>,
+    over: bool,
 }
 
 /// Équipe vide : compteur à 0 et premier emplacement vide.

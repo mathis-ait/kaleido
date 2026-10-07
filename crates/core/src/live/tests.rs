@@ -150,42 +150,81 @@ fn put_enemy(src: &mut DumpSource, at: u64, species: u16, pid: u32, ids: (u16, u
     src.poke(at, &bytes);
 }
 
+/// Copie de combat de notre équipe (`[6][n]` + nos Pokémon), comme le jeu la pose en combat.
+fn put_our_copy(src: &mut DumpSource, at: u64, party_addr: u64, n: usize) {
+    let size = PkmFormat::Gen4.party_size();
+    let mut bytes = 6u32.to_le_bytes().to_vec();
+    bytes.extend_from_slice(&(n as u32).to_le_bytes());
+    bytes.extend_from_slice(&src.read_vec(party_addr, n * size).unwrap());
+    src.poke(at, &bytes);
+}
+
+/// Combat posé en zone libre : notre copie, puis l'adversaire 0x560 octets plus loin (Blanche).
+const FIGHT: u64 = 0x10_0000;
+const FOE: u64 = FIGHT + 0x560;
+
+fn battle_of(reader: &mut LiveReader, src: &DumpSource) -> Option<crate::live::reader::Battle> {
+    (0..4).find_map(|_| reader.tick(src).unwrap().and_then(|r| r.battle))
+}
+
 #[test]
 fn rencontre_sauvage_detectee_une_seule_fois() {
+    let mut src = ss();
+    let (mut reader, addr) = ss_party(&src);
+    reader.prime_battle(&src);
+    let base = scan::find_ds_ram(&src).unwrap().base;
+    put_our_copy(&mut src, base + FIGHT, addr, 1);
+    put_enemy(&mut src, base + FOE, 263, 0x1234_5678, (0x6E14, 0xF0CC));
+    let b = battle_of(&mut reader, &src).expect("combat vu");
+    assert!(b.new && b.wild);
+    assert_eq!(b.enemies[0].species(), 263);
+    assert_eq!(b.ours.len(), 1, "notre équipe lue dans la copie de combat");
+    // Le combat continue : plus « nouveau ».
+    let again = battle_of(&mut reader, &src).unwrap();
+    assert!(!again.new);
+    // Équipe d'un dresseur : identifiants différents des nôtres.
+    put_enemy(&mut src, base + FOE, 16, 0x0BAD_CAFE, (1, 2));
+    let trainer = battle_of(&mut reader, &src).unwrap();
+    assert!(trainer.new && !trainer.wild);
+}
+
+#[test]
+fn equipe_adverse_isolee_ignoree() {
+    // Ancien combat resté en RAM loin de toute copie de combat : ce n'est pas un combat en cours.
     let mut src = ss();
     let (mut reader, _) = ss_party(&src);
     reader.prime_battle(&src);
     let base = scan::find_ds_ram(&src).unwrap().base;
-    // Zone à zéro du dump (loin de l'équipe) : 0x100000.
-    put_enemy(&mut src, base + 0x10_0000, 263, 0x1234_5678, (0x6E14, 0xF0CC));
-    let mut battle = None;
-    for _ in 0..4 {
-        if let Some(b) = reader.tick(&src).unwrap().and_then(|r| r.battle) {
-            battle = Some(b);
-            break;
-        }
-    }
-    let b = battle.expect("combat vu");
-    assert!(b.new && b.wild);
-    assert_eq!(b.enemies[0].species(), 263);
-    // Le combat continue : plus « nouveau ».
-    let again = (0..4).find_map(|_| reader.tick(&src).unwrap().and_then(|r| r.battle)).unwrap();
-    assert!(!again.new);
-    // Équipe d'un dresseur : identifiants différents des nôtres.
-    put_enemy(&mut src, base + 0x10_0000, 16, 0x0BAD_CAFE, (1, 2));
-    let trainer = (0..4).find_map(|_| reader.tick(&src).unwrap().and_then(|r| r.battle)).unwrap();
-    assert!(trainer.new && !trainer.wild);
+    put_enemy(&mut src, base + FOE, 263, 0x1234_5678, (0x6E14, 0xF0CC));
+    assert!(battle_of(&mut reader, &src).is_none());
 }
 
 #[test]
 fn ancien_combat_en_ram_pas_annonce() {
     let mut src = ss();
     let base = scan::find_ds_ram(&src).unwrap().base;
-    put_enemy(&mut src, base + 0x10_0000, 263, 0x1234_5678, (0x6E14, 0xF0CC));
-    let (mut reader, _) = ss_party(&src);
+    let (mut reader, addr) = ss_party(&src);
+    put_our_copy(&mut src, base + FIGHT, addr, 1);
+    put_enemy(&mut src, base + FOE, 263, 0x1234_5678, (0x6E14, 0xF0CC));
     reader.prime_battle(&src);
-    let b = (0..4).find_map(|_| reader.tick(&src).unwrap().and_then(|r| r.battle)).unwrap();
-    assert!(!b.new, "déjà en mémoire à l'attache");
+    assert!(battle_of(&mut reader, &src).is_none(), "déjà en mémoire à l'attache : combat terminé");
+}
+
+#[test]
+fn combat_fini_quand_le_jeu_reecrit_l_equipe() {
+    let mut src = ss();
+    let (mut reader, addr) = ss_party(&src);
+    reader.prime_battle(&src);
+    let base = scan::find_ds_ram(&src).unwrap().base;
+    put_our_copy(&mut src, base + FIGHT, addr, 1);
+    put_enemy(&mut src, base + FOE, 263, 0x1234_5678, (0x6E14, 0xF0CC));
+    assert!(battle_of(&mut reader, &src).is_some());
+    // Fin du combat : le jeu recopie l'équipe (PV, expérience) dans le bloc de sauvegarde.
+    let raw = src.read_vec(addr, PkmFormat::Gen4.party_size()).unwrap();
+    let mut p = Pokemon::from_encrypted(PkmFormat::Gen4, &raw).unwrap();
+    p.set_current_hp(p.current_hp().saturating_sub(3));
+    src.poke(addr, &p.encrypt_party());
+    assert!(battle_of(&mut reader, &src).is_none(), "les restes du combat ne comptent plus");
 }
 
 #[test]
