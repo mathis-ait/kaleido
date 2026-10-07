@@ -14,6 +14,7 @@
 
 pub mod rom;
 pub mod rom_ctr;
+pub mod rom_gba;
 
 #[cfg(test)]
 mod tests;

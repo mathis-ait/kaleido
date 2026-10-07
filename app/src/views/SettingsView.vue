@@ -155,6 +155,19 @@ onMounted(refresh);
       <pre v-if="updates.info?.newer && updates.info.notes" class="notes">{{ updates.info.notes }}</pre>
       <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement. Rien d'autre n'est envoyé." />
     </div>
+
+    <h2>À propos</h2>
+    <div class="sv-panel about">
+      <p>Kaleido est un logiciel libre (GPLv3). Il reprend des données et du code d'autres projets libres :</p>
+      <dl class="sv-dl">
+        <dt>PKHeX</dt>
+        <dd>kwsch et contributeurs, GPLv3 : noms, fiches, rencontres, formats de sauvegarde</dd>
+        <dt>Universal Pokémon Randomizer ZX</dt>
+        <dd>Dabomstew, Ajarmar et contributeurs, GPLv3 : emplacements des données des ROM (fichiers d'offsets Gen 1 à 7)</dd>
+        <dt>PokeAPI</dt>
+        <dd>BSD-3 : puissance, précision et catégorie des attaques</dd>
+      </dl>
+    </div>
   </section>
 </template>
 
@@ -176,6 +189,17 @@ h2 {
 .lead {
   color: var(--text-dim);
   font-size: 16px;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.about p {
+  margin: 0;
 }
 
 .update {

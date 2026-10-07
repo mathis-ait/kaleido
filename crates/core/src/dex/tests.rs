@@ -123,8 +123,11 @@ fn locations_by_generation() {
     assert!(gen7.iter().any(|&(_, n)| n.contains("Ekaeka")));
     assert_eq!(location_name(7, 0), None);
     assert_eq!(locations(7)[0], (0, "(Aucun)"));
-    assert!(locations(3).is_empty());
-    for generation in 4..=7 {
+    assert!(locations(2).is_empty());
+    assert_eq!(location_name(3, 16), Some("Route 101"));
+    assert_eq!(location_name(3, 101), Some("Route 1"));
+    assert_eq!(location_name(3, 254), Some("(Échange in-game)"));
+    for generation in 3..=7 {
         let list = locations(generation);
         let mut ids: Vec<u16> = list.iter().map(|&(id, _)| id).collect();
         ids.sort_unstable();

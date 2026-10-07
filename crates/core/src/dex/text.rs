@@ -380,13 +380,23 @@ fn gen7() -> LocationSet {
     set
 }
 
+/// Gen 3 : un seul bloc ; l'identifiant est la section de carte (`mapsec`) du jeu.
+fn gen3() -> LocationSet {
+    LocationSet { banks: vec![(0, bank(include_str!("../../data/pkhex/text/met3_00000.txt")))] }
+}
+
+static LOCATIONS_G3: LazyLock<LocationSet> = LazyLock::new(gen3);
+
 static LOCATIONS: LazyLock<[LocationSet; 4]> = LazyLock::new(|| [gen4(), gen5(), gen6(), gen7()]);
 
 fn location_set(generation: u8) -> Option<&'static LocationSet> {
+    if generation == 3 {
+        return Some(&LOCATIONS_G3);
+    }
     LOCATIONS.get(generation.checked_sub(4)? as usize)
 }
 
-/// Nom du lieu de rencontre `id` pour la génération donnée (4 à 7).
+/// Nom du lieu de rencontre `id` pour la génération donnée (3 à 7).
 pub fn location_name(generation: u8, id: u16) -> Option<&'static str> {
     location_set(generation)?.name(id)
 }
@@ -395,6 +405,10 @@ pub fn location_name(generation: u8, id: u16) -> Option<&'static str> {
 fn location_ids(generation: u8) -> Vec<u16> {
     let mut ids: Vec<u16> = Vec::new();
     match generation {
+        3 => {
+            ids.extend([0, 253, 254, 255]);
+            ids.extend(1..=212);
+        }
         4 => {
             ids.extend([0, 2000, 2002, 3001]);
             ids.extend(0..=234);

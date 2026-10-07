@@ -122,3 +122,47 @@ pub fn preview_ctr(path: &Path, settings: &Settings, seed: u64, scratch: &Path) 
     let _ = std::fs::remove_dir_all(scratch);
     result
 }
+
+/// Aperçu d'un jeu GBA : randomisation en mémoire, rien n'est écrit.
+pub fn preview_gba(path: &Path, settings: &Settings, seed: u64) -> Result<Preview, RomError> {
+    let started = Instant::now();
+    let mut game = crate::gba_rom::GbaGameRom::open(path)?;
+    preview_gba_rom(&mut game, settings, seed, started)
+}
+
+pub(crate) fn preview_gba_rom(game: &mut crate::gba_rom::GbaGameRom, settings: &Settings, seed: u64, started: Instant) -> Result<Preview, RomError> {
+    let outcome = super::gba::randomize(game, settings, seed)?;
+    let info = nuzlocke::rom_gba::read(game).ok();
+    let mut preview = build(outcome, info.clone(), None, started);
+    // Premier champion : équipe lue directement dans la table des dresseurs Gen 3.
+    preview.first_leader = info.as_ref().and_then(|i| {
+        let leader = i.leaders.iter().find(|l| l.kind == LeaderKind::Gym)?;
+        let t = crate::data::gen3::trainer(game, *leader.trainer_ids.first()? as usize).ok().filter(|t| !t.party.is_empty())?;
+        Some(PreviewTrainer {
+            name: leader.name.to_string(),
+            label: leader.label.clone(),
+            team: t.party.iter().map(|m| PreviewMon { species: m.species, name: species_name(m.species), min_level: m.level as u8, max_level: m.level as u8 }).collect(),
+        })
+    });
+    Ok(preview)
+}
+
+#[cfg(test)]
+mod gba_tests {
+    use super::*;
+    use crate::gba_rom::{synthetic, GbaGameRom};
+
+    #[test]
+    fn preview_synthetic_firered() {
+        let mut rom = synthetic::build("BPRF", 0);
+        synthetic::add_grass(&mut rom, 3, 19, &[16, 16, 19, 19, 16, 19, 16, 19, 10, 10, 13, 13]);
+        let mut g = GbaGameRom::from_rom(rom).unwrap();
+        let settings = Settings { starters: super::super::StarterMode::Random, wild: super::super::WildMode::Area, ..Settings::default() };
+        let p = preview_gba_rom(&mut g, &settings, 5, Instant::now()).unwrap();
+        assert_eq!(p.starters.len(), 3);
+        let route = p.first_route.unwrap();
+        assert_eq!(route.encounters.len(), 4);
+        // Dresseurs vides dans la ROM synthétique : pas d'équipe de champion.
+        assert!(p.first_leader.is_none());
+    }
+}
