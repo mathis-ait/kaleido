@@ -254,6 +254,19 @@ impl LiveReader {
                 }
             }
         }
+        // Équipe vide dans la sauvegarde (nouvelle partie, starter pas encore reçu) ou équipe
+        // introuvable par ses Pokémon : on retrouve le bloc de sauvegarde par le numéro du
+        // dresseur, l'équipe est alors à la même distance que dans le fichier.
+        if found.is_empty() && !self.hints.trainer_name_bytes.is_empty() {
+            let h = &self.hints;
+            let ids = u32::from(h.tid) | u32::from(h.sid) << 16;
+            for (hit, _) in scan::find_u32s(src, &regions, &[ids], 4096) {
+                let slot0 = beside(hit, h.tid_offset, h.party);
+                if !found.contains(&slot0) && self.is_save_block(src, slot0) {
+                    found.push(slot0);
+                }
+            }
+        }
         let mut copies: Vec<Copy> = Vec::new();
         for addr in found {
             let save_block = self.is_save_block(src, addr);
@@ -292,6 +305,12 @@ impl LiveReader {
                     }
                     if best.as_ref().is_none_or(|(at, _, _)| c.changed_at > *at) {
                         best = Some((c.changed_at, c.save_block, p));
+                    }
+                }
+                // Bloc de sauvegarde sans aucun Pokémon : équipe vide, lue telle quelle.
+                None if c.save_block && empty_party(src, &self.hints, c.addr) => {
+                    if best.is_none() {
+                        best = Some((c.changed_at, true, PartyAt { mons: Vec::new(), raw: Vec::new() }));
                     }
                 }
                 None => torn |= c.save_block,
@@ -385,6 +404,13 @@ impl LiveReader {
             }
         }
     }
+}
+
+/// Équipe vide : compteur à 0 et premier emplacement vide.
+fn empty_party(src: &dyn MemorySource, h: &RamHints, slot0: u64) -> bool {
+    let count = src.read_vec(beside(slot0, h.party, h.party_count), 1).ok().map(|b| b[0]);
+    let first = src.read_vec(slot0, h.format.party_size()).ok();
+    count == Some(0) && first.is_some_and(|b| empty_slot(h.format, &b))
 }
 
 fn key_of(p: &Pokemon) -> [u8; 4] {
