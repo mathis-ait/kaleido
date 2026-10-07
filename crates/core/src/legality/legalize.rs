@@ -272,6 +272,17 @@ fn plans(game: Game, species: u16, form: u8, level: u8, prefer_version: u8) -> V
         }
         // Œuf de Pension (si l'espèce de base peut se reproduire).
         let (bs, bf) = chain.last().map_or((species, form), |s| (s.species, s.form));
+        // Bébé à encens (Azurill, Okéoké…) : sans l'encens, l'œuf donne l'évolution, avec
+        // ses propres capacités Œuf (Cognobidon de Marill).
+        if INCENSE_BABIES.contains(&bs) && chain.len() >= 2 {
+            let st = chain[chain.len() - 2];
+            if st.species <= dex::max_species(og) {
+                let e = Encounter::egg(og, st.species, st.form);
+                let versions = game_versions(og);
+                let version = if versions.contains(&prefer_version) { prefer_version } else { versions[0] };
+                out.push(((gi as u32) * 100 + kind_rank(&e, species), Plan { enc: e, version }));
+            }
+        }
         if bs <= dex::max_species(og) {
             let info = dex::personal(og, bs, bf);
             let breedable = info.as_ref().is_some_and(|i| i.egg_groups[0] != 15) || is_baby(bs);
@@ -286,6 +297,9 @@ fn plans(game: Game, species: u16, form: u8, level: u8, prefer_version: u8) -> V
     out.sort_by_key(|(r, _)| *r);
     out.into_iter().map(|(_, p)| p).collect()
 }
+
+/// Bébés qui ne naissent que si un parent tient un encens.
+const INCENSE_BABIES: [u16; 9] = [298, 360, 406, 433, 438, 439, 440, 446, 458];
 
 /// Bébés (groupe Œuf « Inconnu » mais obtenus par reproduction des parents).
 fn is_baby(s: u16) -> bool {
@@ -776,6 +790,21 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
 
     // Attaques.
     p = fix_moves(&p, game, Some(e), changes);
+    if e.kind == EncounterKind::Egg {
+        let og = encounters::version_game(plan.version).unwrap_or(game);
+        for m in p.moves() {
+            if m != 0 && learn::egg_moves(og, e.species, e.form).contains(&m) {
+                if let Some(parent) = learn::egg_move_parent(og, e.species, e.form, m) {
+                    changes.push(format!(
+                        "Attaque Œuf {} : transmise par un parent {} ({})",
+                        dex::move_name(m).unwrap_or("?"),
+                        dex::species_name(parent.species).unwrap_or("?"),
+                        parent.method.label()
+                    ));
+                }
+            }
+        }
+    }
 
     // EV.
     fix_evs(&mut p, game, changes);

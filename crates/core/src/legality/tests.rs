@@ -577,3 +577,23 @@ fn gen67_transfer_geo_and_dates() {
     assert!(out.changes.iter().any(|c| c.term == "country"), "{:?}", out.changes);
     moved.pokemon = out.pokemon;
 }
+
+/// Set Smogon reposant sur une capacité Œuf : Azumarill Cognobidon (X/Y) reste légal, par l'œuf.
+#[test]
+fn egg_move_sets_are_kept() {
+    let req = GenerateRequest {
+        species: 184,
+        level: 50,
+        nature: Some(3),
+        ability_number: Some(4),
+        moves: Some([187, 453, 583, 276]), // Cognobidon, Aqua-Jet, Câlinerie, Surpuissance
+        ivs: Some([31; 6]),
+        ..Default::default()
+    };
+    let out = generate_legal(Game::XY, PkmFormat::Gen6, &trainer(), &req).unwrap();
+    assert!(out.success, "{:?}", out.report.checks);
+    assert!(out.pokemon.moves().contains(&187), "Cognobidon gardé : {:?}", out.adjustments);
+    assert!(out.pokemon.egg_location() != 0, "obtenu par l'œuf");
+    assert!(out.changes.iter().any(|c| c.term == "eggMoves"), "{:?}", out.changes);
+    assert_eq!(out.pokemon.ivs(), [31; 6]);
+}

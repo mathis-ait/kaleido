@@ -1000,7 +1000,20 @@ fn check_moves(ctx: &Ctx, e: Option<&Encounter>, unverifiable: bool, out: &mut L
             out.bad("move-unknown", "Attaque inconnue", format!("L'attaque n°{m} n'existe pas dans ce jeu."), TAB_MOVES);
             continue;
         }
-        if learn_sources(ctx, e, m).is_none() {
+        let source = learn_sources(ctx, e, m);
+        // Capacité Œuf : il faut un parent (chaîne de reproduction) qui la connaisse.
+        if let (Some(learn::LearnMethod::Egg), Some(e)) = (source, e) {
+            let game = ctx.origin_game().unwrap_or(ctx.game);
+            if learn::egg_moves(game, e.species, e.form).contains(&m) && learn::egg_move_parent(game, e.species, e.form, m).is_none() {
+                out.fishy(
+                    "egg-move-chain",
+                    format!("{} : aucun parent connu", move_name(m)),
+                    "Aucun Pokémon d'un groupe Œuf commun ne peut connaître cette capacité Œuf dans les jeux des Gen 4 à 7 : elle a pu venir de la Gen 3 ou d'un événement, impossible de le confirmer.",
+                    TAB_MOVES,
+                );
+            }
+        }
+        if source.is_none() {
             let name = move_name(m);
             if unverifiable {
                 out.fishy(
