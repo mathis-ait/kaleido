@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "about": "Cartes mémoire du compagnon en direct (lecture seule de la RAM de l'émulateur). Kaleido ne dépend d'aucune adresse fixe pour l'équipe : il la retrouve par signature (premier mot des Pokémon lus dans la sauvegarde, puis somme de contrôle). Ce fichier dit, jeu par jeu, quelles lectures sont activées et ce qui a été vérifié en jeu. 'verified' liste les codes jeu (DS) ou Title ID (3DS) observés réellement dans un émulateur ; tout le reste est « non vérifié ». Les adresses de 'reference' viennent de sources communautaires et ne sont pas utilisées par le code.",
+  "games": [
+    {
+      "game": "DP",
+      "console": "ds",
+      "codes": ["ADAE", "ADAF", "ADAD", "ADAI", "ADAS", "ADAJ", "ADAK", "APAE", "APAF", "APAD", "APAI", "APAS", "APAJ", "APAK"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": { "method": "partyHeader", "verified": [] },
+      "notes": "Bloc général en RAM supposé identique au fichier (comme HGSS, vérifié) : dresseur 0x64, équipe 0x98, carte 0x1238 du bloc. RAM principale trouvée par l'en-tête dans melonDS 1.1 (ADAF, écran titre) ; équipe non vérifiée en jeu (pas de sauvegarde Diamant dans le dossier de test)."
+    },
+    {
+      "game": "Pt",
+      "console": "ds",
+      "codes": ["CPUE", "CPUF", "CPUD", "CPUI", "CPUS", "CPUJ", "CPUK"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": { "method": "partyHeader", "verified": [] },
+      "notes": "Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280. RAM principale trouvée par l'en-tête dans melonDS 1.1 (CPUE, écran titre) ; équipe non vérifiée en jeu : la ROM Platine Europe du dossier de test n'a pas de sauvegarde.",
+      "reference": [
+        { "what": "pointeur vers le bloc général (US)", "address": "0x02101D2C", "offsets": { "party": "0xD094" }, "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)", "verified": false }
+      ]
+    },
+    {
+      "game": "HGSS",
+      "console": "ds",
+      "codes": ["IPKE", "IPKF", "IPKD", "IPKI", "IPKS", "IPKJ", "IPKK", "IPGE", "IPGF", "IPGD", "IPGI", "IPGS", "IPGJ", "IPGK"],
+      "party": { "method": "signature", "verified": ["IPGF"] },
+      "saveBlock": { "verified": ["IPGF"] },
+      "battle": { "method": "partyHeader", "verified": [] },
+      "notes": "Vérifié dans melonDS 1.1 sur Argent SoulSilver FR (IPGF) : RAM principale au début d'une allocation de l'émulateur, équipe trouvée en deux copies (bloc de sauvegarde + une seconde), nom et numéro du dresseur à la même distance que dans le fichier, carte lue en direct (61 dans le labo, 60 dehors après quelques pas). Combat non observé.",
+      "reference": [
+        { "what": "pointeur vers le bloc général (US)", "address": "0x0211186C", "offsets": { "party": "0xD088" }, "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)", "verified": false }
+      ]
+    },
+    {
+      "game": "BW",
+      "console": "ds",
+      "codes": ["IRBO", "IRBF", "IRBD", "IRBI", "IRBS", "IRBJ", "IRBK", "IRAO", "IRAF", "IRAD", "IRAI", "IRAS", "IRAJ", "IRAK"],
+      "party": { "method": "signature", "verified": ["IRAF"] },
+      "saveBlock": { "verified": ["IRAF"] },
+      "battle": { "method": "partyHeader", "verified": [] },
+      "notes": "Vérifié dans melonDS 1.1 sur Blanche FR randomisée par Kaleido (IRAF) : équipe de deux Pokémon trouvée en deux copies, dresseur à +0x5FC de l'équipe comme dans le fichier (bloc 0x18E00 / 0x19400), carte lue égale à celle de la sauvegarde (391). Changement de carte et combat non observés ; badges (0x21204 dans le fichier, loin de l'équipe) non vérifiés."
+    },
+    {
+      "game": "B2W2",
+      "console": "ds",
+      "codes": ["IREO", "IREF", "IRED", "IREI", "IRES", "IREJ", "IREK", "IRDO", "IRDF", "IRDD", "IRDI", "IRDS", "IRDJ", "IRDK"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": { "method": "partyHeader", "verified": [] },
+      "notes": "Même organisation que Noir / Blanc supposée. RAM principale trouvée par l'en-tête dans melonDS 1.1 (IREF, écran titre, console DS) ; équipe non vérifiée : la ROM Noire 2 FR du dossier de test n'a pas de sauvegarde."
+    },
+    {
+      "game": "XY",
+      "console": "3ds",
+      "titleIds": ["0004000000055D00", "0004000000055E00"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": null,
+      "notes": "Équipe cherchée par constante de chiffrement dans les grandes zones (FCRAM) d'Azahar ; nombre de Pokémon après les 6 emplacements. Non vérifié : Azahar n'est pas installé sur le poste de développement.",
+      "reference": [
+        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x08CE1CF8", "source": "PKMN-NTR", "verified": false },
+        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x08C861C8", "source": "PKMN-NTR", "verified": false }
+      ]
+    },
+    {
+      "game": "ORAS",
+      "console": "3ds",
+      "titleIds": ["000400000011C400", "000400000011C500"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": null,
+      "notes": "Non vérifié (Azahar absent).",
+      "reference": [
+        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x08CFB26C", "source": "PKMN-NTR", "verified": false },
+        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x08C9E134", "source": "PKMN-NTR", "verified": false }
+      ]
+    },
+    {
+      "game": "SM",
+      "console": "3ds",
+      "titleIds": ["0004000000164800", "0004000000175E00"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": null,
+      "notes": "Non vérifié (Azahar absent).",
+      "reference": [
+        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x34195E10", "source": "PKMN-NTR", "verified": false },
+        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x330D9838", "source": "PKMN-NTR", "verified": false }
+      ]
+    },
+    {
+      "game": "USUM",
+      "console": "3ds",
+      "titleIds": ["00040000001B5000", "00040000001B5100"],
+      "party": { "method": "signature", "verified": [] },
+      "saveBlock": { "verified": [] },
+      "battle": null,
+      "notes": "Non vérifié (Azahar absent).",
+      "reference": [
+        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x33F7FA44", "source": "PKMN-NTR", "verified": false },
+        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x33015AB0", "source": "PKMN-NTR", "verified": false }
+      ]
+    }
+  ]
+}

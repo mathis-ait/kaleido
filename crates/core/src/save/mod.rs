@@ -532,6 +532,50 @@ impl SaveFile {
         }
         Ok(())
     }
+
+    /// Repères pour retrouver cette partie dans la mémoire de l'émulateur (compagnon en direct).
+    pub fn ram_hints(&self) -> RamHints {
+        let t = &self.layout.trainer;
+        let d = &self.data;
+        let name_len = 2 * (t.name_max + 1);
+        let party = self.party().unwrap_or_default();
+        RamHints {
+            format: self.format(),
+            party: self.layout.party,
+            party_count: self.layout.party_count,
+            trainer_name: t.name,
+            trainer_name_bytes: d.get(t.name..t.name + name_len).map(<[u8]>::to_vec).unwrap_or_default(),
+            tid: rd_u16(d, t.tid),
+            sid: rd_u16(d, t.sid),
+            tid_offset: t.tid,
+            map: self.layout.map,
+            badges: self.badges_offset(),
+            hours: t.hours,
+            party_keys: party.iter().map(|p| rd_u32(p.data(), 0)).collect(),
+        }
+    }
+}
+
+/// Repères tirés de la sauvegarde pour lire la même partie en mémoire : offsets absolus dans le
+/// fichier (la RAM des jeux DS garde les blocs de la sauvegarde dans le même ordre, voir
+/// [`crate::live::reader`]), nom et numéro du dresseur, premiers mots chiffrés de l'équipe.
+#[derive(Debug, Clone)]
+pub struct RamHints {
+    pub format: PkmFormat,
+    pub party: usize,
+    pub party_count: usize,
+    pub trainer_name: usize,
+    /// Nom du dresseur tel qu'encodé dans la sauvegarde (terminateur et remplissage compris).
+    pub trainer_name_bytes: Vec<u8>,
+    pub tid: u16,
+    pub sid: u16,
+    pub tid_offset: usize,
+    pub map: usize,
+    pub badges: Option<usize>,
+    pub hours: usize,
+    /// Premier mot (`u32`) de chaque Pokémon de l'équipe : PID en Gen 4-5, constante de
+    /// chiffrement en Gen 6-7. Ce mot n'est pas chiffré : il sert de signature en RAM.
+    pub party_keys: Vec<u32>,
 }
 
 /// Résumé lisible d'une sauvegarde, pour le débogage.

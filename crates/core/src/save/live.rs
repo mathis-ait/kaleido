@@ -151,6 +151,54 @@ fn live_mon(game: Game, slot: Slot, p: &Pokemon) -> LiveMon {
     }
 }
 
+impl LiveSnapshot {
+    /// Même instantané avec l'équipe (et, si connues, la carte et les badges) lue dans la mémoire
+    /// de l'émulateur. Boîtes, dresseur et temps de jeu restent ceux de la sauvegarde.
+    pub fn with_memory(&self, party: &[Pokemon], map: Option<u16>, badges: Option<u8>) -> LiveSnapshot {
+        let game = game_of(self.version);
+        LiveSnapshot {
+            party: party.iter().enumerate().map(|(i, p)| live_mon(game, Slot::Party { index: i }, p)).collect(),
+            map: map.unwrap_or(self.map),
+            badges: badges.or(self.badges),
+            ..self.clone()
+        }
+    }
+}
+
+/// Pokémon adverse vu en mémoire pendant un combat.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveFoe {
+    pub species: u16,
+    pub form: u8,
+    pub species_name: String,
+    pub level: u8,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub shiny: bool,
+    pub gender: Gender,
+    pub status: StatusCondition,
+    pub pid: u32,
+}
+
+impl LiveFoe {
+    pub fn of(p: &Pokemon) -> LiveFoe {
+        let max_hp = p.party_stats().map(|s| s[0]).unwrap_or(0);
+        LiveFoe {
+            species: p.species(),
+            form: p.form(),
+            species_name: dex::species_name(p.species()).map(str::to_string).unwrap_or_else(|| format!("n°{}", p.species())),
+            level: p.party_level().unwrap_or(0),
+            hp: p.current_hp().min(max_hp),
+            max_hp,
+            shiny: p.is_shiny(),
+            gender: p.gender(),
+            status: StatusCondition::from_bits(p.status_condition()),
+            pid: p.pid(),
+        }
+    }
+}
+
 impl SaveSession {
     /// Instantané pour le compagnon. Échoue si les sommes de contrôle ne sont pas bonnes :
     /// le fichier est sans doute en cours d'écriture par l'émulateur, il faut relire plus tard.

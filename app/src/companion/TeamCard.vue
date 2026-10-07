@@ -3,6 +3,7 @@ import { computed } from "vue";
 import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
+import HpBar from "./HpBar.vue";
 import { monName, type LiveMon, type StatusCondition } from "./store";
 
 /** Un Pokémon de l'équipe, tel que le jeu l'affiche : PV, statut, objet, attaques. */
@@ -18,8 +19,6 @@ const STATUS: Record<Exclude<StatusCondition, "none">, string> = {
   paralysis: "Paralysie",
 };
 
-const ratio = computed(() => (props.mon.maxHp ? props.mon.hp / props.mon.maxHp : 0));
-const tone = computed(() => (ratio.value > 0.5 ? "ok" : ratio.value > 0.2 ? "warn" : "danger"));
 const ko = computed(() => !props.mon.isEgg && props.mon.maxHp > 0 && props.mon.hp === 0);
 </script>
 
@@ -36,10 +35,7 @@ const ko = computed(() => !props.mon.isEgg && props.mon.maxHp > 0 && props.mon.h
         <small v-if="!mon.isEgg">
           N. {{ mon.level }}<template v-if="mon.isNicknamed && mon.nickname !== mon.speciesName"> · {{ mon.speciesName }}</template>
         </small>
-        <span v-if="!mon.isEgg && mon.maxHp" class="hp">
-          <span class="bar" :class="tone"><i :style="{ width: `${Math.round(ratio * 100)}%` }" /></span>
-          <small class="num">{{ mon.hp }} / {{ mon.maxHp }}</small>
-        </span>
+        <HpBar v-if="!mon.isEgg && mon.maxHp" :hp="mon.hp" :max="mon.maxHp" />
       </span>
       <span class="flags">
         <span v-if="ko" class="sv-chip danger">K.O.</span>
@@ -152,45 +148,6 @@ const ko = computed(() => !props.mon.isEgg && props.mon.maxHp > 0 && props.mon.h
 small {
   color: var(--text-dim);
   font-size: var(--fs-sm);
-}
-
-.hp {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.bar {
-  flex: 1;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--text) 16%, transparent);
-  overflow: hidden;
-}
-
-.bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  transition: width 0.4s ease;
-}
-
-.bar.ok i {
-  background: var(--ok);
-}
-
-.bar.warn i {
-  background: var(--warn);
-}
-
-.bar.danger i {
-  background: var(--danger);
-}
-
-.num {
-  min-width: 64px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
 .flags {

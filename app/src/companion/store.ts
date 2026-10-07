@@ -62,7 +62,7 @@ export interface JournalEntry {
   at: number;
   playSeconds: number;
   place: string | null;
-  kind: "caught" | "hatched" | "evolved" | "levelUp" | "fainted" | "revived" | "died" | "gone" | "badge";
+  kind: "caught" | "hatched" | "evolved" | "levelUp" | "fainted" | "revived" | "died" | "gone" | "badge" | "encounter";
   text: string;
   key: string | null;
   species: number | null;
@@ -95,6 +95,53 @@ export interface NextBattle {
   }[];
 }
 
+/** Lecture de la mémoire de l'émulateur (compagnon en direct). */
+export interface LiveInfo {
+  /** `live` : mémoire lue ; `ingame` : émulateur lancé, mémoire non lue ; `offline` : aucun émulateur. */
+  status: "live" | "ingame" | "offline";
+  enabled: boolean;
+  emulator: string | null;
+  game: string | null;
+  /** Lecture vérifiée en jeu pour ce jeu (sinon « non vérifiée »). */
+  verified: boolean;
+  detail: string | null;
+}
+
+/** Pokémon adverse vu en mémoire. */
+export interface LiveFoe {
+  species: number;
+  form: number;
+  speciesName: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  shiny: boolean;
+  gender: Gender;
+  status: StatusCondition;
+  pid: number;
+}
+
+export interface BattleView {
+  wild: boolean;
+  foes: LiveFoe[];
+}
+
+export type EncounterOutcome = "caught" | "missed" | "fled";
+
+/** Rencontre sauvage vue en mémoire, avec son issue. */
+export interface Encounter {
+  id: number;
+  species: number;
+  form: number;
+  speciesName: string;
+  level: number;
+  shiny: boolean;
+  place: string | null;
+  route: string | null;
+  outcome: EncounterOutcome | null;
+  at: number;
+}
+
 export interface CompanionState {
   path: string;
   title: string;
@@ -113,6 +160,13 @@ export interface CompanionState {
   nuzlocke: NuzlockeSummary | null;
   canTrack: boolean;
   nextBattle: NextBattle | null;
+  /** Origine de l'équipe affichée : sauvegarde ou mémoire de l'émulateur. */
+  source: "file" | "memory";
+  live: LiveInfo | null;
+  battle: BattleView | null;
+  encounter: Encounter | null;
+  /** Déclencheur de l'envoi : sauvegarde relue, ou lecture de la mémoire. */
+  reason: "save" | "memory";
 }
 
 /** Évènement discret affiché quelques secondes (nouvelle capture, montée de niveau…). */
@@ -134,7 +188,12 @@ export const companion = reactive({
 });
 
 let noticeId = 0;
+const recent = new Map<string, number>();
 function notice(text: string) {
+  // Même annonce vue en mémoire puis à la sauvegarde suivante : une seule fois par minute.
+  const seen = recent.get(text);
+  if (seen !== undefined && Date.now() - seen < 60_000 && text !== "Sauvegarde lue") return;
+  recent.set(text, Date.now());
   const id = ++noticeId;
   companion.notices.push({ id, text });
   window.setTimeout(() => {
@@ -150,7 +209,7 @@ function apply(s: CompanionState | null, announce: boolean) {
   if (!s?.snapshot) return;
   if (announce) {
     if (s.events.length) s.events.slice(0, 4).forEach(notice);
-    else notice("Sauvegarde lue");
+    else if (s.reason === "save") notice("Sauvegarde lue");
   }
   companion.snapshot = s.snapshot;
   companion.readAt = Date.now();
@@ -170,6 +229,25 @@ export async function setAutoOpen(on: boolean) {
   if (!key || !companion.state) return;
   companion.state.autoOpen = on;
   await invoke("companion_set_auto_open", { key, on });
+}
+
+/** Active ou coupe la lecture de la mémoire de l'émulateur. */
+export async function setMemory(on: boolean) {
+  if (companion.state?.live) companion.state.live.enabled = on;
+  try {
+    await invoke("companion_set_memory", { on });
+  } catch (e) {
+    notice(String(e));
+  }
+}
+
+/** Issue d'une rencontre : Capturé, Raté (K.O. du sauvage) ou Fui. */
+export async function encounterOutcome(id: number, outcome: EncounterOutcome) {
+  try {
+    await invoke("companion_encounter_outcome", { id, outcome });
+  } catch (e) {
+    notice(String(e));
+  }
 }
 
 export async function setCompact(on: boolean) {

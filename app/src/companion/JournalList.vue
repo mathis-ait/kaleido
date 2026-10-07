@@ -18,6 +18,7 @@ const ICON: Record<JournalEntry["kind"], string> = {
   died: "x",
   gone: "minus",
   badge: "star",
+  encounter: "search",
 };
 
 const playTime = (s: number) => `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;

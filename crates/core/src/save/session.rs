@@ -908,4 +908,4 @@ impl SaveSession {
 
 #[path = "live.rs"]
 mod live;
-pub use live::{LiveBox, LiveBoxMon, LiveMon, LiveSnapshot, StatusCondition};
+pub use live::{LiveBox, LiveBoxMon, LiveFoe, LiveMon, LiveSnapshot, StatusCondition};
