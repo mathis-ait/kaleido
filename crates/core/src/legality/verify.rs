@@ -765,6 +765,32 @@ fn gen5_hidden_source(ctx: &Ctx) -> bool {
     [Game::BW, Game::B2W2].iter().any(|&g| encounters::encounters(g).iter().any(|e| e.ability.allows_hidden() && species.contains(&e.species)))
 }
 
+/// Zone Gen 4 dont les tirages (méthodes J et K) sont vérifiés.
+pub(crate) fn area4(kind: EncounterKind) -> Option<rng::Area4> {
+    Some(match kind {
+        EncounterKind::Grass => rng::Area4::Grass,
+        EncounterKind::Surf => rng::Area4::Surf,
+        EncounterKind::OldRod => rng::Area4::OldRod,
+        EncounterKind::GoodRod => rng::Area4::GoodRod,
+        EncounterKind::SuperRod => rng::Area4::SuperRod,
+        _ => return None,
+    })
+}
+
+/// Slots de la zone de `e` qui donnent la même espèce dans cette version.
+fn slots4(game: Game, e: &Encounter, version: u8) -> Vec<rng::Slot4> {
+    let Some(area) = area4(e.kind) else { return Vec::new() };
+    let mut out = Vec::new();
+    for x in encounters::encounters(game) {
+        if x.kind == e.kind && x.location == e.location && x.species == e.species && x.form == e.form && x.versions.contains(&version) {
+            for &slot in &x.slots {
+                out.push(rng::Slot4 { area, slot, level_min: x.level_min, level_max: x.level_max });
+            }
+        }
+    }
+    out
+}
+
 fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     let pk = ctx.pk;
     let origin_gen = ctx.origin_generation();
@@ -781,6 +807,28 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             k if k.is_wild() => matches!(t, PidType::Method1 | PidType::CuteCharm),
             _ => t == PidType::Method1,
         };
+        // Méthodes J / K : les tirages qui précèdent le PID doivent donner le slot (et le niveau).
+        if ok && t == PidType::Method1 && area4(e.kind).is_some() {
+            let game = ctx.origin_game().unwrap_or(ctx.game);
+            let slots = slots4(game, e, ctx.version);
+            if !slots.is_empty() {
+                let method = rng::Method4::of_version(ctx.version);
+                let met = (ctx.format == 4 && pk.met_level() > 1).then(|| pk.met_level());
+                if rng::frame4(method, &slots, met, pid, iv32(pk)).is_none() {
+                    out.bad(
+                        "pidiv-frame",
+                        "Tirage impossible pour cette rencontre",
+                        format!(
+                            "En {} ({}), le jeu tire l'emplacement de la rencontre{}, puis la nature, avant le PID : aucune suite de tirages ne mène à ce PID depuis cet emplacement.",
+                            version_name(ctx.version),
+                            method.label(),
+                            if e.kind == EncounterKind::Grass { "" } else { " et le niveau" }
+                        ),
+                        TAB_STATS,
+                    );
+                }
+            }
+        }
         if !ok {
             out.bad(
                 "pidiv",

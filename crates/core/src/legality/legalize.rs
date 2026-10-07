@@ -335,6 +335,56 @@ fn ball_allowed(e: &Encounter, version: u8, ball: u8) -> bool {
     }
 }
 
+/// PID et IV d'une rencontre sauvage DPPt / HGSS dont les tirages précédents donnent le
+/// slot et le niveau (méthodes J / K, sans talent de tête), ou chromatique du Poké Radar.
+#[allow(clippy::too_many_arguments)]
+fn wild_frame4(
+    e: &Encounter,
+    version: u8,
+    level: u8,
+    met_replaced: bool,
+    shiny: bool,
+    nature: u8,
+    ability_bit: u32,
+    gender: (u8, u8),
+    tid: u16,
+    sid: u16,
+    rand: &mut Rand,
+) -> Option<(u32, u32, String)> {
+    let area = verify::area4(e.kind)?;
+    if e.slots.is_empty() || e.generation != 4 {
+        return None;
+    }
+    let method = rng::Method4::of_version(version);
+    // Niveau de rencontre exact tant que le Pokémon reste en Gen 4 (le transfert l'efface).
+    let met = (!met_replaced && area != rng::Area4::Grass).then(|| level.clamp(e.level_min, e.level_max));
+    if shiny && method == rng::Method4::J && area == rng::Area4::Grass {
+        let wish = PidWish { nature: Some(nature), shiny: Some(true), ability_bit: Some(ability_bit), gender: Some(gender) };
+        let found = rng::generate_chain_shiny(rand, tid, sid, wish).or_else(|| rng::generate_chain_shiny(rand, tid, sid, PidWish { gender: None, ..wish }));
+        return found.map(|(pid, iv32)| (pid, iv32, "PID régénéré (Poké Radar, chaîne chromatique)".to_string()));
+    }
+    let wishes = [
+        PidWish { nature: Some(nature), shiny: Some(shiny), ability_bit: Some(ability_bit), gender: Some(gender) },
+        PidWish { nature: Some(nature), shiny: Some(shiny), ability_bit: Some(ability_bit), gender: None },
+        PidWish { nature: Some(nature), shiny: Some(shiny), ability_bit: None, gender: None },
+    ];
+    for &slot in &e.slots {
+        let s = rng::Slot4 { area, slot, level_min: e.level_min, level_max: e.level_max };
+        for wish in wishes {
+            let found = if shiny {
+                rng::generate_frame4_shiny(rand, method, &s, met, tid, sid, wish)
+            } else {
+                rng::generate_frame4(rand, method, &s, met, tid, sid, wish)
+            };
+            if let Some((pid, iv32)) = found {
+                let text = format!("PID régénéré en {} (slot {slot}{})", method.label(), met.map_or(String::new(), |l| format!(", niveau {l}")));
+                return Some((pid, iv32, text));
+            }
+        }
+    }
+    None
+}
+
 /// Réécrit le Pokémon pour la rencontre `plan`.
 fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishes, rand: &mut Rand, changes: &mut Vec<String>) -> Pokemon {
     let e = &plan.enc;
@@ -533,6 +583,20 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
     } else if origin_gen == 4 && !e.is_egg() {
         if e.kind == EncounterKind::Pokewalker {
             origin_pid = Some(rng::pokewalker_pid(tid, sid, nature.min(23) as u32, gender_wish, ratio));
+        } else if let Some((pid, iv32, text)) = wild_frame4(e, plan.version, level, met_replaced, shiny, nature, ability_bit, (gender_wish, ratio), tid, sid, rand) {
+            // Sauvage DPPt / HGSS : tirages du slot, du niveau et de la nature (méthodes J / K), ou Poké Radar.
+            origin_pid = Some(pid);
+            ivs = ivs_from_iv32(iv32);
+            if pid != old_pid {
+                if ivs != old_ivs {
+                    changes.push(if text.contains("Radar") {
+                        "IV recalculés (Poké Radar : les IV découlent du PID)".to_string()
+                    } else {
+                        format!("IV recalculés (méthode {} : les IV découlent du PID)", if plan.version == encounters::HG || plan.version == encounters::SS { "K" } else { "J" })
+                    });
+                }
+                changes.push(text);
+            }
         } else {
             let mut wish = PidWish { nature: Some(nature), shiny: Some(shiny), ability_bit: Some(ability_bit), gender: Some((gender_wish, ratio)) };
             let mut found = rng::generate_method1(rand, tid, sid, wish);
@@ -619,7 +683,7 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
     match fgen {
         4 => {
             if let Some(pid) = origin_pid {
-                if pid != old_pid {
+                if pid != old_pid && !changes.iter().any(|c| c.starts_with("PID")) {
                     changes.push("PID recalculé".into());
                 }
                 p.set_pid(pid);

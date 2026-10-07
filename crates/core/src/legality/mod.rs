@@ -3,7 +3,8 @@
 //! - [`encounters`] : base des rencontres (sauvages, fixes, dons, échanges, œufs…) ;
 //! - [`evolution`] : lignées et niveaux d'évolution ;
 //! - [`learn`] : attaques apprenables (niveau, CT/CS, donneurs, capacités Œuf) ;
-//! - [`rng`] : corrélations PID / IV (méthode 1 des Gen 3/4, règles de la Gen 5) ;
+//! - [`rng`] : corrélations PID / IV (méthode 1 des Gen 3/4, tirages des méthodes J et K
+//!   avec slot et niveau, Poké Radar, règles de la Gen 5) ;
 //! - [`verify`] : vérifications et verdict (Légal / Douteux / Illégal) ;
 //! - [`legalize`] : « Rendre légal » et « Générer un Pokémon légal ».
 //!
@@ -13,10 +14,11 @@
 //! - [`db`] : base « Rencontres » pour l'interface.
 //!
 //! Limites connues (par rapport à PKHeX) : rencontres et attaques des Gen 1 à 3 non
-//! vérifiées (« Douteux »), héritage des Balls et des attaques d'œuf simplifié, pas de
-//! vérification des souvenirs, rubans, tailles, dates, surnoms d'échange ni des créneaux
-//! RNG (méthodes J/K, Poké Radar en détail), distributions comparées sans les
-//! restrictions de langue des cartes.
+//! vérifiées (« Douteux »), héritage des Balls simplifié, pas de vérification des tailles
+//! ni des surnoms d'échange ; méthodes J/K : talents de tête Statik / Magnépiège, Pression
+//! (niveau maximal), activation des cannes et rencontres spéciales (Safari, Concours de
+//! capture, Coup d'Boule, Éclate-Roc, arbres à Miel) non vérifiés ; distributions
+//! comparées sans les restrictions de langue des cartes.
 
 pub mod db;
 pub mod encounters;

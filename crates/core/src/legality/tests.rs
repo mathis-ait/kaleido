@@ -227,7 +227,39 @@ fn generate_shiny_gen4_keeps_method1() {
     assert_eq!(pk.nature(), 3);
     let pid = pk.pid();
     assert!(((pid >> 16) ^ (pid & 0xFFFF) ^ pk.tid() as u32 ^ pk.sid() as u32) < 8, "chromatique attendu");
-    assert_eq!(super::legalize::pid_type(pk), super::rng::PidType::Method1);
+    // Platine, hautes herbes : chromatique du Poké Radar (PID bâti à partir des IV) ou méthode 1.
+    let radar = super::rng::chain_shiny(pid, super::verify::iv32(pk), pk.tid(), pk.sid());
+    assert!(radar || super::legalize::pid_type(pk) == super::rng::PidType::Method1);
+
+    // HeartGold : pas de Poké Radar, méthode K avec le bon slot.
+    let req = GenerateRequest { species: 16, level: 4, shiny: Some(true), nature: Some(10), ..Default::default() };
+    let out = generate_legal(Game::HGSS, PkmFormat::Gen4, &trainer(), &req).unwrap();
+    assert!(out.success, "{:?}", out.report.checks);
+    assert_eq!(super::legalize::pid_type(&out.pokemon), super::rng::PidType::Method1);
+    assert!(out.pokemon.is_shiny());
+}
+
+/// Les Pokémon sauvages créés en Gen 4 suivent les tirages des méthodes J et K (slot, niveau, nature).
+#[test]
+fn generated_gen4_wild_follow_method_jk() {
+    use super::rng::{frame4, Lead4, Method4};
+    let mut checked = 0;
+    for (game, species, level) in [(Game::Pt, 396u16, 4u8), (Game::DP, 399, 4), (Game::HGSS, 16, 4), (Game::HGSS, 129, 20)] {
+        let req = GenerateRequest { species, level, nature: Some(7), ..Default::default() };
+        let out = generate_legal(game, PkmFormat::Gen4, &trainer(), &req).unwrap();
+        assert!(out.success, "{game:?} n°{species} : {:?}", out.report.checks);
+        let pk = &out.pokemon;
+        let e = super::encounters::encounters(game)
+            .iter()
+            .find(|e| e.location == pk.met_location() && e.species == species && super::verify::area4(e.kind).is_some() && !e.slots.is_empty());
+        let Some(e) = e else { continue };
+        let slots: Vec<_> = e.slots.iter().map(|&slot| super::rng::Slot4 { area: super::verify::area4(e.kind).unwrap(), slot, level_min: e.level_min, level_max: e.level_max }).collect();
+        let lead = frame4(Method4::of_version(pk.version()), &slots, Some(pk.met_level()), pk.pid(), super::verify::iv32(pk));
+        assert_eq!(lead, Some(Lead4::None), "{game:?} n°{species} : {:?}", out.changes);
+        assert!(out.changes.iter().any(|c| c.term == "methodJK"), "{:?}", out.changes);
+        checked += 1;
+    }
+    assert!(checked >= 3, "{checked} vérifiés");
 }
 
 #[test]
