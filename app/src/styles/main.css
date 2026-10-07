@@ -209,6 +209,7 @@
   /* Panneaux, cartes (cases, fiches), petits éléments, pastilles. */
   --radius-panel: 18px;
   --radius-card: 12px;
+  /* --radius-sm (champs) : 10 px, défini plus bas avec --radius. */
   --radius-xs: 6px;
   --radius-pill: 999px;
 

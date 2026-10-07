@@ -2,7 +2,8 @@
 import { computed } from "vue";
 import type { PokeTypeKey, TypeTag } from "../types";
 
-const props = defineProps<{ type: TypeTag }>();
+/** `compact` : version resserrée pour les grilles denses (en-têtes de matrice). */
+const props = defineProps<{ type: TypeTag; compact?: boolean }>();
 
 // Couleurs officielles approximatives des types.
 const COLORS: Record<PokeTypeKey, string> = {
@@ -37,7 +38,7 @@ const textColor = computed(() => {
 </script>
 
 <template>
-  <span class="type" :style="{ background: COLORS[type.key], color: textColor }">{{ type.name }}</span>
+  <span class="type" :class="{ compact }" :style="{ background: COLORS[type.key], color: textColor }">{{ type.name }}</span>
 </template>
 
 <style scoped>
@@ -45,10 +46,16 @@ const textColor = computed(() => {
   display: inline-block;
   min-width: 58px;
   padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-xs);
   font-weight: 700;
   text-align: center;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.type.compact {
+  min-width: 0;
+  padding: 1px 5px;
+  font-size: 10px;
 }
 </style>

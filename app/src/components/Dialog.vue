@@ -39,7 +39,7 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     open.value = false;
   } else if (e.key === "Tab" && box.value) {
-    const items = [...box.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+    const items = [...box.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null && el.tabIndex >= 0);
     if (!items.length) return;
     const first = items[0];
     const last = items[items.length - 1];

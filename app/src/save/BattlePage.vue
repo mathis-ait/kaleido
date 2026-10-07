@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import Banner from "../components/Banner.vue";
+import EmptyState from "../components/EmptyState.vue";
 import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
-import { battle, computeMatrix, linkRom, restoreLink, ROLE_COLORS, unlinkRom } from "../battle";
+import { battle, computeMatrix, linkRom, restoreLink, unlinkRom } from "../battle";
 import { library } from "../library";
 import { lists, loadLists, saveState } from "../saveStore";
 import { isKaleidoRom, isRom } from "../types";
@@ -11,7 +13,6 @@ import BattleSettings from "./battle/BattleSettings.vue";
 import DuelPanel from "./battle/DuelPanel.vue";
 import MatrixGrid from "./battle/MatrixGrid.vue";
 import TrainerList from "./battle/TrainerList.vue";
-import { BATTLE_TIPS } from "./battle/glossary";
 import { useShell } from "./shell";
 
 const view = computed(() => saveState.view);
@@ -21,6 +22,9 @@ const candidates = computed(() => library.items.filter((d) => isRom(d) && d.gene
 
 const trainer = computed(() => battle.matrix?.trainer ?? battle.link?.trainers.find((t) => t.id === battle.trainerId) ?? null);
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+/** Relecture de la ROM déjà liée à cette sauvegarde, à l'ouverture de la page. */
+const restoring = ref(false);
 
 async function pickRom(folder = false) {
   const path = await open({
@@ -42,9 +46,14 @@ watch(
   { deep: true },
 );
 
-onMounted(() => {
+onMounted(async () => {
   if (!lists.loaded) loadLists();
-  restoreLink(saveState.path);
+  restoring.value = true;
+  try {
+    await restoreLink(saveState.path);
+  } finally {
+    restoring.value = false;
+  }
 });
 
 useShell(() => ({
@@ -57,41 +66,54 @@ useShell(() => ({
 
 <template>
   <div class="battle">
-    <div v-if="battle.error" class="banner danger" role="alert">
-      <Icon name="alert" :size="16" /> {{ battle.error }}
-      <button class="x" aria-label="Fermer" @click="battle.error = null"><Icon name="x" :size="14" /></button>
-    </div>
+    <Banner v-if="battle.error" :dismiss="() => (battle.error = null)">{{ battle.error }}</Banner>
+
+    <!-- Relecture de la ROM déjà liée -->
+    <section v-if="restoring && !battle.link" class="sv-panel">
+      <EmptyState loading title="Lecture de la ROM liée…">Kaleido relit les dresseurs de ta partie.</EmptyState>
+    </section>
 
     <!-- Pas encore de ROM liée -->
-    <section v-if="!battle.link" class="empty sv-panel">
-      <span class="ico"><Icon name="swords" :size="34" /></span>
-      <h2>Préparer un combat <Tip v-bind="BATTLE_TIPS.linkRom" /></h2>
-      <p>
+    <section v-else-if="!battle.link" class="sv-panel">
+      <EmptyState icon="swords" title="Préparer un combat" term="battle.linkRom">
         Lie la ROM de ta partie — l'originale ou celle randomisée par Kaleido. Kaleido y lit tous les dresseurs (Champions, rivaux, Conseil 4…)
         avec leurs vraies équipes, puis calcule les dégâts entre ton équipe et la leur : fourchette de dégâts, nombre de coups pour mettre
         K.O., qui attaque en premier.
-      </p>
-      <p class="sv-help">
-        Jeux pris en charge : Diamant / Perle, Platine, HeartGold / SoulSilver, Noir / Blanc, Noir 2 / Blanc 2, Rubis Oméga / Saphir Alpha, X / Y. La ROM doit être du même jeu que la
-        sauvegarde ({{ view?.game }}).
-      </p>
-      <div v-if="candidates.length" class="cands">
-        <span class="sv-label">Dans ta bibliothèque</span>
-        <button v-for="c in candidates" :key="c.path" class="cand" :disabled="battle.linking" @click="linkRom(c.path, saveState.path)">
-          <Icon name="file" :size="16" />
-          <span>
-            <strong>{{ c.game?.name ?? c.title }}</strong>
-            <small>{{ c.fileName }}</small>
-          </span>
-          <span v-if="isKaleidoRom(c)" class="tag">Randomisée</span>
-        </button>
-      </div>
-      <div class="sv-row">
-        <button class="sv-btn solid" :disabled="battle.linking" @click="pickRom()">
-          <Icon name="folder-open" :size="16" /> {{ battle.linking ? "Lecture de la ROM…" : "Choisir une ROM…" }}
-        </button>
-        <button class="sv-btn" :disabled="battle.linking" @click="pickRom(true)"><Icon name="folder" :size="16" /> Dossier 3DS extrait…</button>
-      </div>
+        <template #details>
+          <p class="sv-help">
+            Jeux pris en charge : Diamant / Perle, Platine, HeartGold / SoulSilver, Noir / Blanc, Noir 2 / Blanc 2, Rubis Oméga / Saphir Alpha,
+            X / Y. La ROM doit être du même jeu que la sauvegarde ({{ view?.game }}).
+          </p>
+          <div v-if="candidates.length" class="cands">
+            <span class="sv-label">Dans ta bibliothèque</span>
+            <button
+              v-for="c in candidates"
+              :key="c.path"
+              type="button"
+              class="cand"
+              :disabled="battle.linking"
+              @click="linkRom(c.path, saveState.path)"
+            >
+              <Icon name="file" :size="16" />
+              <span class="cand-name">
+                <strong>{{ c.game?.name ?? c.title }}</strong>
+                <small>{{ c.fileName }}</small>
+              </span>
+              <span v-if="isKaleidoRom(c)" class="sv-chip">Randomisée</span>
+            </button>
+          </div>
+        </template>
+        <template #actions>
+          <button type="button" class="sv-btn solid" :disabled="battle.linking" @click="pickRom()">
+            <Icon v-if="battle.linking" name="refresh" :size="16" class="sv-spin" />
+            <Icon v-else name="folder-open" :size="16" />
+            {{ battle.linking ? "Lecture de la ROM…" : "Choisir une ROM…" }}
+          </button>
+          <button type="button" class="sv-btn" :disabled="battle.linking" @click="pickRom(true)">
+            <Icon name="folder" :size="16" /> Dossier 3DS extrait…
+          </button>
+        </template>
+      </EmptyState>
     </section>
 
     <template v-else>
@@ -101,32 +123,42 @@ useShell(() => ({
           <strong>{{ battle.link.game }}</strong>
           <small :title="battle.link.path">{{ fileName(battle.link.path) }}</small>
         </span>
-        <span v-if="!battle.link.verified" class="tag warn" title="Emplacements des données non vérifiés sur une vraie ROM de ce jeu">À l'essai</span>
+        <span v-if="!battle.link.verified" class="unverified">
+          <span class="sv-chip warn">À l'essai</span><Tip term="battle.unverified" />
+        </span>
         <span class="grow" />
-        <button class="sv-btn" :disabled="battle.linking" @click="pickRom()"><Icon name="refresh" :size="14" /> Changer de ROM</button>
-        <button class="sv-btn" @click="unlinkRom(saveState.path)"><Icon name="x" :size="14" /> Délier</button>
+        <button type="button" class="sv-btn" :disabled="battle.linking" @click="pickRom()">
+          <Icon name="refresh" :size="14" /> Changer de ROM
+        </button>
+        <button type="button" class="sv-btn" @click="unlinkRom(saveState.path)"><Icon name="x" :size="14" /> Délier</button>
       </header>
 
       <div class="layout">
         <TrainerList />
         <div class="main">
-          <section v-if="!trainer" class="pick sv-panel">
-            <Icon name="swords" :size="40" />
-            <p>Choisis un dresseur à gauche pour voir comment ton équipe s'en sort contre la sienne.</p>
+          <section v-if="!trainer" class="sv-panel">
+            <EmptyState compact icon="swords" title="Aucun dresseur choisi">
+              Choisis un dresseur à gauche pour voir comment ton équipe s'en sort contre la sienne.
+            </EmptyState>
           </section>
           <template v-else>
-            <div class="trainer-head" :style="{ '--role': trainer.role ? ROLE_COLORS[trainer.role] : 'var(--text-dim)' }">
-              <span v-if="trainer.roleLabel" class="chip">{{ trainer.roleLabel }}</span>
-              <h2>{{ trainer.className }} {{ trainer.name }}</h2>
-              <small>{{ trainer.team.length }} Pokémon · niveau max {{ trainer.maxLevel }}<template v-if="trainer.double"> · combat en duo</template></small>
-              <span class="tips">
-                <Tip v-bind="BATTLE_TIPS.trainerIvs" />
-                <Tip v-bind="BATTLE_TIPS.trainerMoves" />
-                <Tip v-bind="BATTLE_TIPS.trainerNature" />
+            <div class="trainer-head">
+              <span v-if="trainer.roleLabel" class="role">
+                <span class="sv-chip accent">{{ trainer.roleLabel }}</span><Tip term="battle.roles" />
               </span>
+              <h2>{{ trainer.className }} {{ trainer.name }}</h2>
+              <small>
+                {{ trainer.team.length }} Pokémon · jusqu'au N. {{ trainer.maxLevel }}
+                <template v-if="trainer.double">· combat en duo <Tip term="battle.double" /></template>
+              </small>
+              <small class="tips">
+                IV <Tip term="battle.trainerIvs" /> · attaques <Tip term="battle.trainerMoves" /> · nature <Tip term="battle.trainerNature" />
+              </small>
             </div>
             <BattleSettings />
-            <p v-if="battle.computing && !battle.matrix" class="sv-help">Calcul…</p>
+            <section v-if="battle.computing && !battle.matrix" class="sv-panel">
+              <EmptyState compact loading title="Calcul des dégâts…" />
+            </section>
             <MatrixGrid />
             <DuelPanel />
           </template>
@@ -140,75 +172,29 @@ useShell(() => ({
 .battle {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
-}
-
-.banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-radius: 12px;
-  font-size: 13px;
-}
-
-.banner.danger {
-  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-}
-
-.banner .x {
-  margin-left: auto;
-  color: inherit;
-}
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  max-width: 760px;
-  padding: 26px 28px;
-}
-
-.empty h2 {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  font-size: 22px;
-}
-
-.empty p {
-  margin: 0;
-  line-height: 1.55;
-}
-
-.ico {
-  display: grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: linear-gradient(150deg, #ff7a6b, #e0457b);
-  color: #fff;
 }
 
 .cands {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
   width: 100%;
+  margin-top: var(--sp-2);
+  text-align: left;
 }
 
 .cand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--text);
   text-align: left;
 }
 
@@ -216,36 +202,38 @@ useShell(() => ({
   background: var(--panel-hover);
 }
 
+.cand:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cand-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .cand small {
   display: block;
   color: var(--text-dim);
-}
-
-.tag {
-  margin-left: auto;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.tag.warn {
-  margin-left: 0;
-  background: var(--warn-bg);
-  color: var(--warn);
+  font-size: var(--fs-sm);
 }
 
 .linked {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .linked small {
   display: block;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
+}
+
+.unverified,
+.role {
+  display: inline-flex;
+  align-items: center;
 }
 
 .grow {
@@ -255,7 +243,7 @@ useShell(() => ({
 .layout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  gap: 14px;
+  gap: var(--sp-4);
   flex: 1;
   min-height: 0;
 }
@@ -263,50 +251,38 @@ useShell(() => ({
 .main {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-3);
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
-}
-
-.pick {
-  display: grid;
-  place-items: center;
-  gap: 8px;
-  padding: 40px;
-  color: var(--text-dim);
-  text-align: center;
+  padding-right: var(--sp-1);
 }
 
 .trainer-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  padding-left: 12px;
-  border-left: 4px solid var(--role);
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
 }
 
 .trainer-head h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-xl);
 }
 
 .trainer-head small {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   color: var(--text-dim);
-}
-
-.trainer-head .chip {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--role);
-  color: #111;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--fs-md);
 }
 
 .tips {
   display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
 }
 </style>

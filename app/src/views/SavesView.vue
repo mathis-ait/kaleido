@@ -454,6 +454,11 @@ kbd {
   margin-left: auto;
 }
 
+/* « Retour » ne se tasse jamais : c'est l'aide qui se coupe. */
+.left > .act {
+  flex-shrink: 0;
+}
+
 .hint {
   overflow: hidden;
   color: var(--text-dim);

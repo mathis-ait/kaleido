@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import Banner from "../../components/Banner.vue";
 import Combo, { type ComboOption } from "../../components/Combo.vue";
+import EmptyState from "../../components/EmptyState.vue";
 import Icon from "../../components/Icon.vue";
+import SearchField from "../../components/SearchField.vue";
+import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
+import Toggle from "../../components/Toggle.vue";
 import { editPokemon, loadBox, notify, saveState } from "../../saveStore";
 import type { SlotView } from "../../types";
 import { useShell } from "../shell";
@@ -20,8 +25,9 @@ import {
   type GiftSort,
   type GiftSummary,
 } from "./api";
+import FormatBadge from "./FormatBadge.vue";
 import GiftDetails from "./GiftDetails.vue";
-import { GIFT_TERMS } from "./terms";
+import { giftTone } from "./terms";
 
 /**
  * Page « Cadeaux mystère » : filtres à gauche, cartes au centre (chargées par pages au fil
@@ -45,7 +51,8 @@ const filters = reactive({
 const items = ref<GiftSummary[]>([]);
 const total = ref(0);
 const loading = ref(false);
-const error = ref<string | null>(null);
+/** Dernière erreur, avec l'action à relancer quand ça a du sens. */
+const error = ref<{ message: string; retry?: () => void } | null>(null);
 const selected = ref<Details | null>(null);
 const busy = ref(false);
 const lastAdded = ref<SlotView | null>(null);
@@ -55,6 +62,10 @@ const grid = ref<HTMLElement | null>(null);
 
 const hasSave = computed(() => !!saveState.view);
 const saveGen = computed(() => saveState.view?.generation ?? null);
+
+function fail(e: unknown, retry?: () => void) {
+  error.value = { message: String(e), retry };
+}
 
 const triValue = (t: Tri) => (t === "any" ? null : t === "yes");
 const query = computed<GiftQuery>(() => ({
@@ -84,7 +95,7 @@ async function load(reset: boolean) {
       if (!selected.value && items.value[0]) select(items.value[0]);
     }
   } catch (e) {
-    if (id === request) error.value = String(e);
+    if (id === request) fail(e, () => load(reset));
   } finally {
     if (id === request) loading.value = false;
   }
@@ -112,7 +123,7 @@ async function select(g: GiftSummary) {
     selected.value = await giftsApi.details(g.id);
     lastAdded.value = null;
   } catch (e) {
-    error.value = String(e);
+    fail(e, () => select(g));
   }
 }
 
@@ -139,7 +150,7 @@ async function addToSave() {
     lastAdded.value = r.pokemon;
     notify(r.warning ? `${r.message} — ${r.warning}` : r.message);
   } catch (e) {
-    error.value = String(e);
+    fail(e, addToSave);
   } finally {
     busy.value = false;
   }
@@ -163,7 +174,7 @@ async function exportGift() {
     await giftsApi.exportFile(g.id, output);
     notify(`Carte enregistrée : ${output.split(/[\\/]/).pop()}`);
   } catch (e) {
-    error.value = String(e);
+    fail(e);
   }
 }
 
@@ -182,7 +193,7 @@ async function importGift() {
     await load(true);
     notify(`Carte ouverte : ${selected.value.title}`);
   } catch (e) {
-    error.value = String(e);
+    fail(e);
   }
 }
 
@@ -190,14 +201,21 @@ function openInEditor() {
   if (lastAdded.value) editPokemon(lastAdded.value);
 }
 
-onMounted(async () => {
+async function loadOverview() {
   try {
     const o = await giftsApi.overview();
     dbTotal.value = o.total;
     speciesOptions.value = o.species.map((s) => ({ value: s.value, label: s.label, hint: `${s.count}`, sprite: s.value }));
   } catch (e) {
-    error.value = String(e);
+    fail(e, () => {
+      loadOverview();
+      load(true);
+    });
   }
+}
+
+onMounted(async () => {
+  await loadOverview();
   // Par défaut : les cartes de la génération de la sauvegarde ouverte.
   if (saveGen.value) filters.generations = [saveGen.value];
   else load(true);
@@ -241,51 +259,52 @@ const TRI: { value: Tri; label: string }[] = [
   <div class="gifts">
     <!-- Filtres -->
     <aside class="filters sv-panel">
-      <h2>
-        Cadeaux mystère
-        <Tip :title="GIFT_TERMS.mysteryGift.title" :text="GIFT_TERMS.mysteryGift.text" />
-      </h2>
+      <h2>Cadeaux mystère <Tip term="gifts.mysteryGift" /></h2>
       <div class="sv-field">
         <span class="sv-label">Pokémon</span>
         <Combo v-model="filters.species" :options="speciesOptions" sprites none-label="Tous les Pokémon" placeholder="Espèce…" />
       </div>
       <div class="sv-field">
         <span class="sv-label">Recherche</span>
-        <div class="search">
-          <Icon name="search" :size="15" />
-          <input v-model="filters.text" class="sv-input" placeholder="Titre, Pokémon, dresseur, n° de carte…" />
-        </div>
+        <SearchField v-model="filters.text" placeholder="Titre, Pokémon, dresseur, n° de carte…" />
       </div>
       <div class="sv-field">
-        <span class="sv-label">Chromatique <Tip :title="GIFT_TERMS.shinyLock.title" :text="GIFT_TERMS.shinyLock.text" /></span>
-        <div class="sv-seg">
-          <button v-for="t in TRI" :key="t.value" :class="{ on: filters.shiny === t.value }" @click="filters.shiny = t.value">{{ t.label }}</button>
-        </div>
+        <span class="sv-label">Chromatique <Tip term="shinyLock" /></span>
+        <Segmented v-model="filters.shiny" :options="TRI" label="Chromatique" />
       </div>
       <div class="sv-field">
         <span class="sv-label">Œuf</span>
-        <div class="sv-seg">
-          <button v-for="t in TRI" :key="t.value" :class="{ on: filters.egg === t.value }" @click="filters.egg = t.value">{{ t.label }}</button>
-        </div>
+        <Segmented v-model="filters.egg" :options="TRI" label="Œuf" />
       </div>
       <div class="sv-field">
         <span class="sv-label">Contenu</span>
-        <div class="chips">
-          <button v-for="k in KINDS" :key="k.value" class="chip" :class="{ on: filters.kinds.includes(k.value) }" @click="toggle(filters.kinds, k.value)">
+        <div class="sv-row chips">
+          <button
+            v-for="k in KINDS"
+            :key="k.value"
+            type="button"
+            class="sv-chip"
+            :class="{ on: filters.kinds.includes(k.value) }"
+            :aria-pressed="filters.kinds.includes(k.value)"
+            @click="toggle(filters.kinds, k.value)"
+          >
             {{ k.label }}
           </button>
         </div>
       </div>
-      <label class="sv-switch" :class="{ off: !hasSave }">
-        <input v-model="filters.onlyThisGame" type="checkbox" :disabled="!hasSave" />
-        <span class="track" />
-        Seulement ce jeu
-        <Tip :title="GIFT_TERMS.onlyThisGame.title" :text="GIFT_TERMS.onlyThisGame.text" />
-      </label>
+      <Toggle v-model="filters.onlyThisGame" label="Seulement ce jeu" term="onlyThisGame" :disabled="!hasSave" />
       <div class="sv-field">
-        <span class="sv-label">Génération <Tip :title="GIFT_TERMS.card.title" :text="GIFT_TERMS.card.text" /></span>
-        <div class="chips">
-          <button v-for="g in [4, 5, 6, 7]" :key="g" class="chip" :class="{ on: filters.generations.includes(g) }" @click="toggle(filters.generations, g)">
+        <span class="sv-label">Génération <Tip term="gifts.card" /></span>
+        <div class="sv-row chips">
+          <button
+            v-for="g in [4, 5, 6, 7]"
+            :key="g"
+            type="button"
+            class="sv-chip"
+            :class="{ on: filters.generations.includes(g) }"
+            :aria-pressed="filters.generations.includes(g)"
+            @click="toggle(filters.generations, g)"
+          >
             Gen {{ g }}<small v-if="g === saveGen"> · ce jeu</small>
           </button>
         </div>
@@ -296,9 +315,9 @@ const TRI: { value: Tri; label: string }[] = [
           <option v-for="s in SORTS" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
       </div>
-      <div class="foot">
-        <button class="sv-btn" @click="resetFilters"><Icon name="refresh" :size="14" /> Réinitialiser</button>
-        <button class="sv-btn" @click="importGift"><Icon name="folder-open" :size="14" /> Ouvrir un fichier…</button>
+      <div class="foot sv-row">
+        <button type="button" class="sv-btn" @click="resetFilters"><Icon name="refresh" :size="14" /> Réinitialiser</button>
+        <button type="button" class="sv-btn" @click="importGift"><Icon name="folder-open" :size="14" /> Ouvrir un fichier…</button>
       </div>
     </aside>
 
@@ -307,27 +326,37 @@ const TRI: { value: Tri; label: string }[] = [
       <header class="count">
         <strong>{{ total.toLocaleString("fr-FR") }}</strong> carte{{ total > 1 ? "s" : "" }}
         <span v-if="dbTotal">sur {{ dbTotal.toLocaleString("fr-FR") }} dans la base</span>
-        <span v-if="loading" class="spin"><Icon name="refresh" :size="13" /></span>
+        <Icon v-if="loading && items.length" name="refresh" :size="13" class="sv-spin" />
       </header>
-      <p v-if="error" class="error"><Icon name="alert" :size="14" /> {{ error }}</p>
-      <div ref="grid" class="grid" @scroll.passive="onScroll">
+      <Banner v-if="error" :retry="error.retry" :dismiss="() => (error = null)">{{ error.message }}</Banner>
+      <EmptyState v-if="loading && !items.length" loading title="Chargement des cartes…" />
+      <EmptyState v-else-if="!items.length && !error" icon="search" title="Aucune carte" compact>
+        Aucune carte ne correspond à ces filtres.
+        <template #actions>
+          <button type="button" class="sv-btn" @click="resetFilters"><Icon name="refresh" :size="14" /> Réinitialiser les filtres</button>
+        </template>
+      </EmptyState>
+      <div v-else ref="grid" class="grid" @scroll.passive="onScroll">
         <button
           v-for="g in items"
           :key="g.id"
+          type="button"
           class="card sv-panel"
-          :class="[`f-${g.formatLabel.toLowerCase()}`, { on: selected?.id === g.id, imported: g.id >= IMPORTED_BASE }]"
+          :class="{ on: selected?.id === g.id, imported: g.id >= IMPORTED_BASE }"
+          :style="giftTone(g.formatLabel)"
+          :aria-pressed="selected?.id === g.id"
           @click="select(g)"
           @dblclick="select(g).then(addToSave)"
         >
           <div class="card-top">
-            <span class="fmt">{{ g.formatLabel }}</span>
+            <FormatBadge :label="g.formatLabel" />
             <span class="no">{{ g.id >= IMPORTED_BASE ? "Fichier" : g.cardId ? `n°${g.cardId}` : "" }}</span>
           </div>
           <div class="pic">
             <Sprite v-if="g.species" :id="g.species" :shiny="isShiny(g.shiny)" :size="76" />
             <Icon v-else :name="g.kind === 'item' ? 'bag' : 'gift'" :size="40" />
-            <Icon v-if="isShiny(g.shiny)" class="star" name="star" :size="14" />
-            <Icon v-if="g.egg" class="egg" name="egg" :size="14" />
+            <span v-if="isShiny(g.shiny)" class="star" title="Chromatique"><Icon name="star" :size="14" /></span>
+            <span v-if="g.egg" class="egg" title="Œuf"><Icon name="egg" :size="14" /></span>
           </div>
           <strong class="title">{{ g.title }}</strong>
           <small class="sub">
@@ -336,10 +365,9 @@ const TRI: { value: Tri; label: string }[] = [
             <template v-if="formatDate(g.date)"> · {{ formatDate(g.date) }}</template>
           </small>
           <div class="games">
-            <span v-for="c in g.games" :key="c.id" class="game">{{ c.name }}</span>
+            <span v-for="c in g.games" :key="c.id" class="sv-chip game">{{ c.name }}</span>
           </div>
         </button>
-        <p v-if="!loading && !items.length" class="empty">Aucune carte ne correspond à ces filtres.</p>
       </div>
     </section>
 
@@ -355,8 +383,7 @@ const TRI: { value: Tri; label: string }[] = [
       @edit="openInEditor"
     />
     <aside v-else class="placeholder sv-panel">
-      <Icon name="gift" :size="48" />
-      <p>Choisis une carte pour voir le Pokémon ou les objets qu'elle contient.</p>
+      <EmptyState icon="gift" title="Aucune carte choisie">Choisis une carte pour voir le Pokémon ou les objets qu'elle contient.</EmptyState>
     </aside>
   </div>
 </template>
@@ -365,7 +392,7 @@ const TRI: { value: Tri; label: string }[] = [
 .gifts {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr) 340px;
-  gap: 18px;
+  gap: var(--sp-4);
   height: 100%;
   min-height: 0;
 }
@@ -373,9 +400,9 @@ const TRI: { value: Tri; label: string }[] = [
 .filters {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: var(--sp-4);
   min-height: 0;
-  padding: 16px;
+  padding: var(--sp-4);
   overflow-y: auto;
 }
 
@@ -383,61 +410,19 @@ const TRI: { value: Tri; label: string }[] = [
   display: flex;
   align-items: center;
   margin: 0;
-  font-size: 18px;
-}
-
-.search {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search :deep(svg) {
-  position: absolute;
-  left: 10px;
-  color: var(--text-dim);
-  pointer-events: none;
-}
-
-.search .sv-input {
-  padding-left: 32px;
+  font-size: var(--fs-lg);
 }
 
 .chips {
-  display: flex;
-  flex-wrap: wrap;
   gap: 6px;
 }
 
-.chip {
-  padding: 5px 11px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-dim);
-  font-weight: 700;
-  font-size: 12.5px;
-}
-
-.chip.on {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--bg);
-}
-
-.chip small {
+.chips small {
   font-weight: 600;
   opacity: 0.8;
 }
 
-.sv-switch.off {
-  opacity: 0.45;
-}
-
 .foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   margin-top: auto;
 }
 
@@ -450,40 +435,22 @@ const TRI: { value: Tri; label: string }[] = [
 
 .count {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: var(--fs-base);
 }
 
-.count span {
+.count span,
+.count .icon {
   color: var(--text-dim);
-  font-size: 13px;
-}
-
-.spin {
-  display: inline-flex;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.error {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
   align-content: start;
-  gap: 12px;
+  gap: var(--sp-3);
   min-height: 0;
   overflow-y: auto;
   padding: 2px 6px 16px 2px;
@@ -497,7 +464,7 @@ const TRI: { value: Tri; label: string }[] = [
   padding: 10px 12px 12px;
   text-align: left;
   color: var(--text);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   /* Les cartes hors écran ne sont pas dessinées (grandes listes). */
   content-visibility: auto;
   contain-intrinsic-size: auto 210px;
@@ -517,42 +484,15 @@ const TRI: { value: Tri; label: string }[] = [
   border-style: dashed;
 }
 
-.f-pcd,
-.f-pgt {
-  --gift-tone: #3b82f6;
-}
-
-.f-pgf {
-  --gift-tone: #64748b;
-}
-
-.f-wc6 {
-  --gift-tone: #db2777;
-}
-
-.f-wc7 {
-  --gift-tone: #ea7a1a;
-}
-
 .card-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.fmt {
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: var(--gift-tone);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-}
-
 .no {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
 }
 
@@ -561,22 +501,25 @@ const TRI: { value: Tri; label: string }[] = [
   display: grid;
   place-items: center;
   height: 70px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--gift-tone) 13%, transparent);
   color: var(--text-dim);
 }
 
-.pic .star {
+.pic .star,
+.pic .egg {
   position: absolute;
-  top: 6px;
   right: 6px;
-  color: #ffd45c;
+  display: inline-flex;
+}
+
+.pic .star {
+  top: 6px;
+  color: var(--shiny);
 }
 
 .pic .egg {
-  position: absolute;
   bottom: 6px;
-  right: 6px;
 }
 
 .title {
@@ -584,14 +527,14 @@ const TRI: { value: Tri; label: string }[] = [
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.3;
   min-height: 2.6em;
 }
 
 .sub {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -601,32 +544,17 @@ const TRI: { value: Tri; label: string }[] = [
 .games {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .game {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-.empty {
-  grid-column: 1 / -1;
-  color: var(--text-dim);
-  text-align: center;
+  padding: 0 7px;
+  font-size: var(--fs-xs);
 }
 
 .placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px;
-  color: var(--text-dim);
-  text-align: center;
+  display: grid;
+  place-items: center;
 }
 
 @media (max-width: 1180px) {

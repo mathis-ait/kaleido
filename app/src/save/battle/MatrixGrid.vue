@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from "vue";
+import Icon from "../../components/Icon.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
 import TypeBadge from "../../components/TypeBadge.vue";
 import { battle, openDuel, pct, typeTag, type BestMove, type Cell, type KoInfo } from "../../battle";
-import { BATTLE_TIPS } from "./glossary";
 
 /** « K.O. en 2 » si assuré, « 63 % en 2 » sinon. */
 function koShort(ko: KoInfo) {
@@ -22,6 +23,8 @@ const VERDICT_LABEL: Record<Cell["verdict"], string> = {
   none: "Personne ne peut blesser l'autre",
 };
 
+const FIRST_SHORT: Record<Cell["first"], string> = { me: "toi", them: "lui", tie: "hasard" };
+
 function firstLabel(c: Cell) {
   if (c.first === "me") return `Tu agis en premier (${c.mySpeed} contre ${c.theirSpeed})`;
   if (c.first === "them") return `Il agit en premier (${c.theirSpeed} contre ${c.mySpeed})`;
@@ -29,19 +32,77 @@ function firstLabel(c: Cell) {
 }
 
 const isSelected = (i: number, j: number) => battle.selected?.mine === i && battle.selected?.theirs === j;
+
+// Focus itinérant : une seule case atteignable au Tab, les flèches se déplacent dans la grille.
+const cursor = ref({ i: 0, j: 0 });
+const grid = ref<HTMLElement | null>(null);
+
+watch(
+  () => battle.selected,
+  (s) => {
+    if (s) cursor.value = { i: s.mine, j: s.theirs };
+  },
+);
+watch(
+  () => battle.matrix,
+  (m) => {
+    const rows = m?.cells.length ?? 0;
+    const cols = m?.cells[0]?.length ?? 0;
+    if (cursor.value.i >= rows || cursor.value.j >= cols) cursor.value = { i: 0, j: 0 };
+  },
+);
+
+async function onKey(e: KeyboardEvent) {
+  const cells = battle.matrix?.cells;
+  if (!cells?.length) return;
+  const rows = cells.length;
+  const cols = cells[0].length;
+  let { i, j } = cursor.value;
+  switch (e.key) {
+    case "ArrowRight":
+      j = Math.min(cols - 1, j + 1);
+      break;
+    case "ArrowLeft":
+      j = Math.max(0, j - 1);
+      break;
+    case "ArrowDown":
+      i = Math.min(rows - 1, i + 1);
+      break;
+    case "ArrowUp":
+      i = Math.max(0, i - 1);
+      break;
+    case "Home":
+      j = 0;
+      if (e.ctrlKey) i = 0;
+      break;
+    case "End":
+      j = cols - 1;
+      if (e.ctrlKey) i = rows - 1;
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  cursor.value = { i, j };
+  await nextTick();
+  grid.value?.querySelector<HTMLButtonElement>(`[data-cell="${i}-${j}"]`)?.focus();
+}
 </script>
 
 <template>
-  <div v-if="battle.matrix" class="matrix sv-panel" :class="{ busy: battle.computing }">
+  <div v-if="battle.matrix" class="matrix sv-panel" :class="{ busy: battle.computing }" :aria-busy="battle.computing">
     <div class="title">
-      <h3>Matrice des duels <Tip v-bind="BATTLE_TIPS.matrix" /></h3>
+      <h3>Matrice des duels <Tip term="battle.matrix" /></h3>
       <span class="legend">
-        <i class="win" /> gagné <i class="uncertain" /> incertain <i class="lose" /> perdu
-        <Tip v-bind="BATTLE_TIPS.verdict" />
+        <i class="win" /> gagné <i class="uncertain" /> incertain <i class="lose" /> perdu <i class="none" /> sans dégâts
+        <Tip term="battle.verdict" />
+        <span class="sep" />
+        <Icon name="clock" :size="12" /> premier à agir <Tip term="battle.speedOrder" />
       </span>
     </div>
     <div class="scroll">
-      <table>
+      <table ref="grid">
         <thead>
           <tr>
             <th class="corner">Moi ↓ / Lui →</th>
@@ -51,13 +112,13 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
                 <div>
                   <strong>{{ t.name }}</strong>
                   <small>N. {{ t.level }}</small>
-                  <div class="types"><TypeBadge v-for="ty in t.types" :key="ty" :type="typeTag(ty)" /></div>
+                  <div class="types"><TypeBadge v-for="ty in t.types" :key="ty" compact :type="typeTag(ty)" /></div>
                 </div>
               </div>
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody @keydown="onKey">
           <tr v-for="(m, i) in battle.matrix.mine" :key="i">
             <th>
               <div class="mon">
@@ -65,15 +126,20 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
                 <div>
                   <strong>{{ m.name }}</strong>
                   <small>N. {{ m.level }}</small>
-                  <div class="types"><TypeBadge v-for="ty in m.types" :key="ty" :type="typeTag(ty)" /></div>
+                  <div class="types"><TypeBadge v-for="ty in m.types" :key="ty" compact :type="typeTag(ty)" /></div>
                 </div>
               </div>
             </th>
             <td v-for="(c, j) in battle.matrix.cells[i]" :key="j">
               <button
+                type="button"
                 class="cell"
                 :class="[c.verdict, { on: isSelected(i, j) }]"
+                :data-cell="`${i}-${j}`"
+                :tabindex="cursor.i === i && cursor.j === j ? 0 : -1"
+                :aria-pressed="isSelected(i, j)"
                 :title="`${VERDICT_LABEL[c.verdict]} — ${firstLabel(c)}. Clic : détail des attaques.`"
+                @focus="cursor = { i, j }"
                 @click="openDuel(i, j)"
               >
                 <span class="row mine">
@@ -94,7 +160,7 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
                   </template>
                   <span v-else class="mv dim">aucun dégât</span>
                 </span>
-                <span class="speed" :class="c.first">{{ c.first === "me" ? "⚡ toi" : c.first === "them" ? "⚡ lui" : "⚡ =" }}</span>
+                <span class="speed" :class="c.first"><Icon name="clock" :size="11" /> {{ FIRST_SHORT[c.first] }}</span>
               </button>
             </td>
           </tr>
@@ -106,7 +172,7 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
 
 <style scoped>
 .matrix {
-  padding: 14px 16px;
+  padding: var(--sp-3) var(--sp-4);
   transition: opacity 0.2s;
 }
 
@@ -119,31 +185,40 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
 .title h3 {
   display: flex;
   align-items: center;
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-lg);
 }
 
 .legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .legend i {
   display: inline-block;
   width: 12px;
   height: 12px;
-  margin-left: 6px;
-  border-radius: 3px;
+  margin-left: var(--sp-1);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-xs);
+}
+
+.legend .sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--sp-1);
+  background: var(--border);
 }
 
 .scroll {
@@ -152,7 +227,7 @@ const isSelected = (i: number, j: number) => battle.selected?.mine === i && batt
 
 table {
   border-collapse: separate;
-  border-spacing: 6px;
+  border-spacing: var(--sp-2);
 }
 
 th {
@@ -163,65 +238,62 @@ th {
 
 .corner {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .mon {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   min-width: 150px;
 }
 
 .mon strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .mon small {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .types {
   display: flex;
-  gap: 3px;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
   margin-top: 2px;
-}
-
-.types :deep(.type) {
-  min-width: 0;
-  padding: 0 5px;
-  font-size: 10px;
 }
 
 .cell {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   width: 190px;
   min-height: 64px;
-  padding: 8px 10px 18px;
+  padding: var(--sp-2) var(--sp-3) 18px;
   border: 1.5px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
   text-align: left;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
-.win,
-.legend .win {
-  background: color-mix(in srgb, #22c55e 26%, transparent);
+/* Fond teinté et bordure pleine : les trois verdicts restent distincts même sur les thèmes pastel (Lagon). */
+.win {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
 }
 
-.uncertain,
-.legend .uncertain {
-  background: color-mix(in srgb, #f59e0b 26%, transparent);
+.uncertain {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
-.lose,
-.legend .lose {
-  background: color-mix(in srgb, #ef4444 26%, transparent);
+.lose {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
 .none {
@@ -234,13 +306,14 @@ th {
 
 .cell.on {
   border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .row b {
@@ -262,19 +335,22 @@ th {
 
 .ko {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .speed {
   position: absolute;
-  right: 8px;
-  bottom: 4px;
+  right: var(--sp-2);
+  bottom: var(--sp-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .speed.me {
-  color: #16a34a;
+  color: var(--ok);
 }
 
 .speed.them {

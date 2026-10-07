@@ -7,7 +7,6 @@ import TypeBadge from "../../components/TypeBadge.vue";
 import { battle, pct, typeTag, type Combatant, type Duel, type MoveLine } from "../../battle";
 import { lists } from "../../saveStore";
 import { natureLabel, STAT_SHORT } from "../refdata";
-import { BATTLE_TIPS } from "./glossary";
 
 const d = computed(() => battle.duel);
 
@@ -56,12 +55,17 @@ const speedText = computed(() => {
         <div class="info">
           <strong>{{ c.name }} <small>N. {{ c.level }}</small></strong>
           <div class="types"><TypeBadge v-for="t in c.types" :key="t" :type="typeTag(t)" /></div>
-          <small>{{ ability(c) }} · {{ item(c) }} · {{ natureLabel(c.nature) }}</small>
+          <small class="meta">
+            <span>{{ ability(c) }}<Tip term="ability" /></span> ·
+            <span>{{ item(c) }}<Tip term="heldItem" /></span> ·
+            <span>{{ natureLabel(c.nature) }}<Tip term="nature" /></span>
+          </small>
           <div class="stats">
             <span v-for="(s, i) in c.stats" :key="i"><em>{{ STAT_SHORT[i] }}</em> {{ s }}</span>
+            <Tip term="statShort" />
           </div>
           <small v-if="k === 1" class="ivs">
-            IV {{ c.ivs[0] }} partout, 0 EV <Tip v-bind="BATTLE_TIPS.trainerIvs" />
+            IV {{ c.ivs[0] }} partout, 0 EV <Tip term="battle.trainerIvs" />
           </small>
           <ul v-if="c.notes.length" class="notes">
             <li v-for="n in c.notes" :key="n"><Icon name="info" :size="12" /> {{ n }}</li>
@@ -69,7 +73,7 @@ const speedText = computed(() => {
         </div>
       </div>
     </header>
-    <p class="speed"><Icon name="clock" :size="14" /> {{ speedText }} <Tip v-bind="BATTLE_TIPS.speed" /> <Tip v-bind="BATTLE_TIPS.priority" /></p>
+    <p class="speed"><Icon name="clock" :size="14" /> {{ speedText }} <Tip term="battle.speed" /> <Tip term="battle.priority" /></p>
 
     <div class="sides">
       <div v-for="s in sides" :key="s.key" class="side">
@@ -81,9 +85,9 @@ const speedText = computed(() => {
           <thead>
             <tr>
               <th>Attaque</th>
-              <th>Dégâts <Tip v-bind="BATTLE_TIPS.random" /></th>
-              <th>K.O. <Tip v-bind="BATTLE_TIPS.ko" /></th>
-              <th>Critique <Tip v-bind="BATTLE_TIPS.crit" /></th>
+              <th>Dégâts <Tip term="battle.random" /></th>
+              <th>K.O. <Tip term="battle.ko" /></th>
+              <th>Critique <Tip term="battle.crit" /></th>
             </tr>
           </thead>
           <tbody>
@@ -94,15 +98,16 @@ const speedText = computed(() => {
                   <strong>{{ m.name }}</strong>
                 </div>
                 <small>
-                  {{ CATEGORY[m.category] }} <Tip v-bind="BATTLE_TIPS.category" />
+                  {{ CATEGORY[m.category] }} <Tip term="battle.category" />
                   <template v-if="m.power"> · Puissance {{ m.power }}</template>
-                  <template v-if="m.hits > 1"> · {{ m.hits }} coups <Tip v-bind="BATTLE_TIPS.multihit" /></template>
+                  <template v-if="m.hits > 1"> · {{ m.hits }} coups <Tip term="battle.multihit" /></template>
                   <template v-if="m.priority"> · Priorité {{ m.priority > 0 ? "+" : "" }}{{ m.priority }}</template>
-                  <template v-if="m.damage.kind === 'rolls'"> · {{ effLabel(m.effectiveness) }} <Tip v-bind="BATTLE_TIPS.effectiveness" /></template>
+                  <template v-if="m.damage.kind === 'rolls'"> · {{ effLabel(m.effectiveness) }} <Tip term="battle.effectiveness" /></template>
                 </small>
                 <div v-if="m.modifiers.length" class="mods">
-                  <span v-for="x in m.modifiers" :key="x" class="mod">{{ x }}</span>
-                  <Tip v-bind="BATTLE_TIPS.modifiers" />
+                  <span v-for="x in m.modifiers" :key="x" class="sv-chip">{{ x }}</span>
+                  <Tip v-if="m.modifiers.some((x) => x.startsWith('STAB'))" term="battle.stab" />
+                  <Tip term="battle.modifiers" />
                 </div>
               </td>
               <td v-if="m.damage.kind === 'none'" colspan="3" class="reason">{{ m.damage.reason }}</td>
@@ -111,7 +116,7 @@ const speedText = computed(() => {
                   <strong>{{ pct(m.minPercent) }} – {{ pct(m.maxPercent) }} %</strong>
                   <small>
                     {{ m.min }} – {{ m.max }} PV
-                    <template v-if="m.damage.kind === 'fixed'"> (fixes <Tip v-bind="BATTLE_TIPS.fixed" />)</template>
+                    <template v-if="m.damage.kind === 'fixed'"> (fixes <Tip term="battle.fixed" />)</template>
                   </small>
                   <div class="hpbar" :title="`Jets possibles : ${m.rolls.join(', ')}`">
                     <i :style="bar(m, s.duel)" />
@@ -136,32 +141,32 @@ const speedText = computed(() => {
 .duel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
 }
 
 .vs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .fighter {
   display: flex;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 12px;
-  background: color-mix(in srgb, #22c55e 8%, transparent);
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
 }
 
 .fighter.foe {
-  background: color-mix(in srgb, #ef4444 8%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 .info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   min-width: 0;
 }
 
@@ -174,16 +179,29 @@ const speedText = computed(() => {
   color: var(--text-dim);
 }
 
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.meta span {
+  display: inline-flex;
+  align-items: center;
+}
+
 .types {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  font-size: 12px;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -202,7 +220,7 @@ const speedText = computed(() => {
   padding: 0;
   list-style: none;
   color: var(--text-dim);
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
 }
 
 .notes li {
@@ -214,15 +232,15 @@ const speedText = computed(() => {
 .speed {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .sides {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-  gap: 18px;
+  gap: var(--sp-5);
 }
 
 h4 {
@@ -230,9 +248,9 @@ h4 {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
-  margin: 0 0 8px;
-  font-size: 14px;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
 }
 
 h4 small {
@@ -243,13 +261,13 @@ h4 small {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 th {
   padding: 4px 6px;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   text-align: left;
   text-transform: uppercase;
@@ -278,7 +296,7 @@ tr.none td {
 .mvhead {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .dmg {
@@ -290,7 +308,7 @@ tr.none td {
   position: relative;
   height: 6px;
   margin-top: 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--text) 12%, transparent);
   overflow: hidden;
 }
@@ -299,12 +317,12 @@ tr.none td {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  border-radius: var(--radius-xs);
+  background: var(--warn);
 }
 
 .ko.good {
-  color: #16a34a;
+  color: var(--ok);
   font-weight: 700;
 }
 
@@ -321,15 +339,7 @@ tr.none td {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 4px;
-}
-
-.mod {
-  display: inline-block;
-  margin: 2px 4px 2px 0;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  font-size: 11px;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
 }
 </style>

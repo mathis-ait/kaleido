@@ -250,9 +250,10 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
         <h2 v-else title="Double-clic pour renommer" @dblclick="startRename">{{ view.boxNames[saveState.box] }}</h2>
         <button class="round" aria-label="Boîte suivante (Pg↓)" @click="changeBox(1)"><Icon name="chevron-right" /></button>
         <span class="fill">{{ view.boxFill[saveState.box] }}/30</span>
-        <div class="dots">
+        <div class="sv-dots">
           <button
             v-for="(name, i) in view.boxNames"
+            type="button"
             :key="i"
             :class="{ on: i === saveState.box, full: view.boxFill[i] === 30, empty: !view.boxFill[i] }"
             :title="`${name} (${view.boxFill[i]}/30)`"
@@ -457,40 +458,21 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
   background: var(--panel-hover);
 }
 
+.sv-dots {
+  justify-content: flex-end;
+  margin-left: auto;
+  max-width: 55%;
+}
+
 .fill {
   color: var(--text-dim);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
-.dots {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
-  margin-left: auto;
-  max-width: 55%;
-}
 
-.dots button {
-  width: 9px;
-  height: 9px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 55%, transparent);
-}
 
-.dots button.empty {
-  background: color-mix(in srgb, var(--text) 22%, transparent);
-}
 
-.dots button.on {
-  width: 14px;
-  height: 14px;
-  background: var(--text);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 60%, transparent);
-}
 
 .grid {
   display: grid;

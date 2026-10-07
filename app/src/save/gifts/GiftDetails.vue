@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import Banner from "../../components/Banner.vue";
 import Icon from "../../components/Icon.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
 import { formatDate, isShiny, type GiftDetails } from "./api";
-import { GIFT_TERMS } from "./terms";
+import FormatBadge from "./FormatBadge.vue";
+import { giftTone } from "./terms";
 
 /** Panneau de droite : fiche complète d'une carte et actions. */
 const props = defineProps<{ gift: GiftDetails; busy: boolean; hasSave: boolean; lastAdded: boolean }>();
@@ -25,14 +27,14 @@ const addHint = computed(() => {
 <template>
   <aside class="details sv-panel">
     <header class="head">
-      <div class="art" :class="`f-${gift.formatLabel.toLowerCase()}`">
+      <div class="art" :style="giftTone(gift.formatLabel)">
         <Sprite v-if="gift.species" :id="gift.species" :shiny="shiny" :size="112" />
         <Icon v-else :name="gift.kind === 'item' ? 'bag' : 'gift'" :size="56" />
-        <span v-if="gift.egg" class="egg-badge"><Icon name="egg" :size="16" /></span>
+        <span v-if="gift.egg" class="egg-badge" title="Œuf"><Icon name="egg" :size="16" /></span>
       </div>
       <div class="meta">
         <div class="badges">
-          <span class="fmt" :class="`f-${gift.formatLabel.toLowerCase()}`">{{ gift.formatLabel }}</span>
+          <FormatBadge :label="gift.formatLabel" />
           <span v-if="gift.cardId" class="card-no">Carte n°{{ gift.cardId }}</span>
           <span class="kind">{{ gift.kindLabel }}</span>
         </div>
@@ -40,107 +42,106 @@ const addHint = computed(() => {
         <small v-if="p">
           {{ gift.speciesName }}<template v-if="gift.formName"> ({{ gift.formName }})</template>
           · {{ p.level ? `N. ${p.level}` : "niveau au hasard" }}
-          <template v-if="shiny"> · <Icon name="star" :size="12" /> chromatique</template>
+          <template v-if="shiny"> · <span class="shiny"><Icon name="star" :size="12" /> Chromatique</span></template>
         </small>
       </div>
     </header>
 
     <div class="scroll">
       <section>
-        <h4>Jeux <Tip :title="GIFT_TERMS.distribution.title" :text="GIFT_TERMS.distribution.text" /></h4>
-        <div class="chips">
-          <span v-for="g in gift.games" :key="g.id" class="game">{{ g.name }}</span>
+        <h4 class="sv-label">Jeux <Tip term="gifts.distribution" /></h4>
+        <div class="sv-row chips">
+          <span v-for="g in gift.games" :key="g.id" class="sv-chip">{{ g.name }}</span>
         </div>
       </section>
 
       <section v-if="gift.itemNames.length">
-        <h4>Objets</h4>
-        <ul class="list">
-          <li v-for="(n, i) in gift.itemNames" :key="i">{{ n }}</li>
-        </ul>
+        <h4 class="sv-label">Objets</h4>
+        <div class="sv-row chips">
+          <span v-for="(n, i) in gift.itemNames" :key="i" class="sv-chip"><Icon name="bag" :size="12" /> {{ n }}</span>
+        </div>
       </section>
 
       <template v-if="p">
         <section>
-          <h4>Pokémon</h4>
-          <dl>
-            <dt>Espèce</dt>
+          <h4 class="sv-label">Pokémon</h4>
+          <dl class="sv-dl">
+            <dt>Espèce <Tip term="species" /></dt>
             <dd>{{ gift.speciesName }}<template v-if="gift.formName"> ({{ gift.formName }})</template></dd>
-            <dt>Niveau</dt>
-            <dd>{{ p.level || "Au hasard" }}<template v-if="p.metLevel && p.metLevel !== p.level"> (rencontré N. {{ p.metLevel }})</template></dd>
+            <dt>Niveau <Tip term="level" /></dt>
+            <dd>{{ p.level ? `N. ${p.level}` : "Au hasard" }}<template v-if="p.metLevel && p.metLevel !== p.level"> (rencontré N. {{ p.metLevel }})</template></dd>
             <template v-if="p.nickname">
-              <dt>Surnom</dt>
+              <dt>Surnom <Tip term="nickname" /></dt>
               <dd>{{ p.nickname }}</dd>
             </template>
-            <dt>Œuf</dt>
+            <dt>Œuf <Tip term="egg" /></dt>
             <dd>{{ p.egg ? "Oui" : "Non" }}</dd>
-            <dt>Chromatique <Tip :title="GIFT_TERMS.shinyLock.title" :text="GIFT_TERMS.shinyLock.text" /></dt>
-            <dd :class="{ gold: shiny }">{{ gift.shinyLabel }}</dd>
-            <dt>Sexe</dt>
+            <dt>Chromatique <Tip term="shinyLock" /></dt>
+            <dd :class="{ shiny }">{{ gift.shinyLabel }}</dd>
+            <dt>Sexe <Tip term="gender" /></dt>
             <dd>{{ gift.genderLabel }}</dd>
-            <dt>Nature</dt>
+            <dt>Nature <Tip term="nature" /></dt>
             <dd>{{ gift.natureName }}</dd>
-            <dt>Talent</dt>
+            <dt>Talent <Tip term="ability" /></dt>
             <dd>{{ gift.abilityLabel }}</dd>
-            <dt>IV <Tip :title="GIFT_TERMS.perfectIvs.title" :text="GIFT_TERMS.perfectIvs.text" /></dt>
+            <dt>IV <Tip term="gifts.perfectIvs" /></dt>
             <dd>{{ gift.ivsLabel }}</dd>
-            <dt>Objet tenu</dt>
+            <dt>Objet tenu <Tip term="heldItem" /></dt>
             <dd>{{ gift.heldItemName ?? "Aucun" }}</dd>
-            <dt>Ball</dt>
+            <dt>Ball <Tip term="ball" /></dt>
             <dd>{{ gift.ballName ?? "—" }}</dd>
           </dl>
         </section>
 
         <section>
-          <h4>Dresseur d'origine <Tip :title="GIFT_TERMS.ot.title" :text="GIFT_TERMS.ot.text" /></h4>
-          <dl>
+          <h4 class="sv-label">Dresseur d'origine <Tip term="gifts.ot" /></h4>
+          <dl class="sv-dl">
             <dt>Nom</dt>
             <dd>{{ gift.ot }} {{ genderSymbol(gift.otGender) }}</dd>
-            <dt>ID</dt>
+            <dt>ID <Tip term="tid" /></dt>
             <dd class="mono">{{ gift.trainerId }}</dd>
-            <dt>Langue</dt>
+            <dt>Langue <Tip term="language" /></dt>
             <dd>{{ gift.languageName }}</dd>
           </dl>
         </section>
 
-        <section v-if="gift.moveNames.length">
-          <h4>Attaques</h4>
-          <ul class="moves">
+        <section>
+          <h4 class="sv-label">Attaques <Tip term="moves" /></h4>
+          <ul v-if="gift.moveNames.length" class="sv-moves">
             <li v-for="m in gift.moveNames" :key="m">{{ m }}</li>
           </ul>
-          <p v-if="gift.relearnNames.length" class="sv-help">Attaques de base : {{ gift.relearnNames.join(", ") }}</p>
-        </section>
-        <section v-else>
-          <h4>Attaques</h4>
-          <p class="sv-help">Celles apprises au niveau du Pokémon.</p>
+          <p v-else class="sv-help">Celles apprises au niveau du Pokémon.</p>
+          <p v-if="gift.relearnNames.length" class="sv-help relearn">
+            Attaques de base <Tip term="relearn" /> : {{ gift.relearnNames.join(", ") }}
+          </p>
         </section>
 
         <section>
-          <h4>Rencontre <Tip :title="GIFT_TERMS.fateful.title" :text="GIFT_TERMS.fateful.text" /></h4>
-          <dl>
-            <dt>Lieu</dt>
+          <h4 class="sv-label">Rencontre</h4>
+          <dl class="sv-dl">
+            <dt>Lieu de rencontre <Tip term="metLocation" /></dt>
             <dd>{{ gift.metLocationName ?? (p.metLocation ? `n°${p.metLocation}` : "—") }}</dd>
             <template v-if="gift.eggLocationName">
-              <dt>Lieu de l'œuf</dt>
+              <dt>Lieu de l'œuf <Tip term="eggLocation" /></dt>
               <dd>{{ gift.eggLocationName }}</dd>
             </template>
-            <dt>Date</dt>
+            <dt>Date <Tip term="metDate" /></dt>
             <dd>{{ date ?? "Le jour de la réception" }}</dd>
-            <dt>Rencontre fatidique</dt>
+            <dt>Rencontre fatidique <Tip term="fateful" /></dt>
             <dd>{{ p.fateful ? "Oui" : "Non" }}</dd>
           </dl>
         </section>
 
         <section v-if="gift.ribbonNames.length">
-          <h4>Rubans</h4>
-          <div class="chips">
-            <span v-for="r in gift.ribbonNames" :key="r" class="ribbon"><Icon name="ribbon" :size="12" /> {{ r }}</span>
+          <h4 class="sv-label">Rubans <Tip term="ribbons" /></h4>
+          <div class="sv-row chips">
+            <span v-for="r in gift.ribbonNames" :key="r" class="sv-chip"><Icon name="ribbon" :size="12" /> {{ r }}</span>
           </div>
         </section>
       </template>
 
       <section v-else-if="date">
-        <dl>
+        <dl class="sv-dl">
           <dt>Date</dt>
           <dd>{{ date }}</dd>
         </dl>
@@ -149,20 +150,22 @@ const addHint = computed(() => {
       <ul v-if="gift.notes.length" class="notes">
         <li v-for="(n, i) in gift.notes" :key="i"><Icon name="info" :size="14" /> {{ n }}</li>
       </ul>
-      <p v-if="gift.compatible === false" class="refused">
-        <Icon name="alert" :size="14" /> {{ gift.incompatibleReason }}
-        <Tip :title="GIFT_TERMS.generation.title" :text="GIFT_TERMS.generation.text" />
-      </p>
+      <Banner v-if="gift.compatible === false" tone="warn">
+        {{ gift.incompatibleReason }}
+        <Tip term="gifts.generation" />
+      </Banner>
     </div>
 
     <footer class="actions">
-      <button class="sv-btn solid big" :disabled="addDisabled" :title="addHint" @click="emit('add')">
+      <button type="button" class="sv-btn solid big" :disabled="addDisabled" :title="addHint" @click="emit('add')">
         <Icon name="download" :size="16" /> Ajouter à la sauvegarde
       </button>
-      <Tip :title="GIFT_TERMS.receive.title" :text="GIFT_TERMS.receive.text" />
-      <div class="row">
-        <button class="sv-btn" :disabled="busy" @click="emit('export')"><Icon name="save" :size="15" /> Enregistrer le fichier (.{{ gift.extension }})</button>
-        <button v-if="lastAdded" class="sv-btn" @click="emit('edit')"><Icon name="pencil" :size="15" /> Ouvrir dans l'éditeur</button>
+      <Tip term="gifts.receive" />
+      <div class="sv-row row">
+        <button type="button" class="sv-btn" :disabled="busy" @click="emit('export')">
+          <Icon name="save" :size="15" /> Enregistrer le fichier (.{{ gift.extension }})
+        </button>
+        <button v-if="lastAdded" type="button" class="sv-btn" @click="emit('edit')"><Icon name="pencil" :size="15" /> Ouvrir dans l'éditeur</button>
       </div>
     </footer>
   </aside>
@@ -173,8 +176,8 @@ const addHint = computed(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 16px;
-  gap: 12px;
+  padding: var(--sp-4);
+  gap: var(--sp-3);
 }
 
 .head {
@@ -190,8 +193,8 @@ const addHint = computed(() => {
   width: 120px;
   height: 104px;
   flex-shrink: 0;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--gift-tone, var(--text)) 16%, transparent);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--gift-tone) 16%, transparent);
 }
 
 .egg-badge {
@@ -215,7 +218,7 @@ const addHint = computed(() => {
 
 .meta h3 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-lg);
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -225,6 +228,10 @@ const addHint = computed(() => {
   font-weight: 600;
 }
 
+.shiny {
+  color: var(--shiny);
+}
+
 .badges {
   display: flex;
   flex-wrap: wrap;
@@ -232,38 +239,11 @@ const addHint = computed(() => {
   align-items: center;
 }
 
-.fmt {
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--gift-tone);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-}
-
 .card-no,
 .kind {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--text-dim);
-}
-
-.f-pcd,
-.f-pgt {
-  --gift-tone: #3b82f6;
-}
-
-.f-pgf {
-  --gift-tone: #475569;
-}
-
-.f-wc6 {
-  --gift-tone: #db2777;
-}
-
-.f-wc7 {
-  --gift-tone: #ea7a1a;
 }
 
 .scroll {
@@ -272,88 +252,30 @@ const addHint = computed(() => {
   gap: 14px;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--sp-1);
 }
 
 h4 {
-  display: flex;
-  align-items: center;
   margin: 0 0 7px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .chips {
-  display: flex;
-  flex-wrap: wrap;
   gap: 5px;
 }
 
-.game,
-.ribbon {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 13%, transparent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 5px 12px;
-  margin: 0;
-  font-size: 13px;
-}
-
-dt {
-  display: flex;
-  align-items: center;
-  color: var(--text-dim);
-}
-
-dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
+.sv-dl dd {
   overflow-wrap: anywhere;
-}
-
-dd.gold {
-  color: #ffd45c;
 }
 
 .mono {
   font-family: "Cascadia Mono", Consolas, monospace;
 }
 
-.moves,
-.list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin: 0 0 6px;
-  padding: 0;
-  list-style: none;
-}
-
-.list {
-  grid-template-columns: 1fr;
-}
-
-.moves li,
-.list li {
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  font-size: 13px;
-  font-weight: 600;
+.relearn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6px;
 }
 
 .notes {
@@ -364,17 +286,7 @@ dd.gold {
   padding: 0;
   list-style: none;
   color: var(--text-dim);
-  font-size: 12.5px;
-  line-height: 1.4;
-}
-
-.refused {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
-  color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
 }
 
@@ -382,8 +294,8 @@ dd.gold {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding-top: 4px;
+  gap: var(--sp-2);
+  padding-top: var(--sp-1);
   border-top: 1px solid var(--border);
 }
 
@@ -393,9 +305,6 @@ dd.gold {
 }
 
 .actions .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   width: 100%;
 }
 </style>

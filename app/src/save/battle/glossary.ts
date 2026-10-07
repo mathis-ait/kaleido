@@ -22,6 +22,22 @@ export const BATTLE_TIPS: Record<string, GlossaryEntry> = {
     title: "Nature des Pokémon adverses",
     text: "En Platine, la nature vient d'un « PID » que le jeu calcule à partir du numéro du dresseur, de l'espèce, du niveau et de la classe : Kaleido refait le même calcul. En Noir/Blanc, X / Y et Rubis Oméga / Saphir Alpha, ce calcul n'est pas reproduit : une nature neutre est supposée. En Soleil / Lune et Ultra, la nature est écrite dans la ROM : elle est exacte.",
   },
+  unverified: {
+    title: "Lecture à l'essai",
+    text: "Les emplacements des dresseurs dans la ROM de ce jeu n'ont pas encore été vérifiés sur une vraie cartouche. Les équipes affichées peuvent contenir des erreurs : compare avec le jeu en cas de doute.",
+  },
+  double: {
+    title: "Combat en duo",
+    text: "Ce dresseur se bat en combat double : deux Pokémon de chaque côté en même temps. La matrice compare toujours les Pokémon un contre un ; les attaques qui touchent plusieurs cibles font moins de dégâts en vrai (×0,75).",
+  },
+  roles: {
+    title: "Rôle du dresseur",
+    text: "Champion d'Arène, rival, admin ou chef d'une team, membre du Conseil 4, Maître : les combats qui comptent dans l'histoire. Les autres dresseurs n'ont pas d'étiquette.",
+  },
+  speedOrder: {
+    title: "Qui agit en premier",
+    text: "En bas de chaque case : « toi » si ton Pokémon est plus rapide, « lui » si c'est le sien, « hasard » en cas d'égalité, d'après la Vitesse finale de chacun. Le détail du duel indique aussi la priorité de chaque attaque.",
+  },
   matrix: {
     title: "Matrice des duels",
     text: "Chaque case oppose un de tes Pokémon (ligne) à un Pokémon adverse (colonne) : ta meilleure attaque sur lui, sa meilleure attaque sur toi, et qui agit en premier. Clique sur une case pour le détail de toutes les attaques.",

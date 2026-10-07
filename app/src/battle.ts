@@ -157,15 +157,6 @@ export interface Options {
 
 const side = (): SideOptions => ({ boosts: [0, 0, 0, 0, 0, 0], status: "none", hpPercent: 100 });
 
-export const ROLE_COLORS: Record<Role, string> = {
-  rival: "#38bdf8",
-  gym: "#f59e0b",
-  admin: "#a78bfa",
-  boss: "#ef4444",
-  eliteFour: "#8b5cf6",
-  champion: "#eab308",
-};
-
 /** État de la page « Combat ». */
 export const battle = reactive({
   link: null as LinkInfo | null,

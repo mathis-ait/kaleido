@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import Icon from "../../components/Icon.vue";
+import SearchField from "../../components/SearchField.vue";
+import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
-import { battle, ROLE_COLORS, selectTrainer, type TrainerSummary } from "../../battle";
-import { BATTLE_TIPS } from "./glossary";
+import { battle, selectTrainer, type TrainerSummary } from "../../battle";
 
 const search = ref("");
 const all = ref(false);
@@ -20,43 +20,44 @@ const shown = computed<TrainerSummary[]>(() => {
   return base.filter((t) => fold(`${t.name} ${t.className} ${t.id} ${t.team.map((p) => p.name).join(" ")}`).includes(q));
 });
 const importantCount = computed(() => battle.link?.trainers.filter((t) => t.role).length ?? 0);
+
+const scopes = computed(() => [
+  { value: false, label: `Importants (${importantCount.value})` },
+  { value: true, label: "Tous les dresseurs" },
+]);
 </script>
 
 <template>
   <aside class="trainers sv-panel">
     <div class="head">
-      <div class="sv-seg">
-        <button :class="{ on: !all }" @click="all = false">Importants ({{ importantCount }})</button>
-        <button :class="{ on: all }" @click="all = true">Tous les dresseurs</button>
-      </div>
-      <Tip v-bind="BATTLE_TIPS.importantTrainers" />
+      <Segmented v-model="all" :options="scopes" label="Dresseurs affichés" />
+      <Tip term="battle.importantTrainers" />
     </div>
-    <label class="search">
-      <Icon name="search" :size="15" />
-      <input v-model="search" class="sv-input" placeholder="Nom, classe, Pokémon ou numéro…" />
-    </label>
+    <SearchField v-model="search" placeholder="Nom, classe, Pokémon ou numéro…" />
     <div class="list">
       <button
         v-for="t in shown"
         :key="t.id"
+        type="button"
         class="card"
         :class="{ on: battle.trainerId === t.id }"
-        :style="{ '--role': t.role ? ROLE_COLORS[t.role] : 'var(--text-dim)' }"
+        :aria-pressed="battle.trainerId === t.id"
         @click="selectTrainer(t.id)"
       >
-        <div class="line">
-          <span v-if="t.roleLabel" class="chip">{{ t.roleLabel }}</span>
-          <small class="cls">{{ t.className }}</small>
-          <small v-if="t.double" class="dbl" title="Combat en duo">Duo</small>
-          <small class="lvl">N. {{ t.maxLevel }}</small>
-        </div>
+        <span class="line">
+          <span v-if="t.roleLabel" class="sv-chip accent">{{ t.roleLabel }}</span>
+          <span class="cls">{{ t.className }}</span>
+          <span v-if="t.double" class="sv-chip dim">Duo</span>
+          <span class="lvl">N. {{ t.maxLevel }}</span>
+        </span>
         <strong>{{ t.name }}</strong>
-        <div class="team">
+        <span class="team">
           <span v-for="(p, i) in t.team" :key="i" :title="`${p.name} · N. ${p.level}`"><Sprite :id="p.species" :size="34" /></span>
-        </div>
+        </span>
       </button>
       <p v-if="!shown.length" class="sv-help empty">Aucun dresseur ne correspond.</p>
     </div>
+    <p v-if="shown.some((t) => t.double)" class="sv-help legend">« Duo » : combat double <Tip term="battle.double" /></p>
   </aside>
 </template>
 
@@ -64,52 +65,35 @@ const importantCount = computed(() => battle.link?.trainers.filter((t) => t.role
 .trainers {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   min-height: 0;
-  padding: 14px;
+  padding: var(--sp-4);
 }
 
 .head {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.search {
-  position: relative;
-  display: block;
-}
-
-.search .icon {
-  position: absolute;
-  top: 50%;
-  left: 11px;
-  transform: translateY(-50%);
-  color: var(--text-dim);
-}
-
-.search input {
-  padding-left: 32px;
+  gap: var(--sp-1);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  padding: 2px;
 }
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
-  border-left: 4px solid var(--role);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 3%, transparent);
+  color: var(--text);
   text-align: left;
 }
 
@@ -117,40 +101,37 @@ const importantCount = computed(() => battle.link?.trainers.filter((t) => t.role
   background: var(--panel-hover);
 }
 
+/* Sélection : contour plein et fond relevé, comme la case choisie des boîtes. */
 .card.on {
-  border-color: var(--role);
-  background: color-mix(in srgb, var(--role) 14%, transparent);
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  box-shadow: inset 0 0 0 1px var(--text);
 }
 
 .line {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
 }
 
-.chip {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--role);
-  color: #111;
-  font-weight: 700;
+.line .sv-chip {
+  font-size: var(--fs-xs);
 }
 
 .cls {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-dim);
-}
-
-.dbl {
-  padding: 0 5px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lvl {
   margin-left: auto;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .team {
@@ -159,6 +140,11 @@ const importantCount = computed(() => battle.link?.trainers.filter((t) => t.role
 }
 
 .empty {
-  padding: 12px 4px;
+  padding: var(--sp-3) var(--sp-1);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
 }
 </style>

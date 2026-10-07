@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import Banner from "../components/Banner.vue";
+import EmptyState from "../components/EmptyState.vue";
 import Icon from "../components/Icon.vue";
+import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
+import Toggle from "../components/Toggle.vue";
 import { addPaths, library } from "../library";
 import { notify, saveState } from "../saveStore";
 import { isRom } from "../types";
@@ -22,7 +26,9 @@ import {
   type NuzlockeView,
   type NuzMon,
   type NuzRoute,
+  type NuzRules,
   type NuzState,
+  type NuzViolation,
 } from "./nuzlocke/types";
 
 type Tab = "routes" | "team" | "caps" | "violations" | "rules";
@@ -110,6 +116,41 @@ const routes = computed(() => {
   return all;
 });
 
+const FILTERS: { value: RouteFilter; label: string }[] = [
+  { value: "all", label: "Toutes" },
+  { value: "todo", label: "À faire" },
+  { value: "done", label: "Terminées" },
+];
+
+/** Liste de routes vide : message selon le filtre. */
+const routesEmpty = computed(() =>
+  filter.value === "todo"
+    ? { title: "Aucune route à faire", text: "Toutes les routes lues dans ta ROM ont leur capture ou sont marquées ratées." }
+    : filter.value === "done"
+      ? { title: "Aucune route terminée", text: "Capture le premier Pokémon d'une route, ou marque-la ratée : elle apparaîtra ici." }
+      : { title: "Aucune route", text: "Kaleido n'a trouvé aucune route avec des rencontres dans cette ROM." },
+);
+
+/** Pastille de statut d'une route (couleur de sens et bulle d'aide). */
+const STATUS_CHIP: Record<NuzRoute["status"], { cls: string; term?: string }> = {
+  pending: { cls: "dim" },
+  caught: { cls: "ok" },
+  missed: { cls: "danger", term: "nuzlocke.missed" },
+  dupeOnly: { cls: "warn", term: "nuzlocke.dupe" },
+};
+
+/** Pastille d'un Pokémon capturé en plus sur une route. */
+const CATCH_CHIP: Record<NonNullable<NuzMon["catch"]>, { cls: string; term?: string }> = {
+  counted: { cls: "" },
+  dupe: { cls: "warn", term: "nuzlocke.dupe" },
+  shinyBonus: { cls: "shiny", term: "nuzlocke.shinyBonus" },
+  extra: { cls: "danger", term: "nuzlocke.extra" },
+};
+
+function setRule(id: keyof NuzRules, on: boolean) {
+  update((s) => (s.rules[id] = on));
+}
+
 function toggleMissed(r: NuzRoute) {
   update((s) => {
     s.missed = r.markedMissed ? s.missed.filter((k) => k !== r.key) : [...s.missed, r.key];
@@ -162,13 +203,20 @@ const counts = computed(() => {
   return { errors: v.filter((x) => x.severity === "error").length, total: v.length };
 });
 
-const TABS = computed<{ id: Tab; label: string; badge?: number }[]>(() => [
-  { id: "routes", label: "Routes" },
-  { id: "team", label: "Équipe et cimetière" },
-  { id: "caps", label: "Champions" },
-  { id: "violations", label: "Infractions", badge: counts.value.total || undefined },
-  { id: "rules", label: "Règles" },
-]);
+const TABS: { value: Tab; label: string }[] = [
+  { value: "routes", label: "Routes" },
+  { value: "team", label: "Équipe et cimetière" },
+  { value: "caps", label: "Champions" },
+  { value: "violations", label: "Infractions" },
+  { value: "rules", label: "Règles" },
+];
+
+/** Gravité d'une infraction : pastille et icône. */
+const SEVERITY: Record<NuzViolation["severity"], { cls: string; label: string; icon: string }> = {
+  error: { cls: "danger", label: "Enfreinte", icon: "alert" },
+  warning: { cls: "warn", label: "À vérifier", icon: "alert" },
+  info: { cls: "dim", label: "Info", icon: "info" },
+};
 
 useShell(() => ({
   hint: report.value ? "Suivi du Nuzlocke : routes, morts, niveau maximum" : "Lie la ROM de ta partie pour suivre ton Nuzlocke",
@@ -177,61 +225,57 @@ useShell(() => ({
 </script>
 
 <template>
-  <div class="nuz">
-    <div v-if="error" class="err" role="alert"><Icon name="alert" :size="16" /> {{ error }}</div>
+  <div class="nuz" :aria-busy="loading || linking">
+    <Banner v-if="error" :retry="load" :dismiss="() => (error = null)">{{ error }}</Banner>
 
-    <div v-if="loading && !data" class="sv-panel empty"><p>Lecture de la ROM…</p></div>
+    <EmptyState v-if="loading && !data" loading title="Lecture de la ROM…" />
 
     <!-- Jeu non pris en charge -->
-    <div v-else-if="data && !data.supported" class="sv-panel empty">
-      <Icon name="swords" :size="48" />
-      <h2>Mode Nuzlocke</h2>
-      <p>
+    <div v-else-if="data && !data.supported" class="sv-panel gate">
+      <EmptyState icon="swords" title="Mode Nuzlocke" term="nuzlocke.nuzlocke">
         Le suivi Nuzlocke fonctionne pour l'instant avec <strong>Pokémon Diamant, Perle, Platine</strong>,
         <strong>HeartGold, SoulSilver</strong>, <strong>Noire, Blanche</strong> et leurs suites, et sur 3DS avec
         <strong>X, Y, Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil</strong> et <strong>Ultra-Lune</strong>.
         Cette sauvegarde est une partie de {{ data.saveGame }}.
-      </p>
+      </EmptyState>
     </div>
 
     <!-- Aucune ROM liée (ou ROM introuvable) -->
-    <div v-else-if="data && !report" class="sv-panel empty link">
-      <Icon name="swords" :size="48" />
-      <h2>Lie la ROM de ta partie</h2>
-      <p>
+    <div v-else-if="data && !report" class="sv-panel gate">
+      <EmptyState icon="swords" title="Lie la ROM de ta partie" term="nuzlocke.nuzlocke">
         Pour savoir quels Pokémon t'attendent sur chaque route, Kaleido lit la <strong>ROM avec laquelle tu joues</strong>, par exemple celle
         que tu as randomisée ici. Les rencontres, les familles d'évolution et le niveau des champions viennent de cette ROM.
-        <Tip
-          title="Nuzlocke"
-          text="Un défi qui rend le jeu plus difficile : on ne capture que le premier Pokémon de chaque route, et un Pokémon K.O. est considéré comme mort (il ne peut plus être utilisé). Kaleido suit ta partie à partir de la sauvegarde."
-        />
-      </p>
-      <ol class="steps">
-        <li>Ajoute la ROM à la bibliothèque (glisser-déposer sur l'accueil de Kaleido), ou choisis le fichier ci-dessous.</li>
-        <li>Kaleido vérifie qu'elle correspond à la sauvegarde ({{ data.saveGame }}).</li>
-        <li>Le lien est gardé dans un petit fichier à côté de la sauvegarde.</li>
-      </ol>
-      <div v-if="data.state.romPath && data.error" class="warn-box">
-        <Icon name="alert" :size="16" /> ROM liée inutilisable : {{ data.error }}
-        <button class="sv-btn" @click="link(null)">Délier</button>
-      </div>
-      <div v-if="candidates.length" class="cands">
-        <button v-for="d in candidates" :key="d.path" class="cand sv-panel" :disabled="linking" @click="link(d.path)">
-          <Icon name="file" :size="22" />
-          <span class="c-txt">
-            <strong>{{ d.fileName }}</strong>
-            <small>{{ d.title }}<template v-if="d.kaleido"> · randomisée par Kaleido, seed {{ d.kaleido.seed }}</template></small>
-          </span>
-          <span v-if="d.kaleido" class="chip ok">Kaleido</span>
-        </button>
-      </div>
-      <p v-else class="sv-help">Aucune ROM compatible dans la bibliothèque pour l'instant.</p>
-      <button class="sv-btn solid" :disabled="linking" @click="pickRom()">
-        <Icon name="folder-open" :size="16" /> {{ linking ? "Lecture de la ROM…" : "Choisir le fichier de la ROM…" }}
-      </button>
-      <button v-if="is3ds" class="sv-btn" :disabled="linking" @click="pickRom(true)">
-        <Icon name="folder" :size="16" /> Dossier 3DS extrait…
-      </button>
+        <template #details>
+          <ol class="steps">
+            <li>Ajoute la ROM à la bibliothèque (glisser-déposer sur l'accueil de Kaleido), ou choisis le fichier ci-dessous.</li>
+            <li>Kaleido vérifie qu'elle correspond à la sauvegarde ({{ data.saveGame }}).</li>
+            <li>Le lien est gardé dans un petit fichier à côté de la sauvegarde.</li>
+          </ol>
+          <Banner v-if="data.state.romPath && data.error" tone="warn" class="wide">
+            ROM liée inutilisable : {{ data.error }}
+            <button type="button" class="sv-btn small" @click="link(null)">Délier</button>
+          </Banner>
+          <div v-if="candidates.length" class="cands">
+            <button v-for="d in candidates" :key="d.path" type="button" class="cand" :disabled="linking" @click="link(d.path)">
+              <Icon name="file" :size="22" />
+              <span class="m-txt">
+                <strong>{{ d.fileName }}</strong>
+                <small>{{ d.title }}<template v-if="d.kaleido"> · randomisée par Kaleido, seed {{ d.kaleido.seed }}</template></small>
+              </span>
+              <span v-if="d.kaleido" class="sv-chip ok">Kaleido</span>
+            </button>
+          </div>
+          <p v-else class="sv-help">Aucune ROM compatible dans la bibliothèque pour l'instant.</p>
+        </template>
+        <template #actions>
+          <button type="button" class="sv-btn solid" :disabled="linking" @click="pickRom()">
+            <Icon :name="linking ? 'refresh' : 'folder-open'" :size="16" :class="{ 'sv-spin': linking }" /> {{ linking ? "Lecture de la ROM…" : "Choisir le fichier de la ROM…" }}
+          </button>
+          <button v-if="is3ds" type="button" class="sv-btn" :disabled="linking" @click="pickRom(true)">
+            <Icon name="folder" :size="16" /> Dossier 3DS extrait…
+          </button>
+        </template>
+      </EmptyState>
     </div>
 
     <!-- Bilan -->
@@ -239,81 +283,95 @@ useShell(() => ({
       <header class="head">
         <div class="stats">
           <div class="stat sv-panel">
-            <small>Captures</small>
+            <span class="sv-label">Captures</span>
             <strong>{{ report.stats.captures }}</strong>
-            <span>{{ report.stats.routesCaught }} / {{ report.stats.routes }} routes · {{ report.stats.routesMissed }} ratée(s)</span>
+            <small>{{ report.stats.routesCaught }} / {{ report.stats.routes }} routes · {{ report.stats.routesMissed }} ratée(s)</small>
           </div>
           <div class="stat sv-panel" :class="{ bad: report.stats.dead > 0 }">
-            <small>Morts</small>
+            <span class="sv-label">Morts <Tip term="nuzlocke.graveyard" /></span>
             <strong>{{ report.stats.dead }}</strong>
-            <span>{{ report.stats.alive }} en vie</span>
+            <small>{{ report.stats.alive }} en vie</small>
           </div>
           <div class="stat sv-panel">
-            <small v-if="alola"
-              >Épreuves
-              <Tip
-                title="Épreuves"
-                text="Capitaines et doyens battus, déduits des îles terminées (Grands Duels) enregistrées dans la sauvegarde. Tu peux forcer une valeur si besoin : le niveau maximum suit ce nombre."
-            /></small>
-            <small v-else>Badges <Tip title="Badges" text="Lus dans la sauvegarde. Tu peux forcer une valeur si besoin : le niveau maximum suit le nombre de badges." /></small>
+            <span v-if="alola" class="sv-label">Épreuves <Tip term="nuzlocke.trials" /></span>
+            <span v-else class="sv-label">Badges <Tip term="nuzlocke.badges" /></span>
             <strong>{{ report.stats.badges }} / {{ gymCount }}</strong>
-            <select class="sv-select mini" :value="state.badges ?? ''" @change="setBadges(($event.target as HTMLSelectElement).value)">
+            <select
+              class="sv-select compact"
+              :aria-label="alola ? 'Nombre d\'épreuves' : 'Nombre de badges'"
+              :value="state.badges ?? ''"
+              @change="setBadges(($event.target as HTMLSelectElement).value)"
+            >
               <option value="">Auto (sauvegarde)</option>
               <option v-for="n in gymCount + 1" :key="n" :value="n - 1">
                 {{ n - 1 }} {{ alola ? "épreuve" : "badge" }}{{ n - 1 > 1 ? "s" : "" }}
               </option>
             </select>
           </div>
-          <div class="stat sv-panel cap" :class="{ off: !state.rules.levelCaps }">
-            <small>Niveau maximum <Tip title="Niveau maximum" text="Niveau du Pokémon le plus fort du prochain adversaire important, lu dans ta ROM (après randomisation). Aucun Pokémon de l'équipe ne doit le dépasser." /></small>
+          <div class="stat sv-panel" :class="{ off: !state.rules.levelCaps }">
+            <span class="sv-label">Niveau maximum <Tip term="nuzlocke.levelCaps" /></span>
             <div v-if="capLeader" class="cap-row">
               <Sprite :id="capLeader.aceSpecies" :size="56" />
-              <div>
+              <div class="m-txt">
                 <strong>N. {{ report.stats.levelCap }}</strong>
-                <span>{{ currentCap.length > 1 ? "Conseil 4" : `${capLeader.name} (${capLeader.label})` }}</span>
+                <small>{{ currentCap.length > 1 ? "Conseil 4" : `${capLeader.name} (${capLeader.label})` }}</small>
               </div>
             </div>
-            <span v-else>—</span>
+            <small v-else>Aucun champion trouvé dans la ROM</small>
           </div>
         </div>
         <div class="rom-line">
           <Icon name="file" :size="15" />
           <span :title="state.romPath ?? ''">{{ fileName(state.romPath ?? "") }} · {{ report.gameName }}</span>
-          <span v-if="report.seed !== null" class="chip">Seed {{ report.seed }}</span>
-          <span v-for="r in RULES.filter((r) => state!.rules[r.id])" :key="r.id" class="chip rule">{{ r.label }}</span>
-          <button class="sv-btn" @click="pickRom()">Changer de ROM</button>
-          <button class="sv-btn" title="Relire la sauvegarde" @click="load"><Icon name="refresh" :size="14" /></button>
+          <span v-if="report.seed !== null" class="sv-chip dim">Seed {{ report.seed }} <Tip term="nuzlocke.seed" /></span>
+          <span v-for="r in RULES.filter((r) => state!.rules[r.id])" :key="r.id" class="sv-chip">{{ r.label }} <Tip :term="`nuzlocke.${r.id}`" /></span>
+          <span class="grow" />
+          <button type="button" class="sv-btn" @click="pickRom()">Changer de ROM</button>
+          <button
+            type="button"
+            class="sv-round sq"
+            :disabled="loading"
+            :aria-busy="loading"
+            :aria-label="loading ? 'Relecture de la sauvegarde…' : 'Relire la sauvegarde'"
+            title="Relire la sauvegarde (R)"
+            @click="load"
+          >
+            <Icon name="refresh" :size="14" :class="{ 'sv-spin': loading }" />
+          </button>
         </div>
       </header>
 
-      <nav class="sv-seg tabs">
-        <button v-for="t in TABS" :key="t.id" :class="{ on: tab === t.id }" @click="tab = t.id">
-          {{ t.label }}<span v-if="t.badge" class="count" :class="{ red: counts.errors > 0 }">{{ t.badge }}</span>
-        </button>
-      </nav>
+      <Segmented v-model="tab" class="tabs" label="Sections du suivi" :options="TABS">
+        <template #extra="{ option }">
+          <span v-if="option.value === 'violations' && counts.total" class="sv-chip count" :class="counts.errors ? 'danger' : 'warn'">{{ counts.total }}</span>
+        </template>
+      </Segmented>
 
       <!-- Routes -->
       <section v-if="tab === 'routes'" class="body">
         <div class="sv-row filters">
-          <div class="sv-seg">
-            <button :class="{ on: filter === 'all' }" @click="filter = 'all'">Toutes</button>
-            <button :class="{ on: filter === 'todo' }" @click="filter = 'todo'">À faire</button>
-            <button :class="{ on: filter === 'done' }" @click="filter = 'done'">Terminées</button>
-          </div>
+          <Segmented v-model="filter" label="Filtrer les routes" :options="FILTERS" />
           <p class="sv-help">
             Ordre approximatif de l'histoire. Les Pokémon affichés viennent de ta ROM ; ceux en transparence sont des doublons.
-            <Tip
-              title="Première rencontre"
-              text="Kaleido range chaque Pokémon de la sauvegarde sur la route où il a été rencontré (lieu de rencontre). Le starter, les œufs, les échanges et les cadeaux ne comptent pas. Marque une route « ratée » si le premier Pokémon s'est enfui ou est tombé K.O."
-            />
+            <Tip term="nuzlocke.firstEncounter" />
           </p>
         </div>
-        <ul class="routes">
-          <li v-for="r in routes" :key="r.key" class="route sv-panel" :class="`st-${r.status}`">
+        <div v-if="!routes.length" class="sv-panel">
+          <EmptyState compact icon="map" :title="routesEmpty.title">
+            {{ routesEmpty.text }}
+            <template v-if="filter !== 'all'" #actions>
+              <button type="button" class="sv-btn" @click="filter = 'all'">Voir toutes les routes</button>
+            </template>
+          </EmptyState>
+        </div>
+        <ul v-else class="routes">
+          <li v-for="r in routes" :key="r.key" class="route sv-panel" :class="{ missed: r.status === 'missed' }">
             <div class="r-head">
               <strong>{{ r.name }}</strong>
-              <span class="chip status" :class="r.status">{{ STATUS_LABEL[r.status] }}</span>
-              <button v-if="!r.capture" class="sv-btn small" @click="toggleMissed(r)">
+              <span class="sv-chip" :class="STATUS_CHIP[r.status].cls">
+                {{ STATUS_LABEL[r.status] }}<Tip v-if="STATUS_CHIP[r.status].term" :term="STATUS_CHIP[r.status].term" />
+              </span>
+              <button v-if="!r.capture" type="button" class="sv-btn small" @click="toggleMissed(r)">
                 {{ r.markedMissed ? "Annuler « raté »" : "Marquer ratée" }}
               </button>
             </div>
@@ -331,9 +389,15 @@ useShell(() => ({
                     <small>N. {{ r.capture.level }} · {{ r.capture.place }}<template v-if="r.capture.dead"> · mort</template></small>
                   </span>
                 </div>
-                <span v-else class="none">{{ r.status === "missed" ? "Raté" : r.status === "dupeOnly" ? "Doublon seulement : route encore ouverte" : "Pas encore" }}</span>
-                <span v-for="o in r.others" :key="o.key" class="chip other" :class="o.catch ?? ''" :title="`${monName(o)} · N. ${o.level} · ${o.place}`">
-                  {{ monName(o) }} · {{ CATCH_LABEL[o.catch ?? "extra"] }}
+                <span v-else-if="r.status === 'dupeOnly'" class="sv-help">Doublon seulement : route encore ouverte</span>
+                <span
+                  v-for="o in r.others"
+                  :key="o.key"
+                  class="sv-chip"
+                  :class="CATCH_CHIP[o.catch ?? 'extra'].cls"
+                  :title="`${monName(o)} · N. ${o.level} · ${o.place}`"
+                >
+                  {{ monName(o) }} · {{ CATCH_LABEL[o.catch ?? "extra"] }}<Tip v-if="CATCH_CHIP[o.catch ?? 'extra'].term" :term="CATCH_CHIP[o.catch ?? 'extra'].term" />
                 </span>
               </div>
             </div>
@@ -345,6 +409,9 @@ useShell(() => ({
       <section v-else-if="tab === 'team'" class="body two">
         <div class="sv-panel block">
           <h3 class="sv-section-title">Équipe</h3>
+          <EmptyState v-if="!report.party.length" compact icon="ball" title="Équipe vide">
+            Aucun Pokémon dans l'équipe de la sauvegarde.
+          </EmptyState>
           <div v-for="m in report.party" :key="m.key" class="mon-row" :class="{ dead: m.dead }">
             <Sprite :id="m.species" :shiny="m.shiny" :size="48" />
             <span class="m-txt">
@@ -356,40 +423,34 @@ useShell(() => ({
                 <template v-if="m.deathCause"> · {{ m.deathCause }}</template>
               </small>
             </span>
-            <button v-if="!m.dead" class="sv-btn small danger" @click="setDead(m, true)">Marquer mort</button>
-            <button v-else class="sv-btn small" @click="setDead(m, false)">Il est vivant</button>
+            <button v-if="!m.dead" type="button" class="sv-btn small danger" @click="setDead(m, true)">Marquer mort</button>
+            <button v-else type="button" class="sv-btn small" @click="setDead(m, false)">Il est vivant</button>
           </div>
         </div>
         <div class="sv-panel block">
-          <h3 class="sv-section-title">
-            Cimetière
-            <Tip
-              title="Cimetière"
-              text="Les Pokémon morts : K.O. dans l'équipe (PV à 0), rangés dans la boîte « Cimetière », ou marqués à la main. Une boîte est reconnue toute seule si son nom contient RIP, Cimetière ou Morts ; tu peux aussi la choisir dans l'onglet Règles."
-            />
-          </h3>
+          <h3 class="sv-section-title">Cimetière <Tip term="nuzlocke.graveyard" /></h3>
           <p class="sv-help">
             <template v-if="report.graveyardBox">Boîte « {{ report.graveyardBox.name }} »{{ report.graveyardBox.auto ? " (reconnue par son nom)" : "" }}.</template>
             <template v-else>Aucune boîte cimetière : renomme une boîte « RIP » ou choisis-la dans l'onglet Règles.</template>
           </p>
-          <div v-if="!report.graveyard.length" class="none">Aucun mort pour l'instant. Courage !</div>
+          <EmptyState v-if="!report.graveyard.length" compact icon="heart" title="Aucun mort pour l'instant">Courage !</EmptyState>
           <div v-for="m in report.graveyard" :key="m.key" class="mon-row dead">
             <Sprite :id="m.species" :shiny="m.shiny" :size="48" />
             <span class="m-txt">
               <strong>{{ monName(m) }}</strong>
               <small>N. {{ m.level }} · {{ m.route ?? ORIGIN_LABEL[m.origin] }} · {{ m.deathCause }}</small>
             </span>
-            <button class="sv-btn small" @click="setDead(m, false)">Il est vivant</button>
+            <button type="button" class="sv-btn small" @click="setDead(m, false)">Il est vivant</button>
           </div>
           <template v-if="report.others.length">
-            <h3 class="sv-section-title sub">Hors routes</h3>
+            <h3 class="sv-section-title sub">Hors routes <Tip term="nuzlocke.others" /></h3>
             <div v-for="m in report.others" :key="m.key" class="mon-row" :class="{ dead: m.dead }">
               <Sprite :id="m.species" :shiny="m.shiny" :size="40" />
               <span class="m-txt">
                 <strong>{{ monName(m) }}</strong>
                 <small>{{ ORIGIN_LABEL[m.origin] }} · {{ m.metLocationName ?? "lieu inconnu" }} · {{ m.place }}</small>
               </span>
-              <button v-if="manualAlive(m) || state.dead.includes(m.key)" class="sv-btn small" @click="resetMon(m)">Réinitialiser</button>
+              <button v-if="manualAlive(m) || state.dead.includes(m.key)" type="button" class="sv-btn small" @click="resetMon(m)">Réinitialiser</button>
             </div>
           </template>
         </div>
@@ -399,41 +460,44 @@ useShell(() => ({
       <section v-else-if="tab === 'caps'" class="body">
         <p class="sv-help">
           Équipes lues dans ta ROM : le niveau indiqué est celui du Pokémon le plus fort de chaque adversaire.
-          <Tip title="Ace" text="Le Pokémon le plus fort (« ace ») d'un champion donne le niveau maximum à ne pas dépasser avant de l'affronter." />
+          <Tip term="nuzlocke.ace" />
         </p>
-        <div class="caps">
+        <div v-if="!report.caps.length" class="sv-panel">
+          <EmptyState compact icon="swords" title="Aucun champion trouvé">
+            Kaleido n'a pas reconnu les champions de cette ROM : le niveau maximum ne peut pas être calculé.
+          </EmptyState>
+        </div>
+        <div v-else class="caps">
           <div v-for="c in report.caps" :key="c.label + c.name" class="capc sv-panel" :class="{ beaten: c.beaten, current: c.current }">
             <Sprite :id="c.aceSpecies" :size="56" />
             <span class="m-txt">
               <small>{{ c.label }} · {{ c.town }}</small>
               <strong>{{ c.name }}</strong>
-              <span>Niveau max {{ c.aceLevel }}</span>
+              <small>Niveau max N. {{ c.aceLevel }}</small>
             </span>
-            <Icon v-if="c.beaten" name="check" :size="18" />
-            <span v-else-if="c.current" class="chip status caught">Prochain</span>
-            <span v-if="!c.verified" class="chip status missed" title="Classe de dresseur inattendue : la ROM a peut-être été modifiée autrement">?</span>
+            <span v-if="c.beaten" class="sv-chip ok"><Icon name="check" :size="12" /> Battu</span>
+            <span v-else-if="c.current" class="sv-chip on">Prochain</span>
+            <span v-if="!c.verified" class="sv-chip warn">?<Tip term="nuzlocke.unverified" /></span>
           </div>
         </div>
       </section>
 
       <!-- Infractions -->
       <section v-else-if="tab === 'violations'" class="body">
-        <div v-if="!report.violations.length" class="sv-panel empty small">
-          <Icon name="shield" :size="40" />
-          <p>Aucune règle enfreinte. Bravo !</p>
+        <h3 class="sv-section-title">Infractions <Tip term="nuzlocke.violations" /></h3>
+        <div v-if="!report.violations.length" class="sv-panel">
+          <EmptyState compact icon="shield" title="Aucune règle enfreinte">Bravo !</EmptyState>
         </div>
-        <div v-for="(v, i) in report.violations" :key="i" class="viol sv-panel" :class="v.severity">
-          <Icon :name="v.severity === 'info' ? 'info' : 'alert'" :size="18" />
+        <div v-for="(v, i) in report.violations" :key="i" class="viol sv-panel" :class="SEVERITY[v.severity].cls">
+          <Icon :name="SEVERITY[v.severity].icon" :size="18" class="viol-icon" />
           <span class="m-txt">
             <strong>{{ v.title }}</strong>
             <small>{{ v.detail }}</small>
           </span>
+          <span class="sv-chip" :class="SEVERITY[v.severity].cls">{{ SEVERITY[v.severity].label }}</span>
         </div>
-        <p class="sv-help">
-          Rouge : règle enfreinte · orange : à vérifier · bleu : pour information.
-          <template v-if="state.rules.noItemsInBattle || state.rules.setMode">
-            Les règles « pas de soins en combat » et « mode Set » ne peuvent pas être vérifiées dans la sauvegarde.
-          </template>
+        <p v-if="state.rules.noItemsInBattle || state.rules.setMode" class="sv-help">
+          Les règles « pas de soins en combat » et « mode Set » ne peuvent pas être vérifiées dans la sauvegarde.
         </p>
       </section>
 
@@ -442,25 +506,27 @@ useShell(() => ({
         <div class="sv-panel block">
           <h3 class="sv-section-title">Règles de la partie</h3>
           <div class="rules">
-            <label v-for="r in RULES" :key="r.id" class="sv-switch">
-              <input type="checkbox" :checked="state.rules[r.id]" @change="update((s) => (s.rules[r.id] = ($event.target as HTMLInputElement).checked))" />
-              <span class="track" />
-              {{ r.label }}
-              <Tip :title="r.label" :text="r.tip" />
-              <small v-if="!r.check" class="dim">rappel</small>
-            </label>
+            <span v-for="r in RULES" :key="r.id" class="rule">
+              <Toggle :model-value="state.rules[r.id]" :label="r.label" :term="`nuzlocke.${r.id}`" @update:model-value="setRule(r.id, $event)" />
+              <span v-if="!r.check" class="sv-chip dim">rappel<Tip term="nuzlocke.reminder" /></span>
+            </span>
           </div>
         </div>
         <div class="sv-panel block">
-          <h3 class="sv-section-title">Boîte « Cimetière »</h3>
-          <select class="sv-select" :value="state.graveyardBox ?? ''" @change="setGraveyard(($event.target as HTMLSelectElement).value)">
+          <h3 class="sv-section-title">Boîte « Cimetière » <Tip term="nuzlocke.graveyard" /></h3>
+          <select
+            class="sv-select"
+            aria-label="Boîte cimetière"
+            :value="state.graveyardBox ?? ''"
+            @change="setGraveyard(($event.target as HTMLSelectElement).value)"
+          >
             <option value="">Automatique (nom contenant RIP, Cimetière, Morts…)</option>
             <option v-for="(n, i) in report.boxNames" :key="i" :value="i">{{ i + 1 }}. {{ n }}</option>
           </select>
           <p class="sv-help">Réglages enregistrés dans {{ fileName(data.stateFile) }}, à côté de la sauvegarde. La sauvegarde elle-même n'est pas modifiée.</p>
           <div class="sv-row">
-            <button class="sv-btn" @click="pickRom()">Changer de ROM</button>
-            <button class="sv-btn danger" @click="link(null)">Délier la ROM</button>
+            <button type="button" class="sv-btn" @click="pickRom()">Changer de ROM</button>
+            <button type="button" class="sv-btn danger" @click="link(null)">Délier la ROM</button>
           </div>
         </div>
       </section>
@@ -472,84 +538,64 @@ useShell(() => ({
 .nuz {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
-  padding: 18px 26px;
+  padding: var(--sp-4) var(--sp-6);
   overflow-y: auto;
 }
 
-.err,
-.warn-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
-  font-size: 13px;
+/* États « jeu non pris en charge » et « ROM à lier » : panneau centré. */
+.gate {
+  width: min(100%, 720px);
+  margin: var(--sp-5) auto;
 }
 
-.warn-box {
-  background: var(--warn-bg);
-}
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  max-width: 720px;
-  margin: 20px auto;
-  padding: 30px 36px;
-  text-align: center;
-}
-
-.empty.small {
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.empty h2 {
-  margin: 0;
-  font-size: 22px;
-}
-
-.empty p {
-  margin: 0;
-  line-height: 1.5;
+.gate :deep(.sv-empty) {
+  max-width: none;
 }
 
 .steps {
   margin: 0;
-  padding-left: 20px;
+  padding-left: var(--sp-5);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.6;
+  text-align: left;
+}
+
+.wide {
+  align-self: stretch;
   text-align: left;
 }
 
 .cands {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 100%;
+  gap: var(--sp-2);
+  align-self: stretch;
 }
 
 .cand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
   text-align: left;
 }
 
 .cand:hover:not(:disabled) {
-  border-color: var(--accent-2);
+  background: var(--panel-hover);
 }
 
-.c-txt,
+.cand:disabled {
+  opacity: 0.5;
+}
+
 .m-txt {
   display: flex;
   flex: 1;
@@ -557,87 +603,43 @@ useShell(() => ({
   min-width: 0;
 }
 
-.c-txt small,
 .m-txt small {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
+.grow {
+  flex: 1;
 }
 
-.chip.ok,
-.chip.status.caught {
-  background: color-mix(in srgb, #22c55e 30%, transparent);
-}
 
-.chip.status.missed {
-  background: color-mix(in srgb, var(--danger) 30%, transparent);
-}
-
-.chip.status.dupeOnly {
-  background: color-mix(in srgb, var(--warn) 30%, transparent);
-}
-
-.chip.rule {
-  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
-}
-
-.chip.other.extra {
-  background: color-mix(in srgb, var(--danger) 25%, transparent);
-}
-
-.chip.other.dupe {
-  background: color-mix(in srgb, var(--warn) 25%, transparent);
-}
-
-.chip.other.shinyBonus {
-  background: color-mix(in srgb, #eab308 30%, transparent);
-}
 
 /* En-tête */
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .stat {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
 }
 
-.stat small {
-  display: flex;
-  align-items: center;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.stat strong {
+.stat > strong {
   font-size: 26px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.stat span {
+.stat > small {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
-.stat.bad strong {
+.stat.bad > strong {
   color: var(--danger);
 }
 
@@ -648,27 +650,21 @@ useShell(() => ({
 .cap-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
-.cap-row div {
-  display: flex;
-  flex-direction: column;
-}
-
-.sv-select.mini {
-  padding: 4px 8px;
-  font-size: 12px;
+.cap-row strong {
+  font-size: var(--fs-xl);
 }
 
 .rom-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .tabs {
@@ -676,28 +672,25 @@ useShell(() => ({
 }
 
 .count {
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--warn) 60%, transparent);
-  color: #fff;
-  font-size: 11px;
-}
-
-.count.red {
-  background: var(--danger);
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-xs);
 }
 
 .body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .body.two {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   align-items: start;
+}
+
+.body > .sv-section-title {
+  margin: 0;
 }
 
 .filters {
@@ -708,46 +701,33 @@ useShell(() => ({
 .routes {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .route {
-  padding: 10px 14px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-card);
 }
 
-.route.st-caught {
-  border-left: 4px solid #22c55e;
-}
-
-.route.st-missed {
-  border-left: 4px solid var(--danger);
+.route.missed {
   opacity: 0.75;
-}
-
-.route.st-dupeOnly {
-  border-left: 4px solid var(--warn);
 }
 
 .r-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
 }
 
 .r-head strong {
-  font-size: 15px;
+  font-size: var(--fs-lg);
 }
 
 .r-head .sv-btn {
   margin-left: auto;
-}
-
-.sv-btn.small {
-  padding: 4px 10px;
-  font-size: 12px;
 }
 
 .r-body {
@@ -755,8 +735,8 @@ useShell(() => ({
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
 .encs {
@@ -773,14 +753,14 @@ useShell(() => ({
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .mon,
 .mon-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .mon.dead,
@@ -789,36 +769,35 @@ useShell(() => ({
 }
 
 .mon-row {
-  padding: 6px 0;
+  padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--border);
 }
 
-.none {
-  color: var(--text-dim);
-  font-size: 13px;
-  font-style: italic;
+.block {
+  padding: var(--sp-4);
 }
 
-.block {
-  padding: 16px 18px;
+.block > .sv-help {
+  margin-bottom: var(--sp-2);
 }
 
 .sub {
-  margin-top: 18px;
+  margin-top: var(--sp-4);
 }
 
 /* Champions */
 .caps {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+  gap: var(--sp-2);
 }
 
 .capc {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-card);
 }
 
 .capc.beaten {
@@ -826,40 +805,48 @@ useShell(() => ({
 }
 
 .capc.current {
-  box-shadow: 0 0 0 2px var(--accent-2);
+  border-color: var(--text);
 }
 
-.capc .m-txt span {
-  font-size: 13px;
-}
-
-/* Infractions */
+/* Infractions : pastille de gravité et bordure discrète de la même couleur. */
 .viol {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-left: 4px solid var(--accent-2);
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-card);
 }
 
-.viol.error {
-  border-left-color: var(--danger);
+.viol.danger {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
 }
 
-.viol.warning {
-  border-left-color: var(--warn);
+.viol.danger .viol-icon {
+  color: var(--danger);
+}
+
+.viol.warn {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+}
+
+.viol.warn .viol-icon {
+  color: var(--warn);
+}
+
+.viol.dim .viol-icon {
+  color: var(--text-dim);
 }
 
 /* Règles */
 .rules {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px 20px;
+  gap: var(--sp-3) var(--sp-5);
 }
 
-.dim {
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 400;
+.rule {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 </style>

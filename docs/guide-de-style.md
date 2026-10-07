@@ -5,7 +5,7 @@ Kaleido doit ressembler à une console : sobre, lisible, la même d'une page à 
 ## Règles
 
 1. **Un seul jeu de composants.** Une page consomme les composants et classes ci-dessous, elle ne les réimplémente pas. Pas de `.chip`, `.round`, `.btn-line`, `.panel` ou `dl` redéfinis localement.
-2. **Jetons, pas de valeurs en dur.** Espacements, rayons, tailles de texte et couleurs passent par les variables de `styles/main.css`. Une couleur hexadécimale dans une page est un bug, sauf dans une table de données (couleurs des types, familles de rencontre).
+2. **Jetons, pas de valeurs en dur.** Espacements, rayons, tailles de texte et couleurs passent par les variables de `styles/main.css`. Une couleur hexadécimale dans une page est un bug. Seule exception : les tables de données en TypeScript (couleurs des types dans `TypeBadge`, familles de rencontre dans `legality.ts`, formats de cartes dans `gifts/terms.ts`), définies une seule fois.
 3. **Un « i » sur chaque terme technique**, alimenté par le glossaire central (`<Tip term="…">`). Aucun terme sans entrée, aucune bulle écrite en dur dans une page (`title=` / `text=` inline).
 4. **Finition console.** Pas de barre d'accent colorée à gauche, pas d'emoji ni de symbole (★, ⚡) en guise de badge, pas de halo ni de pulsation animés, pas de dégradé décoratif. La sélection se montre par l'inversion texte / fond (pastille blanche en Lagon), comme les onglets.
 5. **Clavier et manette partout.** Tout élément interactif est un vrai `<button>` (ou un champ), atteignable au Tab et à la croix de la manette, avec un focus visible (anneau `--focus`, global). Entrée et Espace activent le bouton qui a le focus ; les raccourcis de la barre du bas ne les volent pas.
@@ -29,11 +29,15 @@ Le thème Pixel remet tous les rayons à 2–4 px : un rayon écrit en dur casse
 | Classe | Rôle |
 | --- | --- |
 | `.sv-panel` | panneau en verre (rayon `--radius-panel`) |
-| `.sv-btn`, `.sv-btn.solid`, `.sv-btn.danger` | bouton pastille ; `solid` pour l'action principale |
+| `.sv-btn`, `.solid`, `.danger`, `.small` | bouton pastille ; `solid` pour l'action principale |
 | `.sv-round` (`.sq` carré) | bouton d'icône rond : flèches de boîte, fermer |
-| `.sv-chip` + `.on`, `.ok`, `.warn`, `.danger`, `.dim`, `.shiny` | étiquette ; `button.sv-chip` = filtre activable |
+| `.sv-chip` + `.on`, `.ok`, `.warn`, `.danger`, `.dim`, `.shiny`, `.accent` | étiquette ; `button.sv-chip` = filtre activable ; `.accent` = catégorie neutre (rôle d'un dresseur) |
+| `.sv-card` (+ `.on`) | carte ou case sélectionnable |
+| `.sv-list-item` (+ `.on`) | ligne d'une liste à choix, sélection inversée |
+| `.sv-dots` | pagination de boîtes (zone cliquable de 16 px) |
+| `.sv-link` | bouton-lien dans une ligne de texte |
 | `.sv-label` | libellé de section en capitales |
-| `.sv-input`, `.sv-select` | champs |
+| `.sv-input`, `.sv-select` (+ `.compact`) | champs |
 | `.sv-dl` | fiche « libellé · valeur » (`dt` avec `<Tip>`, `dd` à droite) |
 | `.sv-moves` | grille de 4 attaques |
 | `.sv-section-title`, `.sv-help`, `.sv-row`, `.sv-grid`, `.sv-field` | mise en page des formulaires |
@@ -48,9 +52,9 @@ Le thème Pixel remet tous les rayons à 2–4 px : un rayon écrit en dur casse
 | `Toggle` | interrupteur avec `term` facultatif |
 | `SearchField` | recherche avec loupe, Échap vide le champ |
 | `EmptyState` | état vide / chargement (`loading`) centré, avec slot `actions` |
-| `Banner` | erreur ou avertissement, `retry` et `dismiss` |
+| `Banner` | erreur, avertissement, information ou réussite (`tone`), avec `retry` et `dismiss` |
 | `Dialog` | fenêtre modale : Échap, clic à côté, focus gardé dans la fenêtre puis rendu |
-| `Sprite`, `TypeBadge`, `Icon`, `Combo` | sprite du style choisi, type, icône, liste déroulante filtrable (choix d'espèce, d'attaque, d'objet) |
+| `Sprite`, `TypeBadge` (`compact`), `Icon`, `Combo` | sprite du style choisi, type, icône, liste déroulante filtrable (choix d'espèce, d'attaque, d'objet) |
 
 ## Glossaire (`glossary.ts`)
 
@@ -78,3 +82,15 @@ node scripts/pageshots.mjs <dossier> <sauvegarde> [préfixe] [pages] [thèmes] [
 ```
 
 capture chaque page dans les thèmes Lagon, Réseau, Pixel et Prisme Nuit, à 1280 et 1920 px (app lancée avec `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`).
+
+## Avant / après (chantier 0, Lagon, 1280 px)
+
+| Page | Avant | Après |
+| --- | --- | --- |
+| Banque | ![](screenshots/coherence/bank-avant.png) | ![](screenshots/coherence/bank-apres.png) |
+| Nuzlocke | ![](screenshots/coherence/nuzlocke-avant.png) | ![](screenshots/coherence/nuzlocke-apres.png) |
+| Combat | ![](screenshots/coherence/battle-avant.png) | ![](screenshots/coherence/battle-apres.png) |
+| Cadeaux mystère | ![](screenshots/coherence/gifts-avant.png) | ![](screenshots/coherence/gifts-apres.png) |
+| Rencontres | ![](screenshots/coherence/encounters-avant.png) | ![](screenshots/coherence/encounters-apres.png) |
+| Showdown | ![](screenshots/coherence/showdown-avant.png) | ![](screenshots/coherence/showdown-apres.png) |
+| Équipes stratégiques | ![](screenshots/coherence/teams-avant.png) | ![](screenshots/coherence/teams-apres.png) |

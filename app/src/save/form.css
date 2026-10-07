@@ -115,6 +115,32 @@
   color: var(--bg);
 }
 
+.sv-btn.small {
+  padding: 5px 11px;
+  font-size: var(--fs-sm);
+}
+
+.sv-select.compact,
+.sv-input.compact {
+  padding: 5px 9px;
+  font-size: var(--fs-md);
+}
+
+/* Bouton-lien dans une ligne de texte (« Changer », « Ouvrir »). */
+.sv-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sv-link:hover {
+  color: var(--text);
+}
+
 .sv-btn.danger {
   border-color: var(--danger);
   color: var(--danger);
@@ -296,6 +322,12 @@ button.sv-chip.on {
   color: var(--danger);
 }
 
+/* Catégorie sans valeur de réussite ou d'erreur (rôle d'un dresseur, format). */
+.sv-chip.accent {
+  background: color-mix(in srgb, var(--accent-2) 24%, transparent);
+  color: var(--text);
+}
+
 .sv-chip.dim {
   background: transparent;
   border-color: var(--border);
@@ -305,6 +337,88 @@ button.sv-chip.on {
 .sv-chip.shiny {
   background: color-mix(in srgb, var(--shiny) 22%, transparent);
   color: var(--shiny);
+}
+
+/* ---------- Carte ou case sélectionnable ---------- */
+
+.sv-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  text-align: left;
+}
+
+button.sv-card:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.sv-card.on {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+/* Ligne d'une liste à choix (espèces, fichiers) : sélection = texte et fond inversés. */
+.sv-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.sv-list-item:hover:not(.on) {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.sv-list-item.on {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Pagination de boîtes : point visible de 8 px, zone cliquable de 16 px. */
+.sv-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.sv-dots button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.sv-dots button::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 30%, transparent);
+}
+
+.sv-dots button.empty::before {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+.sv-dots button:hover::before {
+  background: var(--text-dim);
+}
+
+.sv-dots button.on::before {
+  width: 10px;
+  height: 10px;
+  background: var(--text);
 }
 
 /* ---------- Fiche : lignes « libellé · valeur » ---------- */
@@ -445,6 +559,12 @@ button.sv-chip.on {
   color: var(--warn);
 }
 
+.sv-banner.ok {
+  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+}
+
 .sv-banner.info {
   border-color: var(--border);
   background: color-mix(in srgb, var(--text) 8%, transparent);
@@ -518,7 +638,12 @@ button.sv-chip.on {
 }
 
 .sv-dialog > footer {
+  flex-wrap: wrap;
   border-top: 1px solid var(--border);
+}
+
+.sv-dialog.flush > .body {
+  padding: 0;
 }
 
 .sv-dialog > .body {

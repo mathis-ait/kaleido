@@ -1,14 +1,15 @@
 <script setup lang="ts">
+import Segmented from "../../components/Segmented.vue";
 import Tip from "../../components/Tip.vue";
+import Toggle from "../../components/Toggle.vue";
 import { battle, resetOptions, type SideOptions, type Status, type Weather } from "../../battle";
-import { BATTLE_TIPS } from "./glossary";
 
-const WEATHERS: { id: Weather; label: string }[] = [
-  { id: "none", label: "Aucune" },
-  { id: "sun", label: "Soleil" },
-  { id: "rain", label: "Pluie" },
-  { id: "sand", label: "Sable" },
-  { id: "hail", label: "Grêle" },
+const WEATHERS: { value: Weather; label: string }[] = [
+  { value: "none", label: "Aucune" },
+  { value: "sun", label: "Soleil" },
+  { value: "rain", label: "Pluie" },
+  { value: "sand", label: "Sable" },
+  { value: "hail", label: "Grêle" },
 ];
 const STATUSES: { id: Status; label: string }[] = [
   { id: "none", label: "Aucun" },
@@ -41,28 +42,21 @@ function setStage(s: SideOptions, i: number, v: string) {
 <template>
   <div class="settings sv-panel">
     <div class="block">
-      <span class="sv-label">Météo <Tip v-bind="BATTLE_TIPS.weather" /></span>
-      <div class="sv-seg">
-        <button v-for="w in WEATHERS" :key="w.id" :class="{ on: battle.options.field.weather === w.id }" @click="battle.options.field.weather = w.id">
-          {{ w.label }}
-        </button>
-      </div>
+      <span class="sv-label">Météo <Tip term="battle.weather" /></span>
+      <Segmented v-model="battle.options.field.weather" :options="WEATHERS" label="Météo" />
     </div>
     <div class="block">
-      <span class="sv-label">Intimidation <Tip v-bind="BATTLE_TIPS.intimidate" /></span>
-      <label class="sv-switch">
-        <input v-model="battle.options.field.intimidate" type="checkbox" />
-        <span class="track" />
-        {{ battle.options.field.intimidate ? "Appliquée" : "Ignorée" }}
-      </label>
+      <span class="sv-label">Intimidation <Tip term="battle.intimidate" /></span>
+      <Toggle v-model="battle.options.field.intimidate" :label="battle.options.field.intimidate ? 'Appliquée' : 'Ignorée'" />
     </div>
     <div v-for="s in sides" :key="s.key" class="block side">
-      <span class="sv-label">{{ s.title }} <Tip v-bind="BATTLE_TIPS.stages" /></span>
+      <span class="sv-label">{{ s.title }} <Tip term="battle.stages" /></span>
       <div class="stages">
-        <label v-for="st in STAGES" :key="st.i" :title="`Niveau de ${st.label}`">
-          <small>{{ st.label }}</small>
+        <label v-for="st in STAGES" :key="st.i">
+          <small>{{ st.label }}<Tip v-if="s.key === 'mine' && st.i === STAGES[STAGES.length - 1].i" term="statShort" /></small>
           <select
             class="sv-select"
+            :aria-label="`${s.title} : niveau de ${st.label}`"
             :class="{ up: battle.options[s.key].boosts[st.i] > 0, down: battle.options[s.key].boosts[st.i] < 0 }"
             :value="battle.options[s.key].boosts[st.i]"
             @change="setStage(battle.options[s.key], st.i, ($event.target as HTMLSelectElement).value)"
@@ -71,18 +65,18 @@ function setStage(s: SideOptions, i: number, v: string) {
           </select>
         </label>
         <label>
-          <small>Statut <Tip v-bind="BATTLE_TIPS.status" /></small>
+          <small>Statut <Tip term="battle.status" /></small>
           <select v-model="battle.options[s.key].status" class="sv-select">
             <option v-for="o in STATUSES" :key="o.id" :value="o.id">{{ o.label }}</option>
           </select>
         </label>
         <label>
-          <small>PV % <Tip v-bind="BATTLE_TIPS.hp" /></small>
+          <small>PV % <Tip term="battle.hp" /></small>
           <input v-model.number="battle.options[s.key].hpPercent" class="sv-input" type="number" min="1" max="100" />
         </label>
       </div>
     </div>
-    <button class="sv-btn reset" @click="resetOptions()">Réinitialiser</button>
+    <button type="button" class="sv-btn reset" @click="resetOptions()">Réinitialiser</button>
   </div>
 </template>
 
@@ -91,32 +85,32 @@ function setStage(s: SideOptions, i: number, v: string) {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 14px 22px;
-  padding: 12px 16px;
+  gap: var(--sp-3) var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .stages {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .stages label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--sp-1);
 }
 
 .stages small {
   display: flex;
   align-items: center;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .stages .sv-select,
@@ -124,7 +118,7 @@ function setStage(s: SideOptions, i: number, v: string) {
   width: auto;
   min-width: 58px;
   padding: 5px 6px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .stages .sv-input {
@@ -132,7 +126,7 @@ function setStage(s: SideOptions, i: number, v: string) {
 }
 
 .sv-select.up {
-  color: #22c55e;
+  color: var(--ok);
 }
 
 .sv-select.down {

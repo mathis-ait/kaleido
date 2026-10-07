@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import Banner from "../../components/Banner.vue";
+import Dialog from "../../components/Dialog.vue";
+import EmptyState from "../../components/EmptyState.vue";
 import Icon from "../../components/Icon.vue";
+import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
 import { goTo, notify, saveState } from "../../saveStore";
@@ -30,11 +34,17 @@ const props = defineProps<{ target?: Slot | null }>();
 const view = computed(() => saveState.view);
 const boxNames = computed(() => view.value?.boxNames ?? []);
 
+const TABS: { value: "import" | "export"; label: string }[] = [
+  { value: "import", label: "Importer" },
+  { value: "export", label: "Exporter" },
+];
+
 // ---- Importer
 const text = ref("");
 const preview = ref<ShowdownPreview | null>(null);
 const previewError = ref<string | null>(null);
 const report = ref<ImportReport | null>(null);
+const importError = ref<string | null>(null);
 const busy = ref(false);
 const area = ref<HTMLTextAreaElement | null>(null);
 
@@ -47,6 +57,16 @@ const targetOccupied = computed(() => {
   if (s.kind === "party") return s.index < (view.value?.party.length ?? 0);
   return s.box === saveState.box && !!saveState.slots[s.index];
 });
+const targetOptions = computed(() => [
+  { value: "box" as TargetKind, label: `Cases libres de ${boxNames.value[saveState.box] ?? "la boîte"}` },
+  { value: "party" as TargetKind, label: "Équipe", disabled: (view.value?.party.length ?? 6) >= 6 },
+  {
+    value: "slot" as TargetKind,
+    label: `${targetSlot.value ? slotText(targetSlot.value, boxNames.value) : "Emplacement choisi"}${targetOccupied.value ? " (remplace)" : ""}`,
+    hint: targetOccupied.value ? "Le Pokémon de cet emplacement sera remplacé" : undefined,
+    disabled: !targetSlot.value,
+  },
+]);
 
 const SAMPLE = `Carchacrok (F) @ Mouchoir Choix
 Talent : Peau Dure
@@ -60,6 +80,7 @@ Nature : Jovial
 let timer: number | undefined;
 watch(text, (t) => {
   report.value = null;
+  importError.value = null;
   clearTimeout(timer);
   if (!t.trim()) {
     preview.value = null;
@@ -89,10 +110,11 @@ const target = computed<ImportTarget>(() => {
 async function doImport() {
   if (!valid.value.length || busy.value) return;
   busy.value = true;
+  importError.value = null;
   try {
     report.value = await importShowdown(text.value, target.value);
   } catch (e) {
-    saveState.error = String(e);
+    importError.value = String(e);
   } finally {
     busy.value = false;
   }
@@ -116,23 +138,78 @@ type Source = "party" | "box" | "selected";
 const source = ref<Source>("party");
 const lang = ref<Lang>("en");
 const exported = ref("");
+const exportError = ref<string | null>(null);
+const exporting = ref(false);
 
 const sourceSlots = computed<Slot[]>(() => {
   if (source.value === "selected") return saveState.selected ? [saveState.selected.slot] : [];
   if (source.value === "party") return (view.value?.party ?? []).map((p) => p.slot);
   return saveState.slots.filter((s) => !!s).map((s) => s!.slot);
 });
+const sourceOptions = computed(() => [
+  { value: "party" as Source, label: "Équipe" },
+  { value: "box" as Source, label: boxNames.value[saveState.box] ?? "Boîte" },
+  {
+    value: "selected" as Source,
+    label: saveState.selected ? saveState.selected.nickname || saveState.selected.speciesName : "Pokémon sélectionné",
+    disabled: !saveState.selected,
+  },
+]);
+const LANGS: { value: Lang; label: string }[] = [
+  { value: "en", label: "Anglais (Showdown)" },
+  { value: "fr", label: "Français" },
+];
 
+// ---- Ouverture / fermeture et clavier
+
+// À chaque ouverture (y compris quand la fenêtre est déjà ouverte au montage, par exemple
+// `goTo("boxes")` suivi d'`openShowdown("export")` dans le même tour) : cible et source par défaut.
+// Déclaré avant le calcul de l'export pour que celui-ci parte de la bonne source.
+watch(
+  () => showdownUi.open,
+  (open) => {
+    if (!open) return;
+    report.value = null;
+    importError.value = null;
+    targetKind.value = targetSlot.value && !targetOccupied.value && props.target ? "slot" : "box";
+    source.value = saveState.selected ? "selected" : "party";
+  },
+  { immediate: true },
+);
+
+let exportRequest = 0;
 async function refreshExport() {
   if (!showdownUi.open || showdownUi.tab !== "export") return;
-  try {
-    exported.value = sourceSlots.value.length ? await exportShowdown(sourceSlots.value, lang.value) : "";
-  } catch (e) {
+  const id = ++exportRequest;
+  const slots = sourceSlots.value;
+  exportError.value = null;
+  if (!slots.length) {
     exported.value = "";
-    saveState.error = String(e);
+    return;
+  }
+  exporting.value = true;
+  try {
+    const out = await exportShowdown(slots, lang.value);
+    // Réponse d'une demande dépassée (source ou langue changée entre-temps) : ignorée.
+    if (id === exportRequest) exported.value = out;
+  } catch (e) {
+    if (id === exportRequest) {
+      exported.value = "";
+      exportError.value = String(e);
+    }
+  } finally {
+    if (id === exportRequest) exporting.value = false;
   }
 }
-watch([source, lang, sourceSlots, () => showdownUi.tab, () => showdownUi.open], refreshExport);
+// `immediate` : la fenêtre peut être montée déjà ouverte sur l'onglet Exporter, auquel cas
+// aucun changement ne déclencherait le calcul (c'était la cause du texte vide).
+watch([source, lang, sourceSlots, () => showdownUi.tab, () => showdownUi.open], refreshExport, { immediate: true });
+
+const exportPlaceholder = computed(() => {
+  if (exporting.value) return "Préparation du texte…";
+  if (!sourceSlots.value.length) return "Aucun Pokémon à exporter ici.";
+  return "Rien à exporter : les œufs sont ignorés.";
+});
 
 async function copy() {
   try {
@@ -143,35 +220,26 @@ async function copy() {
   }
 }
 
-// ---- Ouverture / fermeture et clavier
 function close() {
   showdownUi.open = false;
 }
 
-watch(
-  () => showdownUi.open,
-  (open) => {
-    if (!open) return;
-    report.value = null;
-    targetKind.value = targetSlot.value && !targetOccupied.value && props.target ? "slot" : "box";
-    source.value = saveState.selected ? "selected" : "party";
-    if (showdownUi.tab === "import") nextTick(() => area.value?.focus());
-  },
-);
-
-function onKey(e: KeyboardEvent) {
-  const k = keyOf(e);
-  if (!showdownUi.open) {
-    // Ctrl+I : ouvre la fenêtre Showdown depuis les boîtes ou la fiche Pokémon.
-    if (k === "Ctrl+i" && saveState.view) {
-      e.preventDefault();
-      e.stopPropagation();
-      openShowdown("import");
-    }
-    return;
-  }
-  // Fenêtre ouverte : les raccourcis de la page sont suspendus.
+/** Fenêtre fermée : Ctrl+I l'ouvre depuis les boîtes ou la fiche Pokémon. */
+function onWindowKey(e: KeyboardEvent) {
+  if (showdownUi.open || keyOf(e) !== "Ctrl+i" || !saveState.view) return;
+  e.preventDefault();
   e.stopPropagation();
+  openShowdown("import");
+}
+
+/**
+ * Fenêtre ouverte : ses raccourcis, puis on arrête la touche avant les raccourcis de la page.
+ * Écouté sur `document` (phase de remontée) pour laisser la fenêtre gérer Échap et Tab avant.
+ */
+function onDialogKey(e: KeyboardEvent) {
+  if (!showdownUi.open) return;
+  e.stopPropagation();
+  const k = keyOf(e);
   if (k === "Escape") {
     e.preventDefault();
     close();
@@ -184,9 +252,20 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener("keydown", onKey, true));
+watch(
+  () => showdownUi.tab,
+  (tab) => {
+    if (showdownUi.open && tab === "import") nextTick(() => area.value?.focus());
+  },
+);
+
+onMounted(() => {
+  window.addEventListener("keydown", onWindowKey, true);
+  document.addEventListener("keydown", onDialogKey);
+});
 onBeforeUnmount(() => {
-  window.removeEventListener("keydown", onKey, true);
+  window.removeEventListener("keydown", onWindowKey, true);
+  document.removeEventListener("keydown", onDialogKey);
   showdownUi.open = false;
 });
 
@@ -197,260 +276,150 @@ function showSlot(s: Slot) {
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="sd-fade">
-      <div v-if="showdownUi.open" class="sd-overlay" @pointerdown.self="close">
-        <section class="sd-dialog sv-panel" role="dialog" aria-modal="true" aria-label="Showdown">
-          <header class="sd-head">
-            <h2>Showdown <Tip term="showdown" /></h2>
-            <div class="sv-seg">
-              <button :class="{ on: showdownUi.tab === 'import' }" @click="showdownUi.tab = 'import'"><Icon name="download" :size="14" /> Importer</button>
-              <button :class="{ on: showdownUi.tab === 'export' }" @click="showdownUi.tab = 'export'"><Icon name="upload" :size="14" /> Exporter</button>
-            </div>
-            <span class="grow" />
-            <kbd class="hint">Échap</kbd>
-            <button class="round" aria-label="Fermer" @click="close"><Icon name="x" :size="16" /></button>
-          </header>
+  <Dialog v-model="showdownUi.open" title="Showdown" term="showdown" icon="swords" :width="1040">
+    <template #head>
+      <Segmented v-model="showdownUi.tab" :options="TABS" label="Importer ou exporter" />
+    </template>
 
-          <!-- Importer -->
-          <div v-if="showdownUi.tab === 'import'" class="sd-body import">
-            <div class="col">
-              <label class="sv-label" for="sd-text">Texte de l'équipe <Tip term="showdownLang" /></label>
-              <textarea
-                id="sd-text"
-                ref="area"
-                v-model="text"
-                class="sd-text"
-                spellcheck="false"
-                :placeholder="'Colle ici une équipe exportée de Showdown, par exemple :\n\n' + SAMPLE"
-              />
-              <div class="sv-row">
-                <button class="sv-btn" @click="pasteClipboard"><Icon name="copy" :size="14" /> Coller</button>
-                <button class="sv-btn" @click="useSample"><Icon name="wand" :size="14" /> Exemple</button>
-                <button v-if="text" class="sv-btn" @click="text = ''"><Icon name="trash" :size="14" /> Vider</button>
-              </div>
-              <p class="sv-help">
-                Un Pokémon par bloc, séparés par une ligne vide. Noms anglais ou français, accents facultatifs. Sans « Level », le niveau est 100 comme sur
-                Showdown.
-              </p>
-            </div>
-
-            <div class="col preview">
-              <div class="preview-head">
-                <span class="sv-label">Aperçu</span>
-                <span v-if="preview?.sets.length" class="chip">Noms en {{ langLabel(preview.lang) }}</span>
-                <span v-if="warningCount" class="chip warn">{{ warningCount }} remarque{{ warningCount > 1 ? "s" : "" }}</span>
-              </div>
-              <p v-if="previewError" class="err">{{ previewError }}</p>
-              <div v-if="!preview?.sets.length" class="empty">
-                <Icon name="file" :size="30" />
-                <p>Les Pokémon reconnus apparaîtront ici, avec leurs noms en français.</p>
-              </div>
-              <ul v-else class="cards">
-                <li v-for="(s, i) in preview.sets" :key="i" class="card" :class="{ bad: !!s.error }">
-                  <div class="card-head">
-                    <Sprite v-if="s.species" :id="s.species" :shiny="s.shiny" :size="56" />
-                    <div class="who">
-                      <strong>
-                        {{ s.nickname || s.speciesName }}
-                        <span v-if="s.shiny" class="gold" title="Chromatique">★</span>
-                        <span v-if="s.gender === 'male'" class="g m">♂</span>
-                        <span v-else-if="s.gender === 'female'" class="g f">♀</span>
-                      </strong>
-                      <small>
-                        <template v-if="s.nickname">{{ s.speciesName }} · </template>
-                        <template v-if="s.formName">{{ s.formName }} · </template>
-                        N. {{ s.level }}
-                      </small>
-                    </div>
-                  </div>
-                  <p v-if="s.error" class="err">{{ s.error }}</p>
-                  <template v-else>
-                    <dl>
-                      <dt>Objet</dt>
-                      <dd>{{ s.itemName ?? "—" }}</dd>
-                      <dt>Talent</dt>
-                      <dd>{{ s.abilityName ?? "—" }}<span v-if="s.abilityNumber === 4" class="dim"> (caché)</span></dd>
-                      <dt>Nature</dt>
-                      <dd>{{ s.natureName ?? "au hasard" }}</dd>
-                      <dt>EV</dt>
-                      <dd>{{ statLine(s.evs, 0) || "aucun" }}</dd>
-                      <template v-if="statLine(s.ivs, 31)">
-                        <dt>IV</dt>
-                        <dd>{{ statLine(s.ivs, 31) }} <span class="dim">(31 ailleurs)</span></dd>
-                      </template>
-                    </dl>
-                    <div class="moves">
-                      <span v-for="m in s.moveNames" :key="m">{{ m }}</span>
-                    </div>
-                  </template>
-                  <ul v-if="s.warnings.length" class="warns">
-                    <li v-for="w in s.warnings" :key="w"><Icon name="alert" :size="13" /> {{ w }}</li>
-                  </ul>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Exporter -->
-          <div v-else class="sd-body export">
-            <div class="options">
-              <div class="sv-field">
-                <span class="sv-label">Pokémon à exporter</span>
-                <div class="sv-seg">
-                  <button :class="{ on: source === 'party' }" @click="source = 'party'">Équipe</button>
-                  <button :class="{ on: source === 'box' }" @click="source = 'box'">{{ boxNames[saveState.box] ?? "Boîte" }}</button>
-                  <button :class="{ on: source === 'selected' }" :disabled="!saveState.selected" @click="source = 'selected'">
-                    {{ saveState.selected ? saveState.selected.nickname || saveState.selected.speciesName : "Pokémon sélectionné" }}
-                  </button>
-                </div>
-              </div>
-              <div class="sv-field">
-                <span class="sv-label">Langue des noms <Tip term="showdownLang" /></span>
-                <div class="sv-seg">
-                  <button :class="{ on: lang === 'en' }" @click="lang = 'en'">Anglais (Showdown)</button>
-                  <button :class="{ on: lang === 'fr' }" @click="lang = 'fr'">Français</button>
-                </div>
-              </div>
-            </div>
-            <textarea class="sd-text out" readonly spellcheck="false" :value="exported" :placeholder="'Aucun Pokémon à exporter ici.'" />
-            <p class="sv-help">
-              Les œufs sont ignorés. Sur Showdown : constructeur d'équipe → « Import from text », puis colle le texte.
-            </p>
-          </div>
-
-          <footer class="sd-foot">
-            <template v-if="showdownUi.tab === 'import'">
-              <div v-if="report" class="result">
-                <strong>{{ report.imported ? `${report.imported} Pokémon ajouté${report.imported > 1 ? "s" : ""}` : "Rien n'a été ajouté" }}</strong>
-                <span v-for="(r, i) in report.sets" :key="i" class="placed" :class="{ bad: !!r.error }">
-                  <template v-if="r.slot">
-                    <button class="link" @click="showSlot(r.slot)">{{ r.speciesName }} → {{ slotText(r.slot, boxNames) }}</button>
-                  </template>
-                  <template v-else>{{ r.speciesName }} : {{ r.error }}</template>
-                </span>
-              </div>
-              <template v-else>
-                <span class="sv-label">Ranger dans</span>
-                <div class="sv-seg">
-                  <button :class="{ on: targetKind === 'box' }" @click="targetKind = 'box'">Cases libres de {{ boxNames[saveState.box] ?? "la boîte" }}</button>
-                  <button :class="{ on: targetKind === 'party' }" :disabled="(view?.party.length ?? 6) >= 6" @click="targetKind = 'party'">Équipe</button>
-                  <button
-                    :class="{ on: targetKind === 'slot' }"
-                    :disabled="!targetSlot"
-                    :title="targetOccupied ? 'Le Pokémon de cet emplacement sera remplacé' : ''"
-                    @click="targetKind = 'slot'"
-                  >
-                    {{ targetSlot ? slotText(targetSlot, boxNames) : "Emplacement choisi" }}{{ targetOccupied ? " (remplace)" : "" }}
-                  </button>
-                </div>
-              </template>
-              <span class="grow" />
-              <button v-if="report" class="sv-btn" @click="(report = null), (text = '')">Importer autre chose</button>
-              <button v-else class="sv-btn solid" :disabled="!valid.length || busy" @click="doImport">
-                <Icon name="plus" :size="15" />
-                Ajouter à la sauvegarde{{ valid.length > 1 ? ` (${valid.length})` : "" }}
-                <kbd>Ctrl+Entrée</kbd>
-              </button>
-            </template>
-            <template v-else>
-              <span class="dim">{{ sourceSlots.length }} Pokémon</span>
-              <span class="grow" />
-              <button class="sv-btn solid" :disabled="!exported" @click="copy"><Icon name="copy" :size="15" /> Copier le texte</button>
-            </template>
-          </footer>
-        </section>
+    <!-- Importer -->
+    <div v-if="showdownUi.tab === 'import'" class="sd-import">
+      <div class="col">
+        <label class="sv-label" for="sd-text">Texte de l'équipe <Tip term="showdownLang" /></label>
+        <textarea
+          id="sd-text"
+          ref="area"
+          v-model="text"
+          class="sd-text"
+          spellcheck="false"
+          :placeholder="'Colle ici une équipe exportée de Showdown, par exemple :\n\n' + SAMPLE"
+        />
+        <div class="sv-row">
+          <button type="button" class="sv-btn" @click="pasteClipboard"><Icon name="copy" :size="14" /> Coller</button>
+          <button type="button" class="sv-btn" @click="useSample"><Icon name="wand" :size="14" /> Exemple</button>
+          <button v-if="text" type="button" class="sv-btn" @click="text = ''"><Icon name="trash" :size="14" /> Vider</button>
+        </div>
+        <p class="sv-help">
+          Un Pokémon par bloc, séparés par une ligne vide. Noms anglais ou français, accents facultatifs. Sans « Level », le niveau est 100 comme sur
+          Showdown.
+        </p>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div class="col preview">
+        <div class="sv-row">
+          <span class="sv-label">Aperçu</span>
+          <span v-if="preview?.sets.length" class="sv-chip dim">Noms en {{ langLabel(preview.lang) }}</span>
+          <span v-if="warningCount" class="sv-chip warn">{{ warningCount }} remarque{{ warningCount > 1 ? "s" : "" }}</span>
+        </div>
+        <Banner v-if="previewError">{{ previewError }}</Banner>
+        <Banner v-if="importError" :dismiss="() => (importError = null)">{{ importError }}</Banner>
+        <EmptyState v-if="!preview?.sets.length" icon="file" compact class="sd-empty">
+          Les Pokémon reconnus apparaîtront ici, avec leurs noms en français.
+        </EmptyState>
+        <ul v-else class="cards">
+          <li v-for="(s, i) in preview.sets" :key="i" class="card" :class="{ bad: !!s.error }">
+            <div class="card-head">
+              <Sprite v-if="s.species" :id="s.species" :shiny="s.shiny" :size="56" />
+              <div class="who">
+                <strong>
+                  {{ s.nickname || s.speciesName }}
+                  <span v-if="s.gender === 'male'" class="male" title="Mâle">♂</span>
+                  <span v-else-if="s.gender === 'female'" class="female" title="Femelle">♀</span>
+                </strong>
+                <small>
+                  <template v-if="s.nickname">{{ s.speciesName }} · </template>
+                  <template v-if="s.formName">{{ s.formName }} · </template>
+                  N. {{ s.level }}
+                </small>
+              </div>
+              <span v-if="s.shiny" class="sv-chip shiny">Chromatique</span>
+            </div>
+            <p v-if="s.error" class="err">{{ s.error }}</p>
+            <template v-else>
+              <dl class="sv-dl">
+                <dt>Objet tenu <Tip term="heldItem" /></dt>
+                <dd>{{ s.itemName ?? "—" }}</dd>
+                <dt>Talent <Tip term="ability" /></dt>
+                <dd>
+                  {{ s.abilityName ?? "—" }}<span v-if="s.abilityNumber === 4" class="dim hidden"> (caché <Tip term="hiddenAbility" />)</span>
+                </dd>
+                <dt>Nature <Tip term="nature" /></dt>
+                <dd>{{ s.natureName ?? "au hasard" }}</dd>
+                <dt>EV <Tip term="ev" /></dt>
+                <dd>{{ statLine(s.evs, 0) || "aucun" }}</dd>
+                <template v-if="statLine(s.ivs, 31)">
+                  <dt>IV <Tip term="iv" /></dt>
+                  <dd>{{ statLine(s.ivs, 31) }} <span class="dim">(31 ailleurs)</span></dd>
+                </template>
+              </dl>
+              <ul class="sv-moves">
+                <li v-for="m in s.moveNames" :key="m">{{ m }}</li>
+              </ul>
+            </template>
+            <ul v-if="s.warnings.length" class="warns">
+              <li v-for="w in s.warnings" :key="w"><Icon name="alert" :size="13" /> {{ w }}</li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Exporter -->
+    <div v-else class="sd-export">
+      <div class="options">
+        <div class="sv-field">
+          <span class="sv-label">Pokémon à exporter</span>
+          <Segmented v-model="source" :options="sourceOptions" label="Pokémon à exporter" />
+        </div>
+        <div class="sv-field">
+          <span class="sv-label">Langue des noms <Tip term="showdownLang" /></span>
+          <Segmented v-model="lang" :options="LANGS" label="Langue des noms" />
+        </div>
+      </div>
+      <Banner v-if="exportError" :retry="refreshExport">{{ exportError }}</Banner>
+      <textarea class="sd-text out" readonly spellcheck="false" :value="exported" :placeholder="exportPlaceholder" />
+      <p class="sv-help">Les œufs sont ignorés. Sur Showdown : constructeur d'équipe → « Import from text », puis colle le texte.</p>
+    </div>
+
+    <template #foot>
+      <div class="foot">
+        <template v-if="showdownUi.tab === 'import'">
+          <div v-if="report" class="result">
+            <strong>{{ report.imported ? `${report.imported} Pokémon ajouté${report.imported > 1 ? "s" : ""}` : "Rien n'a été ajouté" }}</strong>
+            <span v-for="(r, i) in report.sets" :key="i" class="placed" :class="{ bad: !!r.error }">
+              <template v-if="r.slot">
+                <button type="button" class="link" @click="showSlot(r.slot)">{{ r.speciesName }} → {{ slotText(r.slot, boxNames) }}</button>
+              </template>
+              <template v-else>{{ r.speciesName }} : {{ r.error }}</template>
+            </span>
+          </div>
+          <template v-else>
+            <span class="sv-label">Ranger dans</span>
+            <Segmented v-model="targetKind" :options="targetOptions" label="Ranger dans" />
+          </template>
+          <span class="grow" />
+          <button v-if="report" type="button" class="sv-btn" @click="(report = null), (text = '')">Importer autre chose</button>
+          <button v-else type="button" class="sv-btn solid" :disabled="!valid.length || busy" @click="doImport">
+            <Icon name="plus" :size="15" />
+            Ajouter à la sauvegarde{{ valid.length > 1 ? ` (${valid.length})` : "" }}
+            <kbd>Ctrl+Entrée</kbd>
+          </button>
+        </template>
+        <template v-else>
+          <span class="dim">{{ sourceSlots.length }} Pokémon</span>
+          <span class="grow" />
+          <button type="button" class="sv-btn solid" :disabled="!exported" @click="copy"><Icon name="copy" :size="15" /> Copier le texte</button>
+        </template>
+      </div>
+    </template>
+  </Dialog>
 </template>
 
 <style scoped>
-.sd-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
-  backdrop-filter: blur(6px);
-}
-
-.sd-dialog {
-  display: flex;
-  flex-direction: column;
-  width: min(1040px, 100%);
-  max-height: calc(100vh - 56px);
-  min-height: min(620px, calc(100vh - 56px));
-  overflow: hidden;
-  background: var(--surface);
-}
-
-.sd-head,
-.sd-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-}
-
-.sd-head {
-  border-bottom: 1px solid var(--border);
-}
-
-.sd-head h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.sd-foot {
-  border-top: 1px solid var(--border);
-}
-
-.grow {
-  flex: 1;
-}
-
-.hint,
-kbd {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font: 600 11px var(--font);
-}
-
-.sv-btn.solid kbd {
-  border-color: color-mix(in srgb, var(--bg) 40%, transparent);
-  color: inherit;
-  opacity: 0.7;
-}
-
-.round {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text);
-}
-
-.sd-body {
-  flex: 1;
-  min-height: 0;
-  padding: 16px 18px;
-  overflow: auto;
-}
-
-.sd-body.import {
+.sd-import {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  gap: 18px;
+  gap: var(--sp-4);
+  min-height: min(480px, calc(100vh - 260px));
 }
 
 .col {
@@ -463,12 +432,12 @@ kbd {
 .sd-text {
   flex: 1;
   min-height: 300px;
-  padding: 12px 14px;
+  padding: var(--sp-3) 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text);
-  font: 13px/1.5 "Cascadia Mono", Consolas, monospace;
+  font: var(--fs-md) / 1.5 "Cascadia Mono", Consolas, monospace;
   resize: none;
   outline: none;
 }
@@ -482,45 +451,13 @@ kbd {
   min-height: 340px;
 }
 
-.preview {
-  overflow: auto;
-}
-
-.preview-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chip {
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.chip.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.empty {
-  display: grid;
+.sd-empty {
   flex: 1;
-  place-items: center;
-  align-content: center;
-  gap: 8px;
-  padding: 30px;
+  width: 100%;
+  max-width: none;
   border: 1px dashed var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   color: var(--text-dim);
-  text-align: center;
-}
-
-.empty p {
-  margin: 0;
-  max-width: 280px;
 }
 
 .cards {
@@ -532,9 +469,12 @@ kbd {
 }
 
 .card {
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-3);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 
@@ -550,7 +490,9 @@ kbd {
 
 .who {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
 }
 
 .who small,
@@ -558,65 +500,37 @@ kbd {
   color: var(--text-dim);
 }
 
-.gold {
-  color: #f5b301;
+.male {
+  color: var(--male);
 }
 
-.g.m {
-  color: #4a90e2;
+.female {
+  color: var(--female);
 }
 
-.g.f {
-  color: #e2507a;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 12px;
-  margin: 8px 0 6px;
-  font-size: 13px;
-}
-
-dt {
-  color: var(--text-dim);
-}
-
-dd {
-  margin: 0;
-}
-
-.moves {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.moves span {
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  font-size: 12px;
-  font-weight: 600;
+.hidden {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 400;
 }
 
 .warns {
   display: grid;
   gap: 3px;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .err {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
-.export {
+.sd-export {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -625,15 +539,37 @@ dd {
 .options {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px;
+  gap: var(--sp-4);
+}
+
+.foot {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.grow {
+  flex: 1;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent);
+  border-radius: var(--radius-xs);
+  color: inherit;
+  font: 600 var(--fs-xs) var(--font);
+  opacity: 0.7;
 }
 
 .result {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
-  font-size: 13px;
+  gap: 6px var(--sp-3);
+  font-size: var(--fs-md);
 }
 
 .placed.bad {
@@ -650,18 +586,8 @@ dd {
   cursor: pointer;
 }
 
-.sd-fade-enter-active,
-.sd-fade-leave-active {
-  transition: opacity 0.15s;
-}
-
-.sd-fade-enter-from,
-.sd-fade-leave-to {
-  opacity: 0;
-}
-
 @media (max-width: 760px) {
-  .sd-body.import {
+  .sd-import {
     grid-template-columns: 1fr;
   }
 }

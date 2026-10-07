@@ -839,7 +839,7 @@ h3 {
 
 .item.on {
   background: var(--panel-hover);
-  box-shadow: inset 3px 0 0 var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
 }
 
 /* Les icônes pokesprite ont beaucoup de marge transparente. */

@@ -2,6 +2,7 @@ import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { loadBox, notify, sameSlot, saveState } from "../../saveStore";
 import type { SaveView, Slot, SlotView } from "../../types";
+import { STAT_SHORT } from "../refdata";
 
 /** Langue des noms d'un texte Showdown. */
 export type Lang = "en" | "fr";
@@ -111,7 +112,8 @@ export function openShowdown(tab: "import" | "export" = "import") {
   showdownUi.open = true;
 }
 
-export const STAT_LABELS = ["PV", "Att", "Déf", "Atq Spé", "Déf Spé", "Vit"];
+/** Abréviations communes (glossaire « statShort »). */
+export const STAT_LABELS = STAT_SHORT;
 
 /** « 252 Att / 4 Déf Spé / 252 Vit » (valeurs différentes de `skip`). */
 export function statLine(values: number[], skip: number) {

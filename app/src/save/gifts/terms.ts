@@ -1,6 +1,7 @@
 /**
- * Bulles « i » de la page « Cadeaux mystère » (titre + texte passés au composant Tip).
- * Écrites pour quelqu'un qui découvre les distributions d'événements.
+ * Bulles « i » propres à la page « Cadeaux mystère », fusionnées dans le glossaire central
+ * sous le préfixe « gifts. » (`<Tip term="gifts.card" />`). Les termes généraux (rencontre
+ * fatidique, verrou chromatique, « Seulement ce jeu »…) restent dans `glossary.ts`.
  */
 export const GIFT_TERMS = {
   mysteryGift: {
@@ -14,18 +15,6 @@ export const GIFT_TERMS = {
   distribution: {
     title: "Mode de distribution",
     text: "Selon l'événement, la carte arrivait par Internet (Wi-Fi), avec un code de série (boîte de jeu, magasin, carte promo), ou en local (sans fil, sur place). Pour un même Pokémon, chaque pays ou chaque langue avait souvent sa propre carte : c'est pourquoi la base contient des doublons.",
-  },
-  fateful: {
-    title: "Rencontre fatidique",
-    text: "Drapeau secret posé sur les Pokémon d'événement. Il débloque certains comportements (Darkrai et l'Île Nouvellune, Shaymin et la Floraison…) et sert de preuve de légitimité.",
-  },
-  shinyLock: {
-    title: "Verrou chromatique",
-    text: "Beaucoup de cartes empêchent le Pokémon d'être chromatique (« jamais chromatique »). D'autres l'imposent : PID fixe chromatique (étoile ou carré, identique pour tous) ou PID tiré au hasard puis rendu chromatique pour ton dresseur.",
-  },
-  onlyThisGame: {
-    title: "Seulement ce jeu",
-    text: "N'affiche que les cartes que le jeu de la sauvegarde ouverte pouvait recevoir (ex. une carte X/Y n'apparaît pas pour Rubis Oméga si elle lui était interdite).",
   },
   perfectIvs: {
     title: "IV garantis",
@@ -44,3 +33,21 @@ export const GIFT_TERMS = {
     text: "Kaleido fait comme le livreur : le Pokémon est créé selon les règles de la carte (PID, IV, nature, talent…) avec ta langue et la date du jour, puis rangé dans la première case libre des boîtes. Les objets vont dans le sac. Une seule étape d'annulation (Ctrl+Z).",
   },
 } as const;
+
+/**
+ * Teinte de chaque format de carte (table de données, comme les couleurs des types) :
+ * pastille du format, fond de l'image et contour de la carte choisie. Seule définition,
+ * partagée par la grille et la fiche.
+ */
+const FORMAT_TONES: Record<string, string> = {
+  pcd: "#3b82f6",
+  pgt: "#3b82f6",
+  pgf: "#64748b",
+  wc6: "#db2777",
+  wc7: "#ea7a1a",
+};
+
+/** Style `--gift-tone` d'un format (« PCD », « WC7 »…), à poser sur l'élément qui l'utilise. */
+export function giftTone(formatLabel: string): Record<string, string> {
+  return { "--gift-tone": FORMAT_TONES[formatLabel.toLowerCase()] ?? "var(--text-dim)" };
+}

@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { BANK_TERMS } from "./bank/terms";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import Banner from "../components/Banner.vue";
+import Dialog from "../components/Dialog.vue";
+import EmptyState from "../components/EmptyState.vue";
 import Icon from "../components/Icon.vue";
+import SearchField from "../components/SearchField.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import {
@@ -34,15 +37,16 @@ import { useShell } from "./shell";
 
 const emit = defineEmits<{ open: [] }>();
 
-const TIPS = BANK_TERMS;
-
 const view = computed(() => saveState.view);
 const info = computed(() => bankState.info);
 const boxCount = computed(() => info.value?.boxes.length ?? 0);
 const bankBox = computed(() => info.value?.boxes[bankState.box]);
 const detail = computed(() => bankState.detail);
 const compat = computed(() => detail.value?.compatibility ?? null);
+const canSend = computed(() => !!compat.value && !compat.value.blocker && (compat.value.ok || compat.value.fixable));
 const partySlots = computed(() => Array.from({ length: 6 }, (_, i) => view.value?.party[i] ?? null));
+/** « Platine · Aurore » : on n'affiche que les parties connues (pas de point orphelin). */
+const saveTitle = computed(() => (view.value ? [view.value.game.replace("Pokémon ", ""), view.value.trainer.name.trim()].filter(Boolean).join(" · ") : ""));
 const bslot = (index: number): BankSlot => ({ box: bankState.box, index });
 const boxSlot = (index: number): Slot => ({ kind: "box", box: saveState.box, index });
 const partySlot = (index: number): Slot => ({ kind: "party", index });
@@ -52,27 +56,44 @@ const skey = (s: Slot) => `s:${JSON.stringify(s)}`;
 /** Pokémon de la sauvegarde sélectionné (pour le déposer avec un bouton). */
 const saveSel = ref<SlotView | null>(null);
 
-onMounted(async () => {
-  // Capture : passe avant la page (Échap ferme d'abord la fenêtre de confirmation).
-  window.addEventListener("keydown", onKey, true);
-  await loadBankInfo();
+// ---- Chargement de la banque (état de chargement, erreur avec « Réessayer »)
+const loading = ref(true);
+const loadError = ref<string | null>(null);
+
+async function init() {
+  loading.value = true;
+  loadError.value = null;
+  const ok = await loadBankInfo();
+  if (!ok) {
+    loadError.value = saveState.error ?? "La banque n'a pas pu être lue.";
+    saveState.error = null;
+    loading.value = false;
+    return;
+  }
   await loadBankBox(Math.min(bankState.box, Math.max(0, boxCount.value - 1)));
+  loading.value = false;
   if (view.value && !saveState.slots.length) await loadBox(saveState.box);
   if (bankState.selected) await selectBank(bankState.selected);
+}
+
+onMounted(() => {
+  // Capture : passe avant la page (Pg↑ / Pg↓ changent la boîte de la banque).
+  window.addEventListener("keydown", onKey, true);
+  init();
 });
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey, true));
 
-function changeBankBox(step: number) {
+async function changeBankBox(step: number) {
   const n = boxCount.value;
-  if (n) loadBankBox((bankState.box + step + n) % n);
+  if (n) await loadBankBox((bankState.box + step + n) % n);
 }
 
-function changeSaveBox(step: number) {
+async function changeSaveBox(step: number) {
   const n = view.value?.boxNames.length ?? 0;
-  if (n) loadBox((saveState.box + step + n) % n);
+  if (n) await loadBox((saveState.box + step + n) % n);
 }
 
-// ---- Renommer une boîte de la banque (double-clic)
+// ---- Renommer une boîte de la banque (clic sur son nom)
 const renaming = ref(false);
 const newName = ref("");
 const renameInput = ref<HTMLInputElement | null>(null);
@@ -104,6 +125,11 @@ watch([search, shinyOnly, genFilter], () => {
   searchTimer = window.setTimeout(runSearch, 150);
 });
 watch(() => info.value?.count, () => searching.value && runSearch());
+function clearSearch() {
+  search.value = "";
+  shinyOnly.value = false;
+  genFilter.value = null;
+}
 
 // ---- Sélection
 const confirmDelete = ref(false);
@@ -176,6 +202,12 @@ async function onPointerUp(e: PointerEvent) {
 
 // ---- Retrait vers la sauvegarde (avec confirmation si des attaques / objets doivent partir)
 const stripAsk = ref<{ from: BankSlot; to: Slot; copy: boolean; problems: Problem[] } | null>(null);
+const stripOpen = computed({
+  get: () => !!stripAsk.value,
+  set: (v: boolean) => {
+    if (!v) stripAsk.value = null;
+  },
+});
 
 async function withdraw(from: BankSlot, to: Slot, copy: boolean) {
   if (!view.value) return;
@@ -257,15 +289,53 @@ async function chooseFolder() {
   if (typeof dir === "string") bankSetPath(dir);
 }
 
+// ---- Clavier : flèches dans les grilles (comme la page Boîtes), Pg↑ / Pg↓ pour la banque
+const DIRS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+async function focusSlot(grid: string, index: number) {
+  await nextTick();
+  const el = document.querySelector<HTMLElement>(`.bank [data-grid="${grid}"] [data-i="${index}"]`);
+  if (!el) return;
+  el.focus();
+  el.click();
+}
+
+/** Flèche dans une grille de 6 colonnes ; au bord gauche / droit d'une boîte, passe à la boîte voisine. */
+async function moveInGrid(btn: HTMLElement, d: [number, number]) {
+  const grid = btn.closest<HTMLElement>("[data-grid]")!;
+  const kind = grid.dataset.grid!;
+  const count = grid.querySelectorAll("[data-i]").length;
+  const i = Number(btn.dataset.i);
+  const col = (i % 6) + d[0];
+  const row = Math.floor(i / 6) + d[1];
+  let next = row * 6 + col;
+  if (kind === "results") next = i + d[0] + d[1] * 6;
+  else if (col < 0 || col > 5) {
+    if (kind !== "bank" && kind !== "save") return;
+    await (kind === "bank" ? changeBankBox : changeSaveBox)(col < 0 ? -1 : 1);
+    next = Math.floor(i / 6) * 6 + (col < 0 ? 5 : 0);
+  }
+  if (next >= 0 && next < count) await focusSlot(kind, next);
+}
+
 function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
-  if (["INPUT", "TEXTAREA"].includes(t?.tagName) || e.ctrlKey) return;
-  if (e.key === "PageUp" || e.key === "PageDown") {
+  if (stripAsk.value || ["INPUT", "TEXTAREA"].includes(t?.tagName) || e.ctrlKey) return;
+  const d = DIRS[e.key];
+  if (d) {
+    const btn = t?.closest?.<HTMLElement>("[data-grid] [data-i]");
+    if (btn) {
+      e.preventDefault();
+      moveInGrid(btn, d);
+    } else if (!t || t === document.body) {
+      // Rien n'a le focus : on entre dans la grille de la banque, sur la case choisie.
+      e.preventDefault();
+      const s = bankState.selected;
+      focusSlot(searching.value ? "results" : "bank", s && s.box === bankState.box && !searching.value ? s.index : 0);
+    }
+  } else if (e.key === "PageUp" || e.key === "PageDown") {
     e.preventDefault();
     changeBankBox(e.key === "PageUp" ? -1 : 1);
-  } else if (e.key === "Escape" && stripAsk.value) {
-    e.preventDefault();
-    stripAsk.value = null;
   }
 }
 
@@ -295,127 +365,181 @@ const GENS = [4, 5, 6, 7];
 <template>
   <div class="bank" :class="{ solo: !view }">
     <!-- Banque -->
-    <section class="panel col">
+    <section class="sv-panel col">
       <header class="head">
-        <h3 class="kicker">Banque Kaleido <Tip v-bind="TIPS.bank" /></h3>
-        <span class="count">{{ info?.count ?? 0 }} Pokémon</span>
-        <button class="mini" title="Importer des fichiers .pk4 à .pk7 (I)" @click="importFiles"><Icon name="download" :size="14" /> Importer</button>
+        <h3 class="sv-label">Banque Kaleido <Tip term="bank.bank" /></h3>
+        <span v-if="info" class="count">{{ info.count }} Pokémon</span>
+        <button class="sv-btn" title="Importer des fichiers .pk4 à .pk7 (I)" @click="importFiles"><Icon name="download" :size="15" /> Importer</button>
       </header>
-      <div class="searchbar">
-        <Icon name="search" :size="15" />
-        <input v-model="search" class="sv-input" placeholder="Chercher (espèce, surnom, dresseur)…" />
-        <button class="chip" :class="{ on: shinyOnly }" title="Chromatiques seulement" @click="shinyOnly = !shinyOnly">★</button>
-        <button v-for="g in GENS" :key="g" class="chip" :class="{ on: genFilter === g }" :title="`Format PK${g}`" @click="genFilter = genFilter === g ? null : g">
-          PK{{ g }}
-        </button>
-      </div>
 
-      <template v-if="searching">
-        <p class="dim small">{{ results.length }} résultat{{ results.length > 1 ? "s" : "" }} dans toute la banque</p>
-        <div class="grid results">
-          <button
-            v-for="r in results"
-            :key="r.id"
-            class="slot filled"
-            :class="{ selected: sameBankSlot(bankState.selected, r.slot), over: dropTarget === bkey(r.slot) }"
-            :data-bslot="JSON.stringify(r.slot)"
-            :title="`${r.nickname || r.speciesName} · N. ${r.level} · ${info?.boxes[r.slot.box]?.name} case ${r.slot.index + 1}`"
-            @pointerdown="onPointerDown($event, { kind: 'bank', slot: r.slot }, r)"
-            @click="pickBank(r.slot, r)"
-          >
-            <Icon v-if="r.shiny" name="sparkle" :size="13" class="shiny" />
-            <Sprite :id="r.species" :shiny="r.shiny" :size="52" />
-            <span class="fmt">{{ r.format }}</span>
-          </button>
-        </div>
-      </template>
+      <Banner v-if="loadError" :retry="init">Impossible de lire la Banque Kaleido : {{ loadError }}</Banner>
+      <EmptyState v-else-if="loading" loading compact title="Ouverture de la banque…" class="fill-area" />
 
-      <template v-else>
-        <div class="box-head">
-          <button class="round" aria-label="Boîte précédente (Pg↑)" @click="changeBankBox(-1)"><Icon name="chevron-left" /></button>
-          <input
-            v-if="renaming"
-            ref="renameInput"
-            v-model="newName"
-            class="rename"
-            maxlength="40"
-            @keydown.enter.prevent="commitRename"
-            @keydown.esc.stop.prevent="renaming = false"
-            @blur="commitRename"
-          />
-          <h2 v-else title="Double-clic pour renommer" @dblclick="startRename">{{ bankBox?.name ?? "…" }}</h2>
-          <button class="round" aria-label="Boîte suivante (Pg↓)" @click="changeBankBox(1)"><Icon name="chevron-right" /></button>
-          <span class="fill">{{ bankBox?.count ?? 0 }}/30</span>
-          <span class="spacer" />
-          <button class="mini" title="Ajouter une boîte" @click="bankAddBox"><Icon name="plus" :size="14" /></button>
-          <button class="mini" title="Supprimer cette boîte (vide)" :disabled="!!bankBox?.count || boxCount <= 1" @click="bankDeleteBox(bankState.box)">
-            <Icon name="trash" :size="14" />
+      <template v-else-if="info">
+        <SearchField v-model="search" placeholder="Espèce, surnom ou dresseur" />
+        <div class="filters">
+          <button class="sv-chip" :class="{ on: shinyOnly }" :aria-pressed="shinyOnly" title="Chromatiques seulement" @click="shinyOnly = !shinyOnly">
+            <Icon name="sparkle" :size="12" /> Chromatique
           </button>
-        </div>
-        <div class="dots">
+          <Tip term="shiny" />
+          <span class="sep" />
           <button
-            v-for="(b, i) in info?.boxes ?? []"
-            :key="i"
-            :class="{ on: i === bankState.box, full: b.count === 30, empty: !b.count }"
-            :title="`${b.name} (${b.count}/30)`"
-            :aria-label="b.name"
-            @click="loadBankBox(i)"
-          />
-        </div>
-        <div class="grid">
-          <button
-            v-for="(p, i) in bankState.slots"
-            :key="i"
-            class="slot"
-            :class="{
-              selected: sameBankSlot(bankState.selected, bslot(i)),
-              over: dropTarget === bkey(bslot(i)),
-              filled: !!p,
-              blocked: !!p && view && bankState.compat[i] === false,
-            }"
-            :data-bslot="JSON.stringify(bslot(i))"
-            :title="p ? `${p.nickname || p.speciesName} · N. ${p.level} · ${p.format}` : 'Case vide'"
-            @pointerdown="onPointerDown($event, { kind: 'bank', slot: bslot(i) }, p)"
-            @click="pickBank(bslot(i), p)"
+            v-for="g in GENS"
+            :key="g"
+            class="sv-chip"
+            :class="{ on: genFilter === g }"
+            :aria-pressed="genFilter === g"
+            :title="`Format PK${g} seulement`"
+            @click="genFilter = genFilter === g ? null : g"
           >
-            <template v-if="p">
-              <Icon v-if="p.shiny" name="sparkle" :size="13" class="shiny" />
-              <Icon v-if="p.isEgg" name="egg" :size="12" class="egg" />
-              <Sprite :id="p.species" :shiny="p.shiny" :size="52" />
-              <span class="fmt">{{ p.format }}</span>
-              <span class="bar" :class="p.gender" />
+            PK{{ g }}
+          </button>
+          <Tip term="bank.format" />
+        </div>
+
+        <template v-if="searching">
+          <template v-if="results.length">
+            <p class="sv-help">{{ results.length }} résultat{{ results.length > 1 ? "s" : "" }} dans toute la banque</p>
+            <div class="grid results" data-grid="results">
+              <button
+                v-for="(r, i) in results"
+                :key="r.id"
+                type="button"
+                class="slot filled"
+                :class="{ selected: sameBankSlot(bankState.selected, r.slot), over: dropTarget === bkey(r.slot) }"
+                :data-bslot="JSON.stringify(r.slot)"
+                :data-i="i"
+                :title="`${r.nickname || r.speciesName} · N. ${r.level} · ${info.boxes[r.slot.box]?.name} case ${r.slot.index + 1}`"
+                :aria-label="`${r.nickname || r.speciesName}, N. ${r.level}, ${info.boxes[r.slot.box]?.name} case ${r.slot.index + 1}`"
+                @pointerdown="onPointerDown($event, { kind: 'bank', slot: r.slot }, r)"
+                @click="pickBank(r.slot, r)"
+              >
+                <Icon v-if="r.shiny" name="sparkle" :size="13" class="shiny" />
+                <Sprite :id="r.species" :shiny="r.shiny" :size="52" />
+                <span class="fmt">{{ r.format }}</span>
+              </button>
+            </div>
+          </template>
+          <EmptyState v-else compact icon="search" title="Aucun résultat" class="fill-area">
+            Aucun Pokémon de la banque ne correspond à cette recherche.
+            <template #actions>
+              <button class="sv-btn" @click="clearSearch"><Icon name="x" :size="15" /> Effacer la recherche</button>
             </template>
-          </button>
+          </EmptyState>
+        </template>
+
+        <template v-else>
+          <div class="box-head">
+            <button class="sv-round" aria-label="Boîte précédente (Pg↑)" title="Boîte précédente (Pg↑)" :disabled="boxCount <= 1" @click="changeBankBox(-1)">
+              <Icon name="chevron-left" />
+            </button>
+            <input
+              v-if="renaming"
+              ref="renameInput"
+              v-model="newName"
+              class="sv-input rename"
+              maxlength="40"
+              aria-label="Nom de la boîte"
+              @keydown.enter.prevent="commitRename"
+              @keydown.esc.stop.prevent="renaming = false"
+              @blur="commitRename"
+            />
+            <button v-else type="button" class="box-name" title="Renommer la boîte" @click="startRename">
+              <span>{{ bankBox?.name }}</span>
+              <Icon name="pencil" :size="13" />
+            </button>
+            <button class="sv-round" aria-label="Boîte suivante (Pg↓)" title="Boîte suivante (Pg↓)" :disabled="boxCount <= 1" @click="changeBankBox(1)">
+              <Icon name="chevron-right" />
+            </button>
+            <span class="fill">{{ bankBox?.count ?? 0 }}/30</span>
+            <span class="spacer" />
+            <button class="sv-round sq" aria-label="Ajouter une boîte" title="Ajouter une boîte" @click="bankAddBox"><Icon name="plus" :size="15" /></button>
+            <button
+              class="sv-round sq"
+              aria-label="Supprimer cette boîte"
+              :title="bankBox?.count ? 'Vide la boîte pour pouvoir la supprimer' : 'Supprimer cette boîte (vide)'"
+              :disabled="!!bankBox?.count || boxCount <= 1"
+              @click="bankDeleteBox(bankState.box)"
+            >
+              <Icon name="trash" :size="15" />
+            </button>
+          </div>
+          <div v-if="boxCount > 1" class="sv-dots">
+            <button
+              v-for="(b, i) in info.boxes"
+              :key="i"
+              type="button"
+              :class="{ on: i === bankState.box, empty: !b.count }"
+              :title="`${b.name} (${b.count}/30)`"
+              :aria-label="`${b.name} (${b.count}/30)`"
+              :aria-current="i === bankState.box"
+              @click="loadBankBox(i)"
+            />
+          </div>
+          <div class="grid box" data-grid="bank">
+            <button
+              v-for="(p, i) in bankState.slots"
+              :key="i"
+              type="button"
+              class="slot"
+              :class="{
+                selected: sameBankSlot(bankState.selected, bslot(i)),
+                over: dropTarget === bkey(bslot(i)),
+                filled: !!p,
+                blocked: !!p && view && bankState.compat[i] === false,
+              }"
+              :data-bslot="JSON.stringify(bslot(i))"
+              :data-i="i"
+              :title="p ? `${p.nickname || p.speciesName} · N. ${p.level} · ${p.format}` : 'Case vide'"
+              :aria-label="p ? `${p.nickname || p.speciesName}, N. ${p.level}, ${p.format}` : `Case ${i + 1} vide`"
+              @pointerdown="onPointerDown($event, { kind: 'bank', slot: bslot(i) }, p)"
+              @click="pickBank(bslot(i), p)"
+            >
+              <template v-if="p">
+                <Icon v-if="p.shiny" name="sparkle" :size="13" class="shiny" />
+                <Icon v-if="p.isEgg" name="egg" :size="12" class="egg" />
+                <Sprite :id="p.species" :shiny="p.shiny" :size="52" />
+                <span class="fmt">{{ p.format }}</span>
+                <span class="bar" :class="p.gender" />
+              </template>
+            </button>
+          </div>
+        </template>
+
+        <div class="path">
+          <Icon name="folder" :size="13" />
+          <span class="path-text" :title="info.path">{{ info.path }}</span>
+          <button type="button" class="sv-link" @click="chooseFolder">Changer</button>
+          <button v-if="info.path !== info.defaultPath" type="button" class="sv-link" @click="bankSetPath(null)">Par défaut</button>
+          <button type="button" class="sv-link" @click="openPath(info.path)">Ouvrir</button>
+          <Tip term="bank.trash" />
         </div>
       </template>
-      <p class="dim small path" :title="info?.path">
-        <Icon name="folder" :size="13" /> {{ info?.path }}
-        <button class="link" @click="chooseFolder">Changer</button>
-        <button v-if="info && info.path !== info.defaultPath" class="link" @click="bankSetPath(null)">Par défaut</button>
-        <button v-if="info" class="link" @click="openPath(info.path)">Ouvrir</button>
-        <Tip v-bind="TIPS.trash" />
-      </p>
     </section>
 
     <!-- Sauvegarde ouverte -->
-    <section v-if="view" class="panel col">
+    <section v-if="view" class="sv-panel col">
       <header class="head">
-        <h3 class="kicker">{{ view.game.replace("Pokémon ", "") }} · {{ view.trainer.name }} <Tip v-bind="TIPS.drag" /></h3>
+        <h3 class="sv-label save-title" :title="saveTitle"><span>{{ saveTitle }}</span> <Tip term="bank.drag" /></h3>
       </header>
       <div class="box-head">
-        <button class="round" aria-label="Boîte précédente" @click="changeSaveBox(-1)"><Icon name="chevron-left" /></button>
-        <h2>{{ view.boxNames[saveState.box] }}</h2>
-        <button class="round" aria-label="Boîte suivante" @click="changeSaveBox(1)"><Icon name="chevron-right" /></button>
+        <button class="sv-round" aria-label="Boîte précédente" title="Boîte précédente" @click="changeSaveBox(-1)"><Icon name="chevron-left" /></button>
+        <h2 class="box-title">{{ view.boxNames[saveState.box] }}</h2>
+        <button class="sv-round" aria-label="Boîte suivante" title="Boîte suivante" @click="changeSaveBox(1)"><Icon name="chevron-right" /></button>
         <span class="fill">{{ view.boxFill[saveState.box] }}/30</span>
       </div>
-      <div class="grid">
+      <EmptyState v-if="!saveState.slots.length" loading compact title="Lecture de la boîte…" class="fill-area" />
+      <div v-else class="grid box" data-grid="save">
         <button
           v-for="(p, i) in saveState.slots"
           :key="i"
+          type="button"
           class="slot"
           :class="{ selected: !!p && !!saveSel && sameSlot(saveSel.slot, boxSlot(i)), over: dropTarget === skey(boxSlot(i)), filled: !!p }"
           :data-sslot="JSON.stringify(boxSlot(i))"
+          :data-i="i"
           :title="p ? `${p.nickname || p.speciesName} · N. ${p.level}` : 'Case vide'"
+          :aria-label="p ? `${p.nickname || p.speciesName}, N. ${p.level}` : `Case ${i + 1} vide`"
           @pointerdown="onPointerDown($event, { kind: 'save', slot: boxSlot(i) }, p)"
           @click="pickSave(p)"
         >
@@ -427,14 +551,17 @@ const GENS = [4, 5, 6, 7];
           </template>
         </button>
       </div>
-      <div class="party">
+      <div class="grid party" data-grid="party">
         <button
           v-for="(p, i) in partySlots"
           :key="i"
+          type="button"
           class="slot"
           :class="{ selected: !!p && !!saveSel && sameSlot(saveSel.slot, partySlot(i)), over: dropTarget === skey(partySlot(i)), filled: !!p }"
           :data-sslot="JSON.stringify(partySlot(i))"
+          :data-i="i"
           :title="p ? `${p.nickname || p.speciesName} · N. ${p.level} (équipe)` : 'Équipe : place libre'"
+          :aria-label="p ? `${p.nickname || p.speciesName}, N. ${p.level}, équipe` : `Équipe : place ${i + 1} libre`"
           @pointerdown="onPointerDown($event, { kind: 'save', slot: partySlot(i) }, p)"
           @click="pickSave(p)"
         >
@@ -444,18 +571,18 @@ const GENS = [4, 5, 6, 7];
     </section>
 
     <!-- Fiche -->
-    <aside class="panel side">
+    <aside class="sv-panel side">
       <template v-if="detail">
         <div class="detail-head">
           <Sprite :id="detail.species" :shiny="detail.shiny" :size="88" />
-          <div>
+          <div class="detail-id">
             <h3>{{ detail.nickname || detail.speciesName }} <span class="gender">{{ genderSymbol(detail.pokemon.gender) }}</span></h3>
             <div class="chips">
-              <span class="chip-w">N. {{ detail.level }}</span>
-              <span class="chip-fmt">{{ detail.format }} <Tip v-bind="TIPS.format" /></span>
-              <span v-if="detail.shiny" class="chip-gold">★ Chromatique</span>
-              <span v-if="detail.isEgg" class="chip-soft">Œuf</span>
-              <span v-if="detail.pokemon.isNicknamed" class="chip-soft">{{ detail.speciesName }}</span>
+              <span class="sv-chip on">N. {{ detail.level }}</span>
+              <span class="sv-chip">{{ detail.format }} <Tip term="bank.format" /></span>
+              <span v-if="detail.shiny" class="sv-chip shiny"><Icon name="sparkle" :size="12" /> Chromatique</span>
+              <span v-if="detail.isEgg" class="sv-chip dim">Œuf</span>
+              <span v-if="detail.pokemon.isNicknamed" class="sv-chip dim">{{ detail.speciesName }}</span>
             </div>
           </div>
         </div>
@@ -463,12 +590,12 @@ const GENS = [4, 5, 6, 7];
         <!-- Compatibilité avec la sauvegarde ouverte -->
         <div v-if="compat" class="compat" :class="compat.ok ? 'ok' : compat.fixable ? 'warn' : 'bad'">
           <template v-if="compat.blocker">
-            <strong><Icon name="alert" :size="15" /> Incompatible avec cette sauvegarde <Tip v-bind="TIPS.direction" /></strong>
+            <strong><Icon name="alert" :size="15" /> Incompatible avec cette sauvegarde <Tip term="bank.direction" /></strong>
             <p>{{ compat.blocker }}</p>
           </template>
           <template v-else-if="compat.ok">
             <strong><Icon name="check" :size="15" /> Compatible avec cette sauvegarde</strong>
-            <p v-if="compat.converts">Il sera converti : {{ compat.from.replace("gen", "PK") }} → {{ compat.to.replace("gen", "PK") }}. <Tip v-bind="TIPS.changes" /></p>
+            <p v-if="compat.converts">Il sera converti : {{ compat.from.replace("gen", "PK") }} → {{ compat.to.replace("gen", "PK") }}. <Tip term="bank.changes" /></p>
             <p v-else>Même format : aucune conversion.</p>
           </template>
           <template v-else>
@@ -481,10 +608,10 @@ const GENS = [4, 5, 6, 7];
             <li v-for="c in compat.changes" :key="c">{{ c }}</li>
           </ul>
         </div>
-        <p v-else-if="!view" class="dim small">Ouvre une sauvegarde pour savoir si ce Pokémon peut y aller. <Tip v-bind="TIPS.direction" /></p>
+        <p v-else-if="!view" class="sv-help">Ouvre une sauvegarde pour savoir si ce Pokémon peut y aller. <Tip term="bank.direction" /></p>
 
-        <dl>
-          <dt>Origine</dt>
+        <dl class="sv-dl">
+          <dt>Origine <Tip term="origin" /></dt>
           <dd>{{ detail.originGame ?? "Fichier importé" }}</dd>
           <template v-if="detail.originSave">
             <dt>Fichier</dt>
@@ -495,30 +622,30 @@ const GENS = [4, 5, 6, 7];
           <dt>Dresseur <Tip term="ot" /></dt>
           <dd>{{ detail.pokemon.otName }} · {{ String(detail.pokemon.tid).padStart(5, "0") }}</dd>
           <template v-if="detail.handler">
-            <dt>Dresseur actuel <Tip v-bind="TIPS.handler" /></dt>
+            <dt>Soigneur <Tip term="handler" /></dt>
             <dd>{{ detail.handler }}</dd>
           </template>
-          <dt>Nature</dt>
+          <dt>Nature <Tip term="nature" /></dt>
           <dd>{{ NATURES[detail.pokemon.nature] ?? detail.pokemon.natureName }}</dd>
-          <dt>Talent</dt>
+          <dt>Talent <Tip term="ability" /></dt>
           <dd>{{ detail.pokemon.abilityName }}</dd>
-          <dt>Objet</dt>
+          <dt>Objet tenu <Tip term="heldItem" /></dt>
           <dd>{{ detail.pokemon.itemName ?? "—" }}</dd>
-          <dt>Rencontre</dt>
+          <dt>Lieu de rencontre <Tip term="metLocation" /></dt>
           <dd>{{ detail.pokemon.metLocationName ?? `Lieu n°${detail.pokemon.metLocation}` }}</dd>
         </dl>
-        <ul class="moves">
+        <ul class="sv-moves">
           <li v-for="m in detail.pokemon.moveNames" :key="m">{{ m }}</li>
         </ul>
-        <button v-if="view" class="btn-big" :disabled="!compat || !!compat.blocker || (!compat.ok && !compat.fixable)" @click="sendSelected(false)">
+        <button v-if="view" class="sv-btn solid" :disabled="!canSend" @click="sendSelected(false)">
           <Icon name="upload" :size="16" /> Envoyer dans la sauvegarde
         </button>
-        <div class="row">
-          <button v-if="view" class="btn-line" :disabled="!compat || !!compat.blocker || (!compat.ok && !compat.fixable)" title="L'original reste dans la banque" @click="sendSelected(true)">
+        <div class="actions">
+          <button v-if="view" class="sv-btn" :disabled="!canSend" title="L'original reste dans la banque" @click="sendSelected(true)">
             <Icon name="copy" :size="15" /> Copier
           </button>
-          <button class="btn-line" @click="exportSelected"><Icon name="file" :size="15" /> Exporter</button>
-          <button class="btn-line" :class="{ danger: confirmDelete }" @click="doDelete">
+          <button class="sv-btn" @click="exportSelected"><Icon name="file" :size="15" /> Exporter</button>
+          <button class="sv-btn" :class="{ danger: confirmDelete }" @click="doDelete">
             <Icon name="trash" :size="15" /> {{ confirmDelete ? "Confirmer" : "Supprimer" }}
           </button>
         </div>
@@ -527,52 +654,62 @@ const GENS = [4, 5, 6, 7];
       <template v-else-if="saveSel">
         <div class="detail-head">
           <Sprite :id="saveSel.species" :shiny="saveSel.shiny" :size="88" />
-          <div>
+          <div class="detail-id">
             <h3>{{ saveSel.nickname || saveSel.speciesName }}</h3>
             <div class="chips">
-              <span class="chip-w">N. {{ saveSel.level }}</span>
-              <span class="chip-fmt">PK{{ view?.generation }}</span>
+              <span class="sv-chip on">N. {{ saveSel.level }}</span>
+              <span class="sv-chip">PK{{ view?.generation }} <Tip term="bank.format" /></span>
+              <span v-if="saveSel.shiny" class="sv-chip shiny"><Icon name="sparkle" :size="12" /> Chromatique</span>
             </div>
           </div>
         </div>
-        <p class="dim small">Ranger ce Pokémon dans la banque pour le garder à l'abri ou l'envoyer plus tard dans un autre jeu (même génération ou plus récente).</p>
-        <button class="btn-big" @click="depositSelected(false)"><Icon name="download" :size="16" /> Déposer dans la banque</button>
-        <button class="btn-line" title="Il reste aussi dans la sauvegarde" @click="depositSelected(true)"><Icon name="copy" :size="15" /> Déposer une copie</button>
+        <p class="sv-help">
+          Range ce Pokémon dans la banque pour le garder à l'abri ou l'envoyer plus tard dans un autre jeu (même génération ou plus récente).
+          <Tip term="bank.direction" />
+        </p>
+        <button class="sv-btn solid" @click="depositSelected(false)"><Icon name="download" :size="16" /> Déposer dans la banque</button>
+        <button class="sv-btn" title="Il reste aussi dans la sauvegarde" @click="depositSelected(true)"><Icon name="copy" :size="15" /> Déposer une copie</button>
       </template>
 
-      <div v-else class="empty-help">
-        <Icon name="bank" :size="40" />
-        <p>
-          La banque garde tes Pokémon hors de tes sauvegardes, pour les faire passer d'un jeu à l'autre.
-          <Tip v-bind="TIPS.bank" />
-        </p>
-        <p class="dim small">Transferts vers une génération égale ou plus récente seulement. <Tip v-bind="TIPS.direction" /></p>
-        <template v-if="!view">
-          <button class="btn-big" @click="emit('open')"><Icon name="folder-open" :size="16" /> Ouvrir une sauvegarde</button>
+      <EmptyState v-else-if="info && !info.count" icon="bank" title="Ta banque est vide" term="bank.bank">
+        Importe des fichiers .pk4 à .pk7, ou glisse un Pokémon de ta sauvegarde vers la banque.
+        <template #actions>
+          <button class="sv-btn solid" @click="importFiles"><Icon name="download" :size="15" /> Importer des fichiers</button>
+          <button v-if="!view" class="sv-btn" @click="emit('open')"><Icon name="folder-open" :size="15" /> Ouvrir une sauvegarde</button>
         </template>
-        <p v-else class="dim small">Glisse un Pokémon d'un côté à l'autre · Maj : copier <Tip v-bind="TIPS.drag" /></p>
-      </div>
+      </EmptyState>
+
+      <EmptyState v-else icon="bank" title="Banque Kaleido" term="bank.bank">
+        La banque garde tes Pokémon hors de tes sauvegardes, pour les faire passer d'un jeu à l'autre. Transferts vers une génération égale ou plus récente seulement.
+        <template #details>
+          <p v-if="view" class="sv-help">Choisis un Pokémon, ou glisse-le d'un côté à l'autre · Maj : copier <Tip term="bank.drag" /></p>
+          <p v-else class="sv-help">Sens des transferts <Tip term="bank.direction" /></p>
+        </template>
+        <template v-if="!view" #actions>
+          <button class="sv-btn solid" @click="emit('open')"><Icon name="folder-open" :size="15" /> Ouvrir une sauvegarde</button>
+        </template>
+      </EmptyState>
     </aside>
 
     <!-- Confirmation : retirer les attaques / l'objet absents du jeu -->
-    <div v-if="stripAsk" class="modal-back" @click.self="stripAsk = null">
-      <div class="modal panel" role="dialog" aria-modal="true">
-        <h3>Envoyer quand même ?</h3>
-        <p class="dim">Ces éléments n'existent pas dans ce jeu. Kaleido peut les retirer du Pokémon envoyé (l'exemplaire de la banque n'est pas modifié s'il s'agit d'une copie) :</p>
-        <ul>
-          <li v-for="pb in stripAsk.problems" :key="pb.kind + pb.id">{{ pb.message }}</li>
-        </ul>
-        <div class="row">
-          <button class="btn-line" @click="stripAsk = null">Annuler</button>
-          <button class="btn-big" @click="confirmStrip">Retirer et envoyer</button>
-        </div>
-      </div>
-    </div>
+    <Dialog v-model="stripOpen" title="Envoyer quand même ?" icon="alert" term="bank.changes" :width="460">
+      <p class="sv-help">
+        Ces éléments n'existent pas dans ce jeu. Kaleido peut les retirer du Pokémon envoyé (l'exemplaire de la banque n'est pas modifié s'il s'agit d'une copie) :
+      </p>
+      <ul class="strip-list">
+        <li v-for="pb in stripAsk?.problems ?? []" :key="pb.kind + pb.id">{{ pb.message }}</li>
+      </ul>
+      <template #foot>
+        <span class="spacer" />
+        <button class="sv-btn" @click="stripAsk = null">Annuler</button>
+        <button class="sv-btn solid" autofocus @click="confirmStrip">Retirer et envoyer</button>
+      </template>
+    </Dialog>
 
     <!-- Sprite qui suit la souris -->
     <div v-if="ghost" class="ghost" :style="{ left: `${ghost.x}px`, top: `${ghost.y}px` }">
       <Sprite :id="ghost.species" :shiny="ghost.shiny" :size="72" />
-      <span v-if="ghost.copy" class="mode">Copier</span>
+      <span v-if="ghost.copy" class="sv-chip on">Copier</span>
     </div>
   </div>
 </template>
@@ -581,197 +718,192 @@ const GENS = [4, 5, 6, 7];
 .bank {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 320px;
-  gap: 16px;
+  gap: var(--sp-4);
   height: 100%;
+  min-height: 0;
 }
 
 .bank.solo {
   grid-template-columns: minmax(0, 1fr) 340px;
 }
 
-.panel {
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--panel);
-  backdrop-filter: blur(14px);
-  box-shadow: var(--shadow);
-}
-
 .col {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-2);
+  min-width: 0;
   min-height: 0;
-  padding: 14px 16px;
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
+  min-height: 34px;
 }
 
-.kicker {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  color: var(--text-dim);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.save-title {
+  min-width: 0;
+}
+
+.save-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .count {
   margin-left: auto;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
+  white-space: nowrap;
 }
 
-.mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mini:disabled {
-  opacity: 0.35;
-}
-
-.searchbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.searchbar .sv-input {
+.fill-area {
   flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
+  max-width: none;
 }
 
-.chip {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
-.chip.on {
-  background: var(--text);
-  color: var(--bg);
+.filters .sep {
+  width: var(--sp-2);
 }
 
 .box-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
+  min-width: 0;
 }
 
-.box-head h2 {
-  min-width: 120px;
-  font-size: 19px;
+.box-name,
+.box-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  font-size: var(--fs-xl);
   font-weight: 600;
+}
+
+.box-name {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+}
+
+.box-name span,
+.box-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.box-name .icon {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.box-name:hover,
+.box-name:focus-visible {
+  border-color: var(--border);
+}
+
+.box-name:hover .icon,
+.box-name:focus-visible .icon {
+  opacity: 1;
+}
+
+.rename {
+  width: 180px;
+  flex: 0 1 auto;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-lg);
   text-align: center;
-  cursor: text;
 }
 
 .spacer {
   flex: 1;
 }
 
-.rename {
-  width: 160px;
-  padding: 5px 10px;
-  border: 1px solid var(--accent-2);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-  color: var(--text);
-  font: 600 16px var(--font);
-  text-align: center;
-  outline: none;
-}
-
-.round {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-}
-
 .fill {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
 
-.dots button {
-  width: 9px;
-  height: 9px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 55%, transparent);
-}
 
-.dots button.empty {
-  background: color-mix(in srgb, var(--text) 22%, transparent);
-}
 
-.dots button.on {
-  width: 13px;
-  height: 13px;
-  background: var(--text);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 60%, transparent);
-}
 
+
+
+/* Grilles : 6 colonnes égales qui tiennent dans le panneau, quelle que soit la largeur. */
 .grid {
   display: grid;
-  flex: 1;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  gap: 7px;
-  min-height: 0;
-  padding: 10px;
-  border-radius: 14px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2);
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
+.grid.box {
+  flex: 1;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  min-height: 0;
+}
+
 .grid.results {
-  grid-template-rows: none;
-  grid-auto-rows: 74px;
+  flex: 1;
+  grid-auto-rows: 64px;
   align-content: start;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.grid.party {
+  flex-shrink: 0;
+  grid-auto-rows: 56px;
 }
 
 .slot {
   position: relative;
   display: grid;
   place-items: center;
+  min-width: 0;
   min-height: 0;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 11px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
   touch-action: none;
   user-select: none;
   transition: transform 0.12s, background 0.12s, box-shadow 0.12s, opacity 0.12s;
+}
+
+/* Le sprite rétrécit avec la case au lieu de la pousser. */
+.slot :deep(.sprite) {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .slot:hover {
@@ -780,13 +912,13 @@ const GENS = [4, 5, 6, 7];
 
 .slot.selected {
   background: color-mix(in srgb, var(--text) 26%, transparent);
-  box-shadow: 0 0 0 3px #fff, 0 0 0 6px color-mix(in srgb, var(--accent-2) 70%, transparent);
+  box-shadow: 0 0 0 3px var(--text);
   z-index: 1;
 }
 
 .slot.over {
   box-shadow: 0 0 0 3px var(--accent-2);
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
 .slot.blocked {
@@ -795,28 +927,30 @@ const GENS = [4, 5, 6, 7];
 
 .slot .shiny {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  color: #ff5a7a;
-  fill: #ff5a7a;
+  top: var(--sp-1);
+  left: var(--sp-1);
+  color: var(--shiny);
+  fill: var(--shiny);
 }
 
 .slot .egg {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  color: #fff1c4;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  color: var(--text);
 }
 
 .slot .fmt {
   position: absolute;
-  right: 4px;
+  right: var(--sp-1);
   bottom: 7px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.35);
-  font-size: 9px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+  color: var(--text);
+  font-size: var(--fs-xs);
   font-weight: 700;
+  line-height: 1.3;
 }
 
 .bar {
@@ -825,62 +959,63 @@ const GENS = [4, 5, 6, 7];
   left: 18%;
   right: 18%;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--text) 45%, transparent);
 }
 
 .bar.male {
-  background: #5aa9ff;
+  background: var(--male);
 }
 
 .bar.female {
-  background: #ff7eb6;
-}
-
-.party {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 7px;
-}
-
-.party .slot {
-  height: 58px;
+  background: var(--female);
 }
 
 .path {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.path > .icon {
+  flex-shrink: 0;
+}
+
+.path-text {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.link {
-  border: none;
-  background: none;
-  color: var(--accent-2);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: underline;
-}
 
 .side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
+  min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: var(--sp-4);
   overflow-y: auto;
 }
 
 .detail-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
+}
+
+.detail-id {
+  min-width: 0;
 }
 
 .detail-head h3 {
-  font-size: 20px;
+  font-size: var(--fs-xl);
+  overflow-wrap: anywhere;
 }
 
 .gender {
@@ -890,53 +1025,23 @@ const GENS = [4, 5, 6, 7];
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 4px;
-}
-
-.chip-w,
-.chip-gold,
-.chip-soft,
-.chip-fmt {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chip-w {
-  background: var(--text);
-  color: var(--bg);
-}
-
-.chip-fmt {
-  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
-}
-
-.chip-gold {
-  background: #ffe27a;
-  color: #6b4b00;
-}
-
-.chip-soft {
-  background: color-mix(in srgb, var(--text) 16%, transparent);
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
 }
 
 .compat {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  font-size: 13px;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-card);
+  font-size: var(--fs-md);
 }
 
 .compat strong {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .compat p,
@@ -945,11 +1050,11 @@ const GENS = [4, 5, 6, 7];
 }
 
 .compat ul {
-  padding-left: 18px;
+  padding-left: var(--sp-4);
 }
 
 .compat.ok {
-  background: color-mix(in srgb, #2fc27a 18%, transparent);
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
 }
 
 .compat.warn {
@@ -964,142 +1069,30 @@ const GENS = [4, 5, 6, 7];
 
 .changes {
   color: var(--text-dim);
-  font-size: 12px;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 5px 12px;
-  margin: 0;
-  font-size: 13px;
-}
-
-dt {
-  display: flex;
-  align-items: center;
-  color: var(--text-dim);
-}
-
-dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
+  font-size: var(--fs-sm);
 }
 
 .ellipsis {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.moves {
+.actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: var(--sp-2);
 }
 
-.moves li {
-  padding: 5px 9px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  font-size: 12px;
-  font-weight: 600;
+.actions .sv-btn {
+  padding-inline: var(--sp-2);
 }
 
-.btn-big {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  border: none;
-  border-radius: 999px;
-  background: var(--text);
-  color: var(--bg);
-  font-weight: 700;
-}
-
-.btn-big:disabled {
-  opacity: 0.4;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 8px;
-}
-
-.btn-line {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border: 1.5px solid color-mix(in srgb, var(--text) 70%, transparent);
-  border-radius: 999px;
-  background: transparent;
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.btn-line:disabled {
-  opacity: 0.4;
-}
-
-.btn-line.danger {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.dim {
-  margin: 0;
-  color: var(--text-dim);
-}
-
-.small {
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.empty-help {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 12px;
-  color: var(--text-dim);
-  text-align: center;
-}
-
-.empty-help p {
-  margin: 0;
-}
-
-.modal-back {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-
-.modal {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: min(440px, calc(100vw - 32px));
-  padding: 20px;
-  background: var(--bg);
-}
-
-.modal ul {
-  margin: 0;
-  padding-left: 20px;
+.strip-list {
+  margin: var(--sp-3) 0 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-md);
 }
 
 .ghost {
@@ -1110,15 +1103,6 @@ dd {
   align-items: center;
   pointer-events: none;
   transform: translate(-50%, -60%) scale(1.1);
-  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.35));
-}
-
-.ghost .mode {
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--text);
-  color: var(--bg);
-  font-size: 12px;
-  font-weight: 700;
+  filter: drop-shadow(0 8px 12px color-mix(in srgb, var(--bg) 70%, transparent));
 }
 </style>

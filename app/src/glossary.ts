@@ -67,6 +67,10 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     title: "Statistiques",
     text: "Valeurs finales (PV, Attaque…) calculées à partir des statistiques de base de l'espèce, du niveau, des IV, des EV et de la nature.",
   },
+  statShort: {
+    title: "Abréviations des statistiques",
+    text: "PV : points de vie. Att : Attaque. Déf : Défense. AtS : Attaque Spéciale. DéS : Défense Spéciale. Vit : Vitesse.",
+  },
   iv: {
     title: "IV (valeurs individuelles)",
     text: "Le « patrimoine génétique » du Pokémon : de 0 à 31 par statistique, tiré au sort à la rencontre. 31 partout = parfait. Ils ne changent pas en jeu (sauf Entraînement Ultime en Gen 7). Jusqu'à la Gen 5, certains Pokémon sauvages ont des IV liés à leur PID : les modifier peut les rendre illégaux.",
@@ -151,7 +155,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   fateful: {
     title: "Rencontre fatidique",
-    text: "Drapeau des Pokémon d'événement (distributions, Mew de Faraway Island…). Le cocher ou le décocher sans raison rend le Pokémon illégal.",
+    text: "Drapeau secret des Pokémon d'événement (cadeaux mystère, Mew de Faraway Island…). Il débloque certains comportements (Darkrai et l'Île Nouvellune, Shaymin et la Floraison) et sert de preuve de légitimité : le cocher ou le décocher sans raison rend le Pokémon illégal.",
   },
   markings: {
     title: "Marquages",
@@ -281,7 +285,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   shinyLock: {
     title: "Verrou chromatique",
-    text: "Certains Pokémon (la plupart des légendaires depuis la Gen 5, dons, Trouées Cachées…) ne peuvent jamais être chromatiques : le jeu recalcule le PID s'il tombe sur un chromatique.",
+    text: "Certains Pokémon (la plupart des légendaires depuis la Gen 5, dons, Trouées Cachées, beaucoup de cadeaux mystère…) ne peuvent jamais être chromatiques : le jeu recalcule le PID s'il tombe sur un chromatique. À l'inverse, certaines cartes cadeau l'imposent : PID chromatique fixe (identique pour tous) ou tiré au hasard puis rendu chromatique pour ton dresseur.",
   },
   flawlessIvs: {
     title: "IV parfaits garantis",
@@ -309,7 +313,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   onlyThisGame: {
     title: "Seulement ce jeu",
-    text: "Décoché : affiche aussi les rencontres des jeux plus anciens dont les Pokémon peuvent être transférés dans cette sauvegarde (par exemple Platine ou Noir 2 pour Soleil/Lune).",
+    text: "Coché : n'affiche que ce que le jeu de la sauvegarde ouverte peut obtenir (une carte cadeau réservée à X/Y n'apparaît pas pour Rubis Oméga). Pour les rencontres, décoché affiche aussi celles des jeux plus anciens dont les Pokémon peuvent être transférés dans cette sauvegarde (par exemple Platine ou Noir 2 pour Soleil/Lune).",
   },
   dreamWorld: {
     title: "Monde des Rêves",

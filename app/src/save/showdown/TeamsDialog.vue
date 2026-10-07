@@ -2,7 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import Banner from "../../components/Banner.vue";
+import Dialog from "../../components/Dialog.vue";
+import EmptyState from "../../components/EmptyState.vue";
 import Icon from "../../components/Icon.vue";
+import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
 import { saveState } from "../../saveStore";
@@ -80,6 +84,10 @@ const loadingTeam = ref<string | null>(null);
 const teamError = ref<string | null>(null);
 const importing = ref(false);
 const done = ref<string | null>(null);
+const importError = ref<string | null>(null);
+
+const genOptions = computed(() => gens.value.map((g) => ({ value: g, label: `Gen ${g}` })));
+const formatOptions = computed(() => (FORMATS[gen.value] ?? []).map((f) => ({ value: f.id, label: f.label })));
 
 async function loadList(refresh = false) {
   loadingList.value = true;
@@ -131,6 +139,7 @@ async function openTeam(t: TeamSummary) {
   openedSlug = t.slug;
   loadingTeam.value = t.slug;
   teamError.value = null;
+  importError.value = null;
   done.value = null;
   try {
     const { full, pv } = await fetchTeam(t.slug);
@@ -151,12 +160,13 @@ const partyFree = computed(() => 6 - (saveState.view?.party.length ?? 0));
 async function importTo(target: ImportTarget) {
   if (!team.value) return;
   importing.value = true;
+  importError.value = null;
   try {
     const report = await importShowdown(team.value.paste, target);
     const failed = report.sets.filter((s) => s.error).length;
     done.value = `${report.imported} Pokémon importé${report.imported > 1 ? "s" : ""}${failed ? `, ${failed} impossible${failed > 1 ? "s" : ""} dans ce jeu` : ""}.`;
   } catch (e) {
-    saveState.error = String(e);
+    importError.value = String(e);
   } finally {
     importing.value = false;
   }
@@ -187,6 +197,7 @@ function close() {
   showdownUi.teams = false;
 }
 
+/** Fenêtre ouverte : les raccourcis de la page sont suspendus (Échap et Tab restent à la fenêtre). */
 function onKey(e: KeyboardEvent) {
   if (!showdownUi.teams) return;
   e.stopPropagation();
@@ -195,185 +206,158 @@ function onKey(e: KeyboardEvent) {
     close();
   }
 }
-onMounted(() => window.addEventListener("keydown", onKey, true));
+onMounted(() => document.addEventListener("keydown", onKey));
 onBeforeUnmount(() => {
-  window.removeEventListener("keydown", onKey, true);
+  document.removeEventListener("keydown", onKey);
   showdownUi.teams = false;
 });
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="tm-fade">
-      <div v-if="showdownUi.teams" class="tm-overlay" @pointerdown.self="close">
-        <section class="tm-dialog sv-panel" role="dialog" aria-modal="true" aria-label="Équipes stratégiques">
-          <header class="tm-head">
-            <Icon name="swords" :size="22" />
-            <div class="title">
-              <h2>Équipes stratégiques <Tip term="smogonTeams" /></h2>
-              <small>Équipes d'exemple de Smogon, prêtes à jouer</small>
-            </div>
-            <span class="grow" />
-            <button class="round" title="Actualiser la liste" :disabled="loadingList" @click="loadList(true)"><Icon name="refresh" :size="15" /></button>
-            <button class="round" aria-label="Fermer" @click="close"><Icon name="x" :size="16" /></button>
-          </header>
+  <Dialog v-model="showdownUi.teams" title="Équipes stratégiques" term="smogonTeams" subtitle="Équipes d'exemple de Smogon, prêtes à jouer" icon="swords" :width="1180">
+    <template #head>
+      <button type="button" class="sv-round sq" title="Actualiser la liste" aria-label="Actualiser la liste" :disabled="loadingList" @click="loadList(true)">
+        <Icon name="refresh" :size="15" />
+      </button>
+    </template>
 
-          <nav class="filters">
-            <span class="sv-label">Génération</span>
-            <div class="sv-seg">
-              <button v-for="g in gens" :key="g" :class="{ on: gen === g }" @click="gen = g">Gen {{ g }}</button>
-            </div>
-            <span class="sv-label">Format <Tip term="smogonFormat" /></span>
-            <div class="sv-seg">
-              <button v-for="f in FORMATS[gen]" :key="f.id" :class="{ on: format === f.id }" @click="format = f.id">{{ f.label }}</button>
-            </div>
-          </nav>
+    <div class="tm-wrap">
+      <nav class="filters">
+        <span class="sv-label">Génération</span>
+        <Segmented v-model="gen" :options="genOptions" label="Génération" />
+        <span class="sv-label">Format <Tip term="smogonFormat" /></span>
+        <Segmented v-model="format" :options="formatOptions" label="Format" />
+      </nav>
 
-          <div class="tm-body">
-            <!-- Liste des équipes -->
-            <ul class="teams">
-              <li v-if="loadingList" class="state"><Icon name="refresh" :size="24" class="spin" /> Chargement…</li>
-              <li v-else-if="listError" class="state">
-                <p><strong>Équipes indisponibles.</strong> Kaleido a besoin d'Internet la première fois ; les équipes sont ensuite gardées hors ligne.</p>
-                <p class="dim small">{{ listError }}</p>
-                <button class="sv-btn" @click="loadList(true)"><Icon name="refresh" :size="14" /> Réessayer</button>
-              </li>
-              <li v-else-if="!list.length" class="state dim">Aucune équipe d'exemple pour ce format.</li>
-              <template v-else>
-                <li v-for="t in list" :key="t.slug">
-                <button class="team-item" :class="{ on: team?.slug === t.slug }" @click="openTeam(t)">
-                  <strong>{{ t.name }}</strong>
-                  <small class="dim">{{ t.author ?? "Anonyme" }}<template v-if="t.views"> · {{ t.views }} vues</template></small>
-                  <span class="mini">
-                    <Sprite v-for="(id, i) in species[t.slug] ?? []" :key="i" :id="id" :size="34" />
-                  </span>
-                  <Icon v-if="loadingTeam === t.slug" name="refresh" :size="14" class="spin side" />
-                </button>
-                </li>
-              </template>
-            </ul>
+      <div class="tm-body">
+        <!-- Liste des équipes -->
+        <div class="teams">
+          <EmptyState v-if="loadingList" loading compact title="Chargement…" />
+          <EmptyState v-else-if="listError" icon="alert" compact title="Équipes indisponibles">
+            Kaleido a besoin d'Internet la première fois ; les équipes sont ensuite gardées hors ligne.
+            <template #details>
+              <p class="sv-help">{{ listError }}</p>
+            </template>
+            <template #actions>
+              <button type="button" class="sv-btn" @click="loadList(true)"><Icon name="refresh" :size="14" /> Réessayer</button>
+            </template>
+          </EmptyState>
+          <EmptyState v-else-if="!list.length" icon="search" compact>Aucune équipe d'exemple pour ce format.</EmptyState>
+          <ul v-else class="team-list">
+            <li v-for="t in list" :key="t.slug">
+              <button type="button" class="team-item" :class="{ on: team?.slug === t.slug }" :aria-pressed="team?.slug === t.slug" @click="openTeam(t)">
+                <strong>{{ t.name }}</strong>
+                <small class="dim">{{ t.author ?? "Anonyme" }}<template v-if="t.views"> · {{ t.views }} vues</template></small>
+                <span class="mini">
+                  <Sprite v-for="(id, i) in species[t.slug] ?? []" :key="i" :id="id" :size="34" />
+                </span>
+                <Icon v-if="loadingTeam === t.slug" name="refresh" :size="14" class="sv-spin side" />
+              </button>
+            </li>
+          </ul>
+        </div>
 
-            <!-- Aperçu de l'équipe -->
-            <div class="detail">
-              <div v-if="teamError" class="state">
-                <p><strong>Impossible d'ouvrir cette équipe.</strong></p>
-                <p class="dim small">{{ teamError }}</p>
+        <!-- Aperçu de l'équipe -->
+        <div class="detail">
+          <EmptyState v-if="teamError" icon="alert" title="Impossible d'ouvrir cette équipe">
+            {{ teamError }}
+          </EmptyState>
+          <template v-else-if="team && preview">
+            <div class="detail-head">
+              <div>
+                <h3>{{ team.name }}</h3>
+                <small class="dim">par {{ team.author ?? "anonyme" }} · {{ team.format }}</small>
               </div>
-              <template v-else-if="team && preview">
-                <div class="detail-head">
-                  <div>
-                    <h3>{{ team.name }}</h3>
-                    <small class="dim">par {{ team.author ?? "anonyme" }} · {{ team.format }}</small>
-                  </div>
-                  <span class="grow" />
-                  <button v-if="team.sourceUrl" class="sv-btn" title="Fil Smogon d'où vient l'équipe" @click="openUrl(team.sourceUrl)">
-                    <Icon name="book" :size="14" /> Source Smogon
-                  </button>
-                  <button class="sv-btn" title="Voir l'équipe sur crob.at" @click="openUrl(team.url)"><Icon name="send" :size="14" /> crob.at</button>
-                </div>
-                <ul class="mons">
-                  <li v-for="(s, i) in preview.sets" :key="i" class="mon" :class="{ bad: !!s.error }">
-                    <Sprite :id="s.species" :size="64" class="mon-sprite" />
-                    <div class="mon-main">
-                      <strong>{{ s.speciesName }}</strong>
-                      <small class="dim">{{ s.itemName ?? "Sans objet" }} · {{ s.abilityName ?? "—" }} · {{ s.natureName ?? "—" }}</small>
-                      <small v-if="statLine(s.evs, 0)" class="dim">EV : {{ statLine(s.evs, 0) }}</small>
-                      <div class="moves">
-                        <span v-for="m in s.moveNames" :key="m" class="mv">{{ m }}</span>
-                      </div>
-                      <p v-if="s.error" class="err"><Icon name="alert" :size="13" /> {{ s.error }}</p>
-                      <template v-else>
-                        <p v-for="w in s.warnings" :key="w" class="warn"><Icon name="alert" :size="13" /> {{ w }}</p>
-                      </template>
-                    </div>
-                  </li>
-                </ul>
-                <div class="actions">
-                  <p v-if="done" class="ok"><Icon name="check" :size="14" /> {{ done }}</p>
-                  <span class="grow" />
-                  <button class="sv-btn" :disabled="importing || !valid || partyFree <= 0" :title="partyFree <= 0 ? 'Équipe pleine' : ''" @click="importTo({ kind: 'party' })">
-                    <Icon name="plus" :size="14" /> Dans l'équipe
-                  </button>
-                  <button class="sv-btn solid" :disabled="importing || !valid" @click="importTo({ kind: 'box', box: saveState.box })">
-                    <Icon name="download" :size="14" /> Importer dans {{ boxName }}
-                  </button>
-                </div>
-              </template>
-              <div v-else-if="loadingTeam" class="state"><Icon name="refresh" :size="24" class="spin" /></div>
-              <div v-else class="state dim">Choisis une équipe à gauche.</div>
+              <span class="grow" />
+              <button v-if="team.sourceUrl" type="button" class="sv-btn" title="Fil Smogon d'où vient l'équipe" @click="openUrl(team.sourceUrl)">
+                <Icon name="book" :size="14" /> Source Smogon
+              </button>
+              <button type="button" class="sv-btn" title="Voir l'équipe sur crob.at" @click="openUrl(team.url)"><Icon name="send" :size="14" /> crob.at</button>
             </div>
-          </div>
-
-          <footer class="tm-foot">
-            <p class="dim small">
-              Équipes d'exemple publiées par Smogon University, récupérées via crob.at. Les Pokémon sont créés à ton nom ; ce qui n'existe pas dans ton jeu
-              (attaque, objet, talent) est signalé. Ctrl+Z pour annuler.
-            </p>
-          </footer>
-        </section>
+            <ul class="mons">
+              <li v-for="(s, i) in preview.sets" :key="i" class="mon" :class="{ bad: !!s.error }">
+                <Sprite :id="s.species" :size="64" class="mon-sprite" />
+                <div class="mon-main">
+                  <strong>{{ s.speciesName }}</strong>
+                  <dl class="sv-dl">
+                    <dt>Objet tenu <Tip term="heldItem" /></dt>
+                    <dd>{{ s.itemName ?? "Aucun" }}</dd>
+                    <dt>Talent <Tip term="ability" /></dt>
+                    <dd>{{ s.abilityName ?? "—" }}</dd>
+                    <dt>Nature <Tip term="nature" /></dt>
+                    <dd>{{ s.natureName ?? "—" }}</dd>
+                    <template v-if="statLine(s.evs, 0)">
+                      <dt>EV <Tip term="ev" /></dt>
+                      <dd>{{ statLine(s.evs, 0) }}</dd>
+                    </template>
+                  </dl>
+                  <ul class="sv-moves">
+                    <li v-for="m in s.moveNames" :key="m">{{ m }}</li>
+                  </ul>
+                  <p v-if="s.error" class="err"><Icon name="alert" :size="13" /> {{ s.error }}</p>
+                  <template v-else>
+                    <p v-for="w in s.warnings" :key="w" class="warn"><Icon name="alert" :size="13" /> {{ w }}</p>
+                  </template>
+                </div>
+              </li>
+            </ul>
+            <Banner v-if="importError" :dismiss="() => (importError = null)">{{ importError }}</Banner>
+            <div class="actions">
+              <p v-if="done" class="ok"><Icon name="check" :size="14" /> {{ done }}</p>
+              <span class="grow" />
+              <button
+                type="button"
+                class="sv-btn"
+                :disabled="importing || !valid || partyFree <= 0"
+                :title="partyFree <= 0 ? 'Équipe pleine' : ''"
+                @click="importTo({ kind: 'party' })"
+              >
+                <Icon name="plus" :size="14" /> Dans l'équipe
+              </button>
+              <button type="button" class="sv-btn solid" :disabled="importing || !valid" @click="importTo({ kind: 'box', box: saveState.box })">
+                <Icon name="download" :size="14" /> Importer dans {{ boxName }}
+              </button>
+            </div>
+          </template>
+          <EmptyState v-else-if="loadingTeam" loading compact />
+          <EmptyState v-else icon="swords" compact>Choisis une équipe à gauche.</EmptyState>
+        </div>
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+
+    <template #foot>
+      <p class="sv-help">
+        Équipes d'exemple publiées par Smogon University, récupérées via crob.at. Les Pokémon sont créés à ton nom ; ce qui n'existe pas dans ton jeu
+        (attaque, objet, talent) est signalé. Ctrl+Z pour annuler.
+      </p>
+    </template>
+  </Dialog>
 </template>
 
 <style scoped>
-.tm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
-  backdrop-filter: blur(6px);
-}
-
-.tm-dialog {
+/* Corps sans marge intérieure : la liste et l'aperçu défilent chacun de leur côté. */
+.tm-wrap {
   display: flex;
   flex-direction: column;
-  width: min(1180px, 100%);
-  height: min(820px, calc(100vh - 56px));
-  overflow: hidden;
-  background: var(--surface);
+  height: min(640px, calc(100vh - 240px));
+  margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-5));
 }
 
-.tm-head,
 .filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px;
+  padding: var(--sp-3) var(--sp-5);
   border-bottom: 1px solid var(--border);
 }
 
-.title h2 {
-  margin: 0;
-  font-size: 19px;
-}
-
-.title small,
 .dim {
   color: var(--text-dim);
 }
 
-.small {
-  font-size: 12px;
-}
-
 .grow {
   flex: 1;
-}
-
-.round {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text);
 }
 
 .tm-body {
@@ -384,11 +368,18 @@ onBeforeUnmount(() => {
 }
 
 .teams {
-  margin: 0;
-  padding: 8px;
+  min-height: 0;
+  padding: var(--sp-2);
   overflow: auto;
-  list-style: none;
   border-right: 1px solid var(--border);
+}
+
+.team-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .team-item {
@@ -397,9 +388,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 2px;
   width: 100%;
-  padding: 9px 30px 9px 12px;
-  border: none;
-  border-radius: 10px;
+  padding: 9px 30px 9px var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text);
   text-align: left;
@@ -409,9 +400,16 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
+/* Équipe ouverte : inversion texte / fond, comme les onglets. */
 .team-item.on {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  box-shadow: inset 3px 0 0 var(--accent);
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.team-item.on .dim {
+  color: inherit;
+  opacity: 0.75;
 }
 
 .mini {
@@ -426,15 +424,16 @@ onBeforeUnmount(() => {
 
 .team-item .side {
   position: absolute;
-  top: 12px;
+  top: var(--sp-3);
   right: 10px;
 }
 
 .detail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
+  gap: var(--sp-3);
+  min-height: 0;
+  padding: var(--sp-4) var(--sp-5);
   overflow: auto;
 }
 
@@ -446,7 +445,7 @@ onBeforeUnmount(() => {
 
 .detail-head h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fs-lg);
 }
 
 .mons {
@@ -458,12 +457,13 @@ onBeforeUnmount(() => {
   list-style: none;
 }
 
+/* Apparition discrète des fiches (fondu + léger glissement), sans halo. */
 .mon {
   display: flex;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-3);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 4%, transparent);
   animation: pop 0.25s ease both;
 }
@@ -491,6 +491,12 @@ onBeforeUnmount(() => {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .mon {
+    animation: none;
+  }
+}
+
 .mon.bad {
   border-color: var(--danger);
 }
@@ -502,28 +508,10 @@ onBeforeUnmount(() => {
 
 .mon-main {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   min-width: 0;
-}
-
-.mon-main small {
-  font-size: 12px;
-}
-
-.moves {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.mv {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .warn,
@@ -533,7 +521,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 5px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .warn {
@@ -545,57 +533,22 @@ onBeforeUnmount(() => {
 }
 
 .ok {
-  color: var(--accent-2);
-  font-size: 13px;
+  color: var(--ok);
+  font-size: var(--fs-md);
 }
 
+/* Toujours visibles en bas de l'aperçu, même quand les six fiches défilent. */
 .actions {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-4));
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.state {
-  display: grid;
-  place-items: center;
-  gap: 6px;
-  padding: 30px 16px;
-  text-align: center;
-}
-
-.state p {
-  margin: 0;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.tm-foot {
-  padding: 10px 18px;
+  gap: var(--sp-2);
+  margin: auto calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4));
+  padding: var(--sp-3) var(--sp-5);
   border-top: 1px solid var(--border);
-}
-
-.tm-foot p {
-  margin: 0;
-}
-
-.tm-fade-enter-active,
-.tm-fade-leave-active {
-  transition: opacity 0.15s;
-}
-
-.tm-fade-enter-from,
-.tm-fade-leave-to {
-  opacity: 0;
+  background: var(--surface);
 }
 
 @media (max-width: 760px) {
