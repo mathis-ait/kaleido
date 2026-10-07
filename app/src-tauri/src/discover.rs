@@ -49,6 +49,8 @@ const MIN_GAME_SIZE: u64 = 1 << 20;
 #[serde(rename_all = "camelCase")]
 pub struct FoundFolder {
     pub path: String,
+    #[serde(default)]
+    pub gba: usize,
     pub nds: usize,
     pub ctr: usize,
     pub switch: usize,
@@ -86,6 +88,7 @@ struct Progress {
 fn kind_of(path: &Path) -> Option<&'static str> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     Some(match ext.as_str() {
+        "gba" => "gba",
         "nds" => "nds",
         "3ds" | "cci" | "cia" => "ctr",
         e if crate::switch::EXTENSIONS.contains(&e) => "switch",
@@ -151,6 +154,7 @@ impl Walk<'_> {
             }
             let f = self.folders.entry(dir.to_path_buf()).or_insert_with(|| FoundFolder { path: dir.display().to_string(), ..Default::default() });
             match kind {
+                "gba" => f.gba += 1,
                 "nds" => f.nds += 1,
                 "ctr" => f.ctr += 1,
                 _ => f.switch += 1,
@@ -172,7 +176,7 @@ impl Walk<'_> {
 /// Dossiers trouvés, les plus fournis d'abord.
 fn sorted(folders: BTreeMap<PathBuf, FoundFolder>) -> Vec<FoundFolder> {
     let mut list: Vec<FoundFolder> = folders.into_values().collect();
-    list.sort_by(|a, b| (b.nds + b.ctr + b.switch).cmp(&(a.nds + a.ctr + a.switch)).then(a.path.cmp(&b.path)));
+    list.sort_by(|a, b| (b.gba + b.nds + b.ctr + b.switch).cmp(&(a.gba + a.nds + a.ctr + a.switch)).then(a.path.cmp(&b.path)));
     list
 }
 

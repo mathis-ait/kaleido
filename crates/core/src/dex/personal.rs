@@ -51,6 +51,29 @@ impl PersonalInfo {
         let ev_at = |shift: u16| ((ev >> shift) & 3) as u8;
         let base_stats = BaseStats { hp: d[0], attack: d[1], defense: d[2], speed: d[3], sp_attack: d[4], sp_defense: d[5] };
         let ev_yield = BaseStats { hp: ev_at(0), attack: ev_at(2), defense: ev_at(4), speed: ev_at(6), sp_attack: ev_at(8), sp_defense: ev_at(10) };
+        if game.generation() == 3 {
+            // Fiche Gen 3 (0x1C, `PersonalInfo3.cs`) : même début que la Gen 4, sans formes.
+            return PersonalInfo {
+                base_stats,
+                types: [d[6], d[7]],
+                catch_rate: d[8],
+                base_exp: d[9] as u16,
+                ev_yield,
+                held_items: [u16_at(d, 0x0C), u16_at(d, 0x0E), 0],
+                gender_ratio: d[0x10],
+                hatch_cycles: d[0x11],
+                base_friendship: d[0x12],
+                growth_rate: GrowthRate::from_index(d[0x13]).unwrap_or(GrowthRate::MediumFast),
+                egg_groups: [d[0x14], d[0x15]],
+                abilities: [d[0x16] as u16, d[0x17] as u16, 0],
+                escape_rate: d[0x18],
+                color: d[0x19] & 0x7F,
+                form_count: 1,
+                form_stats_index: 0,
+                height: 0,
+                weight: 0,
+            };
+        }
         if game.generation() == 4 {
             // Fiche Gen 4 (0x2C) ; nombre de formes et indice ajoutés par PKHeX en 0x29-0x2B.
             return PersonalInfo {
@@ -109,7 +132,7 @@ impl PersonalInfo {
     /// Lit une fiche brute d'une ROM du jeu (même disposition que les tables de PKHeX ;
     /// en Gen 4, les types restent dans l'ordre de la ROM, avec « ??? » en 9).
     pub fn from_rom(game: Game, data: &[u8]) -> Option<Self> {
-        if data.len() < 0x28 {
+        if data.len() < if game.generation() == 3 { 0x1C } else { 0x28 } {
             return None;
         }
         let mut d = data.to_vec();
@@ -128,7 +151,7 @@ struct Table {
     size: usize,
 }
 
-const PERSONAL: [Table; 9] = [
+const PERSONAL: [Table; 12] = [
     Table { data: include_bytes!("../../data/pkhex/personal/personal_dp"), size: 0x2C },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_pt"), size: 0x2C },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_hgss"), size: 0x2C },
@@ -138,6 +161,9 @@ const PERSONAL: [Table; 9] = [
     Table { data: include_bytes!("../../data/pkhex/personal/personal_ao"), size: 0x50 },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_sm"), size: 0x54 },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_uu"), size: 0x54 },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_rs"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_e"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_fr"), size: 0x1C },
 ];
 
 fn entry(game: Game, index: usize) -> Option<PersonalInfo> {
@@ -199,7 +225,7 @@ fn parse_eggmoves(data: &'static [u8]) -> Vec<Vec<u16>> {
 type Levelup = LazyLock<Vec<Vec<(u16, u8)>>>;
 type EggMoves = LazyLock<Vec<Vec<u16>>>;
 
-static LEVELUP: [Levelup; 9] = [
+static LEVELUP: [Levelup; 12] = [
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_dp.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_pt.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_hgss.pkl"))),
@@ -209,8 +235,12 @@ static LEVELUP: [Levelup; 9] = [
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_ao.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_sm.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_uu.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_rs.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_e.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_fr.pkl"))),
 ];
 
+static EGG_RS: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_rs.pkl")));
 static EGG_DPPT: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_dppt.pkl")));
 static EGG_HGSS: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_hgss.pkl")));
 static EGG_BW: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_bw.pkl")));
@@ -231,6 +261,7 @@ pub fn egg_moves(game: Game, species: u16, form: u8) -> &'static [u16] {
         return &[];
     }
     let (table, index): (&EggMoves, Option<usize>) = match game {
+        Game::RS | Game::E | Game::FRLG => (&EGG_RS, Some(species as usize)),
         Game::DP | Game::Pt => (&EGG_DPPT, Some(species as usize)),
         Game::HGSS => (&EGG_HGSS, Some(species as usize)),
         Game::BW | Game::B2W2 => (&EGG_BW, Some(species as usize)),

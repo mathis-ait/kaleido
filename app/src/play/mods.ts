@@ -82,14 +82,14 @@ export const CATEGORY_LABEL: Record<ModCategory, string> = {
 export const CATEGORY_ORDER: ModCategory[] = ["fps", "graphics", "textures", "cheats", "resolution", "display", "other"];
 
 export function targetOf(d: Detection): ModTarget {
-  const platform: PlayPlatform = d.platform === "switch" ? "switch" : d.platform === "3ds" ? "3ds" : "nds";
-  return { platform, titleId: titleIdOf(d), rom: platform === "nds" ? d.path : null };
+  const platform: PlayPlatform = d.platform === "switch" ? "switch" : d.platform === "3ds" ? "3ds" : d.platform === "gba" ? "gba" : "nds";
+  return { platform, titleId: titleIdOf(d), rom: platform === "nds" || platform === "gba" ? d.path : null };
 }
 
 /** Émulateur dont on règle la configuration pour ce jeu. */
 export function tuneEmulator(platform: PlayPlatform): EmulatorId {
   if (platform === "switch") return "eden";
-  return defaultEmulator(platform)?.id ?? (platform === "3ds" ? "azahar" : "melonds");
+  return defaultEmulator(platform)?.id ?? (platform === "3ds" ? "azahar" : platform === "gba" ? "mgba" : "melonds");
 }
 
 /** Fenêtre « Mods et réglages » ouverte pour ce jeu. */

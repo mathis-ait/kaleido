@@ -43,7 +43,7 @@ export const adventure = reactive({
 });
 
 const newSeed = () => Math.floor(Math.random() * 4_294_967_295);
-const platformOf = (d: Detection): "nds" | "3ds" => (d.platform === "3ds" ? "3ds" : "nds");
+const platformOf = (d: Detection): "gba" | "nds" | "3ds" => (d.platform === "3ds" ? "3ds" : d.platform === "gba" ? "gba" : "nds");
 const parentDir = (p: string) => p.replace(/[\\/][^\\/]+$/, "");
 const separator = (p: string) => (p.includes("\\") ? "\\" : "/");
 
@@ -76,7 +76,8 @@ async function computePreview() {
 export async function choosePreset(p: AdventurePreset) {
   if (!adventure.game) return;
   adventure.preset = p;
-  adventure.settings = await settingsOf(p, platformOf(adventure.game));
+  // Une ROM GBA s'écrit comme une ROM DS : mêmes réglages propres à la console.
+  adventure.settings = await settingsOf(p, platformOf(adventure.game) === "3ds" ? "3ds" : "nds");
   adventure.seed = newSeed();
   adventure.preview = null;
   adventure.step = "preview";
@@ -121,7 +122,7 @@ export function destination() {
   if (!g) return null;
   const platform = platformOf(g);
   const sep = separator(g.path);
-  const where = platform === "nds" ? parentDir(g.path) : `${parentDir(g.path)}${sep}Kaleido`;
+  const where = platform !== "3ds" ? parentDir(g.path) : `${parentDir(g.path)}${sep}Kaleido`;
   return { where, emulator: defaultEmulator(platform)?.name ?? "à installer" };
 }
 
@@ -134,11 +135,14 @@ export async function writeAdventure(): Promise<PlayOptions> {
   const title = g.game?.name ?? g.title;
   let options: PlayOptions;
   let romForRun: string;
-  if (platformOf(g) === "nds") {
-    const output = `${g.path.replace(/\.nds$/i, "")} - Kaleido ${seed}.nds`;
+  const platform = platformOf(g);
+  if (platform !== "3ds") {
+    // ROM DS ou GBA : une copie randomisée à côté de l'originale.
+    const ext = platform === "gba" ? "gba" : "nds";
+    const output = `${g.path.replace(/\.(nds|gba)$/i, "")} - Kaleido ${seed}.${ext}`;
     await invoke<Outcome>("randomize_rom", { path: g.path, settings, seed, output });
     await addPaths([output]);
-    options = { platform: "nds", rom: output, trackKey: output, title };
+    options = { platform, rom: output, trackKey: output, title };
     romForRun = output;
   } else {
     const output = destination()!.where;

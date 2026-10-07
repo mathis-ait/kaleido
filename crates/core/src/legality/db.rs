@@ -73,6 +73,9 @@ pub struct SpeciesEncounters {
 /// Nom français d'un groupe de jeux.
 pub fn game_label(game: Game) -> &'static str {
     match game {
+        Game::RS => "Rubis / Saphir",
+        Game::E => "Émeraude",
+        Game::FRLG => "Rouge Feu / Vert Feuille",
         Game::DP => "Diamant / Perle",
         Game::Pt => "Platine",
         Game::HGSS => "Or HeartGold / Argent SoulSilver",
@@ -183,7 +186,7 @@ fn build(game: Game) -> Vec<EncounterEntry> {
     out
 }
 
-static TABLES: [LazyLock<Vec<EncounterEntry>>; 9] = [
+static TABLES: [LazyLock<Vec<EncounterEntry>>; 12] = [
     LazyLock::new(|| build(Game::DP)),
     LazyLock::new(|| build(Game::Pt)),
     LazyLock::new(|| build(Game::HGSS)),
@@ -193,6 +196,9 @@ static TABLES: [LazyLock<Vec<EncounterEntry>>; 9] = [
     LazyLock::new(|| build(Game::ORAS)),
     LazyLock::new(|| build(Game::SM)),
     LazyLock::new(|| build(Game::USUM)),
+    LazyLock::new(|| build(Game::RS)),
+    LazyLock::new(|| build(Game::E)),
+    LazyLock::new(|| build(Game::FRLG)),
 ];
 
 /// Toutes les rencontres du jeu, regroupées (niveaux fusionnés) et triées par n° de Pokédex.

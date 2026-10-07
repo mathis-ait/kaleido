@@ -8,8 +8,8 @@ import type { SaveView, SlotView } from "../types";
 
 // Miroir des types de `play.rs`.
 
-export type EmulatorId = "melonds" | "desmume" | "azahar" | "citra" | "lime3ds" | "eden";
-export type PlayPlatform = "nds" | "3ds" | "switch";
+export type EmulatorId = "melonds" | "desmume" | "azahar" | "citra" | "lime3ds" | "eden" | "mgba";
+export type PlayPlatform = "gba" | "nds" | "3ds" | "switch";
 
 export interface EmulatorInfo {
   id: EmulatorId;
@@ -35,6 +35,7 @@ export interface PlayConfig {
   searchDirs: string[];
   preferredNds: EmulatorId | null;
   preferredCtr: EmulatorId | null;
+  preferredGba?: EmulatorId | null;
 }
 
 interface PlayRequest {
@@ -85,7 +86,7 @@ export const emus = reactive({
   loaded: false,
   loading: false,
   list: [] as EmulatorInfo[],
-  config: { profiles: {}, searchDirs: [], preferredNds: null, preferredCtr: null } as PlayConfig,
+  config: { profiles: {}, searchDirs: [], preferredNds: null, preferredCtr: null, preferredGba: null } as PlayConfig,
   error: null as string | null,
 });
 
@@ -129,7 +130,8 @@ export const available = (platform: PlayPlatform) => emus.list.filter((e) => e.p
 /** Émulateur par défaut pour une plateforme (préféré s'il est trouvé, sinon le premier trouvé). */
 export function defaultEmulator(platform: PlayPlatform): EmulatorInfo | null {
   const list = available(platform);
-  const preferred = platform === "nds" ? emus.config.preferredNds : platform === "3ds" ? emus.config.preferredCtr : null;
+  const preferred =
+    platform === "nds" ? emus.config.preferredNds : platform === "3ds" ? emus.config.preferredCtr : platform === "gba" ? emus.config.preferredGba : null;
   return list.find((e) => e.id === preferred) ?? list[0] ?? null;
 }
 
@@ -145,12 +147,12 @@ export interface EmulatorDownload {
 }
 
 /** Émulateur installé quand on veut jouer sans en avoir. */
-export const RECOMMENDED: Record<PlayPlatform, EmulatorId> = { nds: "melonds", "3ds": "azahar", switch: "eden" };
+export const RECOMMENDED: Record<PlayPlatform, EmulatorId> = { gba: "mgba", nds: "melonds", "3ds": "azahar", switch: "eden" };
 /** Émulateurs que Kaleido sait télécharger et installer. */
-export const INSTALLABLE: EmulatorId[] = ["melonds", "azahar", "desmume", "eden"];
+export const INSTALLABLE: EmulatorId[] = ["mgba", "melonds", "azahar", "desmume", "eden"];
 
-export const PLATFORM_LABEL: Record<PlayPlatform, string> = { nds: "Nintendo DS", "3ds": "Nintendo 3DS", switch: "Nintendo Switch" };
-export const PLATFORM_SHORT: Record<PlayPlatform, string> = { nds: "DS", "3ds": "3DS", switch: "Switch" };
+export const PLATFORM_LABEL: Record<PlayPlatform, string> = { gba: "Game Boy Advance", nds: "Nintendo DS", "3ds": "Nintendo 3DS", switch: "Nintendo Switch" };
+export const PLATFORM_SHORT: Record<PlayPlatform, string> = { gba: "GBA", nds: "DS", "3ds": "3DS", switch: "Switch" };
 
 export interface InstallProgress {
   step: "info" | "download" | "extract";
@@ -411,14 +413,23 @@ async function pickGame(platform: PlayPlatform) {
     last = undefined;
   }
   const picked = await open({
-    title: platform === "3ds" ? "Choisis le jeu 3DS d'origine à lancer" : platform === "switch" ? "Choisis le jeu Switch à lancer" : "Choisis la ROM DS à lancer",
+    title:
+      platform === "3ds"
+        ? "Choisis le jeu 3DS d'origine à lancer"
+        : platform === "switch"
+          ? "Choisis le jeu Switch à lancer"
+          : platform === "gba"
+            ? "Choisis la ROM Game Boy Advance à lancer"
+            : "Choisis la ROM DS à lancer",
     defaultPath: platform === "3ds" ? last : undefined,
     filters:
       platform === "3ds"
         ? [{ name: "Jeu 3DS", extensions: ["3ds", "cci", "cxi", "app"] }]
         : platform === "switch"
           ? [{ name: "Jeu Switch", extensions: ["xci", "nsp", "xcz", "nsz"] }]
-          : [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+          : platform === "gba"
+            ? [{ name: "ROM Game Boy Advance", extensions: ["gba"] }]
+            : [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
   });
   if (typeof picked !== "string") return null;
   if (platform === "3ds") {
@@ -518,7 +529,7 @@ export async function playOpenSave() {
   const view = saveState.view;
   const path = saveState.path;
   if (!view || !path) return;
-  const platform: PlayPlatform = view.generation >= 6 ? "3ds" : "nds";
+  const platform: PlayPlatform = view.generation >= 6 ? "3ds" : view.generation <= 3 ? "gba" : "nds";
   if (saveState.dirty) {
     const ok = await ask("Enregistrer tes modifications avant de lancer le jeu ?", {
       title: "Modifications non enregistrées",
@@ -530,11 +541,12 @@ export async function playOpenSave() {
     if (saveState.dirty) return;
   }
   let rom: string | null = null;
-  if (platform === "nds") {
+  if (platform === "nds" || platform === "gba") {
     rom = await invoke<string | null>("play_find_rom", { save: path }).catch(() => null);
     if (!rom) {
       const stem = fileName(path).replace(/\.[^.]+$/, "").toLowerCase();
-      rom = library.items.find((d) => d.kind === "nds_rom" && d.fileName.replace(/\.[^.]+$/, "").toLowerCase() === stem)?.path ?? null;
+      const kind = platform === "gba" ? "gba_rom" : "nds_rom";
+      rom = library.items.find((d) => d.kind === kind && d.fileName.replace(/\.[^.]+$/, "").toLowerCase() === stem)?.path ?? null;
     }
   }
   const result = await play({ platform, rom, save: path });

@@ -23,9 +23,10 @@ const props = defineProps<{ games: Detection[] }>();
 
 // --- Onglets
 
-type Tab = "all" | "nds" | "3ds" | "switch";
+type Tab = "all" | "gba" | "nds" | "3ds" | "switch";
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "Tous" },
+  { id: "gba", label: "Game Boy Advance" },
   { id: "nds", label: "Nintendo DS" },
   { id: "3ds", label: "Nintendo 3DS" },
   { id: "switch", label: "Nintendo Switch" },
@@ -219,7 +220,7 @@ const playLabel = computed(() => {
     const p = installing.value;
     return p.step === "download" && p.total ? `Téléchargement ${formatMo(p.done)} / ${formatMo(p.total)}` : "Installation…";
   }
-  if (emus.loaded && !emulator.value && game.value) return `Installer ${{ nds: "melonDS", "3ds": "Azahar", switch: "Eden" }[platformOf(game.value)]} et jouer`;
+  if (emus.loaded && !emulator.value && game.value) return `Installer ${{ gba: "mGBA", nds: "melonDS", "3ds": "Azahar", switch: "Eden" }[platformOf(game.value)]} et jouer`;
   return "Jouer";
 });
 

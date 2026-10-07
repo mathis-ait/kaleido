@@ -19,6 +19,7 @@ import {
   RANDOMIZABLE,
   isKaleidoRom,
   isRom,
+  romExt,
   type CompatMode,
   type CtrOutcome,
   type ItemSettings,
@@ -531,11 +532,12 @@ async function importCode() {
 async function generate() {
   if (!selected.value) return;
   if (isCtr.value) return generateCtr();
-  const base = selected.value.path.replace(/\.nds$/i, "");
+  const base = selected.value.path.replace(/\.(nds|gba)$/i, "");
+  const ext = romExt(selected.value.path);
   const output = await save({
     title: "Enregistrer la ROM randomisée",
-    defaultPath: `${base} - Kaleido ${seed.value}.nds`,
-    filters: [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+    defaultPath: `${base} - Kaleido ${seed.value}.${ext}`,
+    filters: [{ name: ext === "gba" ? "ROM Game Boy Advance" : "ROM Nintendo DS", extensions: [ext] }],
   });
   if (!output) return;
   running.value = true;

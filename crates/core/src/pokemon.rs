@@ -133,7 +133,8 @@ impl Personal {
     /// Taille minimale d'une fiche, par génération (X/Y : 0x40, ROSA : 0x50, Gen 7 : 0x54).
     fn min_size(generation: u8) -> usize {
         match generation {
-            0..=4 => 0x2C,
+            0..=3 => 0x1C,
+            4 => 0x2C,
             5 => 0x3C,
             6 => 0x40,
             _ => 0x54,

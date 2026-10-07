@@ -13,6 +13,7 @@ Ils sont embarqués par `crates/core/src/dex/`.
 | `text/met4_*.txt` | `text/locations/gen4/text_hgss_{00000,02000,03000}_fr.txt` |
 | `text/met5_*.txt`, `met6_*`, `met7_*` | `text/locations/gen{5,6,7}/text_{bw2,xy,sm}_{00000,30000,40000,60000}_fr.txt` |
 | `personal/personal_*` | `byte/personal/personal_{dp,pt,hgss,bw,b2w2,xy,ao,sm,uu}` |
+| `personal/personal_{rs,e,fr}`, `levelup/lvlmove_{rs,e,fr}.pkl`, `eggmove/eggmove_rs.pkl` | `byte/` (Gen 3, commit `02c9ec108fe3c96735f6c2397eaebc10e29a049f` ; Vert Feuille partage la table de Rouge Feu, seules les statistiques de Deoxys diffèrent) |
 | `levelup/lvlmove_*.pkl` | `byte/levelup/` (mêmes jeux) |
 | `eggmove/eggmove_*.pkl` | `byte/eggmove/eggmove_{dppt,hgss,bw,xy,ao,sm,uu}.pkl` |
 | `moves/pp_g{4,5,6,7}.txt`, `moves/type_g{5,9}.txt` | tableaux `PP` et `Type` de `PKHeX.Core/Moves/MoveInfo{4,5,6,7,9}.cs`, recopiés en texte |

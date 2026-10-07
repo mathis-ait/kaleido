@@ -10,7 +10,7 @@ async function pickFiles() {
     multiple: true,
     title: "Ouvrir une ROM ou une sauvegarde",
     filters: [
-      { name: "ROMs et sauvegardes", extensions: ["nds", "3ds", "cci", "cia", "cxi", "sav", "dsv", "bin"] },
+      { name: "ROMs et sauvegardes", extensions: ["gba", "nds", "3ds", "cci", "cia", "cxi", "sav", "dsv", "bin"] },
       { name: "Tous les fichiers", extensions: ["*"] },
     ],
   });

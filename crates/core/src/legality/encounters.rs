@@ -16,6 +16,11 @@ use crate::dex::Game;
 
 // --- Versions (`GameVersion` de PKHeX).
 
+pub const SA: u8 = 1;
+pub const RU: u8 = 2;
+pub const EM: u8 = 3;
+pub const FR: u8 = 4;
+pub const LG: u8 = 5;
 pub const HG: u8 = 7;
 pub const SS: u8 = 8;
 pub const D: u8 = 10;
@@ -37,6 +42,9 @@ pub const UM: u8 = 33;
 /// Versions d'un groupe de jeux.
 pub fn game_versions(game: Game) -> &'static [u8] {
     match game {
+        Game::RS => &[RU, SA],
+        Game::E => &[EM],
+        Game::FRLG => &[FR, LG],
         Game::DP => &[D, P],
         Game::Pt => &[PT],
         Game::HGSS => &[HG, SS],
@@ -52,6 +60,9 @@ pub fn game_versions(game: Game) -> &'static [u8] {
 /// Groupe de jeux d'une version Gen 4 à 7.
 pub fn version_game(version: u8) -> Option<Game> {
     Some(match version {
+        RU | SA => Game::RS,
+        EM => Game::E,
+        FR | LG => Game::FRLG,
         D | P => Game::DP,
         PT => Game::Pt,
         HG | SS => Game::HGSS,
@@ -755,6 +766,8 @@ fn build(game: Game) -> Vec<Encounter> {
         Game::ORAS => &[(pkl!("or"), OR), (pkl!("as"), AS)],
         Game::SM => &[(pkl!("sn"), SN), (pkl!("mn"), MN)],
         Game::USUM => &[(pkl!("us"), US), (pkl!("um"), UM)],
+        // Gen 3 : rencontres lues par `gen3_encounters` (format `EncounterArea3`).
+        Game::RS | Game::E | Game::FRLG => &[],
     };
     for &(data, version) in files {
         read_areas(data, version, generation, &mut out);
@@ -793,7 +806,7 @@ fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
     out
 }
 
-static TABLES: [LazyLock<Vec<Encounter>>; 9] = [
+static TABLES: [LazyLock<Vec<Encounter>>; 12] = [
     LazyLock::new(|| build(Game::DP)),
     LazyLock::new(|| build(Game::Pt)),
     LazyLock::new(|| build(Game::HGSS)),
@@ -803,6 +816,9 @@ static TABLES: [LazyLock<Vec<Encounter>>; 9] = [
     LazyLock::new(|| build(Game::ORAS)),
     LazyLock::new(|| build(Game::SM)),
     LazyLock::new(|| build(Game::USUM)),
+    LazyLock::new(|| build(Game::RS)),
+    LazyLock::new(|| build(Game::E)),
+    LazyLock::new(|| build(Game::FRLG)),
 ];
 
 /// Toutes les rencontres d'un groupe de jeux (sauvages puis fixes, dons, échanges…).

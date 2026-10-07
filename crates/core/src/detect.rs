@@ -6,6 +6,7 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
 use kaleido_formats::ctr::{self, CtrImage};
+use kaleido_formats::gba::GbaHeader;
 use kaleido_formats::nds::NdsHeader;
 use kaleido_formats::{stream_len, FormatError};
 use serde::Serialize;
@@ -19,6 +20,7 @@ const MAX_SAVE_SIZE: u64 = 0x100000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileKind {
+    GbaRom,
     NdsRom,
     CtrRom,
     CtrDump,
@@ -129,7 +131,7 @@ pub enum DetectError {
 }
 
 /// Extensions des fichiers ajoutés quand on dépose un dossier ordinaire.
-const KNOWN_EXTENSIONS: &[&str] = &["nds", "3ds", "cci", "cia", "cxi", "sav", "dsv"];
+const KNOWN_EXTENSIONS: &[&str] = &["gba", "nds", "3ds", "cci", "cia", "cxi", "sav", "dsv"];
 
 fn is_ctr_dump(dir: &Path) -> bool {
     dir.join("romfs").is_dir() || dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs"))
@@ -209,6 +211,14 @@ pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError
         d
     } else if let Some(image) = CtrImage::probe(r)? {
         from_ctr(&image)
+    } else if let Some(header) = GbaHeader::probe(r)? {
+        let mut d = from_gba(&header);
+        if let Some(tag) = kaleido_formats::gba::read_signature(r)?.and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok()) {
+            d.detail("Randomisée par", format!("Kaleido {}", tag.version));
+            d.detail("Seed", tag.seed.to_string());
+            d.kaleido = Some(tag);
+        }
+        d
     } else if size <= MAX_SAVE_SIZE {
         let mut data = Vec::with_capacity(size as usize);
         r.rewind().map_err(FormatError::from)?;
@@ -229,7 +239,7 @@ pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError
 
 fn unknown() -> Detection {
     let mut d = Detection::new(FileKind::Unknown, "Fichier non reconnu");
-    d.warnings.push("Ce fichier n'est ni une ROM DS/3DS, ni une sauvegarde Gen 4 à 7 connue.".into());
+    d.warnings.push("Ce fichier n'est ni une ROM GBA, DS ou 3DS, ni une sauvegarde connue.".into());
     d
 }
 
@@ -251,6 +261,27 @@ fn from_nds(h: &NdsHeader) -> Detection {
     d.detail("Révision", format!("1.{}", h.rom_version));
     if !h.header_crc_ok {
         d.warnings.push("Le CRC de l'en-tête est incorrect : la ROM a peut-être été modifiée.".into());
+    }
+    d
+}
+
+fn from_gba(h: &GbaHeader) -> Detection {
+    let mut d = match Game::from_gba_code(&h.game_code) {
+        Some(g) => Detection::new(FileKind::GbaRom, g.name_fr()).with_game(g),
+        None => {
+            let mut d = Detection::new(FileKind::GbaRom, format!("ROM GBA « {} »", h.title));
+            d.platform = Some(Platform::Gba);
+            d.warnings.push("Jeu Game Boy Advance non pris en charge par Kaleido.".into());
+            d
+        }
+    };
+    d.language = h.region().and_then(nds_language).map(Into::into);
+    d.is_french = h.region() == Some('F');
+    d.detail("Titre interne", &h.title);
+    d.detail("Code jeu", &h.game_code);
+    d.detail("Révision", format!("1.{}", h.version));
+    if !h.complement_ok {
+        d.warnings.push("Le complément de l'en-tête est incorrect : la ROM a peut-être été modifiée.".into());
     }
     d
 }
@@ -399,5 +430,31 @@ mod tests {
     fn unknown_file() {
         let d = detect_stream(&mut Cursor::new(vec![1u8; 100])).unwrap();
         assert_eq!(d.kind, FileKind::Unknown);
+    }
+}
+
+#[cfg(test)]
+mod gba_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// En-tête synthétique : aucune vraie ROM Gen 3 n'est disponible pour les tests.
+    #[test]
+    fn detects_french_emerald() {
+        let mut rom = vec![0xFFu8; 0x20000];
+        rom[..0xC0].copy_from_slice(&kaleido_formats::gba::synthetic_header("POKEMON EMER", "BPEF", 0));
+        let d = detect_stream(&mut Cursor::new(rom.clone())).unwrap();
+        assert_eq!(d.kind, FileKind::GbaRom);
+        assert_eq!(d.title, "Pokémon Émeraude");
+        assert_eq!(d.platform, Some(Platform::Gba));
+        assert_eq!(d.generation, Some(3));
+        assert!(d.is_french && d.warnings.is_empty());
+        assert!(d.kaleido.is_none());
+
+        let mut g = kaleido_formats::gba::GbaRom::from_bytes(rom).unwrap();
+        let tag = crate::randomizer::KaleidoTag { tool: "Kaleido".into(), version: "0.0".into(), seed: 42, share_code: "KLD1-x".into() };
+        g.set_signature(&serde_json::to_vec(&tag).unwrap()).unwrap();
+        let d = detect_stream(&mut Cursor::new(g.to_bytes())).unwrap();
+        assert_eq!(d.kaleido.map(|t| t.seed), Some(42));
     }
 }

@@ -5,7 +5,7 @@
 //!   (GameTDB, puis libretro-thumbnails), téléchargée une fois puis gardée dans
 //!   `<données>/covers-fr`.
 //! - Émulateurs : dernière release GitHub officielle (archive Windows .zip),
-//!   décompressée dans `<données locales>/emulators/<nom>`, puis l'exécutable est
+//!   (.zip, ou .7z pour mGBA) décompressée dans `<données locales>/emulators/<nom>`, puis l'exécutable est
 //!   enregistré dans le profil de l'émulateur (voir `play.rs`).
 
 use std::fs;
@@ -93,7 +93,8 @@ const LIBRETRO_URL: &str = "https://raw.githubusercontent.com/libretro-thumbnail
 /// Sources d'une boîte : GameTDB (plateforme, code produit européen) et noms No-Intro
 /// libretro (dépôt, boîte française, boîte européenne si pas de française).
 struct CoverSources {
-    tdb: (&'static str, &'static str),
+    /// GameTDB n'a pas de boîtes Game Boy Advance.
+    tdb: Option<(&'static str, &'static str)>,
     repo: &'static str,
     fr: Option<&'static str>,
     eu: Option<&'static str>,
@@ -102,9 +103,18 @@ struct CoverSources {
 fn cover_sources(game: &str) -> Option<CoverSources> {
     const DS: &str = "Nintendo_-_Nintendo_DS";
     const CTR: &str = "Nintendo_-_Nintendo_3DS";
-    let ds = |code, fr| CoverSources { tdb: ("ds", code), repo: DS, fr: Some(fr), eu: None };
-    let ctr = |code, eu| CoverSources { tdb: ("3ds", code), repo: CTR, fr: None, eu: Some(eu) };
+    const GBA: &str = "Nintendo_-_Game_Boy_Advance";
+    let ds = |code, fr| CoverSources { tdb: Some(("ds", code)), repo: DS, fr: Some(fr), eu: None };
+    let ctr = |code, eu| CoverSources { tdb: Some(("3ds", code)), repo: CTR, fr: None, eu: Some(eu) };
+    let gba = |fr, eu| CoverSources { tdb: None, repo: GBA, fr: Some(fr), eu: Some(eu) };
     Some(match game {
+        // Noms No-Intro des dossiers libretro « Nintendo - Game Boy Advance » ; la boîte
+        // américaine et européenne sert de repli si la française manque.
+        "ruby" => gba("Pokemon - Version Rubis (France)", "Pokemon - Ruby Version (USA, Europe)"),
+        "sapphire" => gba("Pokemon - Version Saphir (France)", "Pokemon - Sapphire Version (USA, Europe)"),
+        "emerald" => gba("Pokemon - Version Emeraude (France)", "Pokemon - Emerald Version (USA, Europe)"),
+        "fire_red" => gba("Pokemon - Version Rouge Feu (France)", "Pokemon - FireRed Version (USA, Europe)"),
+        "leaf_green" => gba("Pokemon - Version Vert Feuille (France)", "Pokemon - LeafGreen Version (USA, Europe)"),
         "diamond" => ds("ADAF", "Pokemon - Version Diamant (France) (Rev 5)"),
         "pearl" => ds("APAF", "Pokemon - Version Perle (France) (Rev 5)"),
         "platinum" => ds("CPUF", "Pokemon - Version Platine (France)"),
@@ -143,10 +153,9 @@ pub fn cover_urls(game: &str) -> Vec<String> {
         return vec![format!("https://api.nlib.cc/nx/{tid}/icon/512/512")];
     }
     let Some(s) = cover_sources(game) else { return Vec::new() };
-    let (platform, code) = s.tdb;
-    let mut urls = vec![format!("{GAMETDB_URL}/{platform}/coverHQ/FR/{code}.jpg")];
+    let mut urls: Vec<String> = s.tdb.iter().map(|(platform, code)| format!("{GAMETDB_URL}/{platform}/coverHQ/FR/{code}.jpg")).collect();
     urls.extend(s.fr.map(|n| libretro_url(s.repo, n)));
-    urls.push(format!("{GAMETDB_URL}/{platform}/coverM/FR/{code}.jpg"));
+    urls.extend(s.tdb.iter().map(|(platform, code)| format!("{GAMETDB_URL}/{platform}/coverM/FR/{code}.jpg")));
     urls.extend(s.eu.map(|n| libretro_url(s.repo, n)));
     urls
 }
@@ -248,11 +257,13 @@ pub struct GameStatus {
 
 /// Sauvegarde, dresseur et temps de jeu d'un jeu de la bibliothèque.
 #[tauri::command]
-pub async fn game_status(rom: Option<PathBuf>, mod_romfs: Option<PathBuf>, ctr: bool, key: String, app: AppHandle) -> Result<GameStatus, String> {
+pub async fn game_status(rom: Option<PathBuf>, mod_romfs: Option<PathBuf>, ctr: bool, gba: Option<bool>, key: String, app: AppHandle) -> Result<GameStatus, String> {
     crate::blocking(move || {
         let mut status = GameStatus { kaleido_seconds: play::tracked_play_time(&app).get(&key).copied(), ..Default::default() };
         let config = play::load_config(&app);
-        let Some(r) = play::default_emulator(&config, &play::Env::system(&config.search_dirs), ctr) else { return Ok(status) };
+        let env = play::Env::system(&config.search_dirs);
+        let found = if gba.unwrap_or(false) { play::default_gba_emulator(&config, &env) } else { play::default_emulator(&config, &env, ctr) };
+        let Some(r) = found else { return Ok(status) };
         status.emulator = Some(r.id.name());
         let request = play::PlayRequest { emulator: r.id, rom, mod_romfs, save: None, replace_mod: false, track_key: None };
         let tid = if ctr { play::request_title_id(&request) } else { None };
@@ -382,6 +393,8 @@ fn source(id: EmulatorId) -> Option<(&'static str, fn(&str) -> bool)> {
         EmulatorId::Desmume => ("TASEmulators/desmume", |n| n.ends_with("-win64.zip")),
         // Version MSVC : conseillée par Eden pour Pokémon Écarlate / Violet.
         EmulatorId::Eden => (EDEN_RELEASES, |n| n.starts_with("Eden-Windows-") && n.ends_with("-amd64-msvc-standard.zip")),
+        // Archive portable 64 bits (`mGBA-0.10.5-win64.7z`), pas l'installateur.
+        EmulatorId::Mgba => ("mgba-emu/mgba", |n| n.starts_with("mGBA-") && n.ends_with("-win64.7z")),
         _ => return None,
     })
 }
@@ -553,7 +566,7 @@ pub async fn emulator_install(id: EmulatorId, app: AppHandle) -> Result<Emulator
         let archive = root.join(format!("{}.download", asset.name));
         download_to(&asset.browser_download_url, &archive, asset.size, |d, t| emit("download", d, t))?;
 
-        let extracted = extract_zip(&archive, &dest, |d, t| emit("extract", d, t));
+        let extracted = crate::mods::extract_any(&archive, &dest, |d, t| emit("extract", d, t));
         let _ = fs::remove_file(&archive);
         extracted?;
 
@@ -561,7 +574,13 @@ pub async fn emulator_install(id: EmulatorId, app: AppHandle) -> Result<Emulator
         let mut config = play::load_config(&app);
         config.profiles.entry(id).or_default().exe = Some(exe);
         if !id.is_switch() {
-            let preferred = if id.is_ctr() { &mut config.preferred_ctr } else { &mut config.preferred_nds };
+            let preferred = if id.is_ctr() {
+                &mut config.preferred_ctr
+            } else if id.is_gba() {
+                &mut config.preferred_gba
+            } else {
+                &mut config.preferred_nds
+            };
             if preferred.is_none() {
                 *preferred = Some(id);
             }
@@ -589,7 +608,14 @@ mod tests {
         let x = cover_urls("x");
         assert!(x[0].ends_with("/3ds/coverHQ/FR/EKJP.jpg"));
         assert!(x.last().unwrap().contains("Pokemon%20X%20%28Europe%29"));
-        assert!(cover_urls("emerald").is_empty());
+        assert_eq!(
+            cover_urls("emerald"),
+            [
+                "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Game_Boy_Advance/master/Named_Boxarts/Pokemon%20-%20Version%20Emeraude%20%28France%29.png",
+                "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Game_Boy_Advance/master/Named_Boxarts/Pokemon%20-%20Emerald%20Version%20%28USA%2C%20Europe%29.png",
+            ]
+        );
+        assert!(cover_urls("pokemon_stadium").is_empty());
         assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
         assert!(switch_cover_id("nx-0100").is_none());
     }
@@ -637,6 +663,9 @@ mod tests {
         assert!(!az("azahar-windows-msvc-2126.1.2-installer.exe") && !az("azahar-libretro-windows-x86_64-2126.1.2.zip"));
         let (_, des) = source(EmulatorId::Desmume).unwrap();
         assert!(des("desmume-0.9.13-win64.zip") && !des("desmume-0.9.9a-win64.7z"));
+        let (repo, mgba) = source(EmulatorId::Mgba).unwrap();
+        assert_eq!(repo, "mgba-emu/mgba");
+        assert!(mgba("mGBA-0.10.5-win64.7z") && !mgba("mGBA-0.10.5-win64-installer.exe") && !mgba("mGBA-0.10.5-win32.7z"));
         assert!(source(EmulatorId::Citra).is_none());
     }
 }

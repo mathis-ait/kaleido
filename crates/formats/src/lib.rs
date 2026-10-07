@@ -1,4 +1,4 @@
-//! Lecture des formats de fichiers bas niveau : ROMs Nintendo DS et 3DS.
+//! Lecture des formats de fichiers bas niveau : ROMs Nintendo DS, 3DS et Game Boy Advance.
 //!
 //! Ce crate ne connaît rien de Pokémon : il sait seulement ouvrir des conteneurs
 //! et en extraire les métadonnées. Les fichiers peuvent peser plusieurs Go, donc
@@ -7,6 +7,7 @@
 pub mod ctr;
 pub mod ctr_build;
 pub mod garc;
+pub mod gba;
 pub mod ips;
 pub mod lz;
 pub mod narc;

@@ -11,6 +11,7 @@ import Icon from "./Icon.vue";
 const props = defineProps<{ item: Detection }>();
 
 const KIND_LABELS: Record<FileKind, string> = {
+  gba_rom: "ROM",
   nds_rom: "ROM",
   ctr_rom: "ROM",
   ctr_dump: "Dossier extrait",
@@ -19,8 +20,8 @@ const KIND_LABELS: Record<FileKind, string> = {
   switch_game: "Jeu Switch",
 };
 
-const platformLabel = computed(() => (props.item.platform === "nds" ? "DS" : props.item.platform === "3ds" ? "3DS" : null));
-const isRom = computed(() => ["nds_rom", "ctr_rom", "ctr_dump"].includes(props.item.kind) && props.item.game !== null);
+const platformLabel = computed(() => (props.item.platform === "nds" ? "DS" : props.item.platform === "3ds" ? "3DS" : props.item.platform === "gba" ? "GBA" : null));
+const isRom = computed(() => isRomFile(props.item));
 const isSave = computed(() => props.item.kind === "save");
 const canEdit = computed(() => isRomFile(props.item));
 const randomized = computed(() => isKaleidoRom(props.item));
