@@ -203,6 +203,12 @@ impl LiveReader {
 
     /// Nouveaux repères (après une sauvegarde en jeu) : nouvelle équipe à chercher si besoin.
     pub fn set_hints(&mut self, hints: RamHints) {
+        // Autre équipe dans la sauvegarde (premier Pokémon, capture…) : on relance la recherche,
+        // la copie suivie a pu être trouvée par le seul numéro du dresseur.
+        if hints.party_keys != self.hints.party_keys {
+            self.copies.clear();
+            self.searched_at = None;
+        }
         self.hints = hints;
     }
 
@@ -269,8 +275,12 @@ impl LiveReader {
             let ids = u32::from(h.tid) | u32::from(h.sid) << 16;
             for (hit, _) in scan::find_u32s(src, &regions, &[ids], 4096) {
                 let slot0 = beside(hit, h.tid_offset, h.party);
-                if !found.contains(&slot0) && self.is_save_block(src, slot0) {
+                // Le dresseur apparaît dans plusieurs blocs (SoulSilver : trois) : on garde le
+                // premier dont l'équipe se lit (Pokémon valides ou équipe vide).
+                let usable = read_party_at(src, h.format, slot0).ok().flatten().is_some() || empty_party(src, h, slot0);
+                if usable && self.is_save_block(src, slot0) {
                     found.push(slot0);
+                    break;
                 }
             }
         }

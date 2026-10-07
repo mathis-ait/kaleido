@@ -39,7 +39,11 @@ fn main() {
         "watch" => {
             let proc = Process::open(arg(1).parse().unwrap()).unwrap();
             let save = SaveSession::open(&std::fs::read(arg(2)).unwrap()).unwrap();
-            let hints = save.save.ram_hints();
+            let mut hints = save.save.ram_hints();
+            // KALEIDO_NO_KEYS=1 : simule une sauvegarde sans Pokémon (recherche par le dresseur).
+            if std::env::var_os("KALEIDO_NO_KEYS").is_some() {
+                hints.party_keys.clear();
+            }
             println!("dresseur {} {:?} ; équipe {:08x?}", save.save.trainer().name, hints.trainer_name_bytes.len(), hints.party_keys);
             let t = Instant::now();
             let console = match scan::find_ds_ram(&proc) {
