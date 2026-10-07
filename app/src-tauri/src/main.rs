@@ -27,6 +27,7 @@ mod library;
 mod mods;
 mod nuzlocke;
 mod nxmusic;
+mod overlay;
 mod play;
 mod saves;
 mod showdown;
@@ -299,6 +300,7 @@ fn main() {
         })
         .setup(|app| {
             library::watch_emulators(app.handle().clone());
+            overlay::init(app.handle());
             Ok(())
         })
         // Fermer la fenêtre principale quitte Kaleido, compagnon de partie compris.
@@ -326,6 +328,8 @@ fn main() {
             rom_editor_save_ctr,
             parse_share_code,
             sprite_cache_info,
+            overlay::overlay_status,
+            overlay::overlay_configure,
             clear_sprite_cache,
             saves::open_save,
             saves::save_view,

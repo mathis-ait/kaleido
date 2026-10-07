@@ -2,6 +2,26 @@ import type { GlossaryEntry } from "../glossary";
 
 /** Bulles « i » du compagnon de partie (glossaire central, préfixe « companion. »). */
 export const COMPANION_TERMS: Record<string, GlossaryEntry> = {
+  overlay: {
+    title: "Overlay de stream",
+    text: "Page web servie par Kaleido sur ton propre ordinateur, à ajouter dans OBS (ou Streamlabs) : elle affiche l'équipe, les morts ou les derniers évènements de la partie suivie par le compagnon, et se met à jour toute seule. Rien n'est envoyé sur Internet.",
+  },
+  obsSource: {
+    title: "Source navigateur dans OBS",
+    text: "Dans OBS : Sources, +, Navigateur. Colle l'URL copiée ici, mets la largeur 1920 et la hauteur 200 (ou celle indiquée pour la mise en page), puis place la source où tu veux. Le fond est transparent. Une source par élément : équipe, compteur, journal…",
+  },
+  overlayToken: {
+    title: "Jeton de l'URL",
+    text: "Le code « k=… » à la fin de l'URL empêche un site web ouvert dans ton navigateur de lire ta partie. « Nouveau jeton » rend les anciennes URL inutilisables : il faudra les recoller dans OBS.",
+  },
+  overlayPort: {
+    title: "Port",
+    text: "Numéro sur lequel Kaleido écoute, uniquement pour ton ordinateur (127.0.0.1). Si le port est déjà pris par un autre programme, Kaleido essaie les 10 suivants et affiche celui qu'il a retenu.",
+  },
+  overlayPixel: {
+    title: "Taille des sprites",
+    text: "Les sprites pixel restent nets : à partir de 1, chaque pixel du jeu devient un carré entier de pixels à l'écran (×1, ×2, ×3). Une taille de 1,5 est arrondie à ×2 pour les sprites.",
+  },
   companion: {
     title: "Compagnon de partie",
     text: "Petite fenêtre à garder à côté de l'émulateur. À chaque sauvegarde en jeu, Kaleido relit le fichier et met à jour l'équipe, les boîtes et la progression, sans que tu aies à cliquer. Il ne modifie jamais ta sauvegarde.",

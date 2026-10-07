@@ -5,6 +5,7 @@ import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Toggle from "../components/Toggle.vue";
 import EmulatorSettings from "../play/EmulatorSettings.vue";
+import OverlaySettings from "../companion/OverlaySettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -134,6 +135,9 @@ onMounted(refresh);
 
     <h2>Émulateurs</h2>
     <EmulatorSettings />
+
+    <h2>Overlay de stream</h2>
+    <OverlaySettings />
 
     <h2>Mises à jour</h2>
     <div class="update panel">

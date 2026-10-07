@@ -43,11 +43,13 @@ pub struct CompanionConfig {
     pub on_top: bool,
     /// Ouverture automatique au lancement d'un jeu, par jeu de la bibliothèque (absent = oui).
     pub auto_open: HashMap<String, bool>,
+    /// Overlay de stream (source navigateur OBS).
+    pub overlay: crate::overlay::OverlayConfig,
 }
 
 impl Default for CompanionConfig {
     fn default() -> Self {
-        CompanionConfig { width: 460.0, height: 780.0, x: None, y: None, on_top: true, auto_open: HashMap::new() }
+        CompanionConfig { width: 460.0, height: 780.0, x: None, y: None, on_top: true, auto_open: HashMap::new(), overlay: Default::default() }
     }
 }
 
@@ -55,11 +57,11 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("companion.json"))
 }
 
-fn load_config(app: &AppHandle) -> CompanionConfig {
+pub(crate) fn load_config(app: &AppHandle) -> CompanionConfig {
     config_path(app).ok().and_then(|p| fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-fn save_config(app: &AppHandle, c: &CompanionConfig) -> Result<(), String> {
+pub(crate) fn save_config(app: &AppHandle, c: &CompanionConfig) -> Result<(), String> {
     let path = config_path(app)?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -349,6 +351,7 @@ fn current(app: &AppHandle) -> Option<Target> {
 fn push(app: &AppHandle) {
     if let Some(t) = current(app) {
         let s = ingest(app, &t);
+        crate::overlay::publish(Some(&s));
         let _ = app.emit("companion-update", s);
     }
 }
@@ -378,6 +381,7 @@ fn on_window_event(app: &AppHandle, event: &WindowEvent) {
             if let Ok(mut s) = state.0.lock() {
                 *s = None;
             }
+            crate::overlay::publish::<CompanionState>(None);
         }
     }
 }
@@ -428,6 +432,9 @@ fn open(app: &AppHandle, target: Target) -> Result<(), String> {
             *slot = Some(Session { target, _watch: watch });
         }
     }
+    // Nouvelle partie suivie : la fenêtre déjà ouverte et l'overlay de stream la voient tout de suite.
+    let handle = app.clone();
+    std::thread::spawn(move || push(&handle));
     open_window(app)
 }
 
@@ -453,7 +460,12 @@ pub async fn companion_launch(path: PathBuf, title: String, key: Option<String>,
 #[tauri::command]
 pub async fn companion_state(app: AppHandle) -> Result<Option<CompanionState>, String> {
     let Some(t) = current(&app) else { return Ok(None) };
-    crate::blocking(move || Ok(Some(ingest(&app, &t)))).await
+    crate::blocking(move || {
+        let s = ingest(&app, &t);
+        crate::overlay::publish(Some(&s));
+        Ok(Some(s))
+    })
+    .await
 }
 
 /// Active le suivi Nuzlocke de la partie avec la ROM lancée.
