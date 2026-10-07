@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Backdrop from "./Backdrop.vue";
+import TitleScene from "./TitleScene.vue";
 import Icon from "../components/Icon.vue";
 import { openRom } from "../editor";
 import { hideGame, libraryUi } from "../games";
@@ -388,6 +389,7 @@ const meta = computed(() => {
 <template>
   <section class="launcher" :style="{ '--tint': color }" @wheel.passive="onWheel">
     <Backdrop :image="game ? coverUrl(game) : null" :color="color" />
+    <TitleScene :game="game ?? null" />
 
     <header class="topbar">
       <nav class="tabs">
@@ -542,7 +544,7 @@ const meta = computed(() => {
   user-select: none;
 }
 
-.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop) {
+.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop):not(.title-scene) {
   position: relative;
 }
 

@@ -99,6 +99,22 @@ pub fn title_theme(path: &Path, game: Game, max_seconds: f32) -> Result<Pcm, Mus
     decode_from(&src, file, max_seconds)
 }
 
+/// Vidéo de l'écran titre (fichier moflex brut : Mobiclip + IMA-ADPCM) des jeux Gen 7,
+/// qui en ont une ; la version française d'abord.
+pub fn title_video(path: &Path, game: Game) -> Result<Vec<u8>, MusicError> {
+    if game.generation() != 7 {
+        return Err(MusicError::NotFound(format!("vidéo de l'écran titre de {}", game.name_fr())));
+    }
+    let src = RomFsSource::open(path)?;
+    let file = title_files(game)
+        .iter()
+        .copied()
+        .find(|f| src.contains(f))
+        .or_else(|| src.files().iter().map(|f| f.path.as_str()).find(|p| p.starts_with("m/title_") && p.ends_with(".moflex")))
+        .ok_or_else(|| MusicError::NotFound(format!("vidéo de l'écran titre de {}", game.name_fr())))?;
+    Ok(src.read(file)?)
+}
+
 /// Flux audio du RomFS (BCSTM, AAC, vidéos moflex), triés par chemin.
 pub fn list_streams(path: &Path) -> Result<Vec<String>, MusicError> {
     let src = RomFsSource::open(path)?;

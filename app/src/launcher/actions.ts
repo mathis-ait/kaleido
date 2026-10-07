@@ -1,6 +1,7 @@
 import { reactive } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { allGames, titleIdOf } from "../games";
+import { library } from "../library";
 import { nav } from "../nav";
 import { isKaleidoRom, RANDOMIZABLE, type Detection } from "../types";
 import { openGameSave, play, type PlayOptions, type PlayPlatform } from "../play/play";
@@ -55,6 +56,8 @@ export const openSaveOf = (d: Detection) => openGameSave(playOptions(d));
 export const canRandomize = (d: Detection) => !isKaleidoRom(d) && RANDOMIZABLE.includes(d.game?.id ?? "");
 
 export function randomize(d: Detection) {
+  // Le Randomizer choisit parmi les fichiers ouverts : un jeu de la bibliothèque y est ajouté.
+  if (!library.items.some((x) => x.path === d.path)) library.items.unshift(d);
   nav.randomizerRom = d.path;
   nav.view = "randomizer";
 }

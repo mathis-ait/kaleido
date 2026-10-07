@@ -32,6 +32,7 @@ mod switch;
 mod teams;
 mod tuning;
 mod updates;
+mod video;
 
 /// ROM ouverte : DS (chargée en mémoire) ou 3DS (lue à la demande).
 enum Loaded {
@@ -354,6 +355,9 @@ fn main() {
             nxmusic::music_switch_preview,
             nxmusic::music_switch_choose,
             nxmusic::vgmstream_install,
+            video::title_video,
+            video::ffmpeg_install,
+            video::ffmpeg_download_info,
             library::game_status,
             library::emulators_running,
             library::library_scan_switch,

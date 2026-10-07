@@ -43,7 +43,8 @@ function prefersReducedMotion(): boolean {
 }
 
 function readStored(): SpritePrefs {
-  const fallback: SpritePrefs = { style: "ani", everywhere: false, reduceMotion: prefersReducedMotion() };
+  // Par défaut : pixels animés, partout (les plus lisibles, en grand comme en petit).
+  const fallback: SpritePrefs = { style: "gen5ani", everywhere: true, reduceMotion: prefersReducedMotion() };
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<SpritePrefs> | null;
     if (!raw) return fallback;

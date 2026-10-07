@@ -185,6 +185,14 @@ const ctrResult = ref<CtrOutcome | null>(null);
 const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
+// ROM envoyée depuis la bibliothèque alors que le Randomizer est déjà ouvert.
+watch(
+  () => nav.randomizerRom,
+  (p) => {
+    if (p) romPath.value = p;
+  },
+);
+
 onMounted(async () => {
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
   presets.value = await invoke<Preset[]>("randomizer_presets").catch(() => []);
