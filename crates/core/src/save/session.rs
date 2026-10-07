@@ -284,6 +284,10 @@ fn base_stats(game: Game, species: u16, form: u8) -> Option<crate::pokemon::Base
 /// Jeu des données correspondant à une sauvegarde.
 pub fn game_of(v: SaveVersion) -> Game {
     match v {
+        SaveVersion::RedBlue => Game::RB,
+        SaveVersion::Yellow => Game::Y,
+        SaveVersion::GoldSilver => Game::GS,
+        SaveVersion::Crystal => Game::C,
         SaveVersion::RubySapphire => Game::RS,
         SaveVersion::Emerald => Game::E,
         SaveVersion::FireRedLeafGreen => Game::FRLG,
@@ -319,6 +323,10 @@ pub fn suggested_moves(game: Game, species: u16, form: u8, level: u8) -> [u16; 4
 /// Identifiant de version (`GameVersion` de PKHeX) du premier jeu de la paire.
 pub fn default_version_id(v: SaveVersion) -> u8 {
     match v {
+        SaveVersion::RedBlue => 35,
+        SaveVersion::Yellow => 38,
+        SaveVersion::GoldSilver => 39,
+        SaveVersion::Crystal => 41,
         SaveVersion::RubySapphire => 2,
         SaveVersion::Emerald => 3,
         SaveVersion::FireRedLeafGreen => 4,

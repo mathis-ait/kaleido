@@ -93,6 +93,8 @@ fn set_flag(d: &mut [u8], ofs: usize, bit: usize, value: bool) {
 /// Variante du Pokédex, avec la taille des données.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
+    /// Gen 1 / 2 : drapeaux « capturé » au début du Pokédex, « vu » `seen` octets plus loin.
+    Gb { seen: usize, max: u16 },
     /// Gen 3 : `mirror` = second et troisième exemplaires des drapeaux « vu », relatifs au Pokédex.
     Gen3 { mirror: [usize; 2] },
     Gen4 { dp: bool, hgss: bool },
@@ -106,6 +108,9 @@ impl Kind {
         // Vérifié : PKHeX SAV3 (PokeDex = petit bloc + 0x18 ; SeenOffset2 / SeenOffset3 du grand bloc).
         let g3 = |a: usize, b: usize| Kind::Gen3 { mirror: [super::gen3::LARGE + a - 0x18, super::gen3::LARGE + b - 0x18] };
         match version {
+            // Vérifié : PKHeX SAV1Offsets / SAV2Offsets (PokedexCaught, PokedexSeen).
+            SaveVersion::RedBlue | SaveVersion::Yellow => Kind::Gb { seen: 0x13, max: 151 },
+            SaveVersion::GoldSilver | SaveVersion::Crystal => Kind::Gb { seen: 0x20, max: 251 },
             SaveVersion::RubySapphire => g3(0x938, 0x3A8C),
             SaveVersion::Emerald => g3(0x988, 0x3B24),
             SaveVersion::FireRedLeafGreen => g3(0x5F8, 0x3A18),
@@ -124,6 +129,7 @@ impl Kind {
     // Vérifié : PKHeX Legal.MaxSpeciesID_4/5/6, SAV7SM / SAV7USUM (MaxSpeciesID 802 / 807).
     fn max_species(self) -> u16 {
         match self {
+            Kind::Gb { max, .. } => max,
             Kind::Gen3 { .. } => 386,
             Kind::Gen4 { .. } => 493,
             Kind::Gen5 { .. } => 649,
@@ -138,6 +144,7 @@ impl Kind {
     // 7SM/7USUM (0xF78) ; Gen 4 : dernier octet utilisé par Zukan4 (formes HGSS de Pichu).
     fn size(self) -> usize {
         match self {
+            Kind::Gb { seen, .. } => 2 * seen,
             Kind::Gen3 { mirror } => mirror[1] + gen3::FLAGS,
             Kind::Gen4 { hgss, .. } => gen4::form2(hgss) + 7,
             Kind::Gen5 { b2w2: false } => 0x4D4,
@@ -203,6 +210,7 @@ impl SaveFile {
 
 fn get_seen(kind: Kind, d: &[u8], species: u16) -> bool {
     match kind {
+        Kind::Gb { seen, .. } => gen3::flag(d, seen, species),
         Kind::Gen3 { .. } => gen3::flag(d, gen3::SEEN, species),
         Kind::Gen4 { .. } => gen4::get_seen(d, species),
         Kind::Gen5 { .. } => gen56::get_seen(&gen56::Layout::gen5(kind), d, species),
@@ -213,6 +221,7 @@ fn get_seen(kind: Kind, d: &[u8], species: u16) -> bool {
 
 fn get_caught(kind: Kind, d: &[u8], species: u16) -> bool {
     match kind {
+        Kind::Gb { .. } => gen3::flag(d, 0, species),
         Kind::Gen3 { .. } => gen3::flag(d, gen3::CAUGHT, species),
         Kind::Gen4 { .. } => gen4::get_caught(d, species),
         Kind::Gen5 { .. } => gen56::get_caught(d, species),
@@ -223,6 +232,10 @@ fn get_caught(kind: Kind, d: &[u8], species: u16) -> bool {
 
 fn set_entry(kind: Kind, d: &mut [u8], species: u16, seen: bool, caught: bool, lang: u8) {
     match kind {
+        Kind::Gb { seen: at, .. } => {
+            gen3::set_flag(d, 0, species, caught);
+            gen3::set_flag(d, at, species, seen);
+        }
         Kind::Gen3 { mirror } => {
             gen3::set_flag(d, gen3::CAUGHT, species, caught);
             for at in [gen3::SEEN, mirror[0], mirror[1]] {
@@ -887,6 +900,7 @@ mod tests {
     /// Sauvegarde synthétique vierge de chaque jeu.
     fn blank(version: SaveVersion) -> Vec<u8> {
         match version {
+            SaveVersion::RedBlue | SaveVersion::Yellow | SaveVersion::GoldSilver | SaveVersion::Crystal => crate::save::gen12_blank(version),
             SaveVersion::RubySapphire | SaveVersion::Emerald | SaveVersion::FireRedLeafGreen => crate::save::gen3_blank(version),
             SaveVersion::DiamondPearl | SaveVersion::Platinum | SaveVersion::HeartGoldSoulSilver => save4::blank(version, 0, 1),
             SaveVersion::BlackWhite | SaveVersion::Black2White2 => save5::blank(version),

@@ -267,6 +267,8 @@ const FRLG3: &[PouchSpec] = &[
 
 fn bag(version: SaveVersion) -> (Encoding, &'static [PouchSpec]) {
     match version {
+        // Sac Gen 1 / 2 non géré : aucune poche.
+        SaveVersion::RedBlue | SaveVersion::Yellow | SaveVersion::GoldSilver | SaveVersion::Crystal => (Encoding::Pair, &[]),
         SaveVersion::RubySapphire => (Encoding::Gen3, RS3),
         SaveVersion::Emerald => (Encoding::Gen3, E3),
         SaveVersion::FireRedLeafGreen => (Encoding::Gen3, FRLG3),

@@ -305,7 +305,11 @@ pub struct Report {
 pub fn compatible(game: Game, version: SaveVersion) -> bool {
     matches!(
         (game, version),
-        (Game::Ruby | Game::Sapphire, SaveVersion::RubySapphire)
+        (Game::Red | Game::Blue, SaveVersion::RedBlue)
+            | (Game::Yellow, SaveVersion::Yellow)
+            | (Game::Gold | Game::Silver, SaveVersion::GoldSilver)
+            | (Game::Crystal, SaveVersion::Crystal)
+            | (Game::Ruby | Game::Sapphire, SaveVersion::RubySapphire)
             | (Game::Emerald, SaveVersion::Emerald)
             | (Game::FireRed | Game::LeafGreen, SaveVersion::FireRedLeafGreen)
             | (Game::Diamond | Game::Pearl, SaveVersion::DiamondPearl)

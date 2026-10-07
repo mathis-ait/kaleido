@@ -410,6 +410,10 @@ fn guess_3ds(file: &[u8], full: bool) -> GiftFormat {
 /// Versions (`GameVersion` de PKHeX) d'une sauvegarde.
 pub fn versions_of(version: SaveVersion) -> &'static [u8] {
     match version {
+        SaveVersion::RedBlue => &[35, 37],
+        SaveVersion::Yellow => &[38],
+        SaveVersion::GoldSilver => &[39, 40],
+        SaveVersion::Crystal => &[41],
         SaveVersion::RubySapphire => &[1, 2],
         SaveVersion::Emerald => &[3],
         SaveVersion::FireRedLeafGreen => &[4, 5],

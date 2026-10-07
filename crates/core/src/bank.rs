@@ -164,6 +164,8 @@ pub struct Bank {
 
 fn format_of_gen(generation: u8) -> Option<PkmFormat> {
     match generation {
+        1 => Some(PkmFormat::Gen1),
+        2 => Some(PkmFormat::Gen2),
         3 => Some(PkmFormat::Gen3),
         4 => Some(PkmFormat::Gen4),
         5 => Some(PkmFormat::Gen5),
@@ -347,7 +349,7 @@ impl Bank {
         let mut n = nanos;
         loop {
             let id = format!("{n:x}");
-            let taken = ["pk3", "pk4", "pk5", "pk6", "pk7"].iter().any(|ext| self.root.join(POKEMON_DIR).join(format!("{id}.{ext}")).exists());
+            let taken = ["pk1", "pk2", "pk3", "pk4", "pk5", "pk6", "pk7"].iter().any(|ext| self.root.join(POKEMON_DIR).join(format!("{id}.{ext}")).exists());
             if !taken {
                 return id;
             }

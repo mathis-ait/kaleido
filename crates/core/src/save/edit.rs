@@ -30,6 +30,9 @@ impl SaveFile {
     pub fn set_trainer(&mut self, p: &TrainerPatch) -> Result<(), SaveError> {
         let t = self.layout.trainer.clone();
         let format = self.format();
+        if format.is_gb() {
+            return self.set_trainer_gb(p, &t);
+        }
         if let Some(name) = &p.name {
             if name.trim().is_empty() {
                 return Err(SaveError::Invalid("le nom du dresseur ne peut pas être vide".into()));
@@ -69,9 +72,53 @@ impl SaveFile {
         Ok(())
     }
 
+    fn set_trainer_gb(&mut self, p: &TrainerPatch, t: &super::TrainerLayout) -> Result<(), SaveError> {
+        let gen = self.generation();
+        if let Some(name) = &p.name {
+            if name.trim().is_empty() {
+                return Err(SaveError::Invalid("le nom du dresseur ne peut pas être vide".into()));
+            }
+            let bytes = crate::text::gen12::encode(&name.to_uppercase(), t.name_max + 1, crate::text::gen12::TERMINATOR);
+            write(&mut self.data, t.name, &bytes, "nom du dresseur")?;
+        }
+        if let Some(v) = p.tid {
+            write(&mut self.data, t.tid, &v.to_be_bytes(), "ID dresseur")?;
+        }
+        if let Some(g) = p.gender {
+            if self.version == super::SaveVersion::Crystal {
+                write(&mut self.data, t.gender, &[(g == Gender::Female) as u8], "sexe du dresseur")?;
+            }
+        }
+        if let Some(m) = p.money {
+            super::gen12::set_money(gen, &mut self.data, t.money, m);
+        }
+        if let Some(h) = p.hours {
+            if gen == 1 {
+                write(&mut self.data, t.hours, &[h.min(255) as u8], "temps de jeu")?;
+            } else {
+                write(&mut self.data, t.hours, &h.min(999).to_be_bytes(), "temps de jeu")?;
+            }
+        }
+        if let Some(m) = p.minutes {
+            write(&mut self.data, t.minutes, &[m.min(59)], "temps de jeu")?;
+        }
+        if let Some(s) = p.seconds {
+            write(&mut self.data, t.seconds, &[s.min(59)], "temps de jeu")?;
+        }
+        Ok(())
+    }
+
     pub fn set_box_name(&mut self, index: usize, name: &str) -> Result<(), SaveError> {
         if index >= self.layout.box_count {
             return Err(SaveError::BadBox(index));
+        }
+        if self.format().is_gb() {
+            if self.generation() == 1 {
+                return Err(SaveError::Invalid("les boîtes n'ont pas de nom en Gen 1".into()));
+            }
+            let at = self.layout.box_names + index * 9;
+            let bytes = crate::text::gen12::encode(&name.to_uppercase(), 9, crate::text::gen12::TERMINATOR);
+            return write(&mut self.data, at, &bytes, "noms des boîtes");
         }
         let max = self.layout.box_name_max;
         let bytes = if self.format() == PkmFormat::Gen3 {

@@ -16,6 +16,10 @@ pub const DESMUME_FOOTER: usize = 0x7A;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveKind {
+    RedBlue,
+    Yellow,
+    GoldSilver,
+    Crystal,
     RubySapphire,
     Emerald,
     FireRedLeafGreen,
@@ -33,6 +37,10 @@ pub enum SaveKind {
 impl SaveKind {
     pub fn label(self) -> &'static str {
         match self {
+            SaveKind::RedBlue => "Pokémon Rouge / Bleu",
+            SaveKind::Yellow => "Pokémon Jaune",
+            SaveKind::GoldSilver => "Pokémon Or / Argent",
+            SaveKind::Crystal => "Pokémon Cristal",
             SaveKind::RubySapphire => "Pokémon Rubis / Saphir",
             SaveKind::Emerald => "Pokémon Émeraude",
             SaveKind::FireRedLeafGreen => "Pokémon Rouge Feu / Vert Feuille",
@@ -49,6 +57,8 @@ impl SaveKind {
 
     pub fn generation(self) -> u8 {
         match self {
+            SaveKind::RedBlue | SaveKind::Yellow => 1,
+            SaveKind::GoldSilver | SaveKind::Crystal => 2,
             SaveKind::RubySapphire | SaveKind::Emerald | SaveKind::FireRedLeafGreen => 3,
             SaveKind::DiamondPearl | SaveKind::Platinum | SaveKind::HeartGoldSoulSilver => 4,
             SaveKind::Gen5 => 5,
@@ -75,6 +85,9 @@ pub fn effective_size(len: u64) -> u64 {
 // Vérifié : PKHeX Saves/Util/SaveUtil.cs (SIZE_G6XY, SIZE_G6ORAS, SIZE_G7SM, SIZE_G7USUM,
 // SIZE_G4RAW = SIZE_G5RAW = 0x80000).
 pub fn identify(data: &[u8]) -> Option<SaveKind> {
+    if let Some(v) = crate::save::gen12_version(data) {
+        return Some(v.kind());
+    }
     if let Some(v) = crate::save::gen3_version(data) {
         return Some(v.kind());
     }

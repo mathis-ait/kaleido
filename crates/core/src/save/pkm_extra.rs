@@ -397,7 +397,7 @@ fn characteristic(ec: u32, iv32: u32, init0: bool) -> u8 {
 impl Pokemon {
     fn ribbon_table(&self) -> &'static [(&'static str, usize, u8)] {
         match self.format {
-            PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5 => &RIBBONS_DS,
+            PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5 => &RIBBONS_DS,
             PkmFormat::Gen6 => &RIBBONS_PK6,
             PkmFormat::Gen7 => &RIBBONS_PK7,
         }
@@ -422,7 +422,12 @@ impl Pokemon {
 
     /// Gen 3 : seuls les rubans de Hoenn (octets 0x3C à 0x3F du PK4) existent.
     fn ribbon_exists(&self, at: usize) -> bool {
-        self.format != PkmFormat::Gen3 || (0x3C..=0x3F).contains(&at)
+        match self.format {
+            // Pas de rubans en Gen 1 et 2.
+            PkmFormat::Gen1 | PkmFormat::Gen2 => false,
+            PkmFormat::Gen3 => (0x3C..=0x3F).contains(&at),
+            _ => true,
+        }
     }
 
     fn contest_offset(&self) -> usize {
@@ -452,7 +457,7 @@ impl Pokemon {
 
     fn ground_tile_offset(&self) -> Option<usize> {
         match self.format {
-            PkmFormat::Gen3 => None,
+            PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 => None,
             PkmFormat::Gen4 | PkmFormat::Gen5 => Some(G45_GROUND_TILE),
             PkmFormat::Gen6 => Some(G6_GROUND_TILE),
             PkmFormat::Gen7 => None,

@@ -59,6 +59,10 @@ pub fn item_name(id: u16) -> Option<&'static str> {
     if id & GEN3_ITEM_FLAG != 0 {
         return item_name_g3(id & !GEN3_ITEM_FLAG);
     }
+    // Objet Gen 2 sans équivalent (`save::pk12::GEN2_ITEM_FLAG`).
+    if id & 0x4000 != 0 {
+        return item_name_g2((id & 0xFF) as u8);
+    }
     lookup(&ITEMS, id as usize)
 }
 
