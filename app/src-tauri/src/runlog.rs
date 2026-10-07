@@ -76,6 +76,15 @@ pub fn kind_of(e: &GameEvent) -> &'static str {
 }
 
 impl RunLog {
+    /// Entrée décidée par le joueur (issue d'une rencontre vue en mémoire).
+    pub fn note(&mut self, kind: &str, text: String, at: u64, play_seconds: u32, place: Option<&str>, species: Option<u16>) {
+        self.journal.push(JournalEntry { at, play_seconds, place: place.map(str::to_string), kind: kind.to_string(), text, key: None, species });
+        if self.journal.len() > MAX_ENTRIES {
+            let extra = self.journal.len() - MAX_ENTRIES;
+            self.journal.drain(..extra);
+        }
+    }
+
     /// Ajoute les évènements d'une sauvegarde au journal.
     pub fn record(&mut self, events: &[GameEvent], at: u64, play_seconds: u32, place: Option<&str>) {
         for e in events {

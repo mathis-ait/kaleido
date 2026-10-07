@@ -37,7 +37,19 @@ async function clearCache() {
   await refresh();
 }
 
-onMounted(refresh);
+// Compagnon en direct : lecture de la mémoire de l'émulateur (activée par défaut).
+const memory = ref(true);
+async function setMemory(on: boolean) {
+  memory.value = on;
+  await invoke("companion_set_memory", { on }).catch(() => undefined);
+}
+
+onMounted(() => {
+  void refresh();
+  invoke<boolean>("companion_memory")
+    .then((on) => (memory.value = on))
+    .catch(() => undefined);
+});
 </script>
 
 <template>
@@ -155,6 +167,20 @@ onMounted(refresh);
       <pre v-if="updates.info?.newer && updates.info.notes" class="notes">{{ updates.info.notes }}</pre>
       <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement. Rien d'autre n'est envoyé." />
     </div>
+
+    <h2>À propos</h2>
+    <div class="about panel">
+      <p>
+        Kaleido est un logiciel libre, sous licence GPL version 3 ou ultérieure.
+      </p>
+      <p>
+        <strong>Compagnon en direct.</strong> Pour suivre ta partie à la seconde (PV, rencontres, K.O.), le compagnon lit la
+        mémoire de l'émulateur (melonDS, DeSmuME, Azahar) pendant que tu joues. Cette lecture est strictement en lecture seule :
+        Kaleido n'écrit jamais dans l'émulateur et n'y injecte rien. Certains antivirus signalent pourtant ce type d'accès à un
+        autre programme ; tu peux le couper ici ou dans le compagnon, qui suivra alors seulement ta sauvegarde.
+      </p>
+      <Toggle :model-value="memory" label="Lire la mémoire de l’émulateur" term="companion.memory" @update:model-value="setMemory" />
+    </div>
   </section>
 </template>
 
@@ -176,6 +202,23 @@ h2 {
 .lead {
   color: var(--text-dim);
   font-size: 16px;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 18px 20px;
+}
+
+.about p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-base);
+}
+
+.about strong {
+  color: var(--text);
 }
 
 .update {

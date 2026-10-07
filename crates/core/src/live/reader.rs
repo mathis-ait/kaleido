@@ -158,17 +158,24 @@ pub struct LiveReader {
     enemy_at: Option<u64>,
     /// Ticks consécutifs sans équipe valide.
     misses: u32,
+    /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
+    battle: bool,
 }
 
 /// Re-recherche de l'équipe perdue : au plus tous les N ticks (la recherche 3DS lit la FCRAM).
 const RESEARCH_DS: u64 = 5;
-const RESEARCH_CTR: u64 = 50;
+const RESEARCH_CTR: u64 = 150;
 /// Recherche de l'équipe adverse (DS) : tous les N ticks.
 const BATTLE_SCAN: u64 = 2;
 
 impl LiveReader {
     pub fn new(console: Console, hints: RamHints) -> Self {
-        LiveReader { console, hints, copies: Vec::new(), tick: 0, searched_at: None, seen_enemies: HashSet::new(), enemy_at: None, misses: 0 }
+        LiveReader { console, hints, copies: Vec::new(), tick: 0, searched_at: None, seen_enemies: HashSet::new(), enemy_at: None, misses: 0, battle: true }
+    }
+
+    /// Active ou coupe la recherche de l'équipe adverse.
+    pub fn set_battle(&mut self, on: bool) {
+        self.battle = on;
     }
 
     pub fn console(&self) -> &Console {
@@ -293,7 +300,7 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let battle = if matches!(self.console, Console::Ds(_)) && tick % BATTLE_SCAN == 0 { self.scan_battle(src, &party.mons) } else { None };
+        let battle = if self.battle && matches!(self.console, Console::Ds(_)) && tick % BATTLE_SCAN == 0 { self.scan_battle(src, &party.mons) } else { None };
         Ok(Some(LiveRead { party: party.mons, map, badges, battle }))
     }
 

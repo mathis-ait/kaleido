@@ -9,10 +9,11 @@ import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import BoxGrid from "./BoxGrid.vue";
 import JournalList from "./JournalList.vue";
+import LiveBattle from "./LiveBattle.vue";
 import NextBattleCard from "./NextBattle.vue";
 import NuzlockePanel from "./NuzlockePanel.vue";
 import TeamCard from "./TeamCard.vue";
-import { companion, initCompanion, monName, openInMain, refresh, setAutoOpen, setCompact, setOnTop } from "./store";
+import { companion, initCompanion, monName, openInMain, refresh, setAutoOpen, setCompact, setMemory, setOnTop } from "./store";
 
 /**
  * Compagnon de partie : fenêtre étroite (420 à 560 px) à côté de l'émulateur. Tout se met
@@ -25,6 +26,11 @@ const openMon = ref<string | null>(null);
 const state = computed(() => companion.state);
 const snap = computed(() => companion.snapshot);
 const playing = computed(() => companion.running.length > 0);
+/** Pastille : mémoire lue (« En direct »), émulateur lancé (« En jeu »), aucun émulateur. */
+const status = computed(() => state.value?.live?.status ?? (playing.value ? "ingame" : "offline"));
+const STATUS_LABEL = { live: "En direct", ingame: "En jeu", offline: "Hors ligne" } as const;
+const STATUS_TONE = { live: "ok", ingame: "accent", offline: "dim" } as const;
+const memoryOn = computed(() => state.value?.live?.enabled ?? true);
 
 // Horloge pour « il y a 2 min » (rafraîchie toutes les 15 s).
 const now = ref(Date.now());
@@ -69,7 +75,7 @@ const tabs = [
     <!-- Mode barre : une seule ligne avec l'équipe et ses PV -->
     <template v-if="companion.compact">
       <div class="bar">
-        <span class="dot" :class="{ on: playing }" :title="playing ? 'En jeu' : 'Émulateur fermé'" />
+        <span class="dot" :class="{ on: status !== 'offline' }" :title="STATUS_LABEL[status]" />
         <ul v-if="snap" class="minis">
           <li v-for="m in snap.party" :key="m.uid" :title="`${monName(m)} · N. ${m.level} · ${m.hp}/${m.maxHp} PV`">
             <Sprite :id="m.isEgg ? 0 : m.species" :form="m.form" :shiny="m.shiny" :size="36" />
@@ -91,10 +97,16 @@ const tabs = [
         <div class="title">
           <h1><span class="name">{{ state?.title || snap?.game || "Compagnon" }}</span><Tip term="companion.companion" /></h1>
           <p>
-            <span class="sv-chip" :class="playing ? 'ok' : 'dim'">{{ playing ? "En jeu" : "Émulateur fermé" }}</span>
+            <span class="sv-chip" :class="STATUS_TONE[status]">{{ STATUS_LABEL[status] }}</span>
+            <Tip term="companion.live" />
             <span class="dim">Sauvegarde {{ ago(state?.modified) }}<template v-if="state?.place"> · {{ state.place }}</template></span>
             <Tip term="companion.saveTiming" />
           </p>
+          <p v-if="status === 'live' && state?.live && !state.live.verified" class="live-note">
+            <span class="dim">Lecture en direct non vérifiée pour ce jeu</span>
+            <Tip term="companion.unverified" />
+          </p>
+          <p v-else-if="status === 'ingame' && state?.live?.enabled && state.live.detail" class="live-note dim">{{ state.live.detail }}</p>
         </div>
         <div class="tools">
           <button
@@ -150,6 +162,7 @@ const tabs = [
 
             <Segmented v-model="tab" :options="tabs" label="Affichage" />
 
+            <LiveBattle v-if="tab === 'team'" :battle="state.battle" :encounter="state.encounter" />
             <NuzlockePanel v-if="tab === 'team'" :summary="state.nuzlocke" :can-track="state.canTrack" :place="state.place" />
             <NextBattleCard v-if="tab === 'team' && state.nextBattle" :battle="state.nextBattle" />
             <ul v-if="tab === 'team'" class="team">
@@ -165,6 +178,7 @@ const tabs = [
       </main>
 
       <footer v-if="state" class="foot">
+        <Toggle :model-value="memoryOn" label="Lire la mémoire de l’émulateur" term="companion.memory" @update:model-value="setMemory" />
         <Toggle v-if="state.key" :model-value="state.autoOpen" label="Ouvrir à chaque partie" term="companion.autoOpen" @update:model-value="setAutoOpen" />
         <span class="edit">
           <button
@@ -234,6 +248,11 @@ h1 .name {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.live-note {
   margin: var(--sp-1) 0 0;
   font-size: var(--fs-sm);
 }

@@ -43,11 +43,13 @@ pub struct CompanionConfig {
     pub on_top: bool,
     /// Ouverture automatique au lancement d'un jeu, par jeu de la bibliothèque (absent = oui).
     pub auto_open: HashMap<String, bool>,
+    /// Lecture de la mémoire de l'émulateur (compagnon en direct), activée par défaut.
+    pub memory: bool,
 }
 
 impl Default for CompanionConfig {
     fn default() -> Self {
-        CompanionConfig { width: 460.0, height: 780.0, x: None, y: None, on_top: true, auto_open: HashMap::new() }
+        CompanionConfig { width: 460.0, height: 780.0, x: None, y: None, on_top: true, auto_open: HashMap::new(), memory: true }
     }
 }
 
@@ -80,6 +82,8 @@ struct Target {
 struct Session {
     target: Target,
     _watch: FileWatch,
+    /// Lecture de la mémoire de l'émulateur (arrêtée quand la session est lâchée).
+    _live: crate::live::LiveLoop,
 }
 
 #[derive(Default)]
@@ -163,6 +167,16 @@ pub struct CompanionState {
     can_track: bool,
     /// Prochain champion (d'après les badges) et meilleurs contres de l'équipe actuelle.
     next_battle: Option<NextBattle>,
+    /// Origine de l'instantané : `file` (sauvegarde) ou `memory` (équipe lue dans l'émulateur).
+    source: &'static str,
+    /// Lecture de la mémoire de l'émulateur : pastille « En direct » / « En jeu » / « Hors ligne ».
+    live: Option<crate::live::LiveInfo>,
+    /// Combat en cours vu en mémoire.
+    battle: Option<crate::live::BattleView>,
+    /// Dernière rencontre sauvage vue en mémoire, avec son issue.
+    encounter: Option<crate::live::Encounter>,
+    /// Ce qui a déclenché cet envoi : `save` (sauvegarde relue) ou `memory` (lecture en direct).
+    reason: &'static str,
 }
 
 fn modified_ms(path: &Path) -> Option<u64> {
@@ -170,7 +184,7 @@ fn modified_ms(path: &Path) -> Option<u64> {
     Some(t.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64)
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
@@ -272,12 +286,18 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
         nuzlocke: None,
         can_track: false,
         next_battle: None,
+        source: "file",
+        live: None,
+        battle: None,
+        encounter: None,
+        reason: "save",
     };
     let _guard = INGEST.lock();
     let mut log = runlog::load(app, &t.path);
     let journal = |log: &runlog::RunLog| log.journal.iter().rev().take(100).cloned().collect();
     if !out.exists {
         out.journal = journal(&log);
+        apply_live(app, &t.path, &mut out);
         return out;
     }
     let (session, snap) = match read_save(&t.path) {
@@ -285,6 +305,7 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
         Err(e) => {
             out.error = Some(e);
             out.journal = journal(&log);
+            apply_live(app, &t.path, &mut out);
             return out;
         }
     };
@@ -338,6 +359,7 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
         }
     }
     out.snapshot = Some(snap);
+    apply_live(app, &t.path, &mut out);
     out
 }
 
@@ -345,12 +367,77 @@ fn current(app: &AppHandle) -> Option<Target> {
     app.state::<Companion>().0.lock().ok()?.as_ref().map(|s| s.target.clone())
 }
 
+/// Dernier état envoyé à la fenêtre : la lecture en mémoire le reprend sans relire la sauvegarde.
+static LAST: Mutex<Option<CompanionState>> = Mutex::new(None);
+
+fn remember(s: &CompanionState) {
+    if let Ok(mut last) = LAST.lock() {
+        *last = Some(CompanionState { events: Vec::new(), reason: "save", ..s.clone() });
+    }
+}
+
 /// Relit tout et prévient la fenêtre (après une action de l'utilisateur).
 fn push(app: &AppHandle) {
     if let Some(t) = current(app) {
         let s = ingest(app, &t);
+        remember(&s);
         let _ = app.emit("companion-update", s);
     }
+}
+
+/// Ajoute la lecture en direct : équipe, carte et badges vus en mémoire, combat, rencontre.
+/// L'instantané de la sauvegarde garde boîtes, dresseur et temps de jeu.
+fn apply_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
+    let o = crate::live::overlay(path);
+    out.live = o.info;
+    out.battle = o.battle;
+    out.encounter = o.encounter;
+    let (Some(read), Some(snap)) = (o.read, out.snapshot.as_ref()) else { return };
+    let merged = snap.with_memory(&read.party, read.map, read.badges);
+    if merged.map != snap.map {
+        if let (Some(place), _) = place_now(app, merged.version, merged.generation, merged.map) {
+            out.place = Some(place);
+        }
+    }
+    out.snapshot = Some(merged);
+    out.source = "memory";
+}
+
+/// Lieu (et route Nuzlocke) d'une carte de la partie suivie, d'après sa ROM.
+pub(crate) fn place_now(app: &AppHandle, version: kaleido_core::save::SaveVersion, generation: u8, map: u16) -> (Option<String>, Option<String>) {
+    let Some(t) = current(app) else { return (None, None) };
+    let state = nuzlocke::load_state(&t.path);
+    let rom_path = state.rom_path.clone().map(PathBuf::from).or_else(|| t.rom.clone());
+    let info = rom_path.and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
+    let location = info.as_ref().and_then(|i| i.location_of_map(map));
+    let route = info.as_ref().zip(location).and_then(|(i, l)| i.route_of_location(l));
+    let place = route.map(|r| r.name.clone()).or_else(|| location.and_then(|l| place_name(generation, l)));
+    (place, route.map(|r| r.key.clone()))
+}
+
+/// Lecture de la mémoire activée dans les réglages du compagnon.
+pub(crate) fn memory_enabled(app: &AppHandle) -> bool {
+    load_config(app).memory
+}
+
+/// Nouvelle lecture en mémoire : reprend le dernier état (sans relire la sauvegarde) et prévient
+/// la fenêtre, avec les évènements vus en mémoire (rencontre, K.O.…).
+pub(crate) fn push_memory(app: &AppHandle, events: Vec<String>) {
+    let Some(t) = current(app) else { return };
+    let path = t.path.display().to_string();
+    let last = LAST.lock().ok().and_then(|l| l.clone()).filter(|s| s.path == path);
+    let mut s = match last {
+        Some(s) => s,
+        None => {
+            let s = ingest(app, &t);
+            remember(&s);
+            s
+        }
+    };
+    apply_live(app, &t.path, &mut s);
+    s.events = events;
+    s.reason = "memory";
+    let _ = app.emit("companion-update", s);
 }
 
 /// Mémorise taille et position quand on ferme le compagnon, et arrête la surveillance.
@@ -425,7 +512,8 @@ fn open(app: &AppHandle, target: Target) -> Result<(), String> {
                 // Diffusé à toutes les fenêtres : seule celle du compagnon l'écoute.
                 push(&handle);
             });
-            *slot = Some(Session { target, _watch: watch });
+            let live = crate::live::spawn(app.clone(), target.path.clone());
+            *slot = Some(Session { target, _watch: watch, _live: live });
         }
     }
     open_window(app)
@@ -453,7 +541,12 @@ pub async fn companion_launch(path: PathBuf, title: String, key: Option<String>,
 #[tauri::command]
 pub async fn companion_state(app: AppHandle) -> Result<Option<CompanionState>, String> {
     let Some(t) = current(&app) else { return Ok(None) };
-    crate::blocking(move || Ok(Some(ingest(&app, &t)))).await
+    crate::blocking(move || {
+        let s = ingest(&app, &t);
+        remember(&s);
+        Ok(Some(s))
+    })
+    .await
 }
 
 /// Active le suivi Nuzlocke de la partie avec la ROM lancée.
@@ -487,6 +580,54 @@ pub async fn companion_mark_missed(route: String, missed: bool, app: AppHandle) 
         Ok(())
     })
     .await
+}
+
+/// Issue d'une rencontre sauvage vue en mémoire : `caught` (Capturé), `missed` (Raté : K.O. du
+/// sauvage), `fled` (Fui). Raté et Fui marquent la route comme ratée si le Nuzlocke est suivi,
+/// et l'issue entre au journal.
+#[tauri::command]
+pub async fn companion_encounter_outcome(id: u32, outcome: String, app: AppHandle) -> Result<(), String> {
+    if !matches!(outcome.as_str(), "caught" | "missed" | "fled") {
+        return Err(format!("issue inconnue : {outcome}"));
+    }
+    let t = current(&app).ok_or("aucune partie suivie")?;
+    let e = crate::live::set_outcome(id, &outcome).ok_or("rencontre introuvable : elle a pu être remplacée par une autre")?;
+    crate::blocking(move || {
+        let mut state = nuzlocke::load_state(&t.path);
+        let tracking = state.rom_path.is_some();
+        if outcome != "caught" && tracking {
+            if let Some(route) = &e.route {
+                state.missed.insert(route.clone());
+                nuzlocke::store_state(&t.path, &state).map_err(|e| format!("enregistrement impossible : {e}"))?;
+            }
+        }
+        let verb = match outcome.as_str() {
+            "caught" => "capturé",
+            "missed" => "raté",
+            _ => "fui",
+        };
+        let mut log = runlog::load(&app, &t.path);
+        let play = log.last.as_ref().map_or(0, |b| b.play_seconds);
+        log.note("encounter", format!("Rencontre : {} niveau {}, {verb}", e.species_name, e.level), now_ms(), play, e.place.as_deref(), Some(e.species));
+        runlog::store(&app, &t.path, &log)?;
+        push(&app);
+        Ok(())
+    })
+    .await
+}
+
+/// Lecture de la mémoire de l'émulateur activée ?
+#[tauri::command]
+pub fn companion_memory(app: AppHandle) -> bool {
+    memory_enabled(&app)
+}
+
+/// Active ou coupe la lecture de la mémoire de l'émulateur.
+#[tauri::command]
+pub fn companion_set_memory(on: bool, app: AppHandle) -> Result<(), String> {
+    let mut c = load_config(&app);
+    c.memory = on;
+    save_config(&app, &c)
 }
 
 #[tauri::command]

@@ -24,6 +24,7 @@ mod emusaves;
 mod gifts;
 mod legality;
 mod library;
+mod live;
 mod mods;
 mod nuzlocke;
 mod nxmusic;
@@ -377,6 +378,9 @@ fn main() {
             companion::companion_set_compact,
             companion::companion_track_nuzlocke,
             companion::companion_mark_missed,
+            companion::companion_encounter_outcome,
+            companion::companion_set_memory,
+            companion::companion_memory,
             companion::companion_open_in_main,
             play::unwatch_save,
             play::watch_save_resync,
