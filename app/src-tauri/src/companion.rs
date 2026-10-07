@@ -376,12 +376,18 @@ fn remember(s: &CompanionState) {
     }
 }
 
+/// Envoie l'état à la fenêtre du compagnon (et à tout ce qui écoute `companion-update`) :
+/// point de passage unique des mises à jour, sauvegarde comme mémoire.
+fn emit_state(app: &AppHandle, s: CompanionState) {
+    let _ = app.emit("companion-update", s);
+}
+
 /// Relit tout et prévient la fenêtre (après une action de l'utilisateur).
 fn push(app: &AppHandle) {
     if let Some(t) = current(app) {
         let s = ingest(app, &t);
         remember(&s);
-        let _ = app.emit("companion-update", s);
+        emit_state(app, s);
     }
 }
 
@@ -437,7 +443,7 @@ pub(crate) fn push_memory(app: &AppHandle, events: Vec<String>) {
     apply_live(app, &t.path, &mut s);
     s.events = events;
     s.reason = "memory";
-    let _ = app.emit("companion-update", s);
+    emit_state(app, s);
 }
 
 /// Mémorise taille et position quand on ferme le compagnon, et arrête la surveillance.

@@ -16,6 +16,11 @@ use super::{MemorySource, Region};
 pub const DS_RAM_SIZE: u64 = 0x40_0000;
 /// Offset de la copie de l'en-tête de cartouche dans la RAM principale DS (`0x027FFE00`).
 pub const DS_HEADER_OFFSET: u64 = 0x3F_FE00;
+/// RAM principale en mode DSi (16 Mio) : en-tête recopié en `0x02FFFE00`.
+pub const DSI_RAM_SIZE: u64 = 0x100_0000;
+pub const DSI_HEADER_OFFSET: u64 = 0xFF_FE00;
+/// Formats essayés : DS, puis DSi (Noir / Blanc et Noir 2 / Blanc 2 lancés en console DSi).
+const LAYOUTS: [(u64, u64); 2] = [(DS_RAM_SIZE, DS_HEADER_OFFSET), (DSI_RAM_SIZE, DSI_HEADER_OFFSET)];
 /// Adresse de la RAM principale vue par le jeu.
 pub const DS_RAM_ADDRESS: u32 = 0x0200_0000;
 
@@ -31,12 +36,14 @@ pub struct DsRam {
     pub game_code: String,
     /// Titre interne (`POKEMON PL`).
     pub title: String,
+    /// Taille de la RAM principale : 4 Mio (DS) ou 16 Mio (DSi).
+    pub size: u64,
 }
 
 impl DsRam {
     /// Adresse dans l'émulateur d'une adresse DS (`0x02xxxxxx`, miroirs compris).
     pub fn host(&self, ds_address: u32) -> u64 {
-        self.base + (ds_address as u64 & (DS_RAM_SIZE - 1))
+        self.base + (ds_address as u64 & (self.size - 1))
     }
 }
 
@@ -131,24 +138,28 @@ pub fn find_ds_ram(src: &dyn MemorySource) -> Option<DsRam> {
     // de petites lectures au lieu de parcourir des centaines de Mio.
     for r in &regions {
         for base in [r.allocation, r.base] {
-            if !r.contains(base, DS_RAM_SIZE) {
-                continue;
-            }
-            if let Some((title, game_code)) = ds_header_at(src, base + DS_HEADER_OFFSET).filter(|(t, _)| t.starts_with("POKEMON ")) {
-                return Some(DsRam { base, game_code, title });
+            for (size, header) in LAYOUTS {
+                if !r.contains(base, size) {
+                    continue;
+                }
+                if let Some((title, game_code)) = ds_header_at(src, base + header).filter(|(t, _)| t.starts_with("POKEMON ")) {
+                    return Some(DsRam { base, game_code, title, size });
+                }
             }
         }
     }
     let mut best: Option<(u8, DsRam)> = None;
     for hit in find_all(src, &regions, b"POKEMON ", 4, 64) {
         let Some((title, game_code)) = ds_header_at(src, hit) else { continue };
-        let Some(base) = hit.checked_sub(DS_HEADER_OFFSET) else { continue };
-        let Some(region) = regions.iter().find(|r| r.contains(base, DS_RAM_SIZE)) else { continue };
-        // Préférence : RAM au tout début d'une allocation (tampon dédié, melonDS), sinon au milieu
-        // d'une zone de données (DeSmuME, RAM dans une variable globale).
-        let score = if region.allocation == base || region.base == base { 2 } else { 1 };
-        if best.as_ref().is_none_or(|(s, _)| score > *s) {
-            best = Some((score, DsRam { base, game_code, title }));
+        for (size, header) in LAYOUTS {
+            let Some(base) = hit.checked_sub(header) else { continue };
+            let Some(region) = regions.iter().find(|r| r.contains(base, size)) else { continue };
+            // Préférence : RAM au tout début d'une allocation (tampon dédié, melonDS), sinon au milieu
+            // d'une zone de données (DeSmuME, RAM dans une variable globale).
+            let score = if region.allocation == base || region.base == base { 2 } else { 1 };
+            if best.as_ref().is_none_or(|(s, _)| score > *s) {
+                best = Some((score, DsRam { base, game_code: game_code.clone(), title: title.clone(), size }));
+            }
         }
     }
     best.map(|(_, r)| r)

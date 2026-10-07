@@ -24,7 +24,7 @@
 
 use std::collections::HashSet;
 
-use super::scan::{self, DsRam, DS_RAM_SIZE};
+use super::scan::{self, DsRam};
 use super::{LiveError, MemorySource, Region};
 use crate::save::{PkmFormat, Pokemon, RamHints};
 
@@ -199,7 +199,7 @@ impl LiveReader {
 
     fn search_regions(&self, src: &dyn MemorySource) -> Vec<Region> {
         match &self.console {
-            Console::Ds(ram) => vec![Region { base: ram.base, size: DS_RAM_SIZE, allocation: ram.base }],
+            Console::Ds(ram) => vec![Region { base: ram.base, size: ram.size, allocation: ram.base }],
             Console::Ctr => scan::ctr_candidate_regions(src),
         }
     }
@@ -327,7 +327,7 @@ impl LiveReader {
         let mut enemies = self.enemy_at.and_then(read);
         if enemies.is_none() {
             self.enemy_at = None;
-            let ram_bytes = src.read_vec(ram.base, DS_RAM_SIZE as usize).ok()?;
+            let ram_bytes = src.read_vec(ram.base, ram.size as usize).ok()?;
             let words = ram_bytes.as_chunks::<4>().0;
             for i in 0..words.len().saturating_sub(2) {
                 if u32::from_le_bytes(words[i]) != PARTY_SLOTS as u32 {

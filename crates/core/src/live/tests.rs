@@ -212,3 +212,15 @@ fn cartes_memoire_chargees() {
     assert!(maps::for_title_id(0x0004_0000_0017_5E00).is_some_and(|m| m.game == "SM"));
     assert!(maps::for_ds_code("ZZZZ").is_none());
 }
+
+#[test]
+fn ram_dsi_de_16_mio() {
+    // Noir 2 lancé en console DSi : en-tête en 0x02FFFE00, RAM principale de 16 Mio.
+    let mut ram = vec![0u8; scan::DSI_RAM_SIZE as usize];
+    let at = scan::DSI_HEADER_OFFSET as usize;
+    ram[at..at + 0x12].copy_from_slice(b"POKEMON B2\0\0IREF01");
+    let src = DumpSource::new().with_zone(0x4000_0000, ram);
+    let found = scan::find_ds_ram(&src).unwrap();
+    assert_eq!((found.game_code.as_str(), found.size), ("IREF", scan::DSI_RAM_SIZE));
+    assert_eq!(found.host(0x02FF_FE00), 0x4000_0000 + scan::DSI_HEADER_OFFSET);
+}

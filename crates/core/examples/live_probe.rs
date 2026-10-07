@@ -32,7 +32,7 @@ fn main() {
             let t = Instant::now();
             let ram = scan::find_ds_ram(&proc).expect("RAM DS introuvable");
             println!("RAM DS : {ram:x?} trouvée en {:?}", t.elapsed());
-            let bytes = proc.read_vec(ram.base, scan::DS_RAM_SIZE as usize).unwrap();
+            let bytes = proc.read_vec(ram.base, ram.size as usize).unwrap();
             std::fs::write(arg(2), bytes).unwrap();
             println!("copie écrite : {}", arg(2));
         }
@@ -96,7 +96,7 @@ fn main() {
             let ram = scan::find_ds_ram(&proc).expect("RAM DS introuvable");
             let hex = arg(2);
             let needle: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
-            let region = kaleido_core::live::Region { base: ram.base, size: scan::DS_RAM_SIZE, allocation: ram.base };
+            let region = kaleido_core::live::Region { base: ram.base, size: ram.size, allocation: ram.base };
             for a in scan::find_all(&proc, &[region], &needle, 1, 100) {
                 println!("{:#08x}", 0x0200_0000 + (a - ram.base));
             }
@@ -116,7 +116,7 @@ fn main() {
             }
             keep.sort();
             println!("morceaux {keep:x?}");
-            let bytes = kaleido_core::live::DumpSource::to_sparse(&proc, ram.base, scan::DS_RAM_SIZE as u32, &keep).unwrap();
+            let bytes = kaleido_core::live::DumpSource::to_sparse(&proc, ram.base, ram.size as u32, &keep).unwrap();
             std::fs::write(arg(3), bytes).unwrap();
         }
         _ => eprintln!("usage : list | dump <pid> <sortie> | watch <pid> <sauvegarde> [s]"),
