@@ -23,6 +23,7 @@ mod legality;
 mod library;
 mod mods;
 mod nuzlocke;
+mod nxmusic;
 mod play;
 mod saves;
 mod showdown;
@@ -348,7 +349,11 @@ fn main() {
             library::emulator_download_info,
             library::emulator_install,
             library::music_title_theme,
-            library::music_switch_theme,
+            nxmusic::music_switch_theme,
+            nxmusic::music_switch_tracks,
+            nxmusic::music_switch_preview,
+            nxmusic::music_switch_choose,
+            nxmusic::vgmstream_install,
             library::game_status,
             library::emulators_running,
             library::library_scan_switch,

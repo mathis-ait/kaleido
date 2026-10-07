@@ -378,81 +378,225 @@ pub fn title_event(title_id: u64) -> Option<&'static str> {
     })
 }
 
-/// Thème de l'écran titre d'un jeu Switch : fichier audio (Ogg Opus pour les jeux Wwise,
-/// WAV sinon), au plus `max_seconds`.
-///
-/// - Jeux Wwise connus (`title_event`) : parmi les sons de l'évènement du thème (couches,
-///   variantes), le plus long est le morceau complet.
-/// - Autres jeux : flux audio dont le nom contient « title » (portages qui gardent leurs
-///   formats d'origine, comme les flux AST de Super Mario Galaxy 1 et 2).
-pub fn title_theme(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64, max_seconds: f32) -> Result<Vec<u8>, String> {
-    let mut nca = crate::nx::open_program(game, keys).map_err(|e| e.to_string())?;
-    let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
-    let files = romfs.list();
-    match title_event(title_id) {
-        Some(event) => wwise_theme(&mut romfs, &files, wwise_hash(event), max_seconds),
-        None => named_theme(&mut romfs, &files, max_seconds),
+// ---------------------------------------------------------------------------
+// Morceaux d'un jeu Switch
+
+/// Extensions des fichiers audio de jeux (flux et banques) que l'on propose à l'écoute.
+/// Les formats que Kaleido ne décode pas lui-même passent par vgmstream.
+pub const AUDIO_EXTENSIONS: &[&str] = &[
+    "ast", "bfstm", "bcstm", "bwav", "bfwav", "lopus", "opus", "wem", "ogg", "hca", "adx", "awb", "acb", "fsb", "bank", "at9", "wav", "mp3",
+    "nus3audio", "ktss", "kvs", "xwma", "bgm", "snd",
+];
+
+/// En dessous, ce sont des bruitages plutôt que des musiques.
+pub const MIN_TRACK_SIZE: u64 = 256 * 1024;
+const MAX_TRACKS: usize = 300;
+
+/// Un morceau proposé : `id` vaut `file:<chemin>` ou `wwise:<chemin du .pck>:<id du son>`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+    /// Durée lue dans l'en-tête (Opus Wwise, AST), si connue.
+    pub seconds: Option<f32>,
+}
+
+/// Durée d'un son d'après ses premiers octets (en-tête RIFF Wwise ou AST).
+pub fn header_seconds(head: &[u8]) -> Option<f32> {
+    match head.get(..4)? {
+        b"RIFF" => {
+            let fmt = head.windows(4).position(|w| w == b"fmt ")? + 8;
+            // Le nombre d'échantillons en +0x18 n'existe que pour l'Opus NX.
+            if u16le(head, fmt)? != 0x3039 {
+                return None;
+            }
+            let rate = u32le(head, fmt + 4)?;
+            let samples = u32le(head, fmt + 0x18)?;
+            (rate > 0 && samples > 0).then(|| samples as f32 / rate as f32)
+        }
+        b"MRTS" | b"STRM" => {
+            let le = &head[..4] == b"MRTS";
+            let rd = |o: usize| head.get(o..o + 4).map(|b| if le { u32::from_le_bytes(b.try_into().unwrap()) } else { u32::from_be_bytes(b.try_into().unwrap()) });
+            let (rate, samples) = (rd(0x10)?, rd(0x14)?);
+            (rate > 0).then(|| samples as f32 / rate as f32)
+        }
+        _ => None,
     }
 }
 
-fn wwise_theme(romfs: &mut crate::nx::RomFs<'_>, files: &[crate::nx::RomFile], event: u32, max_seconds: f32) -> Result<Vec<u8>, String> {
-    let in_sound = |f: &&crate::nx::RomFile, ext: &str| f.path.contains("/sound/") && f.path.ends_with(ext);
+/// Fichiers d'un morceau, à décoder ensemble (un `.awb` avec son `.acb`…).
+#[derive(Debug, Clone)]
+pub struct TrackData {
+    /// Nom du fichier principal.
+    pub main: String,
+    pub files: Vec<(String, Vec<u8>)>,
+}
 
-    // Banque qui contient l'évènement.
-    let mut objects = None;
-    for f in files.iter().filter(|f| in_sound(f, ".bnk")) {
-        let bank = romfs.read_all(f).map_err(|e| e.to_string())?;
-        let objs = bank_objects(&bank);
-        if objs.contains_key(&event) {
-            objects = Some(objs);
-            break;
+fn extension(path: &str) -> String {
+    path.rsplit('/').next().and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
+}
+
+fn file_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn is_audio(f: &crate::nx::RomFile) -> bool {
+    AUDIO_EXTENSIONS.contains(&extension(&f.path).as_str())
+}
+
+fn open_romfs(game: &std::path::Path, keys: &crate::nx::Keys) -> Result<crate::nx::Nca, String> {
+    crate::nx::open_program(game, keys).map_err(|e| e.to_string())
+}
+
+/// Sons d'une archive Wwise (.pck) : id → (offset, taille).
+fn pck_index(romfs: &mut crate::nx::RomFs<'_>, f: &crate::nx::RomFile) -> Result<HashMap<u32, (u64, u64)>, String> {
+    let first = romfs.read(f, 0, 16).map_err(|e| e.to_string())?;
+    let Some(size) = pck_header_size(&first) else { return Ok(HashMap::new()) };
+    let header = romfs.read(f, 0, size).map_err(|e| e.to_string())?;
+    Ok(pck_streams(&header))
+}
+
+/// Morceaux d'un jeu, les plus gros d'abord (les musiques sont les sons les plus longs).
+pub fn list_tracks(game: &std::path::Path, keys: &crate::nx::Keys) -> Result<Vec<Track>, String> {
+    let mut nca = open_romfs(game, keys)?;
+    let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
+    let files = romfs.list();
+    let mut tracks: Vec<Track> = files
+        .iter()
+        .filter(|f| is_audio(f) && f.size >= MIN_TRACK_SIZE)
+        .map(|f| Track { id: format!("file:{}", f.path), name: file_name(&f.path).to_string(), size: f.size, seconds: None })
+        .collect();
+    for t in &mut tracks {
+        if let Some(f) = files.iter().find(|f| t.id[5..] == f.path) {
+            t.seconds = romfs.read(f, 0, 0x60).ok().and_then(|h| header_seconds(&h));
         }
     }
-    let objects = objects.ok_or("évènement du thème introuvable dans les banques de sons")?;
-
-    // Sons de l'évènement, cherchés dans chaque archive .pck.
-    let mut best: Option<(crate::nx::RomFile, u64, u64)> = None;
-    for f in files.iter().filter(|f| in_sound(f, ".pck")) {
-        let first = romfs.read(f, 0, 16).map_err(|e| e.to_string())?;
-        let Some(size) = pck_header_size(&first) else { continue };
-        let header = romfs.read(f, 0, size).map_err(|e| e.to_string())?;
-        let streams = pck_streams(&header);
-        for id in event_sources(&objects, event, &streams) {
-            let (offset, len) = streams[&id];
-            if best.as_ref().is_none_or(|b| len > b.2) {
-                best = Some((f.clone(), offset, len));
+    for f in files.iter().filter(|f| extension(&f.path) == "pck") {
+        for (id, (offset, size)) in pck_index(&mut romfs, f)? {
+            if size >= MIN_TRACK_SIZE {
+                let seconds = romfs.read(f, offset, 0x60).ok().and_then(|h| header_seconds(&h));
+                tracks.push(Track { id: format!("wwise:{}:{id}", f.path), name: format!("Son {id}"), size, seconds });
             }
         }
     }
-    let (file, offset, len) = best.ok_or("sons du thème introuvables")?;
-    let wem = romfs.read(&file, offset, len as usize).map_err(|e| e.to_string())?;
-    Ok(to_ogg_opus(&parse_wwise_opus(&wem)?, max_seconds))
+    tracks.sort_by(|a, b| b.size.cmp(&a.size).then(a.name.cmp(&b.name)));
+    tracks.truncate(MAX_TRACKS);
+    Ok(tracks)
 }
 
-/// Flux « titre » d'un jeu qui n'utilise pas Wwise (le plus gros si plusieurs).
-pub fn title_stream_candidates(files: &[crate::nx::RomFile]) -> Vec<&crate::nx::RomFile> {
-    let mut list: Vec<&crate::nx::RomFile> = files
-        .iter()
-        .filter(|f| {
-            let lower = f.path.to_lowercase();
-            let name = lower.rsplit('/').next().unwrap_or("");
-            name.contains("title") && lower.ends_with(".ast")
-        })
-        .collect();
-    list.sort_by(|a, b| b.size.cmp(&a.size));
-    list
+/// Lit les fichiers d'un morceau.
+pub fn read_track(game: &std::path::Path, keys: &crate::nx::Keys, id: &str) -> Result<TrackData, String> {
+    let mut nca = open_romfs(game, keys)?;
+    let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
+    let files = romfs.list();
+    if let Some(rest) = id.strip_prefix("wwise:") {
+        let (pck, sound) = rest.rsplit_once(':').ok_or("morceau inconnu")?;
+        let sound: u32 = sound.parse().map_err(|_| "morceau inconnu")?;
+        let f = files.iter().find(|f| f.path == pck).ok_or("archive de sons introuvable")?;
+        let (offset, len) = *pck_index(&mut romfs, f)?.get(&sound).ok_or("son introuvable dans l'archive")?;
+        let data = romfs.read(f, offset, len as usize).map_err(|e| e.to_string())?;
+        let main = format!("{sound}.wem");
+        return Ok(TrackData { files: vec![(main.clone(), data)], main });
+    }
+    let path = id.strip_prefix("file:").ok_or("morceau inconnu")?;
+    let main = files.iter().find(|f| f.path == path).ok_or("fichier introuvable dans le jeu")?.clone();
+    // Fichiers compagnons (même nom, autre extension) : .acb/.awb, .bank/.strings.bank…
+    let (dir, stem) = match main.path.rsplit_once('/') {
+        Some((d, n)) => (d.to_string(), n.split('.').next().unwrap_or(n).to_string()),
+        None => (String::new(), main.path.clone()),
+    };
+    let mut out = Vec::new();
+    for f in files.iter().filter(|f| f.path.rsplit_once('/').is_some_and(|(d, n)| d == dir && n.split('.').next() == Some(stem.as_str()))) {
+        if f.size > 512 << 20 {
+            continue;
+        }
+        out.push((file_name(&f.path).to_string(), romfs.read_all(f).map_err(|e| e.to_string())?));
+    }
+    Ok(TrackData { main: file_name(&main.path).to_string(), files: out })
 }
 
-fn named_theme(romfs: &mut crate::nx::RomFs<'_>, files: &[crate::nx::RomFile], max_seconds: f32) -> Result<Vec<u8>, String> {
-    let file = title_stream_candidates(files).first().copied().cloned().ok_or("pas de musique d'écran titre reconnue dans ce jeu")?;
-    let data = romfs.read_all(&file).map_err(|e| e.to_string())?;
-    let mut pcm = parse_ast(&data)?;
+/// Décodage par Kaleido lui-même (Opus Wwise, AST) ; `None` : à confier à vgmstream.
+pub fn decode_native(track: &TrackData, max_seconds: f32) -> Option<Result<Vec<u8>, String>> {
+    let data = &track.files.iter().find(|(n, _)| *n == track.main)?.1;
+    match extension(&track.main).as_str() {
+        "wem" => parse_wwise_opus(data).ok().map(|w| Ok(to_ogg_opus(&w, max_seconds))),
+        "ast" => Some(parse_ast(data).map(|mut pcm| {
+            clip(&mut pcm, max_seconds);
+            pcm.to_wav()
+        })),
+        _ => None,
+    }
+}
+
+/// Coupe à `max_seconds` (0 : tout garder) avec un fondu de sortie.
+pub fn clip(pcm: &mut super::Pcm, max_seconds: f32) {
     if max_seconds > 0.0 {
         let frames = (max_seconds * pcm.sample_rate as f32) as usize;
-        pcm.samples.truncate(frames * 2);
-        pcm.fade_out(1.5);
+        if pcm.samples.len() > frames * 2 {
+            pcm.samples.truncate(frames * 2);
+            pcm.fade_out(1.5);
+        }
     }
-    Ok(pcm.to_wav())
+}
+
+/// Mots qui désignent la musique de l'écran titre, du plus sûr au moins sûr.
+const TITLE_WORDS: &[&str] = &["title", "opening", "mainmenu", "main_menu", "main_theme", "maintheme", "menu", "theme", "intro"];
+
+/// Rang d'un nom de fichier parmi `TITLE_WORDS` (plus petit = plus probable).
+pub fn title_rank(name: &str) -> Option<usize> {
+    let lower = name.to_lowercase();
+    TITLE_WORDS.iter().position(|w| lower.contains(w))
+}
+
+/// Morceau de l'écran titre deviné automatiquement :
+/// - jeux Wwise connus (`title_event`) : le plus long des sons de l'évènement du thème
+///   (les autres sont des couches ou des variantes) ;
+/// - sinon, le fichier audio dont le nom évoque l'écran titre (`TITLE_WORDS`), le plus
+///   gros à rang égal (Super Mario Galaxy : `SMG_title_strm.ast`).
+pub fn auto_track(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64) -> Result<String, String> {
+    let mut nca = open_romfs(game, keys)?;
+    let mut romfs = nca.romfs().map_err(|e| e.to_string())?;
+    let files = romfs.list();
+    if let Some(event) = title_event(title_id).map(wwise_hash) {
+        let in_sound = |f: &&crate::nx::RomFile, ext: &str| f.path.contains("/sound/") && f.path.ends_with(ext);
+        let mut objects = None;
+        for f in files.iter().filter(|f| in_sound(f, ".bnk")) {
+            let objs = bank_objects(&romfs.read_all(f).map_err(|e| e.to_string())?);
+            if objs.contains_key(&event) {
+                objects = Some(objs);
+                break;
+            }
+        }
+        let objects = objects.ok_or("évènement du thème introuvable dans les banques de sons")?;
+        let mut best: Option<(String, u32, u64)> = None;
+        for f in files.iter().filter(|f| in_sound(f, ".pck")) {
+            let streams = pck_index(&mut romfs, f)?;
+            for id in event_sources(&objects, event, &streams) {
+                let len = streams[&id].1;
+                if best.as_ref().is_none_or(|b| len > b.2) {
+                    best = Some((f.path.clone(), id, len));
+                }
+            }
+        }
+        let (pck, id, _) = best.ok_or("sons du thème introuvables")?;
+        return Ok(format!("wwise:{pck}:{id}"));
+    }
+    files
+        .iter()
+        .filter(|f| is_audio(f) && f.size >= MIN_TRACK_SIZE / 4)
+        .filter_map(|f| title_rank(file_name(&f.path)).map(|r| (r, f)))
+        .min_by(|(ra, a), (rb, b)| ra.cmp(rb).then(b.size.cmp(&a.size)))
+        .map(|(_, f)| format!("file:{}", f.path))
+        .ok_or_else(|| "pas de musique d'écran titre reconnue dans ce jeu : choisis-la dans la fenêtre Mods et réglages".to_string())
+}
+
+/// Thème de l'écran titre décodé par Kaleido (sans vgmstream).
+pub fn title_theme(game: &std::path::Path, keys: &crate::nx::Keys, title_id: u64, max_seconds: f32) -> Result<Vec<u8>, String> {
+    let id = auto_track(game, keys, title_id)?;
+    let track = read_track(game, keys, &id)?;
+    decode_native(&track, max_seconds).ok_or("format audio à décoder avec vgmstream")?
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +664,11 @@ fn real_title_theme() {
     let keys = crate::nx::Keys::load(std::path::Path::new(&std::env::var("KALEIDO_NX_KEYS").unwrap())).unwrap();
     let t = std::time::Instant::now();
     let tid = u64::from_str_radix(&std::env::var("KALEIDO_NX_TID").unwrap_or("01001F5010DFA000".into()), 16).unwrap();
+    let tracks = list_tracks(&game, &keys).unwrap();
+    println!("{} morceaux ; auto : {:?}", tracks.len(), auto_track(&game, &keys, tid));
+    for t in tracks.iter().take(5) {
+        println!("  {} ({} Ko) {}", t.name, t.size / 1024, t.id);
+    }
     let ogg = title_theme(&game, &keys, tid, 50.0).unwrap();
     println!("{} Ko en {:?}", ogg.len() / 1024, t.elapsed());
     std::fs::write(std::env::var("KALEIDO_NX_OGG").unwrap(), ogg).unwrap();
@@ -562,11 +711,15 @@ mod ast_tests {
     }
 
     #[test]
-    fn title_candidates() {
-        let f = |p: &str, size| crate::nx::RomFile { path: p.into(), offset: 0, size };
-        let files = vec![f("/AudioRes/Stream/SMG_title_strm.ast", 5), f("/LayoutData/TitleLogo.arc", 9), f("/AudioRes/Stream/SMG_boss01a_strm.ast", 7)];
-        let c = title_stream_candidates(&files);
-        assert_eq!(c.len(), 1);
-        assert!(c[0].path.ends_with("SMG_title_strm.ast"));
+    fn title_names() {
+        assert_eq!(title_rank("SMG_title_strm.ast"), Some(0));
+        assert_eq!(title_rank("BGM_MainMenu.bfstm"), Some(2));
+        assert!(title_rank("title") < title_rank("theme_title_menu_x").max(Some(9)));
+        assert_eq!(title_rank("SMG_boss01a_strm.ast"), None);
+        let mut ast = b"MRTS".to_vec();
+        ast.resize(0x18, 0);
+        ast[0x10..0x14].copy_from_slice(&32000u32.to_le_bytes());
+        ast[0x14..0x18].copy_from_slice(&64000u32.to_le_bytes());
+        assert_eq!(header_seconds(&ast), Some(2.0));
     }
 }

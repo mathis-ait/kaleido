@@ -173,6 +173,11 @@ export function previewMusic(d: Detection | null, wait = 650) {
 }
 
 /** Coupe la musique ; `forget` : ne pas la reprendre au retour dans Kaleido. */
+/** Oublie le morceau gardé en mémoire pour ce jeu (après un changement de musique). */
+export function forgetMusic(path: string) {
+  buffers.delete(path);
+}
+
 export function stopMusic(forget = true) {
   if (forget) wanted = null;
   request++;

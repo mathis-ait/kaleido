@@ -5,6 +5,7 @@ import { ask, message } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
+import SwitchMusic from "./SwitchMusic.vue";
 import { titleIdOf } from "../games";
 import { installEmulator, installs, loadEmulators, locateEmulator, emus, PLATFORM_LABEL, RECOMMENDED } from "./play";
 import {
@@ -291,6 +292,8 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
               </div>
             </template>
           </section>
+
+          <SwitchMusic v-if="platform === 'switch'" :game="game" />
 
           <!-- Mods -->
           <section class="block">
