@@ -140,6 +140,9 @@ pub struct NuzlockeSummary {
     warnings: Vec<Warning>,
     /// Lieux de capture à rattacher à une route (dans la page Nuzlocke de l'éditeur).
     unassigned: usize,
+    /// Toutes les routes : la route affichée suit la carte lue en mémoire, sans relire la sauvegarde.
+    #[serde(skip)]
+    all: Vec<RouteHere>,
 }
 
 /// Ce que reçoit la fenêtre du compagnon.
@@ -240,13 +243,18 @@ fn summary(report: &nuzlocke::Report, here: Option<&nuzlocke::Route>) -> Nuzlock
         ace_species: c.leader.ace_species,
         ace_level: c.leader.ace_level,
     });
-    let here = here.and_then(|r| report.routes.iter().find(|v| v.key == r.key)).map(|v| RouteHere {
-        key: v.key.clone(),
-        name: v.name.clone(),
-        status: v.status,
-        capture: v.capture.as_ref().map(|m| if m.is_nicknamed { m.nickname.clone() } else { m.species_name.clone() }),
-        marked_missed: v.marked_missed,
-    });
+    let all: Vec<RouteHere> = report
+        .routes
+        .iter()
+        .map(|v| RouteHere {
+            key: v.key.clone(),
+            name: v.name.clone(),
+            status: v.status,
+            capture: v.capture.as_ref().map(|m| if m.is_nicknamed { m.nickname.clone() } else { m.species_name.clone() }),
+            marked_missed: v.marked_missed,
+        })
+        .collect();
+    let here = here.and_then(|r| all.iter().find(|v| v.key == r.key)).cloned();
     let warnings = report
         .violations
         .iter()
@@ -266,6 +274,7 @@ fn summary(report: &nuzlocke::Report, here: Option<&nuzlocke::Route>) -> Nuzlock
         here,
         warnings,
         unassigned: report.unassigned.len(),
+        all,
     }
 }
 
@@ -404,8 +413,12 @@ fn apply_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
     let (Some(read), Some(snap)) = (o.read, out.snapshot.as_ref()) else { return };
     let merged = snap.with_memory(&read.party, read.map, read.badges);
     if merged.map != snap.map {
-        if let (Some(place), _) = place_now(app, merged.version, merged.generation, merged.map) {
+        let (place, route) = place_now(app, merged.version, merged.generation, merged.map);
+        if let Some(place) = place {
             out.place = Some(place);
+        }
+        if let Some(n) = out.nuzlocke.as_mut() {
+            n.here = route.and_then(|k| n.all.iter().find(|r| r.key == k).cloned());
         }
     }
     out.snapshot = Some(merged);
