@@ -25,6 +25,7 @@ const PATHS: Record<string, string[]> = {
   copy: ["M9 9h11v11H9z", "M5 15H4V4h11v1"],
   plus: ["M12 5v14", "M5 12h14"],
   minus: ["M5 12h14"],
+  pin: ["M12 17v5", "M9 3h6", "M10 3v6l-3 4v2h10v-2l-3-4V3"],
   "chevron-left": ["M15 18l-6-6 6-6"],
   "chevron-right": ["M9 18l6-6-6-6"],
   user: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4 21a8 8 0 0 1 16 0"],

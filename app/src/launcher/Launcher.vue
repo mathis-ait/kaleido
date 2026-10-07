@@ -12,7 +12,7 @@ import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs,
 import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
-import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
+import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
 import { audio, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
 import { dominantColor } from "./color";
 import { useGamepad, type PadAction } from "./gamepad";
@@ -257,6 +257,7 @@ const menu = computed(() => {
   const items: { label: string; icon: string; run: () => void; danger?: boolean }[] = [];
   items.push({ label: "Mods et réglages", icon: "wand", run: () => openMods(g) });
   if (statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
+  if (g.platform !== "switch" && statusOf(g)?.savePath) items.push({ label: "Compagnon de partie", icon: "pin", run: () => void openCompanionOf(g) });
   if (canRandomize(g)) items.push({ label: "Randomiser", icon: "dice", run: () => randomize(g) });
   if (g.platform !== "switch") items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
   items.push({ label: "Afficher le fichier", icon: "folder", run: () => revealItemInDir(g.path) });

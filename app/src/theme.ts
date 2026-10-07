@@ -39,4 +39,8 @@ export function initTheme() {
   };
   apply(currentTheme.value);
   watch(currentTheme, apply);
+  // Thème changé dans une autre fenêtre (compagnon ↔ fenêtre principale).
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY && e.newValue && e.newValue !== currentTheme.value) currentTheme.value = e.newValue;
+  });
 }

@@ -15,6 +15,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 mod bank;
+mod companion;
 mod discover;
 mod battle;
 mod emusaves;
@@ -275,6 +276,7 @@ fn main() {
         .manage(OpenRom::default())
         .manage(saves::OpenSave::default())
         .manage(play::SaveWatch::default())
+        .manage(companion::Companion::default())
         .manage(nuzlocke::RomCache::default())
         .manage(bank::OpenBank::default())
         .manage(gifts::GiftFiles::default())
@@ -342,6 +344,12 @@ fn main() {
             play::play_install_save,
             play::play_find_rom,
             play::watch_save,
+            companion::companion_open,
+            companion::companion_launch,
+            companion::companion_state,
+            companion::companion_set_on_top,
+            companion::companion_set_auto_open,
+            companion::companion_set_compact,
             play::unwatch_save,
             play::watch_save_resync,
             library::library_config,

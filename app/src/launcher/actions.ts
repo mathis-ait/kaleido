@@ -19,10 +19,11 @@ export function coverUrl(d: Detection) {
 /** Un dossier 3DS (mod LayeredFS ou jeu extrait) se joue par-dessus le jeu d'origine. */
 export function playOptions(d: Detection): PlayOptions {
   const platform = platformOf(d);
-  if (d.kind !== "ctr_dump") return { platform, rom: d.path, modRomfs: null, trackKey: d.path };
+  const title = d.game?.name ?? d.title;
+  if (d.kind !== "ctr_dump") return { platform, rom: d.path, modRomfs: null, trackKey: d.path, title };
   const modRomfs = /[\\/]romfs$/i.test(d.path) ? d.path : `${d.path}\\romfs`;
   const base = allGames.value.find((g) => g.kind === "ctr_rom" && g.game?.id === d.game?.id && !isKaleidoRom(g));
-  return { platform, rom: base?.path ?? null, modRomfs, trackKey: d.path };
+  return { platform, rom: base?.path ?? null, modRomfs, trackKey: d.path, title };
 }
 
 const LAST_PLAYED_KEY = "kaleido.library.lastPlayed";
@@ -140,4 +141,11 @@ export function formatDuration(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   if (h === 0) return `${Math.max(1, m)} min`;
   return `${h} h ${String(m).padStart(2, "0")}`;
+}
+
+/** Ouvre le compagnon de partie sur la sauvegarde de ce jeu (lecture seule). */
+export async function openCompanionOf(d: Detection) {
+  const path = statusOf(d)?.savePath;
+  if (!path) return;
+  await invoke("companion_open", { path, title: d.game?.name ?? d.title, key: d.path });
 }

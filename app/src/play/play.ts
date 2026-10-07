@@ -397,6 +397,8 @@ export interface PlayOptions {
   save?: string | null;
   /** Jeu de la bibliothèque dont on compte le temps de jeu. */
   trackKey?: string | null;
+  /** Nom du jeu, affiché par le compagnon de partie. */
+  title?: string | null;
 }
 
 const LAST_GAME_KEY = "kaleido.play.lastGame3ds";
@@ -493,6 +495,10 @@ export async function play(o: PlayOptions): Promise<PlayResult | null> {
       modRomfs: opts.modRomfs ?? null,
       savePath: result.savePath,
     };
+    // Compagnon de partie (DS / 3DS) : s'ouvre à côté de l'émulateur, sauf si désactivé pour ce jeu.
+    if (opts.platform !== "switch" && result.savePath) {
+      invoke("companion_launch", { path: result.savePath, title: opts.title ?? "", key: opts.trackKey ?? null }).catch(() => undefined);
+    }
     if (result.warnings.length) await message(result.warnings.join("\n\n"), { title: "À savoir", kind: "info" });
     return result;
   } catch (e) {

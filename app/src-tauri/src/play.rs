@@ -776,15 +776,49 @@ impl Debouncer {
     }
 }
 
-struct Watching {
-    path: PathBuf,
+/// Surveillance d'un fichier par relevés réguliers (taille + date), avec anti-rebond.
+/// S'arrête quand on appelle `stop` ou quand la valeur est abandonnée.
+pub struct FileWatch {
+    pub path: PathBuf,
     stop: Arc<AtomicBool>,
     debouncer: Arc<Mutex<Debouncer>>,
 }
 
-/// Sauvegarde surveillée (une seule à la fois).
+impl FileWatch {
+    /// `on_change` est appelé (depuis un fil dédié) chaque fois que le fichier a changé puis est resté stable `debounce`.
+    pub fn spawn(path: PathBuf, poll: Duration, debounce: Duration, on_change: impl Fn(&Path) + Send + 'static) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let debouncer = Arc::new(Mutex::new(Debouncer::new(stamp_of(&path), debounce)));
+        let (s, d, p) = (stop.clone(), debouncer.clone(), path.clone());
+        std::thread::spawn(move || {
+            while !s.load(Ordering::Relaxed) {
+                std::thread::sleep(poll);
+                let fire = d.lock().map(|mut d| d.observe(stamp_of(&p), Instant::now())).unwrap_or(false);
+                if fire && !s.load(Ordering::Relaxed) {
+                    on_change(&p);
+                }
+            }
+        });
+        FileWatch { path, stop, debouncer }
+    }
+
+    /// Kaleido vient d'écrire le fichier : ce changement-là n'est pas signalé.
+    pub fn resync(&self) {
+        if let Ok(mut d) = self.debouncer.lock() {
+            d.resync(stamp_of(&self.path));
+        }
+    }
+}
+
+impl Drop for FileWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Sauvegarde surveillée par l'éditeur (une seule à la fois).
 #[derive(Default)]
-pub struct SaveWatch(Mutex<Option<Watching>>);
+pub struct SaveWatch(Mutex<Option<FileWatch>>);
 
 #[derive(Clone, Serialize)]
 struct SaveChanged {
@@ -801,30 +835,15 @@ pub fn watch_save(path: PathBuf, app: AppHandle, state: State<'_, SaveWatch>) ->
     if slot.as_ref().is_some_and(|w| w.path == path) {
         return Ok(());
     }
-    if let Some(old) = slot.take() {
-        old.stop.store(true, Ordering::Relaxed);
-    }
-    let stop = Arc::new(AtomicBool::new(false));
-    let debouncer = Arc::new(Mutex::new(Debouncer::new(stamp_of(&path), DEBOUNCE)));
-    let (s, d, p) = (stop.clone(), debouncer.clone(), path.clone());
-    std::thread::spawn(move || {
-        while !s.load(Ordering::Relaxed) {
-            std::thread::sleep(POLL);
-            let fire = d.lock().map(|mut d| d.observe(stamp_of(&p), Instant::now())).unwrap_or(false);
-            if fire && !s.load(Ordering::Relaxed) {
-                let _ = app.emit("save-changed", SaveChanged { path: p.display().to_string() });
-            }
-        }
-    });
-    *slot = Some(Watching { path, stop, debouncer });
+    *slot = Some(FileWatch::spawn(path, POLL, DEBOUNCE, move |p| {
+        let _ = app.emit("save-changed", SaveChanged { path: p.display().to_string() });
+    }));
     Ok(())
 }
 
 #[tauri::command]
 pub fn unwatch_save(state: State<'_, SaveWatch>) -> Result<(), String> {
-    if let Some(old) = state.0.lock().map_err(|e| e.to_string())?.take() {
-        old.stop.store(true, Ordering::Relaxed);
-    }
+    state.0.lock().map_err(|e| e.to_string())?.take();
     Ok(())
 }
 
@@ -832,7 +851,7 @@ pub fn unwatch_save(state: State<'_, SaveWatch>) -> Result<(), String> {
 #[tauri::command]
 pub fn watch_save_resync(state: State<'_, SaveWatch>) -> Result<(), String> {
     if let Some(w) = state.0.lock().map_err(|e| e.to_string())?.as_ref() {
-        w.debouncer.lock().map_err(|e| e.to_string())?.resync(stamp_of(&w.path));
+        w.resync();
     }
     Ok(())
 }

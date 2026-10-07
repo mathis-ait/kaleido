@@ -899,3 +899,7 @@ impl SaveSession {
             .find_map(|b| (0..BOX_SLOTS).map(|index| Slot::Box { r#box: b, index }).find(|&slot| matches!(self.get(slot), Ok(None))))
     }
 }
+
+#[path = "live.rs"]
+mod live;
+pub use live::{LiveBox, LiveBoxMon, LiveMon, LiveSnapshot, StatusCondition};

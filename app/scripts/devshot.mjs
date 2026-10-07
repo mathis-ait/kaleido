@@ -8,7 +8,9 @@ const [rawCode = "", out, wait = "1500"] = process.argv.slice(2);
 const code = rawCode.startsWith("@") ? (await import("node:fs")).readFileSync(rawCode.slice(1), "utf8") : rawCode;
 
 const targets = await (await fetch("http://127.0.0.1:9222/json")).json();
-const page = targets.find((t) => t.type === "page");
+// KALEIDO_TARGET=companion : vise la fenêtre du compagnon.
+const want = process.env.KALEIDO_TARGET;
+const page = targets.find((t) => t.type === "page" && (want ? t.url.includes(want) : !t.url.includes("companion")));
 if (!page) throw new Error("aucune page WebView2 trouvée");
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);

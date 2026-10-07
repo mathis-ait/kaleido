@@ -389,6 +389,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
 
 // --- Glossaires des modules, réunis ici pour que `<Tip term="…">` trouve tout au même endroit.
 // Termes propres à un module : préfixe du module (« bank.format », « battle.stab »…).
+import { COMPANION_TERMS } from "./companion/terms";
 import { PLAY_TIPS } from "./play/glossary";
 import { BANK_TERMS } from "./save/bank/terms";
 import { BATTLE_TIPS } from "./save/battle/glossary";
@@ -402,6 +403,7 @@ function register(prefix: string, entries: Record<string, GlossaryEntry>) {
 
 register("", SHOWDOWN_TERMS);
 register("play", PLAY_TIPS);
+register("companion", COMPANION_TERMS);
 register("bank", BANK_TERMS);
 register("battle", BATTLE_TIPS);
 register("gifts", GIFT_TERMS);

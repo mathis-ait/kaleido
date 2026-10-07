@@ -14,12 +14,21 @@ import { openSave, saveState } from "./saveStore";
 import { currentTheme } from "./theme";
 
 initTheme();
-createApp(App).mount("#app");
+
+// Fenêtre du compagnon de partie (ouverte par le moteur avec « ?companion ») : vue seule, sans le reste de l'app.
+const isCompanion = new URLSearchParams(location.search).has("companion");
+if (isCompanion) {
+  void import("./companion/Companion.vue").then((m) => createApp(m.default).mount("#app"));
+} else {
+  createApp(App).mount("#app");
+}
 
 // Jeux et émulateurs du PC retrouvés tout seuls, une fois l'interface affichée.
-setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
-initUpdates();
-initGamepadNav();
+if (!isCompanion) {
+  setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
+  initUpdates();
+  initGamepadNav();
+}
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).
 if (import.meta.env.DEV) {
