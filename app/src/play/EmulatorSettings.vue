@@ -3,7 +3,6 @@ import { computed, onMounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import Icon from "../components/Icon.vue";
-import PlayGuide from "./PlayGuide.vue";
 import PlayTip from "./PlayTip.vue";
 import { emus, loadEmulators, showGuide, updateConfig, type EmulatorId, type EmulatorInfo, type PlayPlatform } from "./play";
 
@@ -156,7 +155,6 @@ function status(e: EmulatorInfo) {
         </div>
       </div>
     </section>
-    <PlayGuide />
   </div>
 </template>
 

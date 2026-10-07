@@ -10,7 +10,6 @@ import PokemonPage from "../save/PokemonPage.vue";
 import ToolsPage from "../save/ToolsPage.vue";
 import ManagerPage from "../save/ManagerPage.vue";
 import LiveSyncBadge from "../play/LiveSyncBadge.vue";
-import PlayGuide from "../play/PlayGuide.vue";
 import SyncBanner from "../play/SyncBanner.vue";
 import NuzlockePage from "../save/NuzlockePage.vue";
 import BankPage from "../save/BankPage.vue";
@@ -229,7 +228,6 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
       </Transition>
     </main>
 
-    <PlayGuide />
 
     <Transition name="toast">
       <div v-if="saveState.notice" class="toast" role="status"><Icon name="check" :size="16" /> {{ saveState.notice }}</div>
