@@ -61,9 +61,26 @@ const TM5: [u16; 101] = [
     261, 512, 373, 153, 421, 371, 514, 416, 397, 148, 444, 521, 86, 360, 14, 522, 244, 523, 524, 157, 404, 525, 526, 398, 138, 447, 207, 365, 369,
     164, 430, 433, 528, 249, 555, 15, 19, 57, 70, 127, 291,
 ];
+/// CT Gen 3 (`PersonalInfo3.MachineMovesTechnical`) et CS (`MachineMovesHidden`).
+const TM3: [u16; 50] = [
+    264, 337, 352, 347, 46, 92, 258, 339, 331, 237, 241, 269, 58, 59, 63, 113, 182, 240, 202, 219, 218, 76, 231, 85, 87, 89, 216, 91, 94, 247, 280,
+    104, 115, 351, 53, 188, 201, 126, 317, 332, 259, 263, 290, 156, 213, 168, 211, 285, 289, 315,
+];
+const HM3: [u16; 8] = [15, 19, 57, 70, 148, 249, 127, 291];
+/// Donneurs de capacités de RFVF (15 premiers) puis d'Émeraude (`LearnSource3E.Tutor_E`).
+const TUTOR3: [u16; 30] = [5, 14, 25, 34, 38, 68, 69, 102, 118, 135, 138, 86, 153, 157, 164, 223, 205, 244, 173, 196, 203, 189, 8, 207, 214, 129, 111, 9, 7, 210];
+
+/// Bits CT/CS et donneurs Gen 3 par n° national (`hmtm_g3.pkl`, `tutors_g3.pkl` : données d'Émeraude,
+/// dont RFVF et RS sont des sous-ensembles, comme `PersonalTable.PopulateGen3Tutors`).
+static HMTM_G3: LazyLock<Vec<Vec<u8>>> =
+    LazyLock::new(|| binlinker32(include_bytes!("../../data/pkhex/legality/hmtm_g3.pkl")).into_iter().map(<[u8]>::to_vec).collect());
+static TUTORS_G3: LazyLock<Vec<Vec<u8>>> =
+    LazyLock::new(|| binlinker32(include_bytes!("../../data/pkhex/legality/tutors_g3.pkl")).into_iter().map(<[u8]>::to_vec).collect());
+
 /// Attaques des CT puis des CS du jeu, dans l'ordre de leurs numéros (CT01…, puis CS01…).
 pub fn machine_moves(game: Game) -> (&'static [u16], &'static [u16]) {
     match game.generation() {
+        3 => (&TM3, &HM3),
         4 => (&TM4, if game == Game::HGSS { &HM4_HGSS } else { &HM4_DPPT }),
         5 => TM5.split_at(95),
         6 if game == Game::ORAS => TM6_AO.split_at(100),
@@ -154,6 +171,27 @@ pub fn can_learn(game: Game, q: &LearnQuery, mv: u16) -> Option<LearnMethod> {
     let any_level = generation >= 7;
     if lvl.iter().any(|&(m, l)| m == mv && (any_level || l <= q.level)) {
         return Some(LearnMethod::LevelUp);
+    }
+    if generation == 3 {
+        let bits = HMTM_G3.get(q.species as usize)?;
+        if bits_contain(bits, 0, &TM3, mv) {
+            return Some(LearnMethod::Machine);
+        }
+        if let Some(i) = HM3.iter().position(|&m| m == mv) {
+            // Les CS doivent être oubliées avant le Parc des Amis.
+            if bit(bits, 0, 50 + i) && q.format == 3 {
+                return Some(LearnMethod::Machine);
+            }
+        }
+        let tutors = match game {
+            Game::E => 30,
+            Game::FRLG => 15,
+            _ => 0,
+        };
+        if TUTORS_G3.get(q.species as usize).is_some_and(|t| bits_contain(t, 0, &TUTOR3[..tutors], mv)) {
+            return Some(LearnMethod::Tutor);
+        }
+        return None;
     }
     let (index, raw) = dex::personal_raw(game, q.species, q.form)?;
     match generation {

@@ -51,6 +51,32 @@ impl PersonalInfo {
         let ev_at = |shift: u16| ((ev >> shift) & 3) as u8;
         let base_stats = BaseStats { hp: d[0], attack: d[1], defense: d[2], speed: d[3], sp_attack: d[4], sp_defense: d[5] };
         let ev_yield = BaseStats { hp: ev_at(0), attack: ev_at(2), defense: ev_at(4), speed: ev_at(6), sp_attack: ev_at(8), sp_defense: ev_at(10) };
+        if game.generation() <= 2 {
+            return Self::parse_gb(game.generation(), d);
+        }
+        if game.generation() == 3 {
+            // Fiche Gen 3 (0x1C, `PersonalInfo3.cs`) : même début que la Gen 4, sans formes.
+            return PersonalInfo {
+                base_stats,
+                types: [d[6], d[7]],
+                catch_rate: d[8],
+                base_exp: d[9] as u16,
+                ev_yield,
+                held_items: [u16_at(d, 0x0C), u16_at(d, 0x0E), 0],
+                gender_ratio: d[0x10],
+                hatch_cycles: d[0x11],
+                base_friendship: d[0x12],
+                growth_rate: GrowthRate::from_index(d[0x13]).unwrap_or(GrowthRate::MediumFast),
+                egg_groups: [d[0x14], d[0x15]],
+                abilities: [d[0x16] as u16, d[0x17] as u16, 0],
+                escape_rate: d[0x18],
+                color: d[0x19] & 0x7F,
+                form_count: 1,
+                form_stats_index: 0,
+                height: 0,
+                weight: 0,
+            };
+        }
         if game.generation() == 4 {
             // Fiche Gen 4 (0x2C) ; nombre de formes et indice ajoutés par PKHeX en 0x29-0x2B.
             return PersonalInfo {
@@ -97,6 +123,41 @@ impl PersonalInfo {
         }
     }
 
+    /// Fiches Gen 1 (0x1C : n°, PV, Att, Déf, Vit, Spécial, types, capture, expérience…, courbe
+    /// en 0x13) et Gen 2 (0x20 : n°, 6 statistiques, types, capture, expérience, objets, sexe en
+    /// 0x0D, éclosion en 0x0F, courbe en 0x16, groupes d'œufs en 0x17), types en codes GB
+    /// (`PersonalInfo1.cs`, `PersonalInfo2.cs` de PKHeX). Les types sont ramenés aux
+    /// identifiants Gen 3/4 de Kaleido (voir [`crate::pokemon::gb_type_to_gen4`]).
+    fn parse_gb(generation: u8, d: &[u8]) -> Self {
+        let t = |b: u8| crate::pokemon::gb_type_to_gen4(b).unwrap_or(0);
+        let (stats, types, catch, exp) = if generation == 1 {
+            (BaseStats { hp: d[1], attack: d[2], defense: d[3], speed: d[4], sp_attack: d[5], sp_defense: d[5] }, [t(d[6]), t(d[7])], d[8], d[9])
+        } else {
+            (BaseStats { hp: d[1], attack: d[2], defense: d[3], speed: d[4], sp_attack: d[5], sp_defense: d[6] }, [t(d[7]), t(d[8])], d[9], d[10])
+        };
+        let growth = if generation == 1 { d[0x13] } else { d[0x16] };
+        PersonalInfo {
+            base_stats: stats,
+            types,
+            catch_rate: catch,
+            base_exp: exp as u16,
+            ev_yield: BaseStats { hp: 0, attack: 0, defense: 0, speed: 0, sp_attack: 0, sp_defense: 0 },
+            held_items: if generation == 2 { [d[0x0B] as u16, d[0x0C] as u16, 0] } else { [0; 3] },
+            gender_ratio: if generation == 2 { d[0x0D] } else { 127 },
+            hatch_cycles: if generation == 2 { d[0x0F] } else { 0 },
+            base_friendship: 70,
+            growth_rate: GrowthRate::from_index(growth).unwrap_or(GrowthRate::MediumFast),
+            egg_groups: if generation == 2 { [d[0x17] & 0xF, d[0x17] >> 4] } else { [0; 2] },
+            abilities: [0; 3],
+            escape_rate: 0,
+            form_count: 1,
+            form_stats_index: 0,
+            color: 0,
+            height: 0,
+            weight: 0,
+        }
+    }
+
     /// Indice de la fiche de la forme `form` (règle `PersonalInfo.FormIndex` de PKHeX).
     fn form_index(&self, species: u16, form: u8) -> usize {
         if form == 0 || self.form_stats_index == 0 || form >= self.form_count {
@@ -109,7 +170,7 @@ impl PersonalInfo {
     /// Lit une fiche brute d'une ROM du jeu (même disposition que les tables de PKHeX ;
     /// en Gen 4, les types restent dans l'ordre de la ROM, avec « ??? » en 9).
     pub fn from_rom(game: Game, data: &[u8]) -> Option<Self> {
-        if data.len() < 0x28 {
+        if data.len() < if game.generation() <= 3 { 0x1C } else { 0x28 } {
             return None;
         }
         let mut d = data.to_vec();
@@ -128,7 +189,7 @@ struct Table {
     size: usize,
 }
 
-const PERSONAL: [Table; 9] = [
+const PERSONAL: [Table; 16] = [
     Table { data: include_bytes!("../../data/pkhex/personal/personal_dp"), size: 0x2C },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_pt"), size: 0x2C },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_hgss"), size: 0x2C },
@@ -138,6 +199,13 @@ const PERSONAL: [Table; 9] = [
     Table { data: include_bytes!("../../data/pkhex/personal/personal_ao"), size: 0x50 },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_sm"), size: 0x54 },
     Table { data: include_bytes!("../../data/pkhex/personal/personal_uu"), size: 0x54 },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_rs"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_e"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_fr"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_rb"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_y"), size: 0x1C },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_gs"), size: 0x20 },
+    Table { data: include_bytes!("../../data/pkhex/personal/personal_c"), size: 0x20 },
 ];
 
 fn entry(game: Game, index: usize) -> Option<PersonalInfo> {
@@ -199,7 +267,7 @@ fn parse_eggmoves(data: &'static [u8]) -> Vec<Vec<u16>> {
 type Levelup = LazyLock<Vec<Vec<(u16, u8)>>>;
 type EggMoves = LazyLock<Vec<Vec<u16>>>;
 
-static LEVELUP: [Levelup; 9] = [
+static LEVELUP: [Levelup; 16] = [
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_dp.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_pt.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_hgss.pkl"))),
@@ -209,8 +277,18 @@ static LEVELUP: [Levelup; 9] = [
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_ao.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_sm.pkl"))),
     LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_uu.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_rs.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_e.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_fr.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_rb.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_y.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_gs.pkl"))),
+    LazyLock::new(|| parse_levelup(include_bytes!("../../data/pkhex/levelup/lvlmove_c.pkl"))),
 ];
 
+static EGG_GS: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_gs.pkl")));
+static EGG_C: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_c.pkl")));
+static EGG_RS: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_rs.pkl")));
 static EGG_DPPT: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_dppt.pkl")));
 static EGG_HGSS: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_hgss.pkl")));
 static EGG_BW: EggMoves = LazyLock::new(|| parse_eggmoves(include_bytes!("../../data/pkhex/eggmove/eggmove_bw.pkl")));
@@ -231,6 +309,11 @@ pub fn egg_moves(game: Game, species: u16, form: u8) -> &'static [u16] {
         return &[];
     }
     let (table, index): (&EggMoves, Option<usize>) = match game {
+        // Pas d'œufs en Gen 1.
+        Game::RB | Game::Y => return &[],
+        Game::GS => (&EGG_GS, Some(species as usize)),
+        Game::C => (&EGG_C, Some(species as usize)),
+        Game::RS | Game::E | Game::FRLG => (&EGG_RS, Some(species as usize)),
         Game::DP | Game::Pt => (&EGG_DPPT, Some(species as usize)),
         Game::HGSS => (&EGG_HGSS, Some(species as usize)),
         Game::BW | Game::B2W2 => (&EGG_BW, Some(species as usize)),

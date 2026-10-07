@@ -7,13 +7,13 @@ import { hideGame } from "../games";
 import { removeItem } from "../library";
 import { isKaleidoRom, type Detection } from "../types";
 import { PLATFORM_LABEL, PLATFORM_SHORT, RECOMMENDED, defaultEmulator, emus, installs, type PlayPlatform } from "../play/play";
-import { canRandomize as canRandomizeGame, coverUrl, formatDuration, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf } from "../launcher/actions";
+import { platformOf, canRandomize as canRandomizeGame, coverUrl, formatDuration, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf } from "../launcher/actions";
 import { audio, previewMusic, stopMusic } from "../launcher/audio";
 import { openMods } from "../play/mods";
 
 const props = defineProps<{ game: Detection }>();
 
-const platform = computed<PlayPlatform>(() => (props.game.platform === "3ds" ? "3ds" : props.game.platform === "switch" ? "switch" : "nds"));
+const platform = computed<PlayPlatform>(() => platformOf(props.game));
 const isSwitch = computed(() => platform.value === "switch");
 const randomized = computed(() => isKaleidoRom(props.game));
 /** Boîte française en priorité, quelle que soit la langue de la ROM. */

@@ -688,7 +688,7 @@ pub fn add_to_save(session: &mut SaveSession, gift: &Gift, slot: Option<Slot>, r
             _ => first_empty_box_slot(session)?,
         };
         let target = target.ok_or_else(|| err("aucun emplacement libre dans les boîtes : libère une place puis recommence"))?;
-        let view = session.import(target, p.stored_data())?;
+        let view = session.import(target, &p.stored_data())?;
         let place = match view.slot {
             Slot::Box { r#box, index } => {
                 let name = session.save.box_name(r#box).ok().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("Boîte {}", r#box + 1));

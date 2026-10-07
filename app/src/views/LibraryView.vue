@@ -41,7 +41,7 @@ async function pickFiles() {
   const picked = await open({
     multiple: true,
     title: "Ajouter des jeux",
-    filters: [{ name: "Jeux DS, 3DS et Switch", extensions: ["nds", "3ds", "cci", "cxi", "xci", "nsp", "xcz", "nsz"] }],
+    filters: [{ name: "Jeux Game Boy, GBA, DS, 3DS et Switch", extensions: ["gb", "gbc", "gba", "nds", "3ds", "cci", "cxi", "xci", "nsp", "xcz", "nsz"] }],
   });
   if (picked) await addFiles(Array.isArray(picked) ? picked : [picked]);
 }
@@ -56,12 +56,12 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // --- Émulateurs
 
 const ALTERNATIVE: Partial<Record<PlayPlatform, EmulatorId>> = { nds: "desmume" };
-const NAMES: Record<EmulatorId, string> = { melonds: "melonDS", desmume: "DeSmuME", azahar: "Azahar", citra: "Citra", lime3ds: "Lime3DS", eden: "Eden" };
+const NAMES: Record<EmulatorId, string> = { mgba: "mGBA", melonds: "melonDS", desmume: "DeSmuME", azahar: "Azahar", citra: "Citra", lime3ds: "Lime3DS", eden: "Eden" };
 
 const discovering = ref(false);
 
 const consoles = computed(() =>
-  (["nds", "3ds", "switch"] as PlayPlatform[]).map((platform) => {
+  (["gba", "nds", "3ds", "switch"] as PlayPlatform[]).map((platform) => {
     const ready = available(platform);
     const recommended = RECOMMENDED[platform];
     const alternative = ALTERNATIVE[platform];

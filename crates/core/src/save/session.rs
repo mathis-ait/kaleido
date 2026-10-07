@@ -284,6 +284,13 @@ fn base_stats(game: Game, species: u16, form: u8) -> Option<crate::pokemon::Base
 /// Jeu des données correspondant à une sauvegarde.
 pub fn game_of(v: SaveVersion) -> Game {
     match v {
+        SaveVersion::RedBlue => Game::RB,
+        SaveVersion::Yellow => Game::Y,
+        SaveVersion::GoldSilver => Game::GS,
+        SaveVersion::Crystal => Game::C,
+        SaveVersion::RubySapphire => Game::RS,
+        SaveVersion::Emerald => Game::E,
+        SaveVersion::FireRedLeafGreen => Game::FRLG,
         SaveVersion::DiamondPearl => Game::DP,
         SaveVersion::Platinum => Game::Pt,
         SaveVersion::HeartGoldSoulSilver => Game::HGSS,
@@ -316,6 +323,13 @@ pub fn suggested_moves(game: Game, species: u16, form: u8, level: u8) -> [u16; 4
 /// Identifiant de version (`GameVersion` de PKHeX) du premier jeu de la paire.
 pub fn default_version_id(v: SaveVersion) -> u8 {
     match v {
+        SaveVersion::RedBlue => 35,
+        SaveVersion::Yellow => 38,
+        SaveVersion::GoldSilver => 39,
+        SaveVersion::Crystal => 41,
+        SaveVersion::RubySapphire => 2,
+        SaveVersion::Emerald => 3,
+        SaveVersion::FireRedLeafGreen => 4,
         SaveVersion::DiamondPearl => 10,
         SaveVersion::Platinum => 12,
         SaveVersion::HeartGoldSoulSilver => 7,
@@ -583,7 +597,8 @@ impl SaveSession {
         if let Some(g) = growth(game, species, 0) {
             p.set_exp(exp_for_level(g, level));
         }
-        if format != PkmFormat::Gen4 {
+        // Gen 3 et 4 : la nature découle du PID.
+        if !matches!(format, PkmFormat::Gen3 | PkmFormat::Gen4) {
             p.set_nature((next() >> 16) as u8 % 25).map_err(invalid)?;
         }
         let info = dex::personal(game, species, 0);
@@ -591,7 +606,8 @@ impl SaveSession {
         if format.generation() >= 6 {
             p.set_ability_number(1).map_err(invalid)?;
         }
-        let slot = (p.ability_number() == 2) as usize;
+        // Gen 3 : l'emplacement du talent suit le bit 0 du PID.
+        let slot = if format == PkmFormat::Gen3 { (p.pid() & 1) as usize } else { (p.ability_number() == 2) as usize };
         match info {
             Some(info) => {
                 let ability = match info.abilities[slot] {

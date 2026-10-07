@@ -5,6 +5,8 @@
 pub mod encounters;
 pub mod evolutions;
 pub mod field_items;
+pub mod gen12;
+pub mod gen3;
 pub mod learnsets;
 pub mod machines;
 pub mod shiny;

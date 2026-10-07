@@ -8,7 +8,9 @@ import { openGameSave, play, type PlayOptions, type PlayPlatform } from "../play
 
 /** Actions communes à la grille et au lanceur. */
 
-export const platformOf = (d: Detection): PlayPlatform => (d.platform === "3ds" ? "3ds" : d.platform === "switch" ? "switch" : "nds");
+export const platformOf = (d: Detection): PlayPlatform =>
+  // Game Boy et GBA : même émulateur (mGBA).
+  d.platform === "3ds" ? "3ds" : d.platform === "switch" ? "switch" : d.platform === "gba" || d.platform === "gb" ? "gba" : "nds";
 
 /** Jaquette (boîte française en priorité, icône officielle pour la Switch ; voir library.rs). */
 export function coverUrl(d: Detection) {
@@ -103,7 +105,7 @@ export async function refreshStatus(d: Detection) {
   pending.add(d.path);
   const o = playOptions(d);
   try {
-    statuses[d.path] = await invoke<GameStatus>("game_status", { rom: o.rom, modRomfs: o.modRomfs ?? null, ctr: o.platform === "3ds", key: d.path });
+    statuses[d.path] = await invoke<GameStatus>("game_status", { rom: o.rom, modRomfs: o.modRomfs ?? null, ctr: o.platform === "3ds", gba: o.platform === "gba", key: d.path });
   } catch {
     // Jeu illisible : rien à afficher (et on ne redemande pas à chaque rendu).
     statuses[d.path] ??= { emulator: null, savePath: null, saveExists: false, trainer: null, saveSeconds: null, emulatorSeconds: null, kaleidoSeconds: null };

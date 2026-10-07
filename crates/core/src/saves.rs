@@ -1,4 +1,7 @@
-//! Identification des fichiers de sauvegarde (Gen 4 à 7).
+//! Identification des fichiers de sauvegarde (Gen 3 à 7).
+//!
+//! Gen 3 (128 Kio, ou 64 Kio, avec ou sans le pied d'horloge de mGBA) : reconnue à ses
+//! secteurs (identifiants 0 à 13, signature 0x08012025), voir `save::gen3`.
 //!
 //! Les sauvegardes 3DS ont une taille propre à chaque jeu. Les sauvegardes DS font
 //! toutes 512 Kio ; on distingue la Gen 4 grâce au pied de bloc « général », qui
@@ -13,6 +16,13 @@ pub const DESMUME_FOOTER: usize = 0x7A;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveKind {
+    RedBlue,
+    Yellow,
+    GoldSilver,
+    Crystal,
+    RubySapphire,
+    Emerald,
+    FireRedLeafGreen,
     DiamondPearl,
     Platinum,
     HeartGoldSoulSilver,
@@ -27,6 +37,13 @@ pub enum SaveKind {
 impl SaveKind {
     pub fn label(self) -> &'static str {
         match self {
+            SaveKind::RedBlue => "Pokémon Rouge / Bleu",
+            SaveKind::Yellow => "Pokémon Jaune",
+            SaveKind::GoldSilver => "Pokémon Or / Argent",
+            SaveKind::Crystal => "Pokémon Cristal",
+            SaveKind::RubySapphire => "Pokémon Rubis / Saphir",
+            SaveKind::Emerald => "Pokémon Émeraude",
+            SaveKind::FireRedLeafGreen => "Pokémon Rouge Feu / Vert Feuille",
             SaveKind::DiamondPearl => "Pokémon Diamant / Perle",
             SaveKind::Platinum => "Pokémon Platine",
             SaveKind::HeartGoldSoulSilver => "Pokémon Or HeartGold / Argent SoulSilver",
@@ -40,6 +57,9 @@ impl SaveKind {
 
     pub fn generation(self) -> u8 {
         match self {
+            SaveKind::RedBlue | SaveKind::Yellow => 1,
+            SaveKind::GoldSilver | SaveKind::Crystal => 2,
+            SaveKind::RubySapphire | SaveKind::Emerald | SaveKind::FireRedLeafGreen => 3,
             SaveKind::DiamondPearl | SaveKind::Platinum | SaveKind::HeartGoldSoulSilver => 4,
             SaveKind::Gen5 => 5,
             SaveKind::XY | SaveKind::OmegaRubyAlphaSapphire => 6,
@@ -65,6 +85,12 @@ pub fn effective_size(len: u64) -> u64 {
 // Vérifié : PKHeX Saves/Util/SaveUtil.cs (SIZE_G6XY, SIZE_G6ORAS, SIZE_G7SM, SIZE_G7USUM,
 // SIZE_G4RAW = SIZE_G5RAW = 0x80000).
 pub fn identify(data: &[u8]) -> Option<SaveKind> {
+    if let Some(v) = crate::save::gen12_version(data) {
+        return Some(v.kind());
+    }
+    if let Some(v) = crate::save::gen3_version(data) {
+        return Some(v.kind());
+    }
     match effective_size(data.len() as u64) {
         0x65600 => Some(SaveKind::XY),
         0x76000 => Some(SaveKind::OmegaRubyAlphaSapphire),

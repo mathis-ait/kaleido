@@ -220,7 +220,7 @@ fn merge_dir(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 /// Décompresse une archive .zip ou .7z (chemins dangereux ignorés).
-fn extract_any(archive: &Path, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
+pub(crate) fn extract_any(archive: &Path, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let mut magic = [0u8; 6];
     fs::File::open(archive).and_then(|mut f| f.read_exact(&mut magic)).map_err(|e| e.to_string())?;
     if magic.starts_with(b"PK") {

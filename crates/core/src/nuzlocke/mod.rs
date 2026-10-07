@@ -14,6 +14,7 @@
 
 pub mod rom;
 pub mod rom_ctr;
+pub mod rom_gba;
 
 #[cfg(test)]
 mod tests;
@@ -304,7 +305,14 @@ pub struct Report {
 pub fn compatible(game: Game, version: SaveVersion) -> bool {
     matches!(
         (game, version),
-        (Game::Diamond | Game::Pearl, SaveVersion::DiamondPearl)
+        (Game::Red | Game::Blue, SaveVersion::RedBlue)
+            | (Game::Yellow, SaveVersion::Yellow)
+            | (Game::Gold | Game::Silver, SaveVersion::GoldSilver)
+            | (Game::Crystal, SaveVersion::Crystal)
+            | (Game::Ruby | Game::Sapphire, SaveVersion::RubySapphire)
+            | (Game::Emerald, SaveVersion::Emerald)
+            | (Game::FireRed | Game::LeafGreen, SaveVersion::FireRedLeafGreen)
+            | (Game::Diamond | Game::Pearl, SaveVersion::DiamondPearl)
             | (Game::Platinum, SaveVersion::Platinum)
             | (Game::HeartGold | Game::SoulSilver, SaveVersion::HeartGoldSoulSilver)
             | (Game::Black | Game::White, SaveVersion::BlackWhite)

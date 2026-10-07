@@ -15,7 +15,7 @@ import TypeBadge from "../components/TypeBadge.vue";
 import { closeRom, editCount, editor, openRom, speciesEdit } from "../editor";
 import { addPaths, library } from "../library";
 import { nav } from "../nav";
-import { isRom, type BaseStats, type CtrOutput, type PokeTypeKey, type SpeciesEdit, type TypeTag } from "../types";
+import { isRom, romExt, type BaseStats, type CtrOutput, type PokeTypeKey, type SpeciesEdit, type TypeTag } from "../types";
 
 const STATS: { key: keyof BaseStats; label: string }[] = [
   { key: "hp", label: "PV" },
@@ -235,8 +235,8 @@ async function saveRom() {
   if (isCtr.value) return saveCtr(src);
   const output = await save({
     title: "Enregistrer la ROM modifiée",
-    defaultPath: `${src.replace(/\.nds$/i, "")} - modifiée.nds`,
-    filters: [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+    defaultPath: `${src.replace(/\.(nds|gba|gbc|gb)$/i, "")} - modifiée.${romExt(src)}`,
+    filters: [{ name: romExt(src) === "nds" ? "ROM Nintendo DS" : romExt(src) === "gba" ? "ROM Game Boy Advance" : "ROM Game Boy", extensions: [romExt(src)] }],
   });
   if (!output) return;
   saving.value = true;

@@ -153,7 +153,7 @@ const emptyTarget = computed(() =>
 );
 
 async function importInto(slot: Slot) {
-  const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk4", "pk5", "pk6", "pk7"] }] });
+  const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk1", "pk2", "pk3", "pk4", "pk5", "pk6", "pk7"] }] });
   if (typeof file === "string") importPokemon(slot, file);
 }
 

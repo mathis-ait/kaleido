@@ -19,6 +19,7 @@ import {
   RANDOMIZABLE,
   isKaleidoRom,
   isRom,
+  romExt,
   type CompatMode,
   type CtrOutcome,
   type ItemSettings,
@@ -177,6 +178,7 @@ const showLog = ref(false);
 const roms = computed(() => library.items.filter((d) => isRom(d) && !isKaleidoRom(d)));
 const selected = computed(() => roms.value.find((r) => r.path === romPath.value) ?? null);
 const isCtr = computed(() => selected.value?.platform === "3ds");
+const isGba = computed(() => selected.value?.platform === "gba" || selected.value?.platform === "gb");
 /** Pokémon X / Y : second trio de starters (Professeur Platane). */
 const isXy = computed(() => ["x", "y"].includes(selected.value?.game?.id ?? ""));
 const target = ref<"luma" | "emulator">("luma");
@@ -531,11 +533,12 @@ async function importCode() {
 async function generate() {
   if (!selected.value) return;
   if (isCtr.value) return generateCtr();
-  const base = selected.value.path.replace(/\.nds$/i, "");
+  const base = selected.value.path.replace(/\.(nds|gba|gbc|gb)$/i, "");
+  const ext = romExt(selected.value.path);
   const output = await save({
     title: "Enregistrer la ROM randomisée",
-    defaultPath: `${base} - Kaleido ${seed.value}.nds`,
-    filters: [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
+    defaultPath: `${base} - Kaleido ${seed.value}.${ext}`,
+    filters: [{ name: ext === "nds" ? "ROM Nintendo DS" : ext === "gba" ? "ROM Game Boy Advance" : "ROM Game Boy", extensions: [ext] }],
   });
   if (!output) return;
   running.value = true;
@@ -868,11 +871,12 @@ function levelLabel(p: number) {
               <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" term="randomizer.followEvolutions" />
               <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" term="randomizer.levelupSanity" />
             </div>
+            <p v-if="isGba" class="dim note">Sur Game Boy et GBA, les maîtres des capacités et l'héritage par évolution ne sont pas encore pris en charge.</p>
           </div>
 
           <!-- Objets & boutiques -->
           <div v-else-if="tab === 'items'" class="section sv-panel">
-            <h3>Objets &amp; boutiques <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
+            <h3>Objets &amp; boutiques <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span><span v-else-if="isGba" class="soon">Pas encore sur Game Boy / GBA</span></h3>
             <div class="row field first">
               <span class="sv-label">Objets au sol</span>
               <Segmented v-model="settings.items.fieldItems" :options="FIELD_OPTS" />
@@ -914,11 +918,12 @@ function levelLabel(p: number) {
               <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" term="randomizer.tradeRandomItems" />
               <Toggle v-model="settings.statics.tradeRandomIvs" label="IV aléatoires" term="randomizer.tradeRandomIvs" />
             </div>
+            <p v-if="isGba" class="dim note">Sur Game Boy et GBA, les échanges en jeu ne changent pas encore.</p>
           </div>
 
           <!-- Chromatiques -->
           <div v-else-if="tab === 'shiny'" class="section sv-panel">
-            <h3>Chromatiques</h3>
+            <h3>Chromatiques <span v-if="isGba" class="soon">Pas encore sur Game Boy / GBA</span></h3>
             <div class="row shiny-row first">
               <label class="shiny-input">
                 1 chance sur

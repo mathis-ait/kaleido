@@ -87,7 +87,7 @@ fn roundtrip(bytes: Vec<u8>, version: SaveVersion) -> SaveFile {
     let other = if format == PkmFormat::Gen4 { PkmFormat::Gen5 } else { PkmFormat::Gen4 };
     let mut again = again;
     assert!(matches!(again.set_box_slot(0, 0, Some(sample(other, 1))), Err(SaveError::FormatMismatch { .. })));
-    let boxed_only = Pokemon::from_decrypted(format, a.stored_data()).unwrap();
+    let boxed_only = Pokemon::from_decrypted(format, &a.stored_data()).unwrap();
     assert!(matches!(again.set_party_slot(1, Some(boxed_only)), Err(SaveError::MissingPartyStats)));
 
     let text = describe(&again);

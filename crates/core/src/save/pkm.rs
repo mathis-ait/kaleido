@@ -1,4 +1,8 @@
-//! Pokémon des Gen 4 à 7 : formats PK4, PK5, PK6 et PK7 (d'après PKHeX.Core).
+//! Pokémon des Gen 3 à 7 : formats PK3, PK4, PK5, PK6 et PK7 (d'après PKHeX.Core).
+//!
+//! Le PK3 (Gen 3) a sa propre structure : il est converti à la lecture en un tampon au
+//! format PK4 (voir [`super::pk3`]), si bien que les accesseurs ci-dessous le traitent
+//! comme un Pokémon DS ; seuls le chiffrement et l'export repassent par le PK3.
 //!
 //! Structure commune : un en-tête de 8 octets (PID ou constante de chiffrement,
 //! drapeaux, somme de contrôle), quatre blocs A/B/C/D mélangés puis chiffrés, et,
@@ -52,6 +56,9 @@ pub enum PkmError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PkmFormat {
+    Gen1,
+    Gen2,
+    Gen3,
     Gen4,
     Gen5,
     Gen6,
@@ -61,6 +68,9 @@ pub enum PkmFormat {
 impl PkmFormat {
     pub fn generation(self) -> u8 {
         match self {
+            PkmFormat::Gen1 => 1,
+            PkmFormat::Gen2 => 2,
+            PkmFormat::Gen3 => 3,
             PkmFormat::Gen4 => 4,
             PkmFormat::Gen5 => 5,
             PkmFormat::Gen6 => 6,
@@ -70,7 +80,12 @@ impl PkmFormat {
 
     /// Taille d'un Pokémon en boîte.
     pub fn stored_size(self) -> usize {
-        if self.is_ds() {
+        if self.is_gb() {
+            return self.party_size();
+        }
+        if self == PkmFormat::Gen3 {
+            super::pk3::STORED_SIZE
+        } else if self.is_ds() {
             136
         } else {
             232
@@ -80,6 +95,10 @@ impl PkmFormat {
     /// Taille d'un Pokémon d'équipe (données stockées + statistiques).
     pub fn party_size(self) -> usize {
         match self {
+            // Fichier .pk1 / .pk2 : liste d'un Pokémon (données, dresseur, surnom).
+            PkmFormat::Gen1 => super::pk12::PK1_FILE,
+            PkmFormat::Gen2 => super::pk12::PK2_FILE,
+            PkmFormat::Gen3 => super::pk3::PARTY_SIZE,
             PkmFormat::Gen4 => 236,
             PkmFormat::Gen5 => 220,
             PkmFormat::Gen6 | PkmFormat::Gen7 => 260,
@@ -88,7 +107,12 @@ impl PkmFormat {
 
     /// Taille de chacun des quatre blocs mélangés.
     pub fn block_size(self) -> usize {
-        if self.is_ds() {
+        if self.is_gb() {
+            return 0;
+        }
+        if self == PkmFormat::Gen3 {
+            12
+        } else if self.is_ds() {
             32
         } else {
             56
@@ -97,6 +121,9 @@ impl PkmFormat {
 
     pub fn label(self) -> &'static str {
         match self {
+            PkmFormat::Gen1 => "PK1",
+            PkmFormat::Gen2 => "PK2",
+            PkmFormat::Gen3 => "PK3",
             PkmFormat::Gen4 => "PK4",
             PkmFormat::Gen5 => "PK5",
             PkmFormat::Gen6 => "PK6",
@@ -104,8 +131,25 @@ impl PkmFormat {
         }
     }
 
+    /// Disposition DS (PK4 / PK5) en mémoire ; le PK3 est tenu au format PK4.
     fn is_ds(self) -> bool {
-        matches!(self, PkmFormat::Gen4 | PkmFormat::Gen5)
+        matches!(self, PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5)
+    }
+
+    /// Game Boy (PK1, PK2) : pas de PID, valeurs génétiques sur 4 bits.
+    pub fn is_gb(self) -> bool {
+        matches!(self, PkmFormat::Gen1 | PkmFormat::Gen2)
+    }
+
+    /// Taille du tampon interne (le PK3 garde en plus une copie de ses octets d'origine).
+    fn buffer_size(self) -> usize {
+        if self.is_gb() {
+            super::pk12::BUFFER_SIZE
+        } else if self == PkmFormat::Gen3 {
+            super::pk3::BUFFER_SIZE
+        } else {
+            self.party_size()
+        }
     }
 
     fn shiny_threshold(self) -> u32 {
@@ -409,11 +453,12 @@ pub struct PokemonSummary {
 impl Pokemon {
     /// Emplacement vide (espèce 0).
     pub fn blank(format: PkmFormat) -> Self {
-        Self { format, data: vec![0; format.party_size()] }
+        Self { format, data: vec![0; format.buffer_size()] }
     }
 
     fn check_size(format: PkmFormat, len: usize) -> Result<(), PkmError> {
-        if len == format.stored_size() || len == format.party_size() {
+        // Gen 3 : le tampon interne complet (`data()`) est aussi accepté par `from_decrypted`.
+        if len == format.stored_size() || len == format.party_size() || len == format.buffer_size() {
             Ok(())
         } else {
             Err(PkmError::BadSize { format, got: len, stored: format.stored_size(), party: format.party_size() })
@@ -423,6 +468,22 @@ impl Pokemon {
     /// Données déjà déchiffrées (taille boîte ou équipe).
     pub fn from_decrypted(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format.is_gb() {
+            if bytes.len() == super::pk12::BUFFER_SIZE {
+                return Ok(Self { format, data: bytes.to_vec() });
+            }
+            let gen = format.generation();
+            let (data, ot, nick, egg) = super::pk12::parse_file(gen, bytes).ok_or(PkmError::Invalid("fichier Pokémon Game Boy illisible".into()))?;
+            // Jeu d'origine supposé : Rouge, Or, ou Cristal si des données de capture existent.
+            let version = if gen == 1 { 35 } else if data[0x1D] != 0 || data[0x1E] != 0 { 41 } else { 39 };
+            return Ok(Self { format, data: super::pk12::to_internal(gen, &data, &ot, &nick, egg, version) });
+        }
+        if format == PkmFormat::Gen3 {
+            if bytes.len() == super::pk3::BUFFER_SIZE {
+                return Ok(Self { format, data: bytes.to_vec() });
+            }
+            return Ok(Self { format, data: super::pk3::to_internal(bytes) });
+        }
         let mut data = vec![0; format.party_size()];
         data[..bytes.len()].copy_from_slice(bytes);
         Ok(Self { format, data })
@@ -431,6 +492,13 @@ impl Pokemon {
     /// Données chiffrées, telles que stockées dans une sauvegarde.
     pub fn from_encrypted(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format.is_gb() {
+            return Self::from_decrypted(format, bytes);
+        }
+        if format == PkmFormat::Gen3 {
+            let raw = super::pk3::decrypt(bytes);
+            return Self::from_decrypted(format, &raw[..bytes.len()]);
+        }
         let mut buf = bytes.to_vec();
         let bs = format.block_size();
         let end = HEADER + 4 * bs;
@@ -449,6 +517,12 @@ impl Pokemon {
     /// et du nom du dresseur en Gen 6/7).
     pub fn from_bytes(format: PkmFormat, bytes: &[u8]) -> Result<Self, PkmError> {
         Self::check_size(format, bytes.len())?;
+        if format.is_gb() {
+            return Self::from_decrypted(format, bytes);
+        }
+        if format == PkmFormat::Gen3 {
+            return if super::pk3::looks_decrypted(bytes) { Self::from_decrypted(format, bytes) } else { Self::from_encrypted(format, bytes) };
+        }
         let encrypted = if format.is_ds() { le_u32(bytes, 0x64) != 0 } else { le_u16(bytes, 0x58) != 0 || le_u16(bytes, 0xC8) != 0 };
         if encrypted {
             Self::from_encrypted(format, bytes)
@@ -466,9 +540,17 @@ impl Pokemon {
         &self.data
     }
 
-    /// Données déchiffrées, taille boîte.
-    pub fn stored_data(&self) -> &[u8] {
-        &self.data[..self.format.stored_size()]
+    /// Données déchiffrées, taille boîte (PK3 reconstruit pour la Gen 3).
+    pub fn stored_data(&self) -> std::borrow::Cow<'_, [u8]> {
+        if self.format.is_gb() {
+            return std::borrow::Cow::Owned(self.gb_file());
+        }
+        if self.format == PkmFormat::Gen3 {
+            let mut raw = super::pk3::from_internal(&self.data);
+            raw.truncate(super::pk3::STORED_SIZE);
+            return std::borrow::Cow::Owned(raw);
+        }
+        std::borrow::Cow::Borrowed(&self.data[..self.format.stored_size()])
     }
 
     pub fn is_empty(&self) -> bool {
@@ -483,7 +565,25 @@ impl Pokemon {
     }
 
     /// Données chiffrées pour l'équipe (somme de contrôle recalculée).
+    /// Fichier .pk1 / .pk2 (les Pokémon GB ne sont pas chiffrés).
+    fn gb_file(&self) -> Vec<u8> {
+        let gen = self.format.generation();
+        let (data, ot, nick) = super::pk12::from_internal(gen, &self.data);
+        super::pk12::to_file(gen, &data, &ot, &nick, self.is_egg())
+    }
+
+    /// Données GB (équipe), nom du dresseur et surnom, pour les listes des sauvegardes GB.
+    pub(crate) fn gb_parts(&self) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        super::pk12::from_internal(self.format.generation(), &self.data)
+    }
+
     pub fn encrypt_party(&self) -> Vec<u8> {
+        if self.format.is_gb() {
+            return self.gb_file();
+        }
+        if self.format == PkmFormat::Gen3 {
+            return super::pk3::encrypt(&super::pk3::from_internal(&self.data));
+        }
         let mut buf = self.data.clone();
         let chk = self.calc_checksum();
         buf[6..8].copy_from_slice(&chk.to_le_bytes());
@@ -498,11 +598,24 @@ impl Pokemon {
     }
 
     pub fn calc_checksum(&self) -> u16 {
+        // Pas de somme de contrôle pour les Pokémon GB.
+        if self.format.is_gb() {
+            return 0;
+        }
+        if self.format == PkmFormat::Gen3 {
+            return super::pk3::checksum(&super::pk3::from_internal(&self.data));
+        }
         let end = HEADER + 4 * self.format.block_size();
         self.data[HEADER..end].as_chunks::<2>().0.iter().fold(0u16, |acc, w| acc.wrapping_add(u16::from_le_bytes([w[0], w[1]])))
     }
 
     pub fn checksum(&self) -> u16 {
+        if self.format.is_gb() {
+            return 0;
+        }
+        if self.format == PkmFormat::Gen3 {
+            return self.u16(super::pk3::RAW_AT + 0x1C);
+        }
         self.u16(6)
     }
 
@@ -512,6 +625,20 @@ impl Pokemon {
 
     pub fn refresh_checksum(&mut self) {
         let chk = self.calc_checksum();
+        if self.format.is_gb() {
+            let (data, ot, nick) = self.gb_parts();
+            let at = super::pk12::RAW_AT;
+            self.data[at..at + data.len()].copy_from_slice(&data);
+            self.data[at + super::pk12::PK2_PARTY..at + super::pk12::PK2_PARTY + super::pk12::NAME].copy_from_slice(&ot);
+            self.data[at + super::pk12::PK2_PARTY + super::pk12::NAME..at + super::pk12::PK2_PARTY + 2 * super::pk12::NAME].copy_from_slice(&nick);
+            return;
+        }
+        if self.format == PkmFormat::Gen3 {
+            // La copie d'origine reçoit tous les champs (et donc la somme qui leur correspond).
+            let raw = super::pk3::from_internal(&self.data);
+            self.data[super::pk3::RAW_AT..].copy_from_slice(&raw);
+            return;
+        }
         self.put_u16(6, chk);
     }
 
@@ -603,6 +730,9 @@ impl Pokemon {
     }
 
     pub fn is_shiny(&self) -> bool {
+        if self.format.is_gb() {
+            return super::pk12::is_shiny(super::pk12::ivs_to_dvs(self.ivs()));
+        }
         let pid = self.pid();
         let xor = (self.tid() ^ self.sid()) as u32 ^ (pid >> 16) ^ (pid & 0xFFFF);
         xor < self.format.shiny_threshold()
@@ -621,6 +751,17 @@ impl Pokemon {
     /// Emplacement du talent : 1, 2 ou 4 (caché). En Gen 4/5, déduit du PID.
     pub fn ability_number(&self) -> u8 {
         match self.format {
+            PkmFormat::Gen1 | PkmFormat::Gen2 => 1,
+            // Gen 3 : bit de talent stocké à part ; on le déduit du talent écrit.
+            PkmFormat::Gen3 => {
+                let p = crate::dex::personal(crate::dex::Game::E, self.species(), 0);
+                let (first, second) = p.map_or((0, 0), |p| (p.abilities[0], p.abilities[1]));
+                if second != 0 && first != second && self.ability() == second {
+                    2
+                } else {
+                    1
+                }
+            }
             PkmFormat::Gen4 => 1 << (self.pid() & 1),
             PkmFormat::Gen5 if self.u8(G5_HIDDEN_ABILITY) & 1 != 0 => 4,
             // Correction (PKHeX PKM.PIDAbility) : le bit 16 du PID ne compte que pour un Pokémon
@@ -637,7 +778,9 @@ impl Pokemon {
     /// Nature (0 = Hardi … 24 = Bizarre). En Gen 4, `PID % 25`.
     pub fn nature(&self) -> u8 {
         match self.format {
-            PkmFormat::Gen4 => (self.pid() % 25) as u8,
+            // Pas de nature en Gen 1 / 2 : celle que lui donnera la Console virtuelle.
+            PkmFormat::Gen1 | PkmFormat::Gen2 => (self.exp() % 25) as u8,
+            PkmFormat::Gen3 | PkmFormat::Gen4 => (self.pid() % 25) as u8,
             PkmFormat::Gen5 => self.u8(G5_NATURE),
             PkmFormat::Gen6 | PkmFormat::Gen7 => self.u8(G67_NATURE),
         }
@@ -648,7 +791,8 @@ impl Pokemon {
             return Err(PkmError::OutOfRange { field: "nature", value: v as u32 });
         }
         match self.format {
-            PkmFormat::Gen4 => return Err(PkmError::NatureFromPid),
+            PkmFormat::Gen1 | PkmFormat::Gen2 => return Err(PkmError::Invalid("pas de nature en Gen 1 et 2".into())),
+            PkmFormat::Gen3 | PkmFormat::Gen4 => return Err(PkmError::NatureFromPid),
             PkmFormat::Gen5 => self.put_u8(G5_NATURE, v),
             PkmFormat::Gen6 | PkmFormat::Gen7 => self.put_u8(G67_NATURE, v),
         }
@@ -1176,10 +1320,14 @@ impl Pokemon {
     /// Gen 4 : pas de talent caché, l'emplacement vient du bit 0 du PID (PID recalculé).
     /// Gen 5 : drapeau « talent caché », sinon bit 16 du PID (PID recalculé).
     pub fn set_ability_number(&mut self, n: u8) -> Result<(), PkmError> {
-        if !matches!(n, 1 | 2 | 4) || (n == 4 && self.format == PkmFormat::Gen4) {
+        if self.format.is_gb() {
+            return Ok(());
+        }
+        if !matches!(n, 1 | 2 | 4) || (n == 4 && matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4)) {
             return Err(PkmError::OutOfRange { field: "emplacement de talent", value: n as u32 });
         }
         match self.format {
+            PkmFormat::Gen1 | PkmFormat::Gen2 => {}
             PkmFormat::Gen6 => self.put_u8(G67_ABILITY_NUMBER, n),
             PkmFormat::Gen7 => {
                 let v = self.u8(G67_ABILITY_NUMBER);
@@ -1192,8 +1340,10 @@ impl Pokemon {
                     self.reroll_pid(Some(self.is_shiny()), None, Some(n - 1));
                 }
             }
-            PkmFormat::Gen4 => {
-                if self.ability_number() != n {
+            PkmFormat::Gen3 | PkmFormat::Gen4 => {
+                // Gen 3 : le bit 0 du PID doit suivre l'emplacement (le talent est écrit à part).
+                let wrong = if self.format == PkmFormat::Gen3 { (self.pid() & 1) as u8 != n - 1 } else { self.ability_number() != n };
+                if wrong {
                     self.reroll_pid(Some(self.is_shiny()), Some(self.nature()), Some(n - 1));
                 }
             }
@@ -1207,7 +1357,10 @@ impl Pokemon {
         if nature >= 25 {
             return Err(PkmError::OutOfRange { field: "nature", value: nature as u32 });
         }
-        if self.format == PkmFormat::Gen4 {
+        if self.format.is_gb() {
+            return Err(PkmError::Invalid("pas de nature en Gen 1 et 2".into()));
+        }
+        if matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4) {
             if self.nature() != nature {
                 let slot = (self.ability_number() == 2) as u8;
                 self.reroll_pid(Some(self.is_shiny()), Some(nature), Some(slot));
@@ -1220,9 +1373,26 @@ impl Pokemon {
 
     /// Rend le Pokémon chromatique ou non (voir [`ShinyMode`]).
     pub fn set_shiny(&mut self, mode: ShinyMode) {
-        let gen4_nature = (self.format == PkmFormat::Gen4).then(|| self.nature());
+        // Gen 1 / 2 : chromatique = DV de Défense, Vitesse et Spécial à 10, Attaque en {2, 3, 6, 7, 10, 11, 14, 15}.
+        if self.format.is_gb() {
+            let mut iv = self.ivs();
+            if mode == ShinyMode::None {
+                if self.is_shiny() {
+                    iv[2] = 9;
+                }
+            } else {
+                iv[1] |= 2;
+                iv[2] = 10;
+                iv[3] = 10;
+                iv[4] = 10;
+                iv[5] = 10;
+            }
+            let _ = self.set_ivs(iv);
+            return;
+        }
+        let gen4_nature = matches!(self.format, PkmFormat::Gen3 | PkmFormat::Gen4).then(|| self.nature());
         let slot = match self.format {
-            PkmFormat::Gen4 | PkmFormat::Gen5 if self.ability_number() != 4 => Some((self.ability_number() == 2) as u8),
+            PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5 if self.ability_number() != 4 => Some((self.ability_number() == 2) as u8),
             _ => None,
         };
         match mode {
@@ -1541,7 +1711,7 @@ pub(super) mod tests {
         assert_eq!(pk.party_level(), Some(100));
         assert_eq!(pk.party_stats().unwrap()[1], 394);
         assert_eq!(pk.level(None), Some(100));
-        let boxed = Pokemon::from_decrypted(PkmFormat::Gen6, pk.stored_data()).unwrap();
+        let boxed = Pokemon::from_decrypted(PkmFormat::Gen6, &pk.stored_data()).unwrap();
         assert_eq!(boxed.level(None), None);
         assert_eq!(boxed.level(Some(GrowthRate::Slow)), Some(100));
         assert!(boxed.summary(None).level_estimated);

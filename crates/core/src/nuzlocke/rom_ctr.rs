@@ -42,8 +42,14 @@ pub fn supports(game: Game) -> bool {
     game.generation() >= 6 && crate::ctr_rom::CtrLayout::for_game(game).is_some()
 }
 
-/// Ouvre une ROM DS (`.nds`) ou 3DS (image ou dossier extrait) et lit ce qu'il faut au mode Nuzlocke.
+/// Ouvre une ROM GBA (`.gba`), DS (`.nds`) ou 3DS (image ou dossier extrait) et lit ce qu'il faut au mode Nuzlocke.
 pub fn read_path(path: &Path) -> Result<RomInfo, RomError> {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gb") || e.eq_ignore_ascii_case("gbc")) {
+        return Err(RomError::Unsupported("le mode Nuzlocke ne gère pas encore les jeux Game Boy".into()));
+    }
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gba")) {
+        return super::rom_gba::read(&crate::gba_rom::GbaGameRom::open(path)?);
+    }
     if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("nds")) {
         let mut info = super::rom::read(&GameRom::open(path)?)?;
         info.seed = super::rom::kaleido_seed(path);

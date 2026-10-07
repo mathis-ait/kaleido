@@ -174,9 +174,15 @@ onMounted(() => {
 
     <h2>À propos</h2>
     <div class="about panel">
-      <p>
-        Kaleido est un logiciel libre, sous licence GPL version 3 ou ultérieure.
-      </p>
+      <p>Kaleido est un logiciel libre (GPLv3). Il reprend des données et du code d'autres projets libres :</p>
+      <dl class="sv-dl">
+        <dt>PKHeX</dt>
+        <dd>kwsch et contributeurs, GPLv3 : noms, fiches, rencontres, formats de sauvegarde</dd>
+        <dt>Universal Pokémon Randomizer ZX</dt>
+        <dd>Dabomstew, Ajarmar et contributeurs, GPLv3 : emplacements des données des ROM (fichiers d'offsets Gen 1 à 7)</dd>
+        <dt>PokeAPI</dt>
+        <dd>BSD-3 : puissance, précision et catégorie des attaques</dd>
+      </dl>
       <p>
         <strong>Compagnon en direct.</strong> Pour suivre ta partie à la seconde (PV, rencontres, K.O.), le compagnon lit la
         mémoire de l'émulateur (melonDS, DeSmuME, Azahar) pendant que tu joues. Cette lecture est strictement en lecture seule :
@@ -212,7 +218,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: 18px 20px;
+  padding: var(--sp-4) var(--sp-5);
 }
 
 .about p {
