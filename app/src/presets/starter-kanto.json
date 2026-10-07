@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "starter-kanto",
+  "order": 5,
+  "name": "Starter Kanto",
+  "tagline": "Commence X ou Y avec Bulbizarre, Salamèche ou Carapuce.",
+  "games": ["x", "y"],
+  "changes": [
+    { "icon": "ball", "label": "Starters de Kanto dès le départ" },
+    { "icon": "map", "label": "Rencontres d'origine" },
+    { "icon": "swords", "label": "Dresseurs d'origine" }
+  ],
+  "settings": {
+    "starters": "custom",
+    "customStarters": [1, 4, 7]
+  }
+}

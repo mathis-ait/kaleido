@@ -11,6 +11,7 @@ mod ctr_xy;
 mod extras;
 pub mod items;
 pub mod moves;
+pub mod preview;
 pub mod settings;
 pub mod statics;
 

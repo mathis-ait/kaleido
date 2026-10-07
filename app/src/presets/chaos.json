@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "chaos",
+  "order": 3,
+  "name": "Chaos",
+  "tagline": "Tout est tiré au sort. Bonne chance.",
+  "changes": [
+    { "icon": "dice", "label": "Starters, sauvages et dresseurs au hasard" },
+    { "icon": "sliders", "label": "Types, talents, statistiques et attaques mélangés" },
+    { "icon": "bag", "label": "Objets et CT au hasard, légendaires compris" }
+  ],
+  "settings": {
+    "starters": "random",
+    "wild": "random",
+    "wildSimilarStrength": false,
+    "trainers": "random",
+    "trainersSimilarStrength": false,
+    "stats": "random",
+    "randomTypes": true,
+    "randomAbilities": true,
+    "randomMovesets": true,
+    "noLegendaries": false,
+    "moves": { "randomTms": true, "noGameBreaking": true, "keepFieldMoves": true, "tmCompat": "random", "followEvolutions": true },
+    "items": { "fieldItems": "random", "banBadFieldItems": true }
+  }
+}

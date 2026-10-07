@@ -14,6 +14,7 @@ use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+mod adventure;
 mod bank;
 mod companion;
 mod runlog;
@@ -151,6 +152,12 @@ fn randomizer_presets() -> Vec<Preset> {
     randomizer::presets()
 }
 
+/// Réglages du moteur quand rien n'est demandé (tout inchangé) : base des presets « Nouvelle aventure ».
+#[tauri::command]
+fn randomizer_defaults() -> Settings {
+    Settings::default()
+}
+
 #[tauri::command]
 async fn preview_starters(path: PathBuf, settings: Settings, seed: u64, app: AppHandle) -> Result<Vec<PokemonRef>, String> {
     blocking(move || {
@@ -198,6 +205,10 @@ async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: Pat
         let game = CtrGameRom::open(&path).map_err(|e| e.to_string())?;
         let (outcome, written) = randomizer::ctr::randomize(&game, &settings, seed, &output, target).map_err(|e| e.to_string())?;
         std::fs::write(output.join(format!("Kaleido {seed} - journal.txt")), &outcome.log).map_err(|e| e.to_string())?;
+        // Le mod garde l'adresse du jeu d'origine : Nuzlocke, Combat et compagnon le relisent par-dessus.
+        if let Some(title_dir) = written.romfs.as_ref().and_then(|r| r.parent()) {
+            let _ = std::fs::write(title_dir.join(kaleido_core::formats::romfs::MOD_BASE_FILE), path.display().to_string());
+        }
         let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
         Ok(CtrOutcome { outcome, romfs: show(written.romfs), image: show(written.image) })
     })
@@ -354,6 +365,11 @@ fn main() {
             play::play_find_rom,
             play::watch_save,
             companion::companion_open,
+            adventure::adventure_preview,
+            randomizer_defaults,
+            adventure::user_presets,
+            adventure::save_user_presets,
+            adventure::nuzlocke_track_save,
             companion::companion_launch,
             companion::companion_state,
             companion::companion_set_on_top,

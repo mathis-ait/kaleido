@@ -3,12 +3,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import Dialog from "../components/Dialog.vue";
+import Icon from "../components/Icon.vue";
 import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
+import { saveUserPreset } from "../presets";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -185,6 +188,17 @@ const ctrResult = ref<CtrOutcome | null>(null);
 const showStarters = ref(false);
 const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 
+// Réglages repris de « Nouvelle aventure » (Personnaliser) : partent des réglages du moteur.
+function takeAdventure() {
+  const a = nav.randomizerSettings;
+  if (!a) return;
+  Object.assign(settings, JSON.parse(JSON.stringify(a.settings)) as RandomizerSettings);
+  seed.value = a.seed;
+  customNames.value = ["", "", ""];
+  nav.randomizerSettings = null;
+}
+watch(() => nav.randomizerSettings, takeAdventure);
+
 // ROM envoyée depuis la bibliothèque alors que le Randomizer est déjà ouvert.
 watch(
   () => nav.randomizerRom,
@@ -195,6 +209,7 @@ watch(
 
 onMounted(async () => {
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
+  takeAdventure();
   presets.value = await invoke<Preset[]>("randomizer_presets").catch(() => []);
   speciesNames.value = (await invoke<{ species: string[] }>("name_lists")).species;
 });
@@ -425,6 +440,22 @@ function applyPreset(p: Preset) {
   customNames.value = ["", "", ""];
 }
 
+// --- Preset personnel (carte de plus dans « Nouvelle aventure »)
+
+const savingPreset = ref(false);
+const presetName = ref("");
+const presetSaved = ref<string | null>(null);
+
+async function savePreset() {
+  const name = presetName.value.trim();
+  if (!name) return;
+  await saveUserPreset(name, JSON.parse(JSON.stringify(settings)) as RandomizerSettings);
+  savingPreset.value = false;
+  presetSaved.value = name;
+  presetName.value = "";
+  setTimeout(() => (presetSaved.value = null), 3000);
+}
+
 // Aperçu des starters, recalculé quand la ROM, la seed ou les réglages changent.
 let previewTimer: number | undefined;
 watch(
@@ -630,7 +661,21 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                   <small>{{ p.description }}</small>
                 </button>
               </div>
+              <p class="save-preset">
+                <button type="button" class="sv-btn small" @click="savingPreset = true"><Icon name="save" :size="14" /> Enregistrer comme preset</button>
+                <small v-if="presetSaved" class="dim">« {{ presetSaved }} » ajouté à Nouvelle aventure</small>
+                <Tip term="adventure.adventure" />
+              </p>
             </div>
+            <Dialog v-model="savingPreset" title="Enregistrer comme preset" icon="save" :width="440">
+              <p class="sv-help">Ces réglages deviennent une carte de plus dans « Nouvelle aventure », depuis la bibliothèque.</p>
+              <input v-model="presetName" class="sv-input" placeholder="Nom du preset" aria-label="Nom du preset" autofocus @keydown.enter="savePreset" />
+              <template #foot>
+                <span class="grow" />
+                <button type="button" class="sv-btn" @click="savingPreset = false">Annuler</button>
+                <button type="button" class="sv-btn solid" :disabled="!presetName.trim()" @click="savePreset">Enregistrer</button>
+              </template>
+            </Dialog>
 
             <div class="section panel">
               <div class="summary-head">
@@ -1338,6 +1383,18 @@ h3 {
     opacity: 0;
     transform: translateY(10px) scale(0.9);
   }
+}
+
+.grow {
+  flex: 1;
+}
+
+.save-preset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
 }
 
 .seed {

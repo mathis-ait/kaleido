@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "classique-plus",
+  "order": 1,
+  "name": "Classique+",
+  "tagline": "Le jeu d'origine, juste un peu plus pratique.",
+  "changes": [
+    { "icon": "ball", "label": "Captures plus faciles" },
+    { "icon": "sparkle", "label": "Évolutions par échange au niveau 37" },
+    { "icon": "shield", "label": "Rien de randomisé" }
+  ],
+  "settings": {
+    "catchRate": "doubled",
+    "easyEvolutions": true
+  }
+}

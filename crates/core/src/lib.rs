@@ -27,6 +27,8 @@ pub use ctr_rom::{CtrGameRom, CtrLayout};
 pub use detect::{detect_path, Detection, FileKind};
 pub use games::{Game, Platform};
 pub use rom::{GameRom, RomError};
+/// Formats bruts (RomFS, NARC…), pour l'application.
+pub use kaleido_formats as formats;
 
 /// Vraie ROM pour les tests (ignorés si elle est absente) : dossier `KALEIDO_ROMS`,
 /// sinon `~/Documents/NDS & 3DS`.

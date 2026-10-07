@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "chasse-chromatique",
+  "order": 6,
+  "name": "Chasse aux chromatiques",
+  "tagline": "Les Pokémon chromatiques deviennent bien plus fréquents.",
+  "changes": [
+    { "icon": "sparkle", "label": "Chromatiques 8 fois plus fréquents" },
+    { "icon": "map", "label": "Rencontres d'origine" },
+    { "icon": "shield", "label": "Rien d'autre ne change" }
+  ],
+  "settings": {},
+  "nds": { "shinyOdds": 1024 },
+  "ctr": { "shinyOdds": 512 }
+}

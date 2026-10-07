@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "nuzlocke-pret",
+  "order": 4,
+  "name": "Nuzlocke prêt",
+  "tagline": "Découverte, plus les règles Nuzlocke suivies toutes seules.",
+  "changes": [
+    { "icon": "map", "label": "Une espèce par zone, de force comparable" },
+    { "icon": "swords", "label": "Champions thématiques, un peu plus forts" },
+    { "icon": "book", "label": "Captures et morts suivies par le compagnon" }
+  ],
+  "companion": { "nuzlocke": true },
+  "settings": {
+    "starters": "triangle",
+    "wild": "area",
+    "wildSimilarStrength": true,
+    "trainers": "type_themed",
+    "trainersSimilarStrength": true,
+    "trainerLevelPercent": 110,
+    "noLegendaries": true
+  }
+}

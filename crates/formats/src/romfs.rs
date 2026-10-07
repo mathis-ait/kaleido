@@ -159,12 +159,19 @@ pub enum RomFsSource {
     Image { title_id: u64, path: PathBuf, romfs: RomFsImage<BufReader<File>> },
     /// Dossier extrait (`romfs/` à côté de `exheader.bin`).
     Dir { title_id: Option<u64>, root: PathBuf, files: Vec<RomFsEntry> },
+    /// Jeu d'origine vu à travers un mod LayeredFS : les fichiers du dossier `overlay`
+    /// (un `romfs` partiel, comme celui qu'écrit le randomizer) remplacent ceux du jeu.
+    Layered { base: Box<RomFsSource>, overlay: PathBuf, files: Vec<RomFsEntry>, replaced: Vec<String> },
 }
 
 impl RomFsSource {
     /// Ouvre une image de jeu ou un dossier extrait (le dossier du jeu ou directement `romfs`).
     pub fn open(path: &Path) -> Result<Self> {
         if path.is_dir() {
+            // Mod LayeredFS écrit par Kaleido : relu par-dessus le jeu d'origine.
+            if let Some((base, romfs)) = mod_base(path) {
+                return Self::layered(Self::open(&base)?, &romfs);
+            }
             return Self::open_dir(path);
         }
         let mut r = BufReader::new(File::open(path)?);
@@ -184,6 +191,43 @@ impl RomFsSource {
         match self {
             Self::Image { path, .. } => Some(path),
             Self::Dir { .. } => None,
+            Self::Layered { base, .. } => base.image_path(),
+        }
+    }
+
+    /// Le jeu `base` avec les fichiers du dossier `overlay` (`romfs` d'un mod LayeredFS) par-dessus.
+    pub fn layered(base: RomFsSource, overlay: &Path) -> Result<Self> {
+        let mut replaced = Vec::new();
+        let mut stack = vec![(overlay.to_path_buf(), String::new())];
+        while let Some((dir, prefix)) = stack.pop() {
+            for e in std::fs::read_dir(&dir)? {
+                let e = e?;
+                let name = format!("{prefix}{}", e.file_name().to_string_lossy());
+                if e.metadata()?.is_dir() {
+                    stack.push((e.path(), format!("{name}/")));
+                } else {
+                    replaced.push(name);
+                }
+            }
+        }
+        replaced.sort();
+        let mut files: Vec<RomFsEntry> = base.files().iter().filter(|f| replaced.binary_search(&f.path).is_err()).cloned().collect();
+        for name in &replaced {
+            let size = std::fs::metadata(overlay.join(name))?.len();
+            files.push(RomFsEntry { path: name.clone(), offset: 0, size });
+        }
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(Self::Layered { base: Box::new(base), overlay: overlay.to_path_buf(), files, replaced })
+    }
+
+    /// Fichier remplacé par le mod (chemin dans le dossier `overlay`).
+    fn overlaid(&self, path: &str) -> Option<PathBuf> {
+        match self {
+            Self::Layered { overlay, replaced, .. } => {
+                let path = normalize(path);
+                replaced.binary_search_by(|p| p.as_str().cmp(path)).ok().map(|_| overlay.join(path))
+            }
+            _ => None,
         }
     }
 
@@ -224,6 +268,7 @@ impl RomFsSource {
         match self {
             Self::Image { title_id, .. } => Some(*title_id),
             Self::Dir { title_id, .. } => *title_id,
+            Self::Layered { base, .. } => base.title_id(),
         }
     }
 
@@ -231,14 +276,14 @@ impl RomFsSource {
     pub fn files(&self) -> &[RomFsEntry] {
         match self {
             Self::Image { romfs, .. } => romfs.files(),
-            Self::Dir { files, .. } => files,
+            Self::Dir { files, .. } | Self::Layered { files, .. } => files,
         }
     }
 
     pub fn contains(&self, path: &str) -> bool {
         match self {
             Self::Image { romfs, .. } => romfs.entry(path).is_some(),
-            Self::Dir { files, .. } => files.binary_search_by(|f| f.path.as_str().cmp(normalize(path))).is_ok(),
+            Self::Dir { files, .. } | Self::Layered { files, .. } => files.binary_search_by(|f| f.path.as_str().cmp(normalize(path))).is_ok(),
         }
     }
 
@@ -252,6 +297,10 @@ impl RomFsSource {
                 }
                 Ok(std::fs::read(root.join(path))?)
             }
+            Self::Layered { base, .. } => match self.overlaid(path) {
+                Some(p) => Ok(std::fs::read(p)?),
+                None => base.read(path),
+            },
         }
     }
 
@@ -259,7 +308,9 @@ impl RomFsSource {
     pub fn size(&self, path: &str) -> Option<u64> {
         match self {
             Self::Image { romfs, .. } => romfs.entry(path).map(|e| e.size),
-            Self::Dir { files, .. } => files.binary_search_by(|f| f.path.as_str().cmp(normalize(path))).ok().map(|i| files[i].size),
+            Self::Dir { files, .. } | Self::Layered { files, .. } => {
+                files.binary_search_by(|f| f.path.as_str().cmp(normalize(path))).ok().map(|i| files[i].size)
+            }
         }
     }
 
@@ -276,8 +327,29 @@ impl RomFsSource {
                 }
                 Ok(read_at(&mut File::open(root.join(path))?, offset, len)?)
             }
+            Self::Layered { base, .. } => match self.overlaid(path) {
+                Some(p) => {
+                    let size = std::fs::metadata(&p)?.len();
+                    if offset.checked_add(len as u64).is_none_or(|end| end > size) {
+                        return Err(FormatError::Invalid("lecture hors du fichier"));
+                    }
+                    Ok(read_at(&mut File::open(p)?, offset, len)?)
+                }
+                None => base.read_range(path, offset, len),
+            },
         }
     }
+}
+
+/// Fichier écrit par Kaleido à côté du `romfs` d'un mod : chemin du jeu d'origine.
+pub const MOD_BASE_FILE: &str = "kaleido-base.txt";
+
+/// Jeu d'origine et dossier `romfs` d'un mod LayeredFS de Kaleido (dossier du titre ou `romfs`).
+fn mod_base(dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    let is_romfs = dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs"));
+    let (title_dir, romfs) = if is_romfs { (dir.parent()?.to_path_buf(), dir.to_path_buf()) } else { (dir.to_path_buf(), dir.join("romfs")) };
+    let base = PathBuf::from(std::fs::read_to_string(title_dir.join(MOD_BASE_FILE)).ok()?.trim());
+    (base.exists() && romfs.is_dir() && base != title_dir).then_some((base, romfs))
 }
 
 /// Écrit des fichiers modifiés sous forme de LayeredFS (Luma3DS) :

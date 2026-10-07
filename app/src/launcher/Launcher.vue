@@ -8,7 +8,9 @@ import Icon from "../components/Icon.vue";
 import { openRom } from "../editor";
 import { hideGame, libraryUi } from "../games";
 import { removeItem } from "../library";
-import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators } from "../play/play";
+import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
+import NewAdventure from "./NewAdventure.vue";
+import { adventure, closeAdventure, openAdventure, writeAdventure } from "./adventure";
 import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
@@ -248,6 +250,40 @@ async function openSave() {
   notice.value = await openSaveOf(g);
 }
 
+// --- Nouvelle aventure : preset, aperçu, puis la partie est écrite et lancée.
+
+const adventureView = ref<InstanceType<typeof NewAdventure> | null>(null);
+
+function startAdventure() {
+  const g = game.value;
+  if (!g || !canRandomize(g)) return;
+  sfx("select");
+  void openAdventure(g);
+}
+
+async function playAdventure() {
+  const g = adventure.game;
+  if (!g) return;
+  sfx("select");
+  stopMusic(false);
+  launching.value = { cover: coverUrl(g), title: g.game?.name ?? g.title, status: "Écriture de la partie…" };
+  closeAdventure();
+  try {
+    const options = await writeAdventure();
+    launching.value.status = "Lancement…";
+    const result = await playGame(options);
+    if (result) {
+      launching.value.status = `Bon jeu ! (${result.emulator})`;
+      setTimeout(() => (launching.value = null), 1600);
+    } else {
+      launching.value = null;
+    }
+  } catch (e) {
+    launching.value = null;
+    notice.value = `Nouvelle aventure impossible : ${e}`;
+  }
+}
+
 // Menu « Plus d'actions ».
 const menuOpen = ref(false);
 const menuIndex = ref(0);
@@ -300,6 +336,10 @@ function action(a: PadAction) {
   // La fenêtre « Mods et réglages » garde le clavier et la manette.
   if (modsDialog.game) return;
   if (launching.value) return;
+  if (adventure.open) {
+    adventureView.value?.handle(a);
+    return;
+  }
   if (menuOpen.value) {
     if (a === "up") menuIndex.value = (menuIndex.value - 1 + menu.value.length) % menu.value.length;
     else if (a === "down") menuIndex.value = (menuIndex.value + 1) % menu.value.length;
@@ -440,6 +480,7 @@ const meta = computed(() => {
               <span>{{ playLabel }}</span>
               <span class="key light">{{ padConnected ? "A" : "Entrée" }}</span>
             </button>
+            <button v-if="canRandomize(game)" class="ghost" @click="startAdventure"><Icon name="dice" :size="16" /> Nouvelle aventure</button>
             <button v-if="status?.saveExists" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
             <button class="ghost" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods</button>
             <button class="ghost icon" title="Plus d'actions" @click="openMenu">⋯</button>
@@ -524,6 +565,16 @@ const meta = computed(() => {
     </Transition>
 
     <Transition name="fade">
+      <NewAdventure
+        v-if="adventure.open"
+        ref="adventureView"
+        :cover="adventure.game ? coverUrl(adventure.game) : null"
+        :pad-connected="padConnected"
+        @play="playAdventure"
+      />
+    </Transition>
+
+    <Transition name="fade">
       <div v-if="launching" class="launch-layer">
         <img v-if="launching.cover" :src="launching.cover" alt="" />
         <h2>{{ launching.title }}</h2>
@@ -545,7 +596,7 @@ const meta = computed(() => {
   user-select: none;
 }
 
-.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop):not(.title-scene) {
+.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop):not(.title-scene):not(.adventure) {
   position: relative;
 }
 

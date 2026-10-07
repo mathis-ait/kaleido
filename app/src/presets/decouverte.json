@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "decouverte",
+  "order": 2,
+  "name": "Découverte",
+  "tagline": "Des starters et des rencontres nouvelles, équilibrées.",
+  "changes": [
+    { "icon": "ball", "label": "Starters Plante / Feu / Eau tirés au sort" },
+    { "icon": "map", "label": "Une nouvelle espèce par zone, de force comparable" },
+    { "icon": "swords", "label": "Dresseurs renouvelés, sans légendaires" }
+  ],
+  "settings": {
+    "starters": "triangle",
+    "wild": "area",
+    "wildSimilarStrength": true,
+    "trainers": "random",
+    "trainersSimilarStrength": true,
+    "noLegendaries": true
+  }
+}

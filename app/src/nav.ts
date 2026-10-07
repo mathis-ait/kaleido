@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import type { ViewId } from "./types";
+import type { RandomizerSettings, ViewId } from "./types";
 
 /** Vue affichée, accessible depuis n'importe quel composant. */
 export const nav = reactive({
@@ -7,4 +7,6 @@ export const nav = reactive({
   view: "library" as ViewId,
   /** ROM à présélectionner en ouvrant le randomizer. */
   randomizerRom: null as string | null,
+  /** Réglages et seed à reprendre dans le randomizer (« Personnaliser » de Nouvelle aventure). */
+  randomizerSettings: null as { settings: RandomizerSettings; seed: number } | null,
 });
