@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime};
 
 use kaleido_core::dex::Lang;
 use kaleido_core::save::session::{Slot, SlotView};
-use kaleido_core::save::showdown_apply::{ImportReport, ImportTarget, ShowdownPreview};
+use kaleido_core::save::showdown_apply::{ImportLegality, ImportReport, ImportTarget, ShowdownPreview};
 use kaleido_core::showdown::smogon::{SmogonData, SmogonSet};
 use kaleido_core::showdown::ShowdownSet;
 use serde::Serialize;
@@ -32,9 +32,10 @@ pub fn showdown_preview(text: String, state: State<'_, OpenSave>) -> Result<Show
     state.with(|s| Ok(s.preview_showdown(&text)))
 }
 
+/// Importe un texte Showdown. `asIs` : « Importer tel quel » (sans passer par le légaliseur).
 #[tauri::command]
-pub fn showdown_import(text: String, target: ImportTarget, state: State<'_, OpenSave>) -> Result<ImportReport, String> {
-    state.with(|s| s.import_showdown(&text, target))
+pub fn showdown_import(text: String, target: ImportTarget, as_is: Option<bool>, state: State<'_, OpenSave>) -> Result<ImportReport, String> {
+    state.with(|s| s.import_showdown(&text, target, !as_is.unwrap_or(false)))
 }
 
 #[tauri::command]
@@ -47,18 +48,22 @@ pub fn showdown_export(slots: Vec<Slot>, lang: Lang, state: State<'_, OpenSave>)
 pub struct AppliedSet {
     pub view: SlotView,
     pub warnings: Vec<String>,
+    /// Bilan de légalisation (`None` : appliqué tel quel).
+    pub legality: Option<ImportLegality>,
 }
 
 /// Applique un set (Smogon ou Showdown, noms anglais) à un Pokémon existant.
 #[tauri::command]
-pub fn showdown_apply(slot: Slot, set: ShowdownSet, state: State<'_, OpenSave>) -> Result<AppliedSet, String> {
-    state.with(|s| s.apply_showdown_set(slot, &set, Lang::En)).map(|(view, warnings)| AppliedSet { view, warnings })
+pub fn showdown_apply(slot: Slot, set: ShowdownSet, as_is: Option<bool>, state: State<'_, OpenSave>) -> Result<AppliedSet, String> {
+    state
+        .with(|s| s.apply_showdown_set(slot, &set, Lang::En, !as_is.unwrap_or(false)))
+        .map(|(view, warnings, legality)| AppliedSet { view, warnings, legality })
 }
 
 /// Ajoute un set (noms anglais) comme nouveau Pokémon.
 #[tauri::command]
-pub fn showdown_add_set(set: ShowdownSet, target: ImportTarget, state: State<'_, OpenSave>) -> Result<ImportReport, String> {
-    state.with(|s| s.import_sets(std::slice::from_ref(&set), Lang::En, target))
+pub fn showdown_add_set(set: ShowdownSet, target: ImportTarget, as_is: Option<bool>, state: State<'_, OpenSave>) -> Result<ImportReport, String> {
+    state.with(|s| s.import_sets(std::slice::from_ref(&set), Lang::En, target, !as_is.unwrap_or(false)))
 }
 
 // --- Sets Smogon ----------------------------------------------------------------------

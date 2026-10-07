@@ -120,11 +120,13 @@ pub struct LegalizeOutcome {
     /// Autres rencontres qui donnent aussi un Pokémon légal (aperçu seulement), la
     /// rencontre retenue comprise, de la plus naturelle à la plus exotique.
     pub options: Vec<EncounterOption>,
+    /// Écarts avec le Pokémon demandé (création et import Showdown) : nature, Ball, attaques…
+    pub adjustments: Vec<Change>,
 }
 
 impl LegalizeOutcome {
     fn plain(pokemon: Pokemon, changes: Vec<String>, report: Report, success: bool) -> Self {
-        LegalizeOutcome { pokemon, changes: changes.into_iter().map(Change::new).collect(), report, success, encounter: None, options: Vec::new() }
+        LegalizeOutcome { pokemon, changes: changes.into_iter().map(Change::new).collect(), report, success, encounter: None, options: Vec::new(), adjustments: Vec::new() }
     }
 }
 
@@ -1079,7 +1081,8 @@ const MAX_OPTIONS: usize = 8;
 fn option_of(id: usize, plan: &Plan) -> EncounterOption {
     let e = &plan.enc;
     let location_name = if e.is_egg() && e.location == 0 {
-        "Pension".to_string()
+        let hatch = dex::location_name(e.generation, hatch_location(plan.version)).unwrap_or("?");
+        format!("éclos à « {hatch} »")
     } else {
         dex::location_name(e.generation, e.location).unwrap_or("?").to_string()
     };
@@ -1127,22 +1130,44 @@ fn try_plan(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wi
 /// `explore` : continue après la première réussite pour lister les autres rencontres valides.
 #[allow(clippy::too_many_arguments)]
 fn run(pk: &Pokemon, game: Game, trainer: &Trainer, plans: &[Plan], wishes: Wishes, seed: u64, choice: Option<usize>, explore: bool) -> LegalizeOutcome {
+    run_scored(pk, game, trainer, plans, wishes, seed, choice, explore, None)
+}
+
+/// Comme [`run`] ; avec `score` (écart au Pokémon voulu, 0 = identique), garde parmi les
+/// rencontres valides celle qui s'écarte le moins de la demande au lieu de la première.
+#[allow(clippy::too_many_arguments)]
+fn run_scored(
+    pk: &Pokemon,
+    game: Game,
+    trainer: &Trainer,
+    plans: &[Plan],
+    wishes: Wishes,
+    seed: u64,
+    choice: Option<usize>,
+    explore: bool,
+    score: Option<&dyn Fn(&Pokemon) -> u32>,
+) -> LegalizeOutcome {
     let plan_seed = |id: usize| seed ^ (id as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let mut chosen: Option<LegalizeOutcome> = None;
+    let mut chosen_score = u32::MAX;
     let mut best: Option<LegalizeOutcome> = None;
+    let forced = choice.is_some_and(|i| i < plans.len());
     if let Some(id) = choice.filter(|&i| i < plans.len()) {
         let (p, changes, report) = try_plan(pk, game, trainer, &plans[id], wishes, plan_seed(id));
         let ok = report.verdict != Verdict::Illegal;
         if ok {
+            chosen_score = 0;
             let mut out = LegalizeOutcome::plain(p, changes, report, true);
             out.encounter = Some(option_of(id, &plans[id]));
             chosen = Some(out);
         }
     }
+    let forced = forced && chosen.is_some();
     let mut options: Vec<EncounterOption> = Vec::new();
     let mut tried: Vec<EncounterOption> = Vec::new();
     for (id, plan) in plans.iter().enumerate().take(MAX_PLANS) {
-        if chosen.is_some() && (!explore || options.len() >= MAX_OPTIONS) {
+        let satisfied = chosen.is_some() && (forced || score.is_none() || chosen_score == 0);
+        if satisfied && (!explore || options.len() >= MAX_OPTIONS) {
             break;
         }
         let opt = option_of(id, plan);
@@ -1157,7 +1182,9 @@ fn run(pk: &Pokemon, game: Game, trainer: &Trainer, plans: &[Plan], wishes: Wish
         let (p, changes, report) = try_plan(pk, game, trainer, plan, wishes, plan_seed(id));
         if report.verdict != Verdict::Illegal {
             options.push(opt.clone());
-            if chosen.is_none() {
+            let s = if forced { u32::MAX } else { score.map_or(0, |f| f(&p)) };
+            if chosen.is_none() || (!forced && s < chosen_score) {
+                chosen_score = s;
                 let mut out = LegalizeOutcome::plain(p, changes, report, true);
                 out.encounter = Some(opt);
                 chosen = Some(out);
@@ -1234,7 +1261,105 @@ pub fn legalize_with(pk: &Pokemon, game: Game, trainer: &Trainer, choice: Option
             return out;
         }
     }
-    run(pk, game, trainer, &list, wishes_of(pk), seed, choice, explore)
+    let req = request_of(pk, game);
+    // Petites pénalités : changer de rencontre, ou faire d'un Pokémon capturé un Pokémon éclos.
+    let score = |p: &Pokemon| {
+        score_of(game, &req, p)
+            + if p.met_location() != pk.met_location() || p.version() != pk.version() { 3 } else { 0 }
+            + if p.egg_location() != 0 && pk.egg_location() == 0 { 8 } else { 0 }
+    };
+    run_scored(pk, game, trainer, &list, wishes_of(pk), seed, choice, explore, Some(&score))
+}
+
+fn is_shiny_pk(p: &Pokemon) -> bool {
+    let pid = p.pid();
+    let threshold = if p.format().generation() >= 6 { 16 } else { 8 };
+    ((pid >> 16) ^ (pid & 0xFFFF) ^ p.tid() as u32 ^ p.sid() as u32) < threshold
+}
+
+/// Écarts entre la demande et le Pokémon obtenu : (poids, explication en français).
+/// Sert à choisir la rencontre qui respecte le mieux un set, et au rapport d'import.
+pub fn deviations(game: Game, req: &GenerateRequest, p: &Pokemon) -> Vec<(u32, String)> {
+    let mut out = Vec::new();
+    let nature = |n: u8| dex::nature_name(n).unwrap_or("?");
+    if let Some(n) = req.nature {
+        if p.nature() != n {
+            out.push((30, format!("Nature : {} au lieu de {}", nature(p.nature()), nature(n))));
+        }
+    }
+    if let Some(m) = req.moves {
+        let lost: Vec<&str> = m.iter().filter(|&&x| x != 0 && !p.moves().contains(&x)).map(|&x| dex::move_name(x).unwrap_or("?")).collect();
+        if !lost.is_empty() {
+            out.push((25 * lost.len() as u32, format!("Attaques impossibles retirées : {}", lost.join(", "))));
+        }
+    }
+    if let Some(a) = req.ability_number {
+        if p.ability_number() != a {
+            out.push((20, format!("Talent : {} à la place du talent demandé", dex::ability_name(p.ability()).unwrap_or("?"))));
+        }
+    }
+    if let Some(s) = req.shiny {
+        if is_shiny_pk(p) != s {
+            out.push((20, if s { "Chromatique impossible pour cette rencontre".into() } else { "Chromatique imposé par la rencontre".to_string() }));
+        }
+    }
+    if req.form != p.form() {
+        out.push((10, "Forme normale à la place de la forme de combat".into()));
+    }
+    let level = verify::growth_level(p, game);
+    if req.level != 0 && level != req.level {
+        out.push((10, format!("Niveau {level} au lieu de {} (niveau minimal de la rencontre)", req.level)));
+    }
+    if let Some(g) = req.gender {
+        if p.gender() != g && g != Gender::Genderless {
+            out.push((10, "Sexe changé (imposé par la rencontre)".into()));
+        }
+    }
+    if let Some(ivs) = req.ivs {
+        let n = ivs.iter().zip(p.ivs()).filter(|(a, b)| **a != *b).count() as u32;
+        if n > 0 {
+            out.push((2 * n, format!("IV : {n} statistique{} modifiée{} (corrélation avec le PID)", if n > 1 { "s" } else { "" }, if n > 1 { "s" } else { "" })));
+        }
+    }
+    if let Some(b) = req.ball {
+        if p.ball() != b {
+            out.push((5, format!("Ball : {} au lieu de {}", dex::ball_name(p.ball()).unwrap_or("?"), dex::ball_name(b).unwrap_or("?"))));
+        }
+    }
+    if let Some(i) = req.held_item {
+        if i != 0 && p.held_item() != i {
+            out.push((5, "Objet tenu retiré (absent de ce jeu)".into()));
+        }
+    }
+    if let Some(evs) = req.evs {
+        if evs != p.evs() {
+            out.push((1, "EV ramenés dans les limites".into()));
+        }
+    }
+    out
+}
+
+/// Ce que l'utilisateur a voulu pour un Pokémon existant (pour garder au plus près).
+fn request_of(pk: &Pokemon, game: Game) -> GenerateRequest {
+    GenerateRequest {
+        species: pk.species(),
+        form: pk.form(),
+        level: verify::growth_level(pk, game),
+        shiny: Some(is_shiny_pk(pk)),
+        nature: Some(pk.nature().min(24)),
+        gender: Some(pk.gender()),
+        ability_number: Some(pk.ability_number()),
+        ball: Some(pk.ball()),
+        moves: Some(pk.moves()),
+        ivs: Some(pk.ivs()),
+        evs: None,
+        held_item: None,
+        ..Default::default()
+    }
+}
+
+fn score_of(game: Game, req: &GenerateRequest, p: &Pokemon) -> u32 {
+    deviations(game, req, p).iter().map(|(w, _)| w).sum()
 }
 
 /// « Générer un Pokémon légal » : capture (ou éclosion) dans ce jeu, au niveau voulu,
@@ -1313,8 +1438,12 @@ pub fn generate_legal(game: Game, format: PkmFormat, trainer: &Trainer, req: &Ge
         return Err(format!("{name} ne s'obtient pas dans ce jeu (ni par capture, ni par reproduction)"));
     }
     let seed = rand.next_u32() as u64 | (rand.next_u32() as u64) << 32;
-    let mut out = run(&p, game, trainer, &list, wishes, seed, None, false);
+    // Rencontre imposée (« Créer ce Pokémon ») : la première ; sinon celle qui respecte le mieux la demande.
+    let score = |q: &Pokemon| score_of(game, req, q);
+    let scorer: Option<&dyn Fn(&Pokemon) -> u32> = if req.encounter_index.is_some() { None } else { Some(&score) };
+    let mut out = run_scored(&p, game, trainer, &list, wishes, seed, None, false, scorer);
     out.pokemon.refresh_checksum();
+    out.adjustments = deviations(game, req, &out.pokemon).into_iter().map(|(_, t)| Change::new(t)).collect();
     Ok(out)
 }
 

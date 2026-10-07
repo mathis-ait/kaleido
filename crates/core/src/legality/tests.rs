@@ -428,6 +428,7 @@ fn prd_team_of_six_is_fast() {
     for (pk, game) in &team {
         let out = super::legalize::legalize_with(pk, *game, &trainer(), None, true);
         legal += out.success as usize;
+        println!("  n°{} : {} modification(s), {} rencontre(s) possibles, {:?}", pk.species(), out.changes.len(), out.options.len(), out.changes.iter().map(|c| c.text.as_str()).collect::<Vec<_>>());
     }
     let elapsed = start.elapsed();
     println!("Équipe de 6 (aperçu complet) : {legal}/6 légaux en {elapsed:?}");

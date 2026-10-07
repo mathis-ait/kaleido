@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::session::{apply_patch, max_pp, view_of, PokemonPatch, SaveSession, Slot, SlotView};
 use super::{Gender, Pokemon, SaveError, ShinyMode, BOX_SLOTS, PARTY_SLOTS};
 use crate::dex::{self, Lang};
+use crate::legality::{self, Change, EncounterOption, GenerateRequest, LegalizeOutcome};
 use crate::showdown::{self, ResolvedSet, ShowdownSet};
 
 /// Où ranger les Pokémon importés.
@@ -29,6 +30,60 @@ pub struct ImportedSet {
     pub slot: Option<Slot>,
     pub warnings: Vec<String>,
     pub error: Option<String>,
+    /// Légalisation (`None` : importé tel quel).
+    pub legality: Option<ImportLegality>,
+}
+
+/// Ce que la légalisation a fait d'un set importé.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportLegality {
+    /// Le Pokémon obtenu est légal (ou seulement douteux).
+    pub legal: bool,
+    /// Rencontre retenue (`None` : rencontre du Pokémon gardée).
+    pub encounter: Option<EncounterOption>,
+    /// Écarts avec le set (nature, Ball, attaques…) ; vide : set gardé tel quel.
+    pub adjustments: Vec<Change>,
+    /// Détail des réécritures (lieu, PID, dresseur…).
+    pub changes: Vec<Change>,
+}
+
+impl ImportLegality {
+    fn of(out: &LegalizeOutcome) -> Self {
+        ImportLegality { legal: out.success, encounter: out.encounter.clone(), adjustments: out.adjustments.clone(), changes: out.changes.clone() }
+    }
+}
+
+/// Demande de création légale à partir d'un set lu.
+pub fn request_of_set(r: &ResolvedSet) -> GenerateRequest {
+    GenerateRequest {
+        species: r.species,
+        form: r.form,
+        level: r.level,
+        shiny: Some(r.shiny),
+        nature: r.nature,
+        gender: r.gender,
+        ability_number: r.ability_number,
+        ball: r.ball,
+        moves: r.moves.iter().any(|&m| m != 0).then_some(r.moves),
+        ivs: Some(r.ivs),
+        evs: Some(r.evs),
+        held_item: Some(r.held_item),
+        nickname: r.nickname.clone(),
+        encounter_index: None,
+        encounter_game: None,
+    }
+}
+
+/// PP au maximum (3 PP Plus par attaque), comme le suppose Showdown.
+fn max_out_pp(game: dex::Game, p: &mut Pokemon) {
+    if p.is_egg() {
+        return;
+    }
+    let moves = p.moves();
+    let ups = moves.map(|m| if m != 0 { 3 } else { 0 });
+    p.set_pp_ups(ups);
+    p.set_pp(std::array::from_fn(|i| max_pp(dex::move_info_in(game, moves[i]).map_or(0, |m| m.pp), ups[i])));
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,20 +192,53 @@ impl SaveSession {
         apply_patch(game, p, &patch)
     }
 
+    /// Crée un Pokémon légal au plus près du set (rencontre, PID, Ball… choisis par le
+    /// légaliseur). Si aucune rencontre ne convient, le set est importé tel quel.
+    fn build_legal(&self, r: &ResolvedSet) -> Result<(Pokemon, ImportLegality), SaveError> {
+        let game = self.game();
+        let req = request_of_set(r);
+        match legality::generate_legal(game, self.save.format(), &self.save.trainer(), &req) {
+            Ok(out) if out.success => {
+                let mut p = out.pokemon.clone();
+                if let Some(f) = r.friendship {
+                    p.set_friendship(f);
+                }
+                max_out_pp(game, &mut p);
+                p.refresh_checksum();
+                Ok((p, ImportLegality::of(&out)))
+            }
+            other => {
+                let why = match other {
+                    Err(e) => e,
+                    Ok(_) => "aucune rencontre de ce jeu ne permet ce set".into(),
+                };
+                let p = self.build_from_set(r)?;
+                let note = Change { text: format!("Importé tel quel : {why}"), term: "legalize" };
+                Ok((p, ImportLegality { legal: false, encounter: None, adjustments: vec![note], changes: Vec::new() }))
+            }
+        }
+    }
+
     /// Ajoute les Pokémon d'un texte Showdown, en une seule étape d'historique.
-    pub fn import_showdown(&mut self, text: &str, target: ImportTarget) -> Result<ImportReport, SaveError> {
+    /// `legal` : chaque Pokémon passe par le légaliseur (sinon : importé tel quel).
+    pub fn import_showdown(&mut self, text: &str, target: ImportTarget, legal: bool) -> Result<ImportReport, SaveError> {
         let sets = showdown::parse_team(text);
         let lang = showdown::guess_lang(&sets);
-        self.import_sets(&sets, lang, target)
+        self.import_sets(&sets, lang, target, legal)
     }
 
     /// Ajoute des sets déjà lus (Showdown ou Smogon), en une seule étape d'historique.
-    pub fn import_sets(&mut self, sets: &[ShowdownSet], lang: Lang, target: ImportTarget) -> Result<ImportReport, SaveError> {
+    pub fn import_sets(&mut self, sets: &[ShowdownSet], lang: Lang, target: ImportTarget, legal: bool) -> Result<ImportReport, SaveError> {
         let game = self.game();
         let resolved: Vec<ResolvedSet> = sets.iter().map(|s| showdown::resolve(s, game, lang)).collect();
         let mut report = ImportReport { imported: 0, sets: Vec::new(), lang };
-        let entry =
-            |r: &ResolvedSet| ImportedSet { species_name: r.species_name.clone(), slot: None, warnings: r.warnings.clone(), error: r.error.clone() };
+        let entry = |r: &ResolvedSet| ImportedSet {
+            species_name: r.species_name.clone(),
+            slot: None,
+            warnings: r.warnings.clone(),
+            error: r.error.clone(),
+            legality: None,
+        };
         if resolved.iter().all(|r| r.error.is_some()) {
             report.sets = resolved.iter().map(entry).collect();
             return Ok(report);
@@ -162,14 +250,22 @@ impl SaveSession {
                 if r.error.is_none() {
                     match s.next_free(target, first)? {
                         None => out.error = Some("Plus aucune case libre dans les boîtes".into()),
-                        Some(slot) => match s.build_from_set(r).and_then(|p| s.put(slot, p)) {
-                            Ok(used) => {
-                                out.slot = Some(used);
-                                report.imported += 1;
-                                first = false;
+                        Some(slot) => {
+                            let built = if legal {
+                                s.build_legal(r).map(|(p, l)| (p, Some(l)))
+                            } else {
+                                s.build_from_set(r).map(|p| (p, None))
+                            };
+                            match built.and_then(|(p, l)| s.put(slot, p).map(|used| (used, l))) {
+                                Ok((used, l)) => {
+                                    out.slot = Some(used);
+                                    out.legality = l;
+                                    report.imported += 1;
+                                    first = false;
+                                }
+                                Err(e) => out.error = Some(e.to_string()),
                             }
-                            Err(e) => out.error = Some(e.to_string()),
-                        },
+                        }
                     }
                 }
                 report.sets.push(out);
@@ -179,25 +275,46 @@ impl SaveSession {
         Ok(report)
     }
 
-    /// Applique un set à un Pokémon existant (dresseur, rencontre et PID gardés).
-    /// Renvoie la fiche mise à jour et les avertissements.
-    pub fn apply_showdown_set(&mut self, slot: Slot, set: &ShowdownSet, lang: Lang) -> Result<(SlotView, Vec<String>), SaveError> {
+    /// Applique un set à un Pokémon existant (dresseur, rencontre et PID gardés autant que
+    /// possible). `legal` : le résultat passe ensuite par « Rendre légal ».
+    /// Renvoie la fiche mise à jour, les avertissements et le bilan de légalisation.
+    pub fn apply_showdown_set(
+        &mut self,
+        slot: Slot,
+        set: &ShowdownSet,
+        lang: Lang,
+        legal: bool,
+    ) -> Result<(SlotView, Vec<String>, Option<ImportLegality>), SaveError> {
         let game = self.game();
         let r = showdown::resolve(set, game, lang);
         if let Some(e) = &r.error {
             return Err(SaveError::Invalid(e.clone()));
         }
+        let trainer = self.save.trainer();
+        let mut legality_out = None;
         self.mutate(|s| {
             let p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
             if p.is_egg() {
                 return Err(SaveError::Invalid("impossible d'appliquer un set à un œuf".into()));
             }
             let patch = patch_for(&r, &p, game, false);
-            let p = apply_patch(game, p, &patch)?;
+            let mut p = apply_patch(game, p, &patch)?;
+            if legal {
+                let out = legality::legalize(&p, game, &trainer);
+                let mut info = ImportLegality::of(&out);
+                if out.success {
+                    let req = request_of_set(&r);
+                    info.adjustments = legality::legalize::deviations(game, &req, &out.pokemon).into_iter().map(|(_, t)| Change { term: legality::legalize::term_of(&t), text: t }).collect();
+                    p = out.pokemon;
+                    max_out_pp(game, &mut p);
+                    p.refresh_checksum();
+                }
+                legality_out = Some(info);
+            }
             s.put(slot, p).map(|_| ())
         })?;
         let p = self.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
-        Ok((view_of(game, slot, &p), r.warnings))
+        Ok((view_of(game, slot, &p), r.warnings, legality_out))
     }
 
     /// Texte Showdown des Pokémon demandés (les œufs et cases vides sont sautés).
