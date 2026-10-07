@@ -154,6 +154,10 @@ pub struct PlayTime {
 #[serde(rename_all = "camelCase")]
 pub struct Trainer {
     pub name: String,
+    /// Gen 6/7 : région, pays et région de la console du joueur (`MyStatus`), recopiés
+    /// dans les Pokémon qu'il obtient.
+    #[serde(skip)]
+    pub origin: Option<[u8; 3]>,
     pub tid: u16,
     pub sid: u16,
     /// Numéro affiché en jeu : `tid` jusqu'à la Gen 6, nombre à 6 chiffres en Gen 7.
@@ -344,6 +348,10 @@ impl SaveFile {
         let display_id = if self.generation() >= 7 { ((sid as u32) << 16 | tid as u32) % 1_000_000 } else { tid as u32 };
         Trainer {
             name,
+            origin: (self.generation() >= 6).then(|| {
+                let o = self.trainer_origin();
+                [o.region, o.country, o.console_region]
+            }),
             tid,
             sid,
             display_id,

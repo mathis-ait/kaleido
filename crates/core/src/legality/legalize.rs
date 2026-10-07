@@ -51,6 +51,7 @@ pub fn term_of(text: &str) -> &'static str {
         ("Date", "metDate"),
         ("Souvenir", "memories"),
         ("Pays", "country"),
+        ("Date de l'œuf", "metDate"),
         ("Ball", "ball"),
         ("Chromatique", "shiny"),
         ("IV recalculés (méthode J", "methodJK"),
@@ -538,6 +539,9 @@ fn apply(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wishe
             }
         }
     }
+    if fgen >= 6 {
+        fix_geo(&mut p, trainer.origin, changes);
+    }
     if p.fateful_encounter() != e.fateful {
         p.set_fateful_encounter(e.fateful);
         changes.push(if e.fateful { "Rencontre fatidique activée".into() } else { "Rencontre fatidique retirée".to_string() });
@@ -946,6 +950,7 @@ const LOCAL_CODES: &[&str] = &[
     "egg-evs",
     "ev-untrained",
     "met-date",
+    "geo-console",
 ];
 
 fn invalid_codes(report: &Report) -> Vec<&'static str> {
@@ -985,6 +990,20 @@ fn fix_evs(p: &mut Pokemon, game: Game, changes: &mut Vec<String>) {
     }
 }
 
+/// Gen 6/7 : pays, région et région de la console, ceux du joueur (comme le jeu à la
+/// capture ou au transfert), si ceux du Pokémon ne vont pas ensemble.
+fn fix_geo(p: &mut Pokemon, origin: Option<[u8; 3]>, changes: &mut Vec<String>) {
+    let Some(h) = p.extras().handler else { return };
+    let valid = verify::extras::console_country_valid;
+    if valid(h.console_region, h.country) {
+        return;
+    }
+    // Sans réglages de console lisibles : France, région Europe.
+    let [region, country, console] = origin.filter(|o| valid(o[2], o[1])).unwrap_or([0, 77, 2]);
+    let _ = p.apply_extras(&ExtrasPatch { region: Some(region), country: Some(country), console_region: Some(console), ..Default::default() });
+    changes.push("Pays et région de la console : ceux de ta console".into());
+}
+
 /// Dates de rencontre et d'œuf dans la fenêtre de sortie du jeu (et l'œuf avant l'éclosion).
 fn fix_dates(p: &mut Pokemon, changes: &mut Vec<String>) {
     if p.is_egg() {
@@ -1020,7 +1039,7 @@ fn ribbon_errors(p: &Pokemon, game: Game) -> usize {
 
 /// Corrige les champs secondaires signalés par `report` (rubans, concours, souvenirs,
 /// surnom, forme liée au sexe…) sans toucher à la rencontre.
-fn fix_extras(pk: &Pokemon, game: Game, report: &Report, changes: &mut Vec<String>) -> Pokemon {
+fn fix_extras(pk: &Pokemon, game: Game, report: &Report, origin: Option<[u8; 3]>, changes: &mut Vec<String>) -> Pokemon {
     let codes = invalid_codes(report);
     let has = |c: &str| codes.contains(&c);
     let mut p = pk.clone();
@@ -1130,8 +1149,10 @@ fn fix_extras(pk: &Pokemon, game: Game, report: &Report, changes: &mut Vec<Strin
     if has("ev-total") || has("ev-252") || has("egg-evs") || has("ev-untrained") {
         fix_evs(&mut p, game, changes);
     }
-    if has("met-date") {
-        fix_dates(&mut p, changes);
+    // Dates hors de la période du jeu : seulement « douteuses », corrigées au passage.
+    fix_dates(&mut p, changes);
+    if has("geo-console") {
+        fix_geo(&mut p, origin, changes);
     }
     p.refresh_checksum();
     p
@@ -1178,7 +1199,7 @@ fn try_plan(pk: &Pokemon, game: Game, trainer: &Trainer, plan: &Plan, wishes: Wi
     let mut p = apply(pk, game, trainer, plan, wishes, &mut rand, &mut changes);
     let mut report = analyze(&p, game);
     if report.verdict == Verdict::Illegal && invalid_codes(&report).iter().any(|c| LOCAL_CODES.contains(c)) {
-        p = fix_extras(&p, game, &report, &mut changes);
+        p = fix_extras(&p, game, &report, trainer.origin, &mut changes);
         report = analyze(&p, game);
     }
     #[cfg(test)]
@@ -1282,7 +1303,7 @@ fn plans_for(pk: &Pokemon, game: Game) -> Vec<Plan> {
 }
 
 /// Corrections sur place (attaques, champs secondaires) quand la rencontre convient.
-fn local_fix(pk: &Pokemon, game: Game, before: &Report) -> Option<LegalizeOutcome> {
+fn local_fix(pk: &Pokemon, game: Game, origin: Option<[u8; 3]>, before: &Report) -> Option<LegalizeOutcome> {
     let local = before.checks.iter().filter(|c| c.severity == verify::Severity::Invalid).all(|c| c.tab == Some("moves") || LOCAL_CODES.contains(&c.code));
     if !local {
         return None;
@@ -1295,7 +1316,7 @@ fn local_fix(pk: &Pokemon, game: Game, before: &Report) -> Option<LegalizeOutcom
     }
     let mid = analyze(&p, game);
     if mid.verdict == Verdict::Illegal {
-        p = fix_extras(&p, game, &mid, &mut changes);
+        p = fix_extras(&p, game, &mid, origin, &mut changes);
     }
     let report = analyze(&p, game);
     (report.verdict != Verdict::Illegal).then(|| LegalizeOutcome::plain(p, changes, report, true))
@@ -1318,7 +1339,7 @@ pub fn legalize_with(pk: &Pokemon, game: Game, trainer: &Trainer, choice: Option
     let list = plans_for(pk, game);
     let seed = stable_seed(pk);
     if choice.is_none() {
-        if let Some(mut out) = local_fix(pk, game, &before) {
+        if let Some(mut out) = local_fix(pk, game, trainer.origin, &before) {
             if explore {
                 out.options = run(pk, game, trainer, &list, wishes_of(pk), seed, None, true).options;
             }

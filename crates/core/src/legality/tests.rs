@@ -108,6 +108,7 @@ fn route_201_and_first_routes() {
 fn trainer() -> Trainer {
     Trainer {
         name: "Thisma".into(),
+        origin: Some([2, 77, 2]),
         tid: 12345,
         sid: 54321,
         display_id: 12345,
@@ -540,4 +541,39 @@ fn prd_illegal_corpus_legalized() {
     println!("{}", lines.join("\n"));
     println!("Illégaux rendus légaux : {fixed}/{} (dont {detected_fixed}/{detected} parmi ceux que Kaleido détecte)", illegal.len());
     assert!(fixed * 100 >= illegal.len() * 90, "cible du PRD : 90 % ({fixed}/{})", illegal.len());
+}
+
+/// Gen 5 à 7 : constante de chiffrement et PID du transfert, pays de la console, dates.
+#[test]
+fn gen67_transfer_geo_and_dates() {
+    use crate::save::pkm::ExtrasPatch;
+    use crate::save::PkmDate;
+    // Étourmi de Platine transféré dans Ultra-Soleil : EC = PID d'origine, PID recalculé.
+    let req = GenerateRequest { species: 396, level: 10, encounter_index: None, ..Default::default() };
+    let pt = generate_legal(Game::Pt, PkmFormat::Gen4, &trainer(), &req).unwrap().pokemon;
+    let mut moved = generate_legal(Game::USUM, PkmFormat::Gen7, &trainer(), &GenerateRequest { species: 396, level: 10, ..Default::default() }).unwrap();
+    if moved.pokemon.version() == crate::legality::encounters::PT {
+        let p = &moved.pokemon;
+        assert_eq!(p.pid(), super::rng::transfer_pid(p.encryption_constant(), p.tid(), p.sid()));
+    }
+    let h = moved.pokemon.extras().handler.unwrap();
+    assert_eq!((h.region, h.country, h.console_region), (2, 77, 2), "pays de la console du joueur");
+    assert!(moved.pokemon.met_date().is_some());
+    let _ = pt;
+
+    // Pays incohérent et date avant la sortie du jeu : corrigés sur place.
+    let mut p = moved.pokemon.clone();
+    p.apply_extras(&ExtrasPatch { country: Some(1), console_region: Some(2), ..Default::default() }).unwrap();
+    p.set_met_date(Some(PkmDate { year: 2001, month: 1, day: 1 }));
+    p.refresh_checksum();
+    assert!(codes(&p, Game::USUM).contains(&"geo-console"));
+    assert!(codes(&p, Game::USUM).contains(&"met-date-early"));
+    let out = legalize(&p, Game::USUM, &trainer());
+    assert!(out.success, "{:?}", out.report.checks);
+    let h = out.pokemon.extras().handler.unwrap();
+    assert!(super::verify::extras::console_country_valid(h.console_region, h.country));
+    let d = out.pokemon.met_date().unwrap();
+    assert!(d.year >= 2017, "{d:?}");
+    assert!(out.changes.iter().any(|c| c.term == "country"), "{:?}", out.changes);
+    moved.pokemon = out.pokemon;
 }

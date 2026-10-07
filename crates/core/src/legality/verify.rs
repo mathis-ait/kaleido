@@ -92,7 +92,7 @@ const TAB_TRAINER: &str = "trainer";
 const TAB_EXTRAS: &str = "extras";
 
 #[path = "verify_extras.rs"]
-mod extras;
+pub(crate) mod extras;
 
 /// Liste de résultats avec raccourcis.
 #[derive(Default)]
