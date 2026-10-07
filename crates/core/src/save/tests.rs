@@ -241,6 +241,7 @@ fn summary_serializes_camel_case() {
     assert_eq!(json["ivs"], serde_json::json!([31, 30, 29, 28, 27, 26]));
     let trainer = Trainer {
         name: "A".into(),
+        origin: None,
         tid: 1,
         sid: 2,
         display_id: 1,

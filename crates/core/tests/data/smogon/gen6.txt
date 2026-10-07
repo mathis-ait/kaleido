@@ -1,0 +1,508 @@
+=== [gen6ou] Smogon ===
+
+Charizard @ Charizardite X
+Ability: Blaze
+Gender: M
+Jolly Nature
+EVs: 176 HP / 148 Atk / 184 Spe
+- Dragon Claw
+- Earthquake
+- Flame Charge
+- Swords Dance
+
+Cresselia @ Rocky Helmet
+Ability: Levitate
+Bold Nature
+EVs: 248 HP / 32 Def / 56 SpA / 36 SpD / 136 Spe
+IVs: 0 Atk
+- Ice Beam
+- Lunar Dance
+- Moonlight
+- Thunder Wave
+
+Diggersby @ Assault Vest
+Ability: Huge Power
+Gender: M
+Adamant Nature
+EVs: 136 HP / 248 Atk / 92 SpD / 32 Spe
+- Earthquake
+- Fire Punch
+- Frustration
+- Quick Attack
+
+Excadrill @ Leftovers
+Ability: Mold Breaker
+Gender: M
+Jolly Nature
+EVs: 120 HP / 136 SpD / 252 Spe
+- Earthquake
+- Iron Head
+- Rapid Spin
+- Stealth Rock
+
+Keldeo-Resolute @ Leftovers
+Ability: Justified
+Timid Nature
+EVs: 72 HP / 48 Def / 136 SpA / 252 Spe
+IVs: 0 Atk
+- Calm Mind
+- Scald
+- Secret Sword
+- Substitute
+
+Weavile @ Choice Band
+Ability: Pressure
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Ice Shard
+- Icicle Crash
+- Knock Off
+- Pursuit
+
+Gardevoir @ Gardevoirite
+Ability: Trace
+Gender: F
+Modest Nature
+EVs: 112 HP / 56 Def / 216 SpA / 124 Spe
+IVs: 0 Atk
+- Focus Blast
+- Hyper Voice
+- Psyshock
+- Taunt
+
+Bisharp @ Assault Vest
+Ability: Defiant
+Gender: M
+Adamant Nature
+EVs: 248 HP / 252 Atk / 8 SpD
+- Iron Head
+- Knock Off
+- Pursuit
+- Sucker Punch
+
+Garchomp @ Rocky Helmet
+Ability: Rough Skin
+Gender: M
+Jolly Nature
+EVs: 240 HP / 112 Def / 148 SpD / 8 Spe
+- Earthquake
+- Rock Tomb
+- Stealth Rock
+- Toxic
+
+Latias @ Rocky Helmet
+Ability: Levitate
+Timid Nature
+EVs: 168 HP / 88 SpA / 252 Spe
+IVs: 0 Atk
+- Defog
+- Healing Wish
+- Surf
+- Thunder Wave
+
+Thundurus @ Rocky Helmet
+Ability: Prankster
+Timid Nature
+EVs: 8 HP / 160 Def / 88 SpA / 252 Spe
+IVs: 0 Atk / 30 Def
+- Focus Blast
+- Hidden Power Ice
+- Thunder Wave
+- Volt Switch
+
+Volcarona @ Lum Berry
+Ability: Flame Body
+Gender: F
+Timid Nature
+EVs: 4 Def / 252 SpA / 252 Spe
+IVs: 0 Atk
+- Bug Buzz
+- Flamethrower
+- Giga Drain
+- Quiver Dance
+
+Diancie @ Diancite
+Ability: Clear Body
+Hasty Nature
+EVs: 176 Atk / 80 SpA / 252 Spe
+- Diamond Storm
+- Earth Power
+- Moonblast
+- Protect
+
+Dragonite @ Choice Band
+Ability: Multiscale
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Extreme Speed
+- Iron Head
+- Outrage
+- Superpower
+
+Ferrothorn @ Chople Berry
+Ability: Iron Barbs
+Gender: M
+Relaxed Nature
+EVs: 252 HP / 144 Atk / 88 Def / 24 SpD
+IVs: 8 Spe
+- Explosion
+- Gyro Ball
+- Power Whip
+- Spikes
+
+Keldeo @ Leftovers
+Ability: Justified
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Calm Mind
+- Secret Sword
+- Surf
+- Taunt
+
+Landorus-Therian @ Rocky Helmet
+Ability: Intimidate
+Jolly Nature
+EVs: 248 HP / 20 Def / 8 SpD / 232 Spe
+- Earthquake
+- Smack Down
+- Stealth Rock
+- U-turn
+
+=== [gen6uu] Smogon ===
+
+Hydreigon @ Life Orb
+Ability: Levitate
+Gender: M
+Naive Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+- Dark Pulse
+- Draco Meteor
+- Roost
+- Superpower
+
+Crobat @ Sky Plate
+Ability: Infiltrator
+Gender: M
+Jolly Nature
+EVs: 172 HP / 160 Atk / 176 Spe
+- Brave Bird
+- Roost
+- Taunt
+- U-turn
+
+Klefki @ Leftovers
+Ability: Prankster
+Gender: M
+Careful Nature
+EVs: 252 HP / 4 Def / 252 SpD
+- Heal Block
+- Play Rough
+- Spikes
+- Thunder Wave
+
+Rhyperior @ Leftovers
+Ability: Solid Rock
+Gender: M
+Adamant Nature
+EVs: 244 HP / 16 Atk / 120 Def / 120 SpD / 8 Spe
+- Earthquake
+- Stealth Rock
+- Stone Edge
+- Toxic
+
+Slowking @ Colbur Berry
+Ability: Regenerator
+Gender: M
+Bold Nature
+EVs: 252 HP / 252 Def / 4 SpD
+- Dragon Tail
+- Future Sight
+- Scald
+- Slack Off
+
+Virizion @ Lum Berry
+Ability: Justified
+Jolly Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Close Combat
+- Leaf Blade
+- Swords Dance
+- Synthesis
+
+Hydreigon @ Choice Scarf
+Ability: Levitate
+Gender: M
+Modest Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+- Dark Pulse
+- Draco Meteor
+- Fire Blast
+- U-turn
+
+Crobat @ Rocky Helmet
+Ability: Infiltrator
+Gender: M
+Jolly Nature
+EVs: 248 HP / 44 Atk / 72 Def / 144 Spe
+- Brave Bird
+- Roost
+- Taunt
+- U-turn
+
+Heracross @ Leftovers
+Ability: Guts
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Close Combat
+- Knock Off
+- Megahorn
+- Swords Dance
+
+Jellicent @ Colbur Berry
+Ability: Water Absorb
+Gender: M
+Bold Nature
+EVs: 232 HP / 136 Def / 140 Spe
+IVs: 0 Atk
+- Night Shade
+- Recover
+- Taunt
+- Will-O-Wisp
+
+Klefki @ Leftovers
+Ability: Prankster
+Gender: M
+Careful Nature
+EVs: 252 HP / 136 Def / 120 SpD
+- Magnet Rise
+- Play Rough
+- Spikes
+- Thunder Wave
+
+Rhyperior @ Leftovers
+Ability: Solid Rock
+Gender: M
+Adamant Nature
+EVs: 248 HP / 16 Atk / 220 SpD / 24 Spe
+- Earthquake
+- Megahorn
+- Rock Blast
+- Stealth Rock
+
+Florges @ Leftovers
+Ability: Flower Veil
+Bold Nature
+EVs: 248 HP / 252 Def / 8 Spe
+IVs: 0 Atk
+- Aromatherapy
+- Moonblast
+- Synthesis
+- Wish
+
+Celebi @ Leftovers
+Ability: Natural Cure
+Timid Nature
+EVs: 4 Def / 252 SpA / 252 Spe
+- Giga Drain
+- Nasty Plot
+- Psychic
+- U-turn
+
+Entei @ Choice Band
+Ability: Pressure
+Shiny: Yes
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Extreme Speed
+- Flare Blitz
+- Sacred Fire
+- Stone Edge
+
+Steelix @ Steelixite
+Ability: Rock Head
+Gender: M
+Adamant Nature
+EVs: 248 HP / 16 Atk / 196 SpD / 48 Spe
+- Earthquake
+- Heavy Slam
+- Stealth Rock
+- Toxic
+
+Tentacruel @ Black Sludge
+Ability: Liquid Ooze
+Gender: M
+Timid Nature
+EVs: 248 HP / 244 Def / 8 SpA / 8 Spe
+- Knock Off
+- Rapid Spin
+- Scald
+- Toxic Spikes
+
+=== [gen6ru] Smogon ===
+
+Druddigon @ Life Orb
+Ability: Sheer Force
+Gender: M
+Adamant Nature
+EVs: 56 HP / 252 Atk / 4 SpD / 196 Spe
+- Dragon Claw
+- Fire Punch
+- Iron Head
+- Thunder Punch
+
+Emboar @ Choice Scarf
+Ability: Blaze
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Flare Blitz
+- Superpower
+- Toxic
+- Wild Charge
+
+Flygon @ Leftovers
+Ability: Levitate
+Gender: M
+Jolly Nature
+EVs: 112 HP / 144 Atk / 252 Spe
+- Defog
+- Earthquake
+- Roost
+- U-turn
+
+Slowking @ Colbur Berry
+Ability: Regenerator
+Gender: F
+Bold Nature
+EVs: 248 HP / 252 Def / 8 Spe
+IVs: 0 Atk
+- Calm Mind
+- Scald
+- Slack Off
+- Thunder Wave
+
+Steelix @ Leftovers
+Ability: Sturdy
+Gender: M
+Adamant Nature
+EVs: 244 HP / 136 Atk / 128 SpD
+- Earthquake
+- Heavy Slam
+- Stealth Rock
+- Toxic
+
+Venusaur @ Black Sludge
+Ability: Overgrow
+Gender: M
+Bold Nature
+EVs: 248 HP / 204 Def / 24 SpA / 16 SpD / 16 Spe
+- Giga Drain
+- Knock Off
+- Sludge Bomb
+- Synthesis
+
+Slowking @ Colbur Berry
+Ability: Regenerator
+Gender: F
+Modest Nature
+EVs: 252 HP / 208 Def / 16 SpA / 32 Spe
+IVs: 0 Atk
+- Nasty Plot
+- Psychic
+- Scald
+- Slack Off
+
+Diancie @ Leftovers
+Ability: Clear Body
+Sassy Nature
+EVs: 252 HP / 168 Def / 88 SpD
+- Diamond Storm
+- Heal Bell
+- Moonblast
+- Stealth Rock
+
+Flygon @ Earth Plate
+Ability: Levitate
+Gender: M
+Jolly Nature
+EVs: 32 HP / 252 Atk / 224 Spe
+- Defog
+- Earthquake
+- Roost
+- U-turn
+
+Houndoom @ Choice Scarf
+Ability: Unnerve
+Gender: M
+Hasty Nature
+EVs: 96 Atk / 160 SpA / 252 Spe
+IVs: 30 Atk / 30 Def
+- Dark Pulse
+- Fire Blast
+- Hidden Power Ice
+- Pursuit
+
+Magneton @ Eviolite
+Ability: Magnet Pull
+Modest Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 1 Atk / 30 SpA / 30 SpD
+- Flash Cannon
+- Hidden Power Ground
+- Thunderbolt
+- Volt Switch
+
+Venusaur @ Black Sludge
+Ability: Overgrow
+Gender: M
+Modest Nature
+EVs: 252 HP / 216 Def / 16 SpA / 24 Spe
+- Giga Drain
+- Knock Off
+- Sludge Bomb
+- Synthesis
+
+Camerupt @ Cameruptite
+Ability: Magma Armor
+Gender: F
+Modest Nature
+EVs: 88 HP / 252 SpA / 168 Spe
+IVs: 0 Atk / 30 Def
+- Earth Power
+- Flamethrower
+- Hidden Power Ice
+- Will-O-Wisp
+
+Alomomola @ Leftovers
+Ability: Regenerator
+Gender: F
+Bold Nature
+EVs: 120 HP / 136 Def / 252 SpD
+IVs: 0 Atk
+- Protect
+- Scald
+- Toxic
+- Wish
+
+Diancie @ Leftovers
+Ability: Clear Body
+Sassy Nature
+EVs: 252 HP / 176 Def / 80 SpD
+- Diamond Storm
+- Heal Bell
+- Moonblast
+- Stealth Rock
+
+Sneasel @ Choice Band
+Ability: Inner Focus
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Ice Shard
+- Icicle Crash
+- Knock Off
+- Pursuit

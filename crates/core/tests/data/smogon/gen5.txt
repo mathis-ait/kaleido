@@ -1,0 +1,510 @@
+=== [gen5ou] Smogon ===
+
+Tyranitar @ Choice Scarf
+Ability: Sand Stream
+Gender: M
+Hasty Nature
+EVs: 220 Atk / 36 SpA / 252 Spe
+- Crunch
+- Earthquake
+- Ice Beam
+- Pursuit
+
+Garchomp @ Choice Scarf
+Ability: Rough Skin
+Gender: M
+Jolly Nature
+EVs: 4 HP / 252 Atk / 252 Spe
+- Dual Chop
+- Earthquake
+- Outrage
+- Stone Edge
+
+Jellicent @ Air Balloon
+Ability: Water Absorb
+Gender: F
+Timid Nature
+EVs: 112 HP / 180 Def / 216 Spe
+IVs: 0 Atk
+- Night Shade
+- Recover
+- Taunt
+- Will-O-Wisp
+
+Jirachi @ Leftovers
+Ability: Serene Grace
+Hasty Nature
+EVs: 140 Atk / 184 SpA / 184 Spe
+IVs: 30 Atk / 30 Def
+- Fire Punch
+- Hidden Power Ice
+- Iron Head
+- Thunder
+
+Scizor @ Life Orb
+Ability: Technician
+Gender: M
+Adamant Nature
+EVs: 4 HP / 252 Atk / 252 Spe
+- Bullet Punch
+- Quick Attack
+- Superpower
+- Swords Dance
+
+Skarmory @ Custap Berry
+Ability: Sturdy
+Gender: M
+Jolly Nature
+EVs: 4 HP / 252 Atk / 252 Spe
+- Brave Bird
+- Spikes
+- Stealth Rock
+- Taunt
+
+Tyranitar @ Chople Berry
+Ability: Sand Stream
+Gender: M
+Adamant Nature
+EVs: 252 HP / 64 Atk / 192 SpD
+- Crunch
+- Pursuit
+- Superpower
+- Thunder Wave
+
+Alakazam @ Focus Sash
+Ability: Magic Guard
+Gender: F
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 2 Atk / 30 Def
+- Focus Blast
+- Hidden Power Ice
+- Psyshock
+- Signal Beam
+
+Ferrothorn @ Lum Berry
+Ability: Iron Barbs
+Gender: M
+Careful Nature
+EVs: 252 HP / 128 Def / 128 SpD
+IVs: 0 Spe
+- Gyro Ball
+- Knock Off
+- Power Whip
+- Spikes
+
+Landorus-Therian @ Leftovers
+Ability: Intimidate
+Naive Nature
+EVs: 252 HP / 4 Def / 252 Spe
+IVs: 30 Atk / 30 Def
+- Earthquake
+- Hidden Power Ice
+- Stealth Rock
+- U-turn
+
+Latios @ Choice Specs
+Ability: Levitate
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Draco Meteor
+- Roost
+- Surf
+- Trick
+
+Rotom-Wash @ Leftovers
+Ability: Levitate
+Bold Nature
+EVs: 252 HP / 200 Def / 56 SpD
+IVs: 0 Atk
+- Hydro Pump
+- Pain Split
+- Volt Switch
+- Will-O-Wisp
+
+Abomasnow @ Focus Sash
+Ability: Snow Warning
+Gender: M
+Rash Nature
+EVs: 36 Atk / 252 SpA / 220 Spe
+IVs: 30 Atk / 30 SpA / 30 Spe
+- Blizzard
+- Hidden Power Fire
+- Ice Shard
+- Wood Hammer
+
+Dragonite @ Leftovers
+Ability: Multiscale
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Dragon Dance
+- Extreme Speed
+- Fire Punch
+- Outrage
+
+Garchomp @ Yache Berry
+Ability: Rough Skin
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Earthquake
+- Outrage
+- Stealth Rock
+- Swords Dance
+
+Jirachi @ Choice Scarf
+Ability: Serene Grace
+Jolly Nature
+EVs: 252 HP / 72 Atk / 184 Spe
+- Healing Wish
+- Ice Punch
+- Iron Head
+- U-turn
+
+Kyurem-Black @ Choice Band
+Ability: Teravolt
+Adamant Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Dragon Claw
+- Fusion Bolt
+- Ice Beam
+- Outrage
+
+=== [gen5uu] Smogon ===
+
+Mew @ Normal Gem
+Ability: Synchronize
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Explosion
+- Stealth Rock
+- Tailwind
+- Taunt
+
+Druddigon @ Choice Band
+Ability: Mold Breaker
+Gender: M
+Adamant Nature
+EVs: 132 HP / 240 Atk / 4 SpD / 132 Spe
+- Dragon Claw
+- Earthquake
+- Outrage
+- Sucker Punch
+
+Nidoking @ Life Orb
+Ability: Sheer Force
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Earth Power
+- Fire Blast
+- Ice Beam
+- Shadow Ball
+
+Suicune @ Leftovers
+Ability: Pressure
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 3 Atk / 30 SpA
+- Calm Mind
+- Hidden Power Electric
+- Hydro Pump
+- Ice Beam
+
+Tornadus @ Life Orb
+Ability: Prankster
+Hasty Nature
+EVs: 4 Atk / 252 SpA / 252 Spe
+- Grass Knot
+- Hurricane
+- Superpower
+- Tailwind
+
+Victini @ Charcoal
+Ability: Victory Star
+Lonely Nature
+EVs: 252 Atk / 4 SpA / 252 Spe
+- Brick Break
+- Grass Knot
+- V-create
+- Zen Headbutt
+
+Golurk @ Leftovers
+Ability: Iron Fist
+Adamant Nature
+EVs: 236 HP / 252 Atk / 20 Spe
+- Earthquake
+- Ice Punch
+- Protect
+- Stealth Rock
+
+Bisharp @ Life Orb
+Ability: Defiant
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Iron Head
+- Pursuit
+- Sucker Punch
+- Swords Dance
+
+Druddigon @ Choice Band
+Ability: Rough Skin
+Gender: M
+Adamant Nature
+EVs: 196 HP / 252 Atk / 60 Spe
+- Earthquake
+- Fire Punch
+- Outrage
+- Sleep Talk
+
+Heracross @ Choice Scarf
+Ability: Moxie
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Close Combat
+- Earthquake
+- Megahorn
+- Stone Edge
+
+Suicune @ Leftovers
+Ability: Pressure
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 30 SpA
+- Calm Mind
+- Hidden Power Electric
+- Hydro Pump
+- Ice Beam
+
+Zapdos @ Life Orb
+Ability: Pressure
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 30 Atk / 30 SpA
+- Heat Wave
+- Hidden Power Grass
+- Roost
+- Thunderbolt
+
+Mew @ Leftovers
+Ability: Synchronize
+Timid Nature
+EVs: 248 HP / 84 SpD / 176 Spe
+- Psyshock
+- Soft-Boiled
+- Taunt
+- Will-O-Wisp
+
+Heracross @ Leftovers
+Ability: Guts
+Gender: F
+Jolly Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Close Combat
+- Megahorn
+- Stone Edge
+- Swords Dance
+
+Qwilfish @ Black Sludge
+Ability: Intimidate
+Gender: F
+Bold Nature
+EVs: 248 HP / 200 Def / 60 Spe
+- Pain Split
+- Scald
+- Spikes
+- Taunt
+
+Rhyperior @ Leftovers
+Ability: Solid Rock
+Gender: M
+Adamant Nature
+EVs: 244 HP / 16 Atk / 248 SpD
+- Dragon Tail
+- Earthquake
+- Rock Blast
+- Stealth Rock
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+Gender: M
+Bold Nature
+EVs: 248 HP / 160 Def / 100 Spe
+- Air Slash
+- Heal Bell
+- Nasty Plot
+- Roost
+
+=== [gen5ru] Smogon ===
+
+Steelix @ Leftovers
+Ability: Sturdy
+Gender: M
+Impish Nature
+EVs: 252 HP / 4 Atk / 184 Def / 44 SpD / 24 Spe
+- Earthquake
+- Roar
+- Stealth Rock
+- Toxic
+
+Aerodactyl @ Life Orb
+Ability: Pressure
+Gender: M
+Hasty Nature
+EVs: 220 Atk / 36 SpA / 252 Spe
+- Earthquake
+- Fire Blast
+- Roost
+- Stone Edge
+
+Magneton @ Choice Scarf
+Ability: Magnet Pull
+Timid Nature
+EVs: 4 HP / 252 SpA / 252 Spe
+IVs: 2 Atk / 30 SpA / 30 Spe
+- Flash Cannon
+- Hidden Power Fire
+- Thunderbolt
+- Volt Switch
+
+Sceptile @ Flying Gem
+Ability: Unburden
+Gender: M
+Mild Nature
+EVs: 4 Atk / 252 SpA / 252 Spe
+IVs: 30 Atk / 30 SpA / 30 Spe
+- Acrobatics
+- Hidden Power Fire
+- Leaf Storm
+- Rock Slide
+
+Skuntank @ Life Orb
+Ability: Aftermath
+Gender: M
+Lonely Nature
+EVs: 252 Atk / 4 SpA / 252 Spe
+- Crunch
+- Fire Blast
+- Pursuit
+- Sucker Punch
+
+Uxie @ Leftovers
+Ability: Levitate
+Timid Nature
+EVs: 96 HP / 188 SpA / 224 Spe
+IVs: 0 Atk
+- Calm Mind
+- Psychic
+- Signal Beam
+- Substitute
+
+Golurk @ Life Orb
+Ability: No Guard
+Shiny: Yes
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Dynamic Punch
+- Earthquake
+- Rock Polish
+- Shadow Punch
+
+Durant @ Lum Berry
+Ability: Hustle
+Shiny: Yes
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Hone Claws
+- Superpower
+- Thunder Fang
+- X-Scissor
+
+Feraligatr @ Leftovers
+Ability: Torrent
+Gender: M
+Adamant Nature
+EVs: 40 HP / 252 Atk / 216 Spe
+- Aqua Jet
+- Crunch
+- Substitute
+- Swords Dance
+
+Omastar @ Focus Sash
+Ability: Weak Armor
+Shiny: Yes
+Gender: F
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Ice Beam
+- Scald
+- Spikes
+- Stealth Rock
+
+Rotom @ Choice Scarf
+Ability: Levitate
+Shiny: Yes
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Shadow Ball
+- Thunderbolt
+- Trick
+- Volt Switch
+
+Sceptile @ Flying Gem
+Ability: Unburden
+Shiny: Yes
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Acrobatics
+- Earthquake
+- Leaf Blade
+- Swords Dance
+
+Sigilyph @ Life Orb
+Ability: Magic Guard
+Gender: F
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Energy Ball
+- Heat Wave
+- Psychic
+- Roost
+
+Absol @ Dread Plate
+Ability: Justified
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Night Slash
+- Pursuit
+- Sucker Punch
+- Superpower
+
+Amoonguss @ Black Sludge
+Ability: Regenerator
+Gender: F
+Calm Nature
+EVs: 252 HP / 88 Def / 52 SpA / 116 SpD
+IVs: 2 Atk / 30 SpA / 30 Spe
+- Clear Smog
+- Giga Drain
+- Hidden Power Fire
+- Stun Spore
+
+Emboar @ Choice Scarf
+Ability: Blaze
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Flare Blitz
+- Stone Edge
+- Superpower
+- Wild Charge

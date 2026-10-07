@@ -454,6 +454,8 @@ fn main() {
             legality::legality_check,
             legality::legality_check_all,
             legality::legality_legalize,
+            legality::legality_legalize_preview,
+            legality::legality_legalize_apply,
             legality::legality_legalize_all,
             legality::legality_generate,
             legality::encounter_species,

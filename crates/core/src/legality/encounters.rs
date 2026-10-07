@@ -315,6 +315,9 @@ pub struct Encounter {
     pub language: Option<u8>,
     pub ec: Option<u32>,
     pub title: Option<String>,
+    /// Gen 4 sauvage : numéros d'emplacement (slot) de la zone, pour les tirages des méthodes J et K.
+    #[serde(skip)]
+    pub slots: Vec<u8>,
 }
 
 impl Encounter {
@@ -351,6 +354,7 @@ impl Encounter {
             language: None,
             ec: None,
             title: None,
+            slots: Vec::new(),
         }
     }
 
@@ -474,6 +478,7 @@ fn read_areas(data: &[u8], version: u8, generation: u8, out: &mut Vec<Encounter>
                     continue;
                 }
                 let mut e = Encounter::base(kind, 4, vec![version], species, s[2], s[4], s[5], location);
+                e.slots = vec![s[3]];
                 if kind == EncounterKind::BugContest {
                     e.ball = Some(24);
                 } else if kind.is_safari() || location == 52 {
@@ -782,6 +787,11 @@ fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
                 for v in &e.versions {
                     if !out[i].versions.contains(v) {
                         out[i].versions.push(*v);
+                    }
+                }
+                for s in &e.slots {
+                    if !out[i].slots.contains(s) {
+                        out[i].slots.push(*s);
                     }
                 }
                 continue;

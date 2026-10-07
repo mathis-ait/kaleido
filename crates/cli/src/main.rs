@@ -52,7 +52,11 @@ Outils DS :
   items     <rom> [autre.nds]           Objets ramassables et boutiques (ou différences avec une autre ROM)
   statics   <rom>                       Pokémon fixes, dons et échanges en jeu
   hexcode   <rom> <arm9|n° overlay> <début> <longueur>   Vidage du code décompressé (début en hexa)
-  findcode  <rom> <octets hexa>         Cherche des octets dans l'ARM9 et les overlays décompressés";
+  findcode  <rom> <octets hexa>         Cherche des octets dans l'ARM9 et les overlays décompressés
+
+Légalité (oracle PKHeX, voir scripts/pkhex-check.ps1) :
+  legal-dir    <dossier> <sortie>       « Rendre légal » sur chaque .pk4 à .pk7, écrit dans <sortie>
+  legal-smogon <corpus.txt> <gen> <sortie>   Crée les sets Showdown légaux (Gen 4 à 7) en .pkN";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -117,6 +121,8 @@ fn main() -> ExitCode {
         ["trainers7", rom] => ctr::gen7_trainers(rom, ""),
         ["trainers7", rom, filter] => ctr::gen7_trainers(rom, filter),
         ["export-names", rom, out] => ctr::export_names(rom, out),
+        ["legal-dir", input, out] => legal_dir(input, out),
+        ["legal-smogon", corpus, gen, out] => gen.parse().map_err(Into::into).and_then(|g| legal_smogon(corpus, g, out)),
         ["demo-save", out] => kaleido_core::save::demo_save().map_err(Into::into).and_then(|b| std::fs::write(out, b).map_err(Into::into)),
         ["save", path] => std::fs::read(path)
             .map_err(Into::into)
@@ -748,4 +754,81 @@ fn report(label: &str, ok: bool, failures: &mut u32) {
     if !ok {
         *failures += 1;
     }
+}
+
+/// Dresseur fictif des exports de légalité (France, console européenne).
+fn legal_trainer() -> kaleido_core::save::Trainer {
+    kaleido_core::save::Trainer {
+        name: "Kaleido".into(),
+        origin: Some([2, 77, 2]),
+        tid: 24680,
+        sid: 13579,
+        display_id: 24680,
+        gender: kaleido_core::save::Gender::Female,
+        money: 0,
+        play_time: kaleido_core::save::PlayTime { hours: 0, minutes: 0, seconds: 0 },
+    }
+}
+
+fn game_of_gen(generation: u8) -> Option<(kaleido_core::dex::Game, kaleido_core::save::PkmFormat)> {
+    use kaleido_core::dex::Game;
+    use kaleido_core::save::PkmFormat;
+    Some(match generation {
+        4 => (Game::HGSS, PkmFormat::Gen4),
+        5 => (Game::B2W2, PkmFormat::Gen5),
+        6 => (Game::ORAS, PkmFormat::Gen6),
+        7 => (Game::USUM, PkmFormat::Gen7),
+        _ => return None,
+    })
+}
+
+/// « Rendre légal » sur chaque fichier .pk4 à .pk7 du dossier (récursif).
+fn legal_dir(input: &str, out: &str) -> CliResult {
+    fn walk(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, files);
+            } else if p.extension().and_then(|x| x.to_str()).is_some_and(|x| matches!(x, "pk4" | "pk5" | "pk6" | "pk7")) {
+                files.push(p);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(Path::new(input), &mut files);
+    std::fs::create_dir_all(out)?;
+    let (mut ok, mut total) = (0, 0);
+    for (i, f) in files.iter().enumerate() {
+        let ext = f.extension().and_then(|x| x.to_str()).unwrap_or("");
+        let Some((game, format)) = game_of_gen(ext[2..].parse().unwrap_or(0)) else { continue };
+        let pk = kaleido_core::save::Pokemon::from_bytes(format, &std::fs::read(f)?)?;
+        let res = kaleido_core::legality::legalize(&pk, game, &legal_trainer());
+        total += 1;
+        ok += res.success as usize;
+        std::fs::write(Path::new(out).join(format!("{i:03}-{}.{ext}", pk.species())), res.pokemon.stored_data())?;
+    }
+    println!("{ok}/{total} légaux selon Kaleido, écrits dans {out}");
+    Ok(())
+}
+
+/// Crée en .pkN les sets d'un texte Showdown (corpus Smogon).
+fn legal_smogon(corpus: &str, generation: u8, out: &str) -> CliResult {
+    use kaleido_core::showdown::{parse_team, resolve};
+    let (game, format) = game_of_gen(generation).ok_or("génération 4 à 7 attendue")?;
+    std::fs::create_dir_all(out)?;
+    let (mut ok, mut total) = (0, 0);
+    for (i, set) in parse_team(&std::fs::read_to_string(corpus)?).iter().enumerate() {
+        let r = resolve(set, game, kaleido_core::dex::Lang::En);
+        if r.error.is_some() {
+            continue;
+        }
+        total += 1;
+        let req = kaleido_core::save::showdown_apply::request_of_set(&r);
+        if let Ok(res) = kaleido_core::legality::generate_legal(game, format, &legal_trainer(), &req) {
+            ok += res.success as usize;
+            std::fs::write(Path::new(out).join(format!("{i:03}-{}.pk{generation}", r.species)), res.pokemon.stored_data())?;
+        }
+    }
+    println!("{ok}/{total} sets légaux selon Kaleido, écrits dans {out}");
+    Ok(())
 }

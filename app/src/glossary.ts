@@ -275,6 +275,30 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     title: "Méthode 1",
     text: "Algorithme de génération des Gen 3/4 : 4 tirages successifs donnent la moitié basse et haute du PID puis les deux moitiés des IV. Kaleido retrouve la graine pour vérifier le lien, et en génère une valide quand il crée un Pokémon.",
   },
+  methodJK: {
+    title: "Méthodes J et K",
+    text: "Rencontres sauvages de la Gen 4 : avant le PID, le jeu tire l'emplacement de la rencontre (slot), parfois le niveau, puis la nature ; il retire ensuite des PID jusqu'à tomber sur cette nature. Méthode J pour Diamant, Perle et Platine, méthode K pour HeartGold et SoulSilver. Kaleido génère un PID dont la suite de tirages correspond au slot et au niveau, comme le vérifie PKHeX.",
+  },
+  pokeRadar: {
+    title: "Poké Radar",
+    text: "Objet de Diamant, Perle et Platine qui fait apparaître des Pokémon dans les hautes herbes. Une chaîne de rencontres peut donner un chromatique dont le PID est bâti bit à bit à partir des IV : c'est ce que Kaleido utilise pour créer un chromatique sauvage de ces jeux.",
+  },
+  eggMoves: {
+    title: "Capacités Œuf",
+    text: "Attaques qu'un bébé ne peut connaître que par ses parents : le père (ou un parent en Gen 6+) la connaît et partage un groupe Œuf avec la mère. Kaleido cherche une chaîne de parents qui l'apprennent par niveau, CT ou comme capacité Œuf eux-mêmes ; sans chaîne possible, l'attaque est refusée.",
+  },
+  legalizePreview: {
+    title: "Aperçu avant application",
+    text: "Kaleido calcule le Pokémon corrigé sans rien écrire : à gauche le Pokémon actuel, à droite le résultat, champs modifiés en surbrillance. Rien ne change dans la sauvegarde tant que tu n'as pas cliqué sur « Appliquer ».",
+  },
+  legalizeEncounter: {
+    title: "Choix de la rencontre",
+    text: "Quand plusieurs rencontres donnent un Pokémon légal, Kaleido les classe de la plus naturelle (capture dans ce jeu) à la plus exotique (œuf, échange, jeu plus ancien) et présélectionne celle qui garde le mieux ce que tu avais choisi.",
+  },
+  legalizeTeam: {
+    title: "Légaliser l'équipe ou la boîte",
+    text: "Rend légaux d'un coup les Pokémon illégaux de l'équipe ou de la boîte affichée. L'aperçu groupé montre chaque Pokémon avant et après ; tu peux en décocher avant d'appliquer. Une seule étape d'annulation : Ctrl+Z revient en arrière.",
+  },
   pidGen5: {
     title: "PID en Gen 5",
     text: "Noir/Blanc fixent le bit le plus haut du PID des Pokémon sauvages d'après l'ID du dresseur, et le talent d'après le bit 16 du PID. Un PID choisi au hasard est refusé une fois sur deux.",

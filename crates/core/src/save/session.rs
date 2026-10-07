@@ -615,6 +615,12 @@ impl SaveSession {
         p.set_pp(moves.map(|m| dex::move_info_in(game, m).map_or(0, |i| i.pp)));
         let now = today();
         p.set_met_date(Some(now));
+        // 3DS : pays et région de la console du joueur, comme le jeu à la capture.
+        if format.generation() >= 6 {
+            let o = self.save.trainer_origin();
+            let patch = super::pkm::ExtrasPatch { region: Some(o.region), country: Some(o.country), console_region: Some(o.console_region), ..Default::default() };
+            let _ = p.apply_extras(&patch);
+        }
         p.refresh_checksum();
         Ok(p)
     }
