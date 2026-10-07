@@ -70,6 +70,8 @@ fn header_count(src: &dyn MemorySource, format: PkmFormat, slot0: u64) -> Option
             src.read(slot0 + (PARTY_SLOTS * format.party_size()) as u64, &mut b).ok()?;
             b[0] as usize
         }
+        // Pas de lecture en mémoire pour les jeux GB/GBA (aucune carte).
+        PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 => return None,
     };
     (1..=PARTY_SLOTS).contains(&n).then_some(n)
 }

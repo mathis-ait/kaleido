@@ -410,6 +410,7 @@ impl SaveFile {
             let female = self.version == SaveVersion::Crystal && rd_u8(d, t.gender) != 0;
             return Trainer {
                 name: crate::text::gen12::decode(&d[t.name..t.name + 11]),
+                origin: None,
                 tid,
                 sid: 0,
                 display_id: tid as u32,
@@ -422,6 +423,7 @@ impl SaveFile {
             let key = gen3::security_key(self.version, d);
             return Trainer {
                 name: crate::text::gen3::decode(&d[t.name..t.name + t.name_max + 1]),
+                origin: None,
                 tid: rd_u16(d, t.tid),
                 sid: rd_u16(d, t.sid),
                 display_id: rd_u16(d, t.tid) as u32,
