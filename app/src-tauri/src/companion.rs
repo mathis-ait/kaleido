@@ -406,6 +406,41 @@ fn push(app: &AppHandle) {
 /// Ajoute la lecture en direct : équipe, carte et badges vus en mémoire, combat, rencontre.
 /// L'instantané de la sauvegarde garde boîtes, dresseur et temps de jeu.
 fn apply_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
+    merge_live(app, path, out);
+    // Taux de chromatiques modifié par le randomizer : le jeu compare à un autre seuil que 8.
+    let rom = current(app).and_then(|t| rom_of(&t));
+    if let Some(t) = shiny_threshold(rom.as_deref()).filter(|&t| t != 8) {
+        if let Some(snap) = out.snapshot.as_mut() {
+            snap.set_shiny_threshold(t);
+        }
+        if let Some(b) = out.battle.as_mut() {
+            for f in &mut b.foes {
+                f.set_shiny_threshold(t);
+            }
+        }
+        if let Some(e) = out.encounter.as_mut() {
+            if let Some(f) = out.battle.as_ref().and_then(|b| b.foes.iter().find(|f| f.pid == e.id)) {
+                e.shiny = f.shiny;
+            }
+        }
+    }
+}
+
+/// Seuil des chromatiques de la ROM DS de la partie (taux modifié par le randomizer), lu une fois.
+fn shiny_threshold(rom: Option<&Path>) -> Option<u32> {
+    static CACHE: Mutex<Option<HashMap<PathBuf, Option<u32>>>> = Mutex::new(None);
+    let rom = rom.filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("nds")))?;
+    let mut cache = CACHE.lock().ok()?;
+    let map = cache.get_or_insert_with(HashMap::new);
+    *map.entry(rom.to_path_buf()).or_insert_with(|| kaleido_core::data::shiny::rom_threshold(rom).map(u32::from))
+}
+
+/// ROM de la partie : celle liée au Nuzlocke, sinon celle lancée depuis la bibliothèque.
+fn rom_of(t: &Target) -> Option<PathBuf> {
+    nuzlocke::load_state(&t.path).rom_path.map(PathBuf::from).or_else(|| t.rom.clone())
+}
+
+fn merge_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
     let o = crate::live::overlay(path);
     out.live = o.info;
     out.battle = o.battle;

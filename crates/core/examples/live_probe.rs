@@ -152,6 +152,34 @@ fn main() {
             let bytes = kaleido_core::live::DumpSource::to_sparse(&proc, ram.base, ram.size as u32, &keep).unwrap();
             std::fs::write(arg(3), bytes).unwrap();
         }
+        // Rejoue un dump brut (sortie de « dump ») : replay <dump.bin> <sauvegarde> [prime]
+        // Rejoue des dumps bruts (sortie de « dump ») dans l'ordre, avec le même lecteur :
+        // replay <dump1.bin,dump2.bin,…> <sauvegarde> [prime]
+        "replay" => {
+            let save = SaveSession::open(&std::fs::read(arg(2)).unwrap()).unwrap();
+            let mut reader: Option<LiveReader> = None;
+            for (i, file) in arg(1).split(',').enumerate() {
+                let src = kaleido_core::live::DumpSource::new().with_zone(0x1000_0000, std::fs::read(file).unwrap());
+                let ram = scan::find_ds_ram(&src).expect("RAM DS introuvable");
+                let reader = reader.get_or_insert_with(|| LiveReader::new(Console::Ds(ram.clone()), save.save.ram_hints()));
+                if i == 0 && arg(3) == "prime" {
+                    let _ = reader.tick(&src);
+                    reader.prime_battle(&src);
+                }
+                println!("-- {file}");
+                for _ in 0..4 {
+                    match reader.tick(&src) {
+                        Ok(Some(r)) => println!(
+                            "équipe {:?} carte {:?} combat {:?}",
+                            r.party.iter().map(|p| p.species()).collect::<Vec<_>>(),
+                            r.map,
+                            r.battle.map(|b| (b.wild, b.new, b.enemies.iter().map(|p| p.species()).collect::<Vec<_>>()))
+                        ),
+                        other => println!("{other:?}"),
+                    }
+                }
+            }
+        }
         _ => eprintln!("usage : list | dump <pid> <sortie> | watch <pid> <sauvegarde> [s]"),
     }
 }

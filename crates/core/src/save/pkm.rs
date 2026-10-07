@@ -729,6 +729,16 @@ impl Pokemon {
         self.put_u32(0x10, v);
     }
 
+    /// Valeur comparée au seuil des chromatiques (TID ^ SID ^ moitiés du PID), sauf Gen 1-2.
+    /// Une ROM au taux modifié (randomizer) utilise un autre seuil que [`PkmFormat::shiny_threshold`].
+    pub fn shiny_xor(&self) -> Option<u32> {
+        if self.format.is_gb() {
+            return None;
+        }
+        let pid = self.pid();
+        Some((self.tid() ^ self.sid()) as u32 ^ (pid >> 16) ^ (pid & 0xFFFF))
+    }
+
     pub fn is_shiny(&self) -> bool {
         if self.format.is_gb() {
             return super::pk12::is_shiny(super::pk12::ivs_to_dvs(self.ivs()));
