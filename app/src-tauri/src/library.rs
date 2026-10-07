@@ -33,6 +33,8 @@ pub struct LibraryConfig {
     pub files: Vec<String>,
     /// Fichiers retirés de la bibliothèque (même s'ils sont dans un dossier suivi).
     pub hidden: Vec<String>,
+    /// Dossiers retirés par l'utilisateur : la recherche automatique ne les rajoute plus.
+    pub ignored: Vec<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {

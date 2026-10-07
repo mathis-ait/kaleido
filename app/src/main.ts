@@ -13,6 +13,9 @@ import { currentTheme } from "./theme";
 
 initTheme();
 createApp(App).mount("#app");
+
+// Jeux et émulateurs du PC retrouvés tout seuls, une fois l'interface affichée.
+setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
 initUpdates();
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).

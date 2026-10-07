@@ -2,12 +2,15 @@ import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { library } from "./library";
 import { isRom, type Detection } from "./types";
+import { applyState, emus, loadEmulators, type EmulatorId, type EmulatorsState } from "./play/play";
 
 /** Miroir de `LibraryConfig` (library.rs). */
 export interface LibraryConfig {
   folders: string[];
   files: string[];
   hidden: string[];
+  /** Dossiers retirés : la recherche automatique ne les rajoute plus. */
+  ignored: string[];
 }
 
 /** Miroir de `SwitchGame` (switch.rs). */
@@ -24,7 +27,9 @@ export interface SwitchGame {
 export const games = reactive({
   loaded: false,
   scanning: false,
-  config: { folders: [], files: [], hidden: [] } as LibraryConfig,
+  config: { folders: [], files: [], hidden: [], ignored: [] } as LibraryConfig,
+  /** Dossiers ajoutés par la recherche automatique de ce démarrage. */
+  autoAdded: [] as string[],
   found: [] as Detection[],
   switchFound: [] as SwitchGame[],
   error: null as string | null,
@@ -55,15 +60,27 @@ export const titleIdOf = (d: Detection) => d.details.find((x) => x.label === "Ti
 
 /** Jeux suivis, plus les ROMs ouvertes pendant la session (sans doublon). */
 export const allGames = computed(() => {
-  const list = [...games.found, ...games.switchFound.map(switchDetection)];
+  const list: Detection[] = [];
+  // Une même ROM rangée à deux endroits (copie de sauvegarde…) n'apparaît qu'une fois.
+  const seen = new Set<string>();
+  const add = (d: Detection) => {
+    if (list.some((g) => g.path === d.path)) return;
+    if (d.fingerprint) {
+      if (seen.has(d.fingerprint)) return;
+      seen.add(d.fingerprint);
+    }
+    list.push(d);
+  };
+  games.found.forEach(add);
+  games.switchFound.map(switchDetection).forEach(add);
   for (const d of library.items) {
-    if (isRom(d) && !games.config.hidden.includes(d.path) && !list.some((g) => g.path === d.path)) list.push(d);
+    if (isRom(d) && !games.config.hidden.includes(d.path)) add(d);
   }
   return list;
 });
 
 export async function loadGames() {
-  if (!games.loaded) games.config = await invoke<LibraryConfig>("library_config").catch(() => games.config);
+  if (!games.loaded) games.config = { ...games.config, ...(await invoke<LibraryConfig>("library_config").catch(() => games.config)) };
   games.loaded = true;
   await rescan();
 }
@@ -101,10 +118,49 @@ export const addFolder = (dir: string) =>
 /** Ajoute plusieurs dossiers d'un coup (une seule relecture). */
 export const addFolders = (dirs: string[]) =>
   change((c) => {
-    for (const dir of dirs) if (!c.folders.includes(dir)) c.folders.push(dir);
+    for (const dir of dirs) {
+      if (!c.folders.includes(dir)) c.folders.push(dir);
+      c.ignored = c.ignored.filter((d) => d !== dir);
+    }
   });
 
-export const removeFolder = (dir: string) => change((c) => (c.folders = c.folders.filter((f) => f !== dir)));
+interface Discovery {
+  folders: { path: string }[];
+  emulators: { id: EmulatorId; exe: string; current: boolean }[];
+}
+
+let discovered = false;
+
+/**
+ * Au démarrage : cherche les jeux et les émulateurs sur le PC (en arrière-plan, moins
+ * d'une seconde en général) et les ajoute tout seul. Les dossiers retirés par
+ * l'utilisateur ne reviennent pas ; un émulateur déjà configuré n'est pas remplacé.
+ */
+export async function autoDiscover() {
+  if (discovered) return;
+  discovered = true;
+  if (!games.loaded) await loadGames();
+  const found = await invoke<Discovery>("discover_pc").catch(() => null);
+  if (!found) return;
+  if (!emus.loaded) await loadEmulators();
+  for (const e of found.emulators) {
+    if (e.current || emus.list.find((x) => x.id === e.id)?.exe) continue;
+    const state = await invoke<EmulatorsState>("emulator_locate", { id: e.id, exe: e.exe }).catch(() => null);
+    if (state) applyState(state);
+  }
+  const known = (p: string) => [...games.config.folders, ...games.config.ignored].some((f) => f.toLowerCase() === p.toLowerCase());
+  const fresh = found.folders.map((f) => f.path).filter((p) => !known(p));
+  if (fresh.length) {
+    games.autoAdded = fresh;
+    await addFolders(fresh);
+  }
+}
+
+export const removeFolder = (dir: string) =>
+  change((c) => {
+    c.folders = c.folders.filter((f) => f !== dir);
+    if (!c.ignored.includes(dir)) c.ignored.push(dir);
+  });
 
 export const addFiles = (paths: string[], scan = true) =>
   change((c) => {
