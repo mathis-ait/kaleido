@@ -194,6 +194,9 @@ fn generate_from_database_entries() {
                     ..Default::default()
                 };
                 let out = generate_legal(game, format, &trainer(), &req).unwrap();
+                for c in out.changes.iter().chain(&out.adjustments) {
+                    assert_ne!(c.term, "legalize", "sans terme du glossaire : {}", c.text);
+                }
                 if !out.success {
                     let bad: Vec<String> = out
                         .report
@@ -531,6 +534,10 @@ fn prd_illegal_corpus_legalized() {
         let seen = analyze(&pk, game).verdict == Verdict::Illegal;
         detected += seen as usize;
         let out = legalize(&pk, game, &trainer());
+        // Chaque modification a son terme du glossaire (pas le terme générique).
+        for c in &out.changes {
+            assert_ne!(c.term, "legalize", "sans terme : {}", c.text);
+        }
         if out.success && analyze(&out.pokemon, game).verdict != Verdict::Illegal {
             fixed += 1;
             detected_fixed += seen as usize;
