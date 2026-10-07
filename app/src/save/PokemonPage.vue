@@ -8,7 +8,8 @@ import TypeBadge from "../components/TypeBadge.vue";
 import { editPokemon, exportPokemon, goTo, lists, saveState } from "../saveStore";
 import type { ShinyMode } from "../types";
 import { checkPokemon, checkSummary, legalityOf } from "./checks";
-import { legalizeSlot } from "./legality";
+import type { LegalityChange } from "./legality";
+import LegalizePanel from "./pokemon/LegalizePanel.vue";
 import { apply } from "./pokemon/edit";
 import OverviewTab from "./pokemon/OverviewTab.vue";
 import MetTab from "./pokemon/MetTab.vue";
@@ -47,12 +48,15 @@ const summary = computed(() => checkSummary(checks.value));
 const showReport = ref(false);
 const report = computed(() => (p.value ? legalityOf(p.value) : null));
 /** Modifications faites par le dernier « Rendre légal ». */
-const lastChanges = ref<string[] | null>(null);
-const legalizing = ref(false);
+const lastChanges = ref<LegalityChange[] | null>(null);
+/** Panneau « Rendre légal » (aperçu avant / après). */
+const showFix = ref(false);
+const legalizing = computed(() => showFix.value);
 watch(
   () => JSON.stringify(p.value?.slot),
   () => {
     showReport.value = false;
+    showFix.value = false;
     lastChanges.value = null;
   },
 );
@@ -68,15 +72,15 @@ const PID_LABELS: Record<string, string> = {
 };
 const pidLabel = (t: string) => PID_LABELS[t] ?? t;
 
-async function makeLegal() {
-  if (!p.value || legalizing.value) return;
-  legalizing.value = true;
-  const r = await legalizeSlot(p.value.slot);
-  legalizing.value = false;
-  if (r) {
-    lastChanges.value = r.changes;
-    showReport.value = true;
-  }
+function makeLegal() {
+  if (!p.value) return;
+  showFix.value = true;
+}
+
+function onApplied(changes: LegalityChange[]) {
+  showFix.value = false;
+  lastChanges.value = changes;
+  showReport.value = true;
 }
 
 const types = computed(() =>
@@ -218,7 +222,7 @@ const locationText = computed(() => {
         </span>
       </button>
       <button v-if="summary.level === 'error'" class="sv-btn solid fix" :disabled="legalizing" @click="makeLegal">
-        <Icon name="wand" :size="15" /> {{ legalizing ? "Correction…" : "Rendre légal" }}
+        <Icon name="wand" :size="15" /> Rendre légal
       </button>
 
       <div class="spacer" />
@@ -247,7 +251,8 @@ const locationText = computed(() => {
       </nav>
       <div class="body sv-panel">
         <Transition name="fade" mode="out-in">
-          <div v-if="showReport" key="report" class="report">
+          <LegalizePanel v-if="showFix" key="fix" :p="p" @close="showFix = false" @applied="onApplied" />
+          <div v-else-if="showReport" key="report" class="report">
             <h3 class="sv-section-title">Vérifications <Tip term="legality" /></h3>
             <div class="verdict" :class="summary.level">
               <Icon :name="summary.level === 'ok' ? 'shield' : 'shield-alert'" :size="22" />
@@ -268,14 +273,14 @@ const locationText = computed(() => {
                 <p v-else>Analyse en cours…</p>
               </div>
               <button v-if="summary.level === 'error'" class="sv-btn solid" :disabled="legalizing" @click="makeLegal">
-                <Icon name="wand" :size="15" /> {{ legalizing ? "Correction…" : "Rendre légal" }}
+                <Icon name="wand" :size="15" /> Rendre légal
               </button>
               <Tip term="legalize" />
             </div>
             <div v-if="lastChanges" class="changes">
               <strong>{{ lastChanges.length ? "Modifications faites" : "Aucune modification nécessaire" }}</strong>
               <ul v-if="lastChanges.length">
-                <li v-for="c in lastChanges" :key="c">{{ c }}</li>
+                <li v-for="c in lastChanges" :key="c.text">{{ c.text }} <Tip :term="c.term" /></li>
               </ul>
               <small v-if="lastChanges.length">Ctrl+Z annule toutes ces modifications d'un coup.</small>
             </div>

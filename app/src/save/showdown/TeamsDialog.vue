@@ -9,6 +9,7 @@ import Icon from "../../components/Icon.vue";
 import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
+import Toggle from "../../components/Toggle.vue";
 import { saveState } from "../../saveStore";
 import { keyOf } from "../shell";
 import { importShowdown, previewShowdown, showdownUi, statLine, type ImportTarget, type ShowdownPreview } from "./api";
@@ -164,7 +165,8 @@ async function importTo(target: ImportTarget) {
   try {
     const report = await importShowdown(team.value.paste, target);
     const failed = report.sets.filter((s) => s.error).length;
-    done.value = `${report.imported} Pokémon importé${report.imported > 1 ? "s" : ""}${failed ? `, ${failed} impossible${failed > 1 ? "s" : ""} dans ce jeu` : ""}.`;
+    const notLegal = report.sets.filter((s) => s.legality && !s.legality.legal).length;
+    done.value = `${report.imported} Pokémon importé${report.imported > 1 ? "s" : ""}${failed ? `, ${failed} impossible${failed > 1 ? "s" : ""} dans ce jeu` : ""}${notLegal ? `, ${notLegal} importé${notLegal > 1 ? "s" : ""} tel quel (aucune rencontre légale)` : ""}.`;
   } catch (e) {
     importError.value = String(e);
   } finally {
@@ -328,8 +330,10 @@ onBeforeUnmount(() => {
     <template #foot>
       <p class="sv-help">
         Équipes d'exemple publiées par Smogon University, récupérées via crob.at. Les Pokémon sont créés à ton nom ; ce qui n'existe pas dans ton jeu
-        (attaque, objet, talent) est signalé. Ctrl+Z pour annuler.
+        (attaque, objet, talent) est signalé. Chaque Pokémon est rendu légal, sauf avec « Importer tel quel ». Ctrl+Z pour annuler.
       </p>
+      <span class="grow" />
+      <Toggle v-model="showdownUi.asIs" label="Importer tel quel" term="importAsIs" />
     </template>
   </Dialog>
 </template>
