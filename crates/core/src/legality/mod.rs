@@ -15,8 +15,7 @@
 //!
 //! Limites connues (par rapport à PKHeX) : rencontres et attaques des Gen 1 à 3 non
 //! vérifiées (« Douteux »), héritage des Balls simplifié, pas de vérification des tailles
-//! ni des surnoms d'échange ; méthodes J/K : talents de tête Statik / Magnépiège, Pression
-//! (niveau maximal), activation des cannes et rencontres spéciales (Safari, Concours de
+//! ni des surnoms d'échange ; méthodes J/K : talents de tête Statik / Magnépiège, activation des cannes et rencontres spéciales (Safari, Concours de
 //! capture, Coup d'Boule, Éclate-Roc, arbres à Miel) non vérifiés ; distributions
 //! comparées sans les restrictions de langue des cartes.
 

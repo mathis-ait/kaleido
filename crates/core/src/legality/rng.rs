@@ -569,6 +569,7 @@ fn slot_matches(method: Method4, s: &Slot4, before: u32, skip: usize, met_level:
 pub fn frame4(method: Method4, slots: &[Slot4], met_level: Option<u8>, pid: u32, iv32: u32) -> Option<Lead4> {
     let nature = pid % 25;
     let mut lead: Option<Lead4> = None;
+    let pressure = slots.iter().map(|s| s.level_max).max().unwrap_or(0);
     for seed in method1_seeds(pid, iv32) {
         let window = reversal_window(seed, nature);
         let mut cur = seed;
@@ -581,6 +582,14 @@ pub fn frame4(method: Method4, slots: &[Slot4], met_level: Option<u8>, pid: u32,
                         return Some(Lead4::None);
                     }
                     if slot_matches(method, s, before, 1, met_level) {
+                        lead = Some(Lead4::Fail);
+                    }
+                    // Pression / Agitation / Esprit Vital réussis : niveau maximal de l'espèce dans la zone.
+                    let hustle = match method {
+                        Method4::J => (before >> 16) >> 15 == 1,
+                        Method4::K => (before >> 16) & 1 == 1,
+                    };
+                    if lead.is_none() && hustle && met_level == Some(pressure) && slot_matches(method, s, before, 1, None) {
                         lead = Some(Lead4::Fail);
                     }
                 }
