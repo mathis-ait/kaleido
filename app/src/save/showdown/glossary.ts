@@ -1,10 +1,7 @@
-import { GLOSSARY } from "../../glossary";
+import type { GlossaryEntry } from "../../glossary";
 
-/**
- * Bulles « i » du module Showdown / Smogon, ajoutées au glossaire commun
- * (utilisables partout avec `<Tip term="showdown" />` une fois ce module importé).
- */
-Object.assign(GLOSSARY, {
+/** Bulles « i » du module Showdown / Smogon (fusionnées sans préfixe dans le glossaire central). */
+export const SHOWDOWN_TERMS: Record<string, GlossaryEntry> = {
   showdown: {
     title: "Pokémon Showdown",
     text: "Simulateur de combats Pokémon en ligne (pokemonshowdown.com). Ses équipes s'échangent sous forme de texte : « Carchacrok @ Mouchoir Choix », puis talent, EV, nature et attaques. Kaleido lit ce texte (en anglais ou en français) et crée les Pokémon dans ta sauvegarde, ou fait l'inverse pour jouer tes Pokémon sur Showdown.",
@@ -29,4 +26,4 @@ Object.assign(GLOSSARY, {
     title: "Langue des noms",
     text: "Showdown n'accepte que les noms anglais (Garchomp, Earthquake, Choice Scarf…). Choisis « Anglais » pour coller le texte sur Showdown, « Français » pour le partager avec des joueurs francophones ou le garder pour toi. À l'import, Kaleido reconnaît les deux tout seul.",
   },
-});
+};

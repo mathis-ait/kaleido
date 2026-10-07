@@ -1,7 +1,10 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, type Ref } from "vue";
 
 /** Actions du lanceur, au clavier comme à la manette. */
 export type PadAction = "left" | "right" | "up" | "down" | "accept" | "back" | "prevTab" | "nextTab" | "menu";
+
+/** Nombre de vues qui gèrent elles-mêmes la manette (le lanceur) : la navigation globale se met alors en retrait. */
+export const padClaims = ref(0);
 
 /**
  * Manette (API Gamepad, disposition « standard ») : croix et stick gauche pour
@@ -9,6 +12,20 @@ export type PadAction = "left" | "right" | "up" | "down" | "accept" | "back" | "
  * Start pour le menu. Répétition automatique quand on garde une direction.
  */
 export function useGamepad(onAction: (a: PadAction) => void) {
+  const poller = createPadPoller(onAction);
+  onMounted(() => {
+    padClaims.value++;
+    poller.start();
+  });
+  onUnmounted(() => {
+    padClaims.value--;
+    poller.stop();
+  });
+  return { connected: poller.connected };
+}
+
+/** Lecture de la manette à chaque image, hors composant (voir `useGamepad`). */
+export function createPadPoller(onAction: (a: PadAction) => void): { connected: Ref<boolean>; start: () => void; stop: () => void } {
   const connected = ref(false);
   let frame = 0;
   const held = new Map<PadAction, number>();
@@ -69,7 +86,9 @@ export function useGamepad(onAction: (a: PadAction) => void) {
     frame = requestAnimationFrame(poll);
   }
 
-  onMounted(() => (frame = requestAnimationFrame(poll)));
-  onUnmounted(() => cancelAnimationFrame(frame));
-  return { connected };
+  return {
+    connected,
+    start: () => (frame = requestAnimationFrame(poll)),
+    stop: () => cancelAnimationFrame(frame),
+  };
 }

@@ -2,7 +2,6 @@
 import { computed, onMounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import "../save/form.css";
 import Icon from "../components/Icon.vue";
 import PlayGuide from "./PlayGuide.vue";
 import PlayTip from "./PlayTip.vue";

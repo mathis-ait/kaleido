@@ -2,7 +2,6 @@ import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { loadBox, notify, sameSlot, saveState } from "../../saveStore";
 import type { SaveView, Slot, SlotView } from "../../types";
-import "./glossary";
 
 /** Langue des noms d'un texte Showdown. */
 export type Lang = "en" | "fr";

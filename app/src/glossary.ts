@@ -382,3 +382,23 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "Le Pokémon a été obtenu au moins une fois : sa fiche complète est débloquée. « Capturé » implique « vu ».",
   },
 };
+
+// --- Glossaires des modules, réunis ici pour que `<Tip term="…">` trouve tout au même endroit.
+// Termes propres à un module : préfixe du module (« bank.format », « battle.stab »…).
+import { PLAY_TIPS } from "./play/glossary";
+import { BANK_TERMS } from "./save/bank/terms";
+import { BATTLE_TIPS } from "./save/battle/glossary";
+import { GIFT_TERMS } from "./save/gifts/terms";
+import { NUZLOCKE_TERMS } from "./save/nuzlocke/terms";
+import { SHOWDOWN_TERMS } from "./save/showdown/glossary";
+
+function register(prefix: string, entries: Record<string, GlossaryEntry>) {
+  for (const [key, entry] of Object.entries(entries)) GLOSSARY[prefix ? `${prefix}.${key}` : key] = entry;
+}
+
+register("", SHOWDOWN_TERMS);
+register("play", PLAY_TIPS);
+register("bank", BANK_TERMS);
+register("battle", BATTLE_TIPS);
+register("gifts", GIFT_TERMS);
+register("nuzlocke", NUZLOCKE_TERMS);

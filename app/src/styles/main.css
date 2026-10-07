@@ -194,6 +194,61 @@
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
 }
 
+/*
+ * Échelles communes à toutes les pages (voir docs/guide-de-style.md).
+ * Espacement par pas de 4 px ; rayons et tailles de texte calqués sur la page Sauvegarde.
+ */
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* Panneaux, cartes (cases, fiches), petits éléments, pastilles. */
+  --radius-panel: 18px;
+  --radius-card: 12px;
+  --radius-xs: 6px;
+  --radius-pill: 999px;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+
+  /* Couleurs de sens : chromatique, sexe, anneau de focus. */
+  --shiny: #ffd45c;
+  --male: #5aa9ff;
+  --female: #ff7eb6;
+  --focus: var(--accent-2);
+}
+
+:root[data-theme="jour"],
+:root[data-theme="ds"] {
+  --shiny: #b7791f;
+  --male: #1d6fd6;
+  --female: #d6336c;
+}
+
+:root[data-theme="lagon"] {
+  --focus: #ffffff;
+}
+
+/* Game Boy : angles droits, couleurs de la palette. */
+:root[data-theme="pixel"] {
+  --radius-panel: 4px;
+  --radius-card: 2px;
+  --radius-xs: 2px;
+  --radius-pill: 2px;
+  --shiny: #0f380f;
+  --male: #0f380f;
+  --female: #306230;
+  --focus: #0f380f;
+}
+
 /* Vert « tout va bien » (légal, attaques apprenables…), lisible sur chaque fond. */
 :root {
   --ok: #8ff0b5;
@@ -277,6 +332,12 @@ button {
   font: inherit;
   color: inherit;
   cursor: pointer;
+}
+
+/* Focus visible au clavier et à la manette, sur tout élément interactif. */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* Champs de saisie et listes : couleurs lisibles dans tous les thèmes. */

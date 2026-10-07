@@ -1,8 +1,10 @@
 import { createApp } from "vue";
 import App from "./App.vue";
+import { initGamepadNav } from "./gamepadNav";
 import { initTheme } from "./theme";
 import { initUpdates } from "./updates";
 import "./styles/main.css";
+import "./save/form.css";
 
 import { editor, openRom } from "./editor";
 import { addPaths, library } from "./library";
@@ -17,6 +19,7 @@ createApp(App).mount("#app");
 // Jeux et émulateurs du PC retrouvés tout seuls, une fois l'interface affichée.
 setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
 initUpdates();
+initGamepadNav();
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).
 if (import.meta.env.DEV) {

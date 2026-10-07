@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import "../save/form.css";
+import Banner from "../components/Banner.vue";
 import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
 import HomePage from "../save/HomePage.vue";
@@ -26,6 +26,13 @@ const title = computed(() => {
   if (saveState.page === "home") return "Accueil";
   return SAVE_PAGES[pageIndex.value]?.label ?? "";
 });
+
+// L'onglet affiché reste visible dans la barre, même quand elle défile.
+const tabs = ref<HTMLElement | null>(null);
+watch(
+  () => saveState.page,
+  () => nextTick(() => tabs.value?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "nearest" })),
+);
 
 // Horloge en haut à droite, comme sur console.
 const now = ref(new Date());
@@ -58,13 +65,19 @@ function back() {
   else if (saveState.page !== "home") goTo(view.value ? "home" : "manager");
 }
 
+function isKeyboardFocused(t: EventTarget | null) {
+  return t instanceof HTMLElement && t !== document.body && t.matches(":focus-visible");
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.defaultPrevented) return;
   const k = keyOf(e);
   const inField = typing(e);
   // Raccourcis de la page affichée d'abord (ceux à une touche sont ignorés pendant la saisie).
   const action = shell.actions.find((a) => a.key === k && !a.disabled);
-  if (action && (!inField || k.startsWith("Ctrl+"))) {
+  // Entrée / Espace sur un bouton choisi au clavier ou à la manette : c'est ce bouton qui s'active.
+  const onControl = (k === "Enter" || k === " ") && isKeyboardFocused(e.target);
+  if (action && !onControl && (!inField || k.startsWith("Ctrl+"))) {
     e.preventDefault();
     action.run();
     return;
@@ -122,7 +135,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
         <h1>{{ title }}</h1>
         <template v-if="view">
           <kbd class="cap" title="Page précédente (Q)" @click="step(-1)">Q</kbd>
-          <nav class="tabs">
+          <nav ref="tabs" class="tabs" aria-label="Pages de l'éditeur">
             <button
               v-for="(p, i) in SAVE_PAGES"
               :key="p.id"
@@ -131,7 +144,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
               @click="goTo(p.id)"
             >
               <Icon :name="p.icon" :size="15" />
-              {{ p.label }}
+              <span class="lbl">{{ p.label }}</span>
             </button>
           </nav>
           <kbd class="cap" title="Page suivante (E)" @click="step(1)">E</kbd>
@@ -159,15 +172,12 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
 
     <!-- Bandeaux -->
     <div class="banners">
-      <div v-if="saveState.error" class="banner danger" role="alert">
-        <Icon name="alert" :size="16" /> {{ saveState.error }}
-        <button class="x" aria-label="Fermer" @click="saveState.error = null"><Icon name="x" :size="14" /></button>
-      </div>
+      <Banner v-if="saveState.error" :dismiss="() => (saveState.error = null)">{{ saveState.error }}</Banner>
       <SyncBanner />
-      <div v-if="view?.needsResign && saveState.page !== 'home'" class="banner warn">
-        <Icon name="shield-alert" :size="16" /> Soleil / Lune : la sauvegarde modifiée devra être re-signée (par exemple avec PKHeX) avant d'être
-        chargée sur console. <Tip term="memecrypto" />
-      </div>
+      <Banner v-if="view?.needsResign && saveState.page !== 'home'" tone="warn">
+        Soleil / Lune : la sauvegarde modifiée devra être re-signée (par exemple avec PKHeX) avant d'être chargée sur console.
+        <Tip term="memecrypto" />
+      </Banner>
     </div>
 
     <main class="page" :class="`page-${saveState.page}`">
@@ -186,7 +196,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
     <footer class="bottombar">
       <div class="left">
         <button v-if="saveState.page !== 'home' && (view || saveState.page !== 'manager')" class="act" @click="back">
-          <kbd>Échap</kbd> Retour
+          <kbd>Échap</kbd> <span class="lbl">Retour</span>
         </button>
         <span class="hint">{{ shell.hint }}</span>
       </div>
@@ -195,7 +205,7 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
       </button>
       <div class="right">
         <button v-for="a in shell.actions" :key="a.key + a.label" class="act" :disabled="a.disabled" @click="a.run()">
-          <kbd>{{ a.cap ?? a.key }}</kbd> {{ a.label }}
+          <kbd>{{ a.cap ?? a.key }}</kbd> <span class="lbl">{{ a.label }}</span>
         </button>
       </div>
     </footer>
@@ -282,6 +292,17 @@ kbd {
 .tabs button:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* Fenêtre trop étroite pour neuf libellés : icônes seules, sauf l'onglet affiché (libellé en infobulle). */
+@media (max-width: 1640px) {
+  .tabs button:not(.on) .lbl {
+    display: none;
+  }
+
+  .tabs button:not(.on) {
+    padding: 7px 10px;
+  }
 }
 
 .tabs button.on {
@@ -423,10 +444,14 @@ kbd {
   min-width: 0;
 }
 
+/* Les actions se tassent vers la droite ; ce qui ne tient pas est coupé à droite, jamais sous le bouton Accueil. */
 .right {
-  justify-content: flex-end;
   flex-wrap: nowrap;
   overflow: hidden;
+}
+
+.right > :first-child {
+  margin-left: auto;
 }
 
 .hint {
@@ -439,7 +464,9 @@ kbd {
 
 .act {
   display: inline-flex;
+  flex-shrink: 1;
   align-items: center;
+  min-width: 0;
   gap: 8px;
   padding: 4px 6px;
   border: none;
@@ -450,7 +477,13 @@ kbd {
 }
 
 .act kbd {
-  border-radius: 999px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+}
+
+.act .lbl {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .act:hover:not(:disabled) {

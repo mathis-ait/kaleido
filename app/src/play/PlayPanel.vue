@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
-import "../save/form.css";
 import Icon from "../components/Icon.vue";
 import { nav } from "../nav";
 import PlayGuide from "./PlayGuide.vue";
