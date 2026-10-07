@@ -132,6 +132,7 @@ pub fn parse_offsets(text: &str) -> Vec<RomEntry> {
             "Game" => current.code = value.to_string(),
             "Version" => current.version = parse_int(value).unwrap_or(0) as u8,
             "Type" => {
+                current.strings.insert("Type".into(), value.to_string());
                 current.kind = match value.to_ascii_lowercase().as_str() {
                     "ruby" => Some(Gen3Kind::Ruby),
                     "sapp" => Some(Gen3Kind::Sapphire),

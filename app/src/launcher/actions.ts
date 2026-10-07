@@ -9,7 +9,8 @@ import { openGameSave, play, type PlayOptions, type PlayPlatform } from "../play
 /** Actions communes à la grille et au lanceur. */
 
 export const platformOf = (d: Detection): PlayPlatform =>
-  d.platform === "3ds" ? "3ds" : d.platform === "switch" ? "switch" : d.platform === "gba" ? "gba" : "nds";
+  // Game Boy et GBA : même émulateur (mGBA).
+  d.platform === "3ds" ? "3ds" : d.platform === "switch" ? "switch" : d.platform === "gba" || d.platform === "gb" ? "gba" : "nds";
 
 /** Jaquette (boîte française en priorité, icône officielle pour la Switch ; voir library.rs). */
 export function coverUrl(d: Detection) {

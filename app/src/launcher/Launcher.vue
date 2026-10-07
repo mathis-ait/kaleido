@@ -23,9 +23,10 @@ const props = defineProps<{ games: Detection[] }>();
 
 // --- Onglets
 
-type Tab = "all" | "gba" | "nds" | "3ds" | "switch";
+type Tab = "all" | "gb" | "gba" | "nds" | "3ds" | "switch";
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "Tous" },
+  { id: "gb", label: "Game Boy" },
   { id: "gba", label: "Game Boy Advance" },
   { id: "nds", label: "Nintendo DS" },
   { id: "3ds", label: "Nintendo 3DS" },

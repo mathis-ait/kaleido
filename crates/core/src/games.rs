@@ -1,10 +1,12 @@
-//! Jeux pris en charge et leurs identifiants (code cartouche GBA ou DS, title ID 3DS).
+//! Jeux pris en charge et leurs identifiants (titre GB, code cartouche GBC / GBA / DS, title ID 3DS).
 
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Platform {
+    /// Game Boy et Game Boy Color (Rouge, Bleu, Jaune, Or, Argent, Cristal).
+    Gb,
     Gba,
     Nds,
     #[serde(rename = "3ds")]
@@ -14,6 +16,7 @@ pub enum Platform {
 impl Platform {
     pub fn label(self) -> &'static str {
         match self {
+            Platform::Gb => "Game Boy",
             Platform::Gba => "Game Boy Advance",
             Platform::Nds => "Nintendo DS",
             Platform::N3ds => "Nintendo 3DS",
@@ -24,6 +27,12 @@ impl Platform {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Game {
+    Red,
+    Blue,
+    Yellow,
+    Gold,
+    Silver,
+    Crystal,
     Ruby,
     Sapphire,
     Emerald,
@@ -49,7 +58,13 @@ pub enum Game {
 }
 
 impl Game {
-    pub const ALL: [Game; 22] = [
+    pub const ALL: [Game; 28] = [
+        Game::Red,
+        Game::Blue,
+        Game::Yellow,
+        Game::Gold,
+        Game::Silver,
+        Game::Crystal,
         Game::Ruby,
         Game::Sapphire,
         Game::Emerald,
@@ -77,6 +92,12 @@ impl Game {
     /// Nom officiel français.
     pub fn name_fr(self) -> &'static str {
         match self {
+            Game::Red => "Pokémon Rouge",
+            Game::Blue => "Pokémon Bleu",
+            Game::Yellow => "Pokémon Jaune",
+            Game::Gold => "Pokémon Or",
+            Game::Silver => "Pokémon Argent",
+            Game::Crystal => "Pokémon Cristal",
             Game::Ruby => "Pokémon Rubis",
             Game::Sapphire => "Pokémon Saphir",
             Game::Emerald => "Pokémon Émeraude",
@@ -104,6 +125,8 @@ impl Game {
 
     pub fn generation(self) -> u8 {
         match self {
+            Game::Red | Game::Blue | Game::Yellow => 1,
+            Game::Gold | Game::Silver | Game::Crystal => 2,
             Game::Ruby | Game::Sapphire | Game::Emerald | Game::FireRed | Game::LeafGreen => 3,
             Game::Diamond | Game::Pearl | Game::Platinum | Game::HeartGold | Game::SoulSilver => 4,
             Game::Black | Game::White | Game::Black2 | Game::White2 => 5,
@@ -113,7 +136,9 @@ impl Game {
     }
 
     pub fn platform(self) -> Platform {
-        if self.generation() == 3 {
+        if self.generation() <= 2 {
+            Platform::Gb
+        } else if self.generation() == 3 {
             Platform::Gba
         } else if self.generation() <= 5 {
             Platform::Nds
@@ -165,6 +190,21 @@ impl Game {
         })
     }
 
+/// Jeu Game Boy d'après l'en-tête : titre pour Rouge / Bleu / Jaune, code GBC
+    /// (`AAU` Or, `AAX` Argent, `BYT` Cristal) pour la Gen 2.
+    pub fn from_gb(title: &str, code: &str) -> Option<Game> {
+        let prefix = code.get(..3).unwrap_or("");
+        Some(match (title, prefix) {
+            (_, "AAU") => Game::Gold,
+            (_, "AAX") => Game::Silver,
+            (_, "BYT") => Game::Crystal,
+            ("POKEMON RED", _) => Game::Red,
+            ("POKEMON BLUE", _) => Game::Blue,
+            (t, _) if t.starts_with("POKEMON YEL") => Game::Yellow,
+            _ => return None,
+        })
+    }
+
     pub fn from_gba_code(code: &str) -> Option<Game> {
         let prefix = code.get(..3)?;
         Game::ALL.into_iter().find(|g| g.gba_code() == Some(prefix))
@@ -210,5 +250,9 @@ mod tests {
         assert_eq!(Game::from_nds_code("BPRE"), None);
         assert_eq!(Game::LeafGreen.platform(), Platform::Gba);
         assert_eq!(Game::FireRed.generation(), 3);
+        assert_eq!(Game::from_gb("PM_CRYSTAL", "BYTF"), Some(Game::Crystal));
+        assert_eq!(Game::from_gb("POKEMON YELAPSF", ""), Some(Game::Yellow));
+        assert_eq!(Game::from_gb("POKEMON RED", ""), Some(Game::Red));
+        assert_eq!(Game::Gold.platform(), Platform::Gb);
     }
 }

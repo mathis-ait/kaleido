@@ -213,3 +213,47 @@ mod tests {
         assert!(Personal::new(7, vec![0; 0x50]).is_none());
     }
 }
+
+/// Code de type des jeux Game Boy (Gen 1 et 2) → identifiant Gen 3/4 (ordre de Kaleido).
+/// Codes GB : 0-5 Normal à Roche, 7 Insecte, 8 Spectre, 9 Acier, 0x13 « ??? »,
+/// 0x14-0x1B Feu, Eau, Plante, Électrik, Psy, Glace, Dragon, Ténèbres (pokered / pokecrystal).
+pub fn gb_type_to_gen4(code: u8) -> Option<u8> {
+    Some(match code {
+        0..=5 => code,
+        7 => 6,
+        8 => 7,
+        9 => 8,
+        0x13 => 9,
+        0x14..=0x1B => code - 0x14 + 10,
+        _ => return None,
+    })
+}
+
+/// Identifiant Gen 3/4 → code de type GB.
+pub fn gen4_type_to_gb(id: u8) -> Option<u8> {
+    Some(match id {
+        0..=5 => id,
+        6 => 7,
+        7 => 8,
+        8 => 9,
+        9 => 0x13,
+        10..=17 => id - 10 + 0x14,
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod gb_type_tests {
+    use super::*;
+
+    #[test]
+    fn gb_types_round_trip() {
+        for code in [0u8, 1, 2, 3, 4, 5, 7, 8, 9, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B] {
+            assert_eq!(gen4_type_to_gb(gb_type_to_gen4(code).unwrap()), Some(code));
+        }
+        // Plante (0x16) = 12, Feu (0x14) = 10.
+        assert_eq!(PokeType::from_index(1, gb_type_to_gen4(0x16).unwrap()), Some(PokeType::Grass));
+        assert_eq!(PokeType::from_index(2, gb_type_to_gen4(0x1B).unwrap()), Some(PokeType::Dark));
+        assert_eq!(gb_type_to_gen4(6), None);
+    }
+}

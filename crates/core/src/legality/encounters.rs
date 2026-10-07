@@ -16,6 +16,13 @@ use crate::dex::Game;
 
 // --- Versions (`GameVersion` de PKHeX).
 
+/// Console virtuelle : Rouge, Vert, Bleu, Jaune, Or, Argent, Cristal.
+pub const RD: u8 = 35;
+pub const BU: u8 = 37;
+pub const YW: u8 = 38;
+pub const GD: u8 = 39;
+pub const SI: u8 = 40;
+pub const CR: u8 = 41;
 pub const SA: u8 = 1;
 pub const RU: u8 = 2;
 pub const EM: u8 = 3;
@@ -42,6 +49,10 @@ pub const UM: u8 = 33;
 /// Versions d'un groupe de jeux.
 pub fn game_versions(game: Game) -> &'static [u8] {
     match game {
+        Game::RB => &[RD, BU],
+        Game::Y => &[YW],
+        Game::GS => &[GD, SI],
+        Game::C => &[CR],
         Game::RS => &[RU, SA],
         Game::E => &[EM],
         Game::FRLG => &[FR, LG],
@@ -60,6 +71,10 @@ pub fn game_versions(game: Game) -> &'static [u8] {
 /// Groupe de jeux d'une version Gen 4 à 7.
 pub fn version_game(version: u8) -> Option<Game> {
     Some(match version {
+        RD | 36 | BU => Game::RB,
+        YW => Game::Y,
+        GD | SI => Game::GS,
+        CR => Game::C,
         RU | SA => Game::RS,
         EM => Game::E,
         FR | LG => Game::FRLG,
@@ -790,6 +805,8 @@ fn build(game: Game) -> Vec<Encounter> {
         Game::RS => &[(pkl!("r"), RU), (pkl!("s"), SA)],
         Game::E => &[(pkl!("e"), EM)],
         Game::FRLG => &[(pkl!("fr"), FR), (pkl!("lg"), LG)],
+        // Gen 1 et 2 : pas de table de rencontres embarquée.
+        Game::RB | Game::Y | Game::GS | Game::C => &[],
     };
     for &(data, version) in files {
         read_areas(data, version, generation, &mut out);
@@ -828,7 +845,7 @@ fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
     out
 }
 
-static TABLES: [LazyLock<Vec<Encounter>>; 12] = [
+static TABLES: [LazyLock<Vec<Encounter>>; 16] = [
     LazyLock::new(|| build(Game::DP)),
     LazyLock::new(|| build(Game::Pt)),
     LazyLock::new(|| build(Game::HGSS)),
@@ -841,6 +858,10 @@ static TABLES: [LazyLock<Vec<Encounter>>; 12] = [
     LazyLock::new(|| build(Game::RS)),
     LazyLock::new(|| build(Game::E)),
     LazyLock::new(|| build(Game::FRLG)),
+    LazyLock::new(|| build(Game::RB)),
+    LazyLock::new(|| build(Game::Y)),
+    LazyLock::new(|| build(Game::GS)),
+    LazyLock::new(|| build(Game::C)),
 ];
 
 /// Toutes les rencontres d'un groupe de jeux (sauvages puis fixes, dons, échanges…).

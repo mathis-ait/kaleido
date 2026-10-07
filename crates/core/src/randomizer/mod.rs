@@ -6,6 +6,7 @@
 //! bouleverse pas les autres parties.
 
 pub mod ctr;
+pub mod gb;
 pub mod gba;
 mod ctr_gen7;
 mod ctr_xy;

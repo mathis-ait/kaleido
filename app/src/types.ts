@@ -2,8 +2,8 @@ export type ViewId = "home" | "library" | "randomizer" | "editor" | "saves" | "s
 
 // Miroir des types sérialisés par `kaleido_core::detect`.
 
-export type FileKind = "gba_rom" | "nds_rom" | "ctr_rom" | "ctr_dump" | "save" | "unknown" | "switch_game";
-export type Platform = "gba" | "nds" | "3ds" | "switch";
+export type FileKind = "gb_rom" | "gba_rom" | "nds_rom" | "ctr_rom" | "ctr_dump" | "save" | "unknown" | "switch_game";
+export type Platform = "gb" | "gba" | "nds" | "3ds" | "switch";
 
 export interface GameInfo {
   id: string;
@@ -163,16 +163,17 @@ export interface Outcome {
 
 /** Jeux pris en charge par le randomizer. */
 export const RANDOMIZABLE = [
+  "red", "blue", "yellow", "gold", "silver", "crystal",
   "ruby", "sapphire", "emerald", "fire_red", "leaf_green",
   "diamond", "pearl", "platinum", "heart_gold", "soul_silver", "black", "white", "black2", "white2",
   "x", "y", "omega_ruby", "alpha_sapphire", "sun", "moon", "ultra_sun", "ultra_moon",
 ];
 
 /** Fichiers ouvrables dans l'éditeur et le randomizer (ROM GBA, ROM DS, ROM 3DS, dossier 3DS). */
-/** Extension d'une ROM DS ou GBA, gardée pour les copies écrites par Kaleido. */
-export const romExt = (path: string) => (/\.gba$/i.test(path) ? "gba" : "nds");
+/** Extension d'une ROM GB, GBC, GBA ou DS, gardée pour les copies écrites par Kaleido. */
+export const romExt = (path: string) => path.match(/\.(gbc|gb|gba)$/i)?.[1].toLowerCase() ?? "nds";
 
-export const isRom = (d: Detection) => ["gba_rom", "nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
+export const isRom = (d: Detection) => ["gb_rom", "gba_rom", "nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
 
 export interface CtrOutcome extends Outcome {
   /** Dossier `romfs` du LayeredFS, si demandé. */

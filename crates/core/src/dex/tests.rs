@@ -80,9 +80,12 @@ fn learnsets() {
     assert_eq!(garchomp.last().map(|&(m, l)| (move_name(m), l)), Some((Some("Draco-Charge"), 55)));
     for game in Game::ALL {
         let bulbasaur = levelup(game, 1, 0);
-        assert_eq!(bulbasaur[0], (33, 1), "{game:?}"); // Charge au niveau 1
+        // Gen 1 : les attaques de départ sont dans la fiche, pas dans la liste par niveau.
+        if game.generation() > 1 {
+            assert_eq!(bulbasaur[0], (33, 1), "{game:?}"); // Charge au niveau 1
+            assert!(!egg_moves(game, 1, 0).is_empty(), "{game:?}");
+        }
         assert!(bulbasaur.iter().all(|&(m, l)| m != 0 && m <= max_move(game) && l <= 100), "{game:?}");
-        assert!(!egg_moves(game, 1, 0).is_empty(), "{game:?}");
     }
     assert!(levelup(Game::DP, 0, 0).is_empty());
     // Miaouss d'Alola n'a pas les mêmes capacités Œuf.

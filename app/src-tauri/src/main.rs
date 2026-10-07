@@ -10,7 +10,7 @@ use kaleido_core::randomizer::ctr::{CtrOutput, LayeredFsTarget};
 use kaleido_core::randomizer::{self, Outcome, PokemonRef, Preset, Settings};
 use kaleido_core::romedit::{self, EditorData, SpeciesData};
 use kaleido_core::romedit_ctr;
-use kaleido_core::{romedit_gba, GbaGameRom};
+use kaleido_core::{romedit_gb, romedit_gba, GbGameRom, GbaGameRom};
 use kaleido_core::{CtrGameRom, Detection, GameRom};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
@@ -40,6 +40,7 @@ mod video;
 
 /// ROM ouverte : GBA ou DS (chargées en mémoire) ou 3DS (lue à la demande).
 enum Loaded {
+    Gb(Box<GbGameRom>),
     Gba(Box<GbaGameRom>),
     Nds(GameRom),
     Ctr(CtrGameRom),
@@ -47,6 +48,9 @@ enum Loaded {
 
 impl Loaded {
     fn open(path: &Path) -> Result<Self, String> {
+        if is_gb(path) {
+            return GbGameRom::open(path).map(|g| Loaded::Gb(Box::new(g))).map_err(|e| e.to_string());
+        }
         if is_gba(path) {
             return GbaGameRom::open(path).map(|g| Loaded::Gba(Box::new(g))).map_err(|e| e.to_string());
         }
@@ -89,6 +93,11 @@ struct RomOverview {
     species: Vec<Species>,
 }
 
+/// ROM Game Boy ou Game Boy Color (d'après l'extension).
+pub(crate) fn is_gb(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gb") || e.eq_ignore_ascii_case("gbc"))
+}
+
 /// ROM Game Boy Advance (d'après l'extension).
 pub(crate) fn is_gba(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gba"))
@@ -126,6 +135,20 @@ async fn open_rom(path: PathBuf, app: AppHandle) -> Result<RomOverview, String> 
         app.state::<OpenRom>().with(&path, |loaded| {
             let display = path.display().to_string();
             Ok(match loaded {
+                Loaded::Gb(game) => {
+                    let h = game.rom().header();
+                    RomOverview {
+                        path: display,
+                        game: game.game.into(),
+                        internal_title: h.title.clone(),
+                        game_code: if h.code.is_empty() { game.entry.name.clone() } else { h.code.clone() },
+                        file_count: 0,
+                        verified: game.verified(),
+                        can_randomize: randomizer::gb::supports(game),
+                        can_edit: romedit_gb::supports(game),
+                        species: game.species().map_err(|e| e.to_string())?,
+                    }
+                }
                 Loaded::Gba(game) => {
                     let h = game.rom().header();
                     RomOverview {
@@ -186,6 +209,7 @@ fn randomizer_defaults() -> Settings {
 async fn preview_starters(path: PathBuf, settings: Settings, seed: u64, app: AppHandle) -> Result<Vec<PokemonRef>, String> {
     blocking(move || {
         app.state::<OpenRom>().with(&path, |loaded| match loaded {
+            Loaded::Gb(game) => randomizer::gb::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
             Loaded::Gba(game) => randomizer::gba::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
             Loaded::Nds(game) => randomizer::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
             Loaded::Ctr(game) => randomizer::ctr::preview_starters(game, &settings, seed).map_err(|e| e.to_string()),
@@ -200,6 +224,13 @@ async fn randomize_rom(path: PathBuf, settings: Settings, seed: u64, output: Pat
     blocking(move || {
         if same_file(&output, &path) {
             return Err("choisis un autre fichier : la ROM d'origine ne doit pas être écrasée".into());
+        }
+        if is_gb(&path) {
+            let mut game = GbGameRom::open(&path).map_err(|e| e.to_string())?;
+            let outcome = randomizer::gb::randomize(&mut game, &settings, seed).map_err(|e| e.to_string())?;
+            game.save(&output).map_err(|e| e.to_string())?;
+            std::fs::write(output.with_extension("journal.txt"), &outcome.log).map_err(|e| e.to_string())?;
+            return Ok(outcome);
         }
         if is_gba(&path) {
             let mut game = GbaGameRom::open(&path).map_err(|e| e.to_string())?;
@@ -252,6 +283,7 @@ async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: Pat
 async fn rom_editor_data(path: PathBuf, app: AppHandle) -> Result<EditorData, String> {
     blocking(move || {
         app.state::<OpenRom>().with(&path, |loaded| match loaded {
+            Loaded::Gb(game) => romedit_gb::read(game).map_err(|e| e.to_string()),
             Loaded::Gba(game) => romedit_gba::read(game).map_err(|e| e.to_string()),
             Loaded::Nds(game) => romedit::read(game).map_err(|e| e.to_string()),
             Loaded::Ctr(game) => romedit_ctr::read(game).map_err(|e| e.to_string()),
@@ -266,6 +298,12 @@ async fn rom_editor_save(path: PathBuf, edits: Vec<SpeciesData>, output: PathBuf
     blocking(move || {
         if same_file(&output, &path) {
             return Err("choisis un autre fichier : la ROM d'origine ne doit pas être écrasée".into());
+        }
+        if is_gb(&path) {
+            let mut game = GbGameRom::open(&path).map_err(|e| e.to_string())?;
+            let written = romedit_gb::apply(&mut game, &edits).map_err(|e| e.to_string())?;
+            game.save(&output).map_err(|e| e.to_string())?;
+            return Ok(written);
         }
         if is_gba(&path) {
             let mut game = GbaGameRom::open(&path).map_err(|e| e.to_string())?;

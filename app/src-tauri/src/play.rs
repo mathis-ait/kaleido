@@ -1233,7 +1233,7 @@ pub fn play_install_save(src: PathBuf, dst: PathBuf) -> Result<Option<String>, S
 pub fn play_find_rom(save: PathBuf) -> Option<String> {
     let stem = save.file_stem()?.to_string_lossy().into_owned();
     let dir = save.parent()?;
-    ["nds", "gba"].iter().map(|ext| dir.join(format!("{stem}.{ext}"))).find(|rom| rom.is_file()).map(|rom| rom.display().to_string())
+    ["nds", "gba", "gbc", "gb"].iter().map(|ext| dir.join(format!("{stem}.{ext}"))).find(|rom| rom.is_file()).map(|rom| rom.display().to_string())
 }
 
 #[cfg(test)]

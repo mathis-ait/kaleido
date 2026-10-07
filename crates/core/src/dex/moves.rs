@@ -99,6 +99,10 @@ fn version_group_order(id: u8) -> u8 {
 /// Ordre du groupe de versions de chaque jeu.
 fn game_order(game: Game) -> u8 {
     version_group_order(match game {
+        Game::RB => 1,
+        Game::Y => 2,
+        Game::GS => 3,
+        Game::C => 4,
         Game::RS => 5,
         Game::E => 6,
         Game::FRLG => 7,

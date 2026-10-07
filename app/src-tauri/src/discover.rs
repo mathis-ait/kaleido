@@ -88,7 +88,7 @@ struct Progress {
 fn kind_of(path: &Path) -> Option<&'static str> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     Some(match ext.as_str() {
-        "gba" => "gba",
+        "gba" | "gb" | "gbc" => "gba",
         "nds" => "nds",
         "3ds" | "cci" | "cia" => "ctr",
         e if crate::switch::EXTENSIONS.contains(&e) => "switch",

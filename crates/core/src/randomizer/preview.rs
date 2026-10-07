@@ -166,3 +166,45 @@ mod gba_tests {
         assert!(p.first_leader.is_none());
     }
 }
+
+/// Aperçu d'un jeu Game Boy : randomisation en mémoire ; « première route » = première zone
+/// d'herbe de la table des rencontres (pas encore de noms de lieux ni de champions en Gen 1 / 2).
+pub fn preview_gb(path: &Path, settings: &Settings, seed: u64) -> Result<Preview, RomError> {
+    let started = Instant::now();
+    let mut game = crate::gb_rom::GbGameRom::open(path)?;
+    preview_gb_rom(&mut game, settings, seed, started)
+}
+
+pub(crate) fn preview_gb_rom(game: &mut crate::gb_rom::GbGameRom, settings: &Settings, seed: u64, started: Instant) -> Result<Preview, RomError> {
+    let outcome = super::gb::randomize(game, settings, seed)?;
+    let mut preview = build(outcome, None, None, started);
+    preview.first_route = crate::data::gen12::wild_areas(game).ok().and_then(|areas| {
+        let area = areas.into_iter().find(|a| !a.slots.is_empty())?;
+        let mut encounters: Vec<PreviewMon> = Vec::new();
+        for s in area.slots.iter().filter(|s| s.species != 0) {
+            match encounters.iter_mut().find(|e| e.species == s.species) {
+                Some(e) => {
+                    e.min_level = e.min_level.min(s.level);
+                    e.max_level = e.max_level.max(s.level);
+                }
+                None => encounters.push(PreviewMon { species: s.species, name: species_name(s.species), min_level: s.level, max_level: s.level }),
+            }
+        }
+        Some(PreviewRoute { name: area.label, encounters })
+    });
+    Ok(preview)
+}
+
+#[cfg(test)]
+mod gb_preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_synthetic_red() {
+        let mut g = crate::gb_rom::GbGameRom::from_rom(crate::gb_rom::synthetic::build("Red (F)")).unwrap();
+        let s = Settings { starters: super::super::StarterMode::Random, ..Settings::default() };
+        let p = preview_gb_rom(&mut g, &s, 9, Instant::now()).unwrap();
+        assert_eq!(p.starters.len(), 3);
+        assert!(p.first_route.is_some_and(|r| !r.encounters.is_empty()));
+    }
+}

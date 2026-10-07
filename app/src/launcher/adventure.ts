@@ -4,7 +4,7 @@ import { addPaths, library } from "../library";
 import { nav } from "../nav";
 import { defaultEmulator, planFor, type PlayOptions } from "../play/play";
 import { BUILTIN_PRESETS, deleteUserPreset, presetsFor, settingsOf, userPresets, type AdventurePreset } from "../presets";
-import type { CtrOutcome, Detection, Outcome, RandomizerSettings } from "../types";
+import { romExt, type CtrOutcome, type Detection, type Outcome, type RandomizerSettings } from "../types";
 
 /**
  * « Nouvelle aventure » en trois clics depuis le lanceur : la jaquette (déjà choisie dans le
@@ -43,7 +43,7 @@ export const adventure = reactive({
 });
 
 const newSeed = () => Math.floor(Math.random() * 4_294_967_295);
-const platformOf = (d: Detection): "gba" | "nds" | "3ds" => (d.platform === "3ds" ? "3ds" : d.platform === "gba" ? "gba" : "nds");
+const platformOf = (d: Detection): "gba" | "nds" | "3ds" => (d.platform === "3ds" ? "3ds" : d.platform === "gba" || d.platform === "gb" ? "gba" : "nds");
 const parentDir = (p: string) => p.replace(/[\\/][^\\/]+$/, "");
 const separator = (p: string) => (p.includes("\\") ? "\\" : "/");
 
@@ -137,9 +137,9 @@ export async function writeAdventure(): Promise<PlayOptions> {
   let romForRun: string;
   const platform = platformOf(g);
   if (platform !== "3ds") {
-    // ROM DS ou GBA : une copie randomisée à côté de l'originale.
-    const ext = platform === "gba" ? "gba" : "nds";
-    const output = `${g.path.replace(/\.(nds|gba)$/i, "")} - Kaleido ${seed}.${ext}`;
+    // ROM DS, GBA ou Game Boy : une copie randomisée à côté de l'originale.
+    const ext = romExt(g.path);
+    const output = `${g.path.replace(/\.(nds|gba|gbc|gb)$/i, "")} - Kaleido ${seed}.${ext}`;
     await invoke<Outcome>("randomize_rom", { path: g.path, settings, seed, output });
     await addPaths([output]);
     options = { platform, rom: output, trackKey: output, title };

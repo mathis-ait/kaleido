@@ -107,9 +107,20 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
     let ds = |code, fr| CoverSources { tdb: Some(("ds", code)), repo: DS, fr: Some(fr), eu: None };
     let ctr = |code, eu| CoverSources { tdb: Some(("3ds", code)), repo: CTR, fr: None, eu: Some(eu) };
     let gba = |fr, eu| CoverSources { tdb: None, repo: GBA, fr: Some(fr), eu: Some(eu) };
+    let gb = |fr, eu| CoverSources { tdb: None, repo: "Nintendo_-_Game_Boy", fr: Some(fr), eu: Some(eu) };
+    let gbc = |fr, eu| CoverSources { tdb: None, repo: "Nintendo_-_Game_Boy_Color", fr: Some(fr), eu: Some(eu) };
     Some(match game {
         // Noms No-Intro des dossiers libretro « Nintendo - Game Boy Advance » ; la boîte
         // américaine et européenne sert de repli si la française manque.
+        "red" => gb("Pokemon - Version Rouge (France) (SGB Enhanced)", "Pokemon - Red Version (USA, Europe) (SGB Enhanced)"),
+        "blue" => gb("Pokemon - Version Bleue (France) (SGB Enhanced)", "Pokemon - Blue Version (USA, Europe) (SGB Enhanced)"),
+        "yellow" => gb(
+            "Pokemon - Version Jaune - Edition Speciale Pikachu (France) (CGB+SGB Enhanced)",
+            "Pokemon - Yellow Version - Special Pikachu Edition (USA, Europe) (CGB+SGB Enhanced)",
+        ),
+        "gold" => gbc("Pokemon - Version Or (France) (SGB Enhanced)", "Pokemon - Gold Version (USA, Europe) (SGB Enhanced) (GB Compatible)"),
+        "silver" => gbc("Pokemon - Version Argent (France) (SGB Enhanced)", "Pokemon - Silver Version (USA, Europe) (SGB Enhanced) (GB Compatible)"),
+        "crystal" => gbc("Pokemon - Version Cristal (France)", "Pokemon - Crystal Version (USA, Europe) (Rev 1)"),
         "ruby" => gba("Pokemon - Version Rubis (France)", "Pokemon - Ruby Version (USA, Europe)"),
         "sapphire" => gba("Pokemon - Version Saphir (France)", "Pokemon - Sapphire Version (USA, Europe)"),
         "emerald" => gba("Pokemon - Version Emeraude (France)", "Pokemon - Emerald Version (USA, Europe)"),

@@ -428,7 +428,7 @@ async function pickGame(platform: PlayPlatform) {
         : platform === "switch"
           ? [{ name: "Jeu Switch", extensions: ["xci", "nsp", "xcz", "nsz"] }]
           : platform === "gba"
-            ? [{ name: "ROM Game Boy Advance", extensions: ["gba"] }]
+            ? [{ name: "ROM Game Boy / GBA", extensions: ["gba", "gbc", "gb"] }]
             : [{ name: "ROM Nintendo DS", extensions: ["nds"] }],
   });
   if (typeof picked !== "string") return null;
@@ -529,6 +529,7 @@ export async function playOpenSave() {
   const view = saveState.view;
   const path = saveState.path;
   if (!view || !path) return;
+  // mGBA joue aussi les jeux Game Boy : Gen 1 à 3 → « gba ».
   const platform: PlayPlatform = view.generation >= 6 ? "3ds" : view.generation <= 3 ? "gba" : "nds";
   if (saveState.dirty) {
     const ok = await ask("Enregistrer tes modifications avant de lancer le jeu ?", {
@@ -545,8 +546,8 @@ export async function playOpenSave() {
     rom = await invoke<string | null>("play_find_rom", { save: path }).catch(() => null);
     if (!rom) {
       const stem = fileName(path).replace(/\.[^.]+$/, "").toLowerCase();
-      const kind = platform === "gba" ? "gba_rom" : "nds_rom";
-      rom = library.items.find((d) => d.kind === kind && d.fileName.replace(/\.[^.]+$/, "").toLowerCase() === stem)?.path ?? null;
+      const kinds = platform === "gba" ? ["gba_rom", "gb_rom"] : ["nds_rom"];
+      rom = library.items.find((d) => kinds.includes(d.kind) && d.fileName.replace(/\.[^.]+$/, "").toLowerCase() === stem)?.path ?? null;
     }
   }
   const result = await play({ platform, rom, save: path });

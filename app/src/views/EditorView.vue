@@ -235,8 +235,8 @@ async function saveRom() {
   if (isCtr.value) return saveCtr(src);
   const output = await save({
     title: "Enregistrer la ROM modifiée",
-    defaultPath: `${src.replace(/\.(nds|gba)$/i, "")} - modifiée.${romExt(src)}`,
-    filters: [{ name: romExt(src) === "gba" ? "ROM Game Boy Advance" : "ROM Nintendo DS", extensions: [romExt(src)] }],
+    defaultPath: `${src.replace(/\.(nds|gba|gbc|gb)$/i, "")} - modifiée.${romExt(src)}`,
+    filters: [{ name: romExt(src) === "nds" ? "ROM Nintendo DS" : romExt(src) === "gba" ? "ROM Game Boy Advance" : "ROM Game Boy", extensions: [romExt(src)] }],
   });
   if (!output) return;
   saving.value = true;

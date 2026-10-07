@@ -41,7 +41,7 @@ async function pickFiles() {
   const picked = await open({
     multiple: true,
     title: "Ajouter des jeux",
-    filters: [{ name: "Jeux GBA, DS, 3DS et Switch", extensions: ["gba", "nds", "3ds", "cci", "cxi", "xci", "nsp", "xcz", "nsz"] }],
+    filters: [{ name: "Jeux Game Boy, GBA, DS, 3DS et Switch", extensions: ["gb", "gbc", "gba", "nds", "3ds", "cci", "cxi", "xci", "nsp", "xcz", "nsz"] }],
   });
   if (picked) await addFiles(Array.isArray(picked) ? picked : [picked]);
 }

@@ -6,6 +6,7 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
 use kaleido_formats::ctr::{self, CtrImage};
+use kaleido_formats::gb::GbHeader;
 use kaleido_formats::gba::GbaHeader;
 use kaleido_formats::nds::NdsHeader;
 use kaleido_formats::{stream_len, FormatError};
@@ -20,6 +21,7 @@ const MAX_SAVE_SIZE: u64 = 0x100000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileKind {
+    GbRom,
     GbaRom,
     NdsRom,
     CtrRom,
@@ -131,7 +133,7 @@ pub enum DetectError {
 }
 
 /// Extensions des fichiers ajoutés quand on dépose un dossier ordinaire.
-const KNOWN_EXTENSIONS: &[&str] = &["gba", "nds", "3ds", "cci", "cia", "cxi", "sav", "dsv"];
+const KNOWN_EXTENSIONS: &[&str] = &["gb", "gbc", "gba", "nds", "3ds", "cci", "cia", "cxi", "sav", "dsv"];
 
 fn is_ctr_dump(dir: &Path) -> bool {
     dir.join("romfs").is_dir() || dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs"))
@@ -176,7 +178,7 @@ pub fn detect_path(path: &Path) -> Result<Detection, DetectError> {
     detection.path = path.display().to_string();
     detection.file_name = path.file_name().map_or_else(|| detection.path.clone(), |n| n.to_string_lossy().into_owned());
     // ROM générée avant l'ajout de la signature : la seed figure dans le nom proposé par Kaleido.
-    if detection.kind == FileKind::NdsRom && detection.kaleido.is_none() {
+    if matches!(detection.kind, FileKind::NdsRom | FileKind::GbRom) && detection.kaleido.is_none() {
         if let Some(seed) = seed_from_file_name(&detection.file_name) {
             detection.detail("Randomisée par", "Kaleido (d'après le nom du fichier)");
             detection.detail("Seed", seed.to_string());
@@ -211,6 +213,17 @@ pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError
         d
     } else if let Some(image) = CtrImage::probe(r)? {
         from_ctr(&image)
+    } else if let Some(header) = GbHeader::probe(r)? {
+        let mut raw = vec![0u8; kaleido_formats::gb::HEADER_END];
+        r.rewind().map_err(FormatError::from)?;
+        r.read_exact(&mut raw).map_err(FormatError::from)?;
+        let mut d = from_gb(&header, &raw);
+        if let Some(tag) = kaleido_formats::gb::read_signature(r)?.and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok()) {
+            d.detail("Randomisée par", format!("Kaleido {}", tag.version));
+            d.detail("Seed", tag.seed.to_string());
+            d.kaleido = Some(tag);
+        }
+        d
     } else if let Some(header) = GbaHeader::probe(r)? {
         let mut d = from_gba(&header);
         if let Some(tag) = kaleido_formats::gba::read_signature(r)?.and_then(|json| serde_json::from_slice::<crate::randomizer::KaleidoTag>(&json).ok()) {
@@ -239,7 +252,7 @@ pub fn detect_stream<R: Read + Seek>(r: &mut R) -> Result<Detection, DetectError
 
 fn unknown() -> Detection {
     let mut d = Detection::new(FileKind::Unknown, "Fichier non reconnu");
-    d.warnings.push("Ce fichier n'est ni une ROM GBA, DS ou 3DS, ni une sauvegarde connue.".into());
+    d.warnings.push("Ce fichier n'est ni une ROM Game Boy, GBA, DS ou 3DS, ni une sauvegarde connue.".into());
     d
 }
 
@@ -261,6 +274,33 @@ fn from_nds(h: &NdsHeader) -> Detection {
     d.detail("Révision", format!("1.{}", h.rom_version));
     if !h.header_crc_ok {
         d.warnings.push("Le CRC de l'en-tête est incorrect : la ROM a peut-être été modifiée.".into());
+    }
+    d
+}
+
+fn from_gb(h: &GbHeader, raw: &[u8]) -> Detection {
+    let mut d = match Game::from_gb(&h.title, &h.code) {
+        Some(g) => Detection::new(FileKind::GbRom, g.name_fr()).with_game(g),
+        None => {
+            let mut d = Detection::new(FileKind::GbRom, format!("ROM Game Boy « {} »", h.title));
+            d.platform = Some(Platform::Gb);
+            d.warnings.push("Jeu Game Boy non pris en charge par Kaleido.".into());
+            d
+        }
+    };
+    // Langue : dernière lettre du code GBC (Or, Argent, Cristal), sinon Jaune « YELAPSF » ; Rouge
+    // et Bleu ne l'indiquent pas (la table d'offsets les distingue par la somme de l'en-tête).
+    let region = h.code.chars().nth(3).or_else(|| h.title.strip_prefix("POKEMON YELAPS").and_then(|r| r.chars().next()));
+    let region = region.or_else(|| crate::gb_rom::entry_for(raw).and_then(|(e, _)| crate::gb_rom::entry_language(e)));
+    d.language = region.and_then(nds_language).map(Into::into);
+    d.is_french = region == Some('F');
+    d.detail("Titre interne", &h.title);
+    if !h.code.is_empty() {
+        d.detail("Code jeu", &h.code);
+    }
+    d.detail("Révision", format!("1.{}", h.version));
+    if !h.header_checksum_ok {
+        d.warnings.push("La somme de l'en-tête est incorrecte : la ROM a peut-être été modifiée.".into());
     }
     d
 }
@@ -460,5 +500,24 @@ mod gba_tests {
         g.set_signature(&serde_json::to_vec(&tag).unwrap()).unwrap();
         let d = detect_stream(&mut Cursor::new(g.to_bytes())).unwrap();
         assert_eq!(d.kaleido.map(|t| t.seed), Some(42));
+    }
+}
+
+#[cfg(test)]
+mod gb_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// En-tête synthétique : aucune vraie ROM Game Boy n'est disponible pour les tests.
+    #[test]
+    fn detects_game_boy_games() {
+        let mut red = kaleido_formats::gb::synthetic("POKEMON RED", "", 0, 0x8000);
+        red[0x14E..0x150].copy_from_slice(&0x7AFCu16.to_be_bytes()); // Rouge français
+        let d = detect_stream(&mut Cursor::new(red)).unwrap();
+        assert_eq!((d.kind, d.title.as_str(), d.platform), (FileKind::GbRom, "Pokémon Rouge", Some(Platform::Gb)));
+        assert!(d.is_french, "{:?}", d.language);
+        let crystal = kaleido_formats::gb::synthetic("PM_CRYSTAL", "BYTF", 0, 0x8000);
+        let d = detect_stream(&mut Cursor::new(crystal)).unwrap();
+        assert_eq!((d.title.as_str(), d.generation, d.is_french), ("Pokémon Cristal", Some(2), true));
     }
 }

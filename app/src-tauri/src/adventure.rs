@@ -18,7 +18,9 @@ pub async fn adventure_preview(path: PathBuf, settings: Settings, seed: u64, app
     let scratch = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("adventure-preview");
     blocking(move || {
         let nds = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("nds"));
-        let result = if crate::is_gba(&path) {
+        let result = if crate::is_gb(&path) {
+            preview::preview_gb(&path, &settings, seed)
+        } else if crate::is_gba(&path) {
             preview::preview_gba(&path, &settings, seed)
         } else if nds {
             preview::preview_nds(&path, &settings, seed)

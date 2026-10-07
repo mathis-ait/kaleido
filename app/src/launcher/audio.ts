@@ -5,7 +5,7 @@ import type { Detection } from "../types";
 import { titleIdOf } from "../games";
 
 /** Jeux dont on sait lire la musique : Pokémon DS et 3DS, et jeux Switch (selon le jeu) ; pas encore la GBA. */
-const hasMusic = (d: Detection | null | undefined): d is Detection => !!d && ((!!d.game && d.platform !== "gba") || d.platform === "switch");
+const hasMusic = (d: Detection | null | undefined): d is Detection => !!d && ((!!d.game && d.platform !== "gba" && d.platform !== "gb") || d.platform === "switch");
 
 /**
  * Son du lanceur : musique de l'écran titre du jeu sélectionné (extraite de la
