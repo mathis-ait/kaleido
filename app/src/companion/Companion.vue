@@ -31,6 +31,14 @@ const status = computed(() => state.value?.live?.status ?? (playing.value ? "ing
 const STATUS_LABEL = { live: "En direct", ingame: "En jeu", offline: "Hors ligne" } as const;
 const STATUS_TONE = { live: "ok", ingame: "accent", offline: "dim" } as const;
 const memoryOn = computed(() => state.value?.live?.enabled ?? true);
+const STATUS_HINT = {
+  live: "Kaleido lit la mémoire de l’émulateur : PV et combats à la seconde",
+  ingame: "Émulateur lancé : le compagnon suit les sauvegardes en jeu",
+  offline: "Aucun émulateur lancé",
+} as const;
+const statusHint = computed(() => STATUS_HINT[status.value]);
+/** Menu des réglages (mémoire, premier plan, ouverture auto, éditeur). */
+const menu = ref(false);
 
 // Horloge pour « il y a 2 min » (rafraîchie toutes les 15 s).
 const now = ref(Date.now());
@@ -60,7 +68,10 @@ const badgeCount = computed(() => {
   const b = snap.value?.badges;
   return b === null || b === undefined ? null : [...b.toString(2)].filter((c) => c === "1").length;
 });
-const badgeLabel = computed(() => (snap.value?.generation === 7 ? "épreuves" : "badges"));
+const badgeLabel = computed(() => {
+  const one = (badgeCount.value ?? 0) <= 1;
+  return snap.value?.generation === 7 ? (one ? "épreuve" : "épreuves") : one ? "badge" : "badges";
+});
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
 const tabs = [
@@ -96,35 +107,55 @@ const tabs = [
       <header class="top">
         <div class="title">
           <h1><span class="name">{{ state?.title || snap?.game || "Compagnon" }}</span><Tip term="companion.companion" /></h1>
-          <p>
-            <span class="sv-chip" :class="STATUS_TONE[status]">{{ STATUS_LABEL[status] }}</span>
-            <Tip term="companion.live" />
-            <span class="dim">Sauvegarde {{ ago(state?.modified) }}<template v-if="state?.place"> · {{ state.place }}</template></span>
-            <Tip term="companion.saveTiming" />
+          <p class="meta">
+            <span class="sv-chip" :class="STATUS_TONE[status]" :title="statusHint">{{ STATUS_LABEL[status] }}</span>
+            <template v-if="snap">
+              <span v-if="state?.place">{{ state.place }}</span>
+              <span>{{ playTime }}</span>
+              <span v-if="badgeCount !== null">{{ badgeCount }} {{ badgeLabel }}</span>
+            </template>
           </p>
-          <p v-if="status === 'live' && state?.live && !state.live.verified" class="live-note">
-            <span class="dim">Lecture en direct non vérifiée pour ce jeu</span>
-            <Tip term="companion.unverified" />
-          </p>
-          <p v-else-if="status === 'ingame' && state?.live?.enabled && state.live.detail" class="live-note dim">{{ state.live.detail }}</p>
         </div>
         <div class="tools">
           <button
             type="button"
             class="sv-round sq"
-            :class="{ active: state?.onTop }"
-            :aria-pressed="!!state?.onTop"
-            aria-label="Toujours au premier plan"
-            :title="state?.onTop ? 'Ne plus garder au premier plan' : 'Toujours au premier plan'"
-            @click="setOnTop(!state?.onTop)"
+            :class="{ active: menu }"
+            :aria-expanded="menu"
+            aria-label="Réglages du compagnon"
+            title="Réglages du compagnon"
+            @click="menu = !menu"
           >
-            <Icon name="pin" :size="15" />
+            <Icon name="settings" :size="15" />
           </button>
           <button type="button" class="sv-round sq" title="Réduire en barre" aria-label="Réduire en barre" @click="setCompact(true)">
             <Icon name="minus" :size="16" />
           </button>
         </div>
       </header>
+
+      <div v-if="menu && state" class="menu" role="dialog" aria-label="Réglages du compagnon">
+        <p class="dim small">
+          Sauvegarde lue {{ ago(state.modified) }}. <Tip term="companion.saveTiming" />
+          <template v-if="status === 'live' && state.live && !state.live.verified"><br />Lecture en direct non vérifiée pour ce jeu. <Tip term="companion.unverified" /></template>
+          <template v-else-if="status === 'ingame' && state.live?.enabled && state.live.detail"><br />{{ state.live.detail }}</template>
+        </p>
+        <Toggle :model-value="memoryOn" label="Lire la mémoire de l’émulateur" term="companion.memory" @update:model-value="setMemory" />
+        <Toggle :model-value="!!state.onTop" label="Toujours au premier plan" term="companion.onTop" @update:model-value="setOnTop" />
+        <Toggle v-if="state.key" :model-value="state.autoOpen" label="Ouvrir à chaque partie" term="companion.autoOpen" @update:model-value="setAutoOpen" />
+        <span class="edit">
+          <button
+            type="button"
+            class="sv-btn small"
+            :disabled="playing"
+            :title="playing ? 'Ferme d’abord l’émulateur : écrire pendant qu’il tourne ferait perdre une des deux versions' : 'Ouvre cette sauvegarde dans l’éditeur (copie de secours automatique)'"
+            @click="openInMain(null)"
+          >
+            <Icon name="pencil" :size="13" /> Modifier dans l'éditeur
+          </button>
+          <Tip term="companion.readOnly" />
+        </span>
+      </div>
 
       <main class="body">
         <EmptyState v-if="!companion.loaded" loading compact title="Lecture de la sauvegarde…" />
@@ -145,54 +176,25 @@ const tabs = [
           </EmptyState>
 
           <template v-if="snap">
-            <section class="progress">
-              <div>
-                <span class="sv-label">Dresseur</span>
-                <strong>{{ snap.trainer.name.trim() || "—" }}</strong>
-              </div>
-              <div>
-                <span class="sv-label">Temps de jeu</span>
-                <strong>{{ playTime }}</strong>
-              </div>
-              <div v-if="badgeCount !== null">
-                <span class="sv-label">{{ badgeLabel }} <Tip term="companion.badges" /></span>
-                <strong>{{ badgeCount }}</strong>
-              </div>
-            </section>
-
             <Segmented v-model="tab" :options="tabs" label="Affichage" />
 
-            <LiveBattle v-if="tab === 'team'" :battle="state.battle" :encounter="state.encounter" />
-            <NuzlockePanel v-if="tab === 'team'" :summary="state.nuzlocke" :can-track="state.canTrack" :place="state.place" />
-            <NextBattleCard v-if="tab === 'team' && state.nextBattle" :battle="state.nextBattle" />
-            <ul v-if="tab === 'team'" class="team">
-              <TeamCard v-for="m in snap.party" :key="m.uid" :mon="m" :open="openMon === m.uid" @toggle="openMon = openMon === m.uid ? null : m.uid" />
-              <li v-if="!snap.party.length" class="none">
-                <EmptyState compact icon="ball" title="Équipe vide">Ton équipe apparaîtra ici après ta première capture.</EmptyState>
-              </li>
-            </ul>
+            <template v-if="tab === 'team'">
+              <LiveBattle v-if="state.battle?.foes.length || state.encounter" :battle="state.battle" :encounter="state.encounter" :place="state.place" />
+              <NextBattleCard v-else-if="state.nextBattle" :battle="state.nextBattle" />
+              <ul class="team">
+                <TeamCard v-for="m in snap.party" :key="m.uid" :mon="m" :open="openMon === m.uid" @toggle="openMon = openMon === m.uid ? null : m.uid" />
+                <li v-if="!snap.party.length" class="none">
+                  <EmptyState compact icon="ball" title="Équipe vide">Ton équipe apparaîtra ici dès ton premier Pokémon.</EmptyState>
+                </li>
+              </ul>
+              <NuzlockePanel :summary="state.nuzlocke" :can-track="state.canTrack" :place="state.place" />
+            </template>
             <BoxGrid v-else-if="tab === 'boxes'" :snapshot="snap" />
             <JournalList v-else :entries="state.journal" />
           </template>
         </template>
       </main>
 
-      <footer v-if="state" class="foot">
-        <Toggle :model-value="memoryOn" label="Lire la mémoire de l’émulateur" term="companion.memory" @update:model-value="setMemory" />
-        <Toggle v-if="state.key" :model-value="state.autoOpen" label="Ouvrir à chaque partie" term="companion.autoOpen" @update:model-value="setAutoOpen" />
-        <span class="edit">
-          <button
-            type="button"
-            class="sv-btn small"
-            :disabled="playing"
-            :title="playing ? 'Ferme d’abord l’émulateur : écrire pendant qu’il tourne ferait perdre une des deux versions' : 'Ouvre cette sauvegarde dans l’éditeur (copie de secours automatique)'"
-            @click="openInMain(null)"
-          >
-            <Icon name="pencil" :size="13" /> Modifier
-          </button>
-          <Tip term="companion.readOnly" />
-        </span>
-      </footer>
     </template>
 
     <TransitionGroup name="notice" tag="ul" class="notices" aria-live="polite">
@@ -243,6 +245,31 @@ h1 .name {
   text-overflow: ellipsis;
 }
 
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin: var(--sp-1) 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.small {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
 .title p {
   display: flex;
   flex-wrap: wrap;
@@ -252,10 +279,6 @@ h1 .name {
   font-size: var(--fs-sm);
 }
 
-.live-note {
-  margin: var(--sp-1) 0 0;
-  font-size: var(--fs-sm);
-}
 
 .tools {
   display: flex;
@@ -280,25 +303,8 @@ h1 .name {
   overflow-y: auto;
 }
 
-.progress {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  gap: var(--sp-2);
-}
 
-.progress > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
 
-.progress strong {
-  overflow: hidden;
-  font-size: var(--fs-lg);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 
 .team {
   display: flex;
@@ -320,16 +326,6 @@ h1 .name {
   text-overflow: ellipsis;
 }
 
-.foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-4);
-  border-top: 1px solid var(--border);
-  font-size: var(--fs-sm);
-}
 
 .edit {
   display: inline-flex;

@@ -3,58 +3,63 @@ import Icon from "../components/Icon.vue";
 import Tip from "../components/Tip.vue";
 import { markMissed, openInMain, trackNuzlocke, type NuzlockeSummary } from "./store";
 
-/** Suivi Nuzlocke dans le compagnon : où l'on est, la rencontre du lieu, le prochain champion, les alertes. */
+/**
+ * Suivi Nuzlocke en bas de l'équipe : trois compteurs sur une ligne, puis la route actuelle
+ * avec une phrase claire sur ce qu'il reste à faire, et les alertes.
+ */
 defineProps<{ summary: NuzlockeSummary | null; canTrack: boolean; place: string | null }>();
 
-const STATUS = {
-  pending: { label: "Rencontre à faire", cls: "dim" },
-  caught: { label: "Capturé", cls: "ok" },
-  missed: { label: "Ratée", cls: "danger" },
-  dupeOnly: { label: "Doublons seulement", cls: "warn" },
+/** Ce que dit la route, en une phrase. */
+const HERE = {
+  pending: { text: "pas encore de capture ici", cls: "" },
+  caught: { text: "capture faite", cls: "ok" },
+  missed: { text: "rencontre ratée", cls: "danger" },
+  dupeOnly: { text: "seulement des doublons pour l'instant", cls: "warn" },
 } as const;
 </script>
 
 <template>
   <section v-if="summary" class="nuz sv-card">
-    <div class="stats">
+    <header>
+      <span class="sv-label">Nuzlocke</span>
+      <button v-if="summary.unassigned" type="button" class="link" @click="openInMain(null, 'nuzlocke')">
+        {{ summary.unassigned }} lieu{{ summary.unassigned > 1 ? "x" : "" }} à rattacher
+      </button>
+      <Tip v-if="summary.unassigned" term="nuzlocke.unassigned" />
+    </header>
+    <dl class="stats">
       <div>
-        <span class="sv-label">Captures</span>
-        <strong>{{ summary.captures }}</strong>
-        <small>{{ summary.routesCaught }} / {{ summary.routes }} routes</small>
+        <dt>Morts <Tip term="nuzlocke.graveyard" /></dt>
+        <dd :class="{ danger: summary.dead > 0 }">{{ summary.dead }}</dd>
       </div>
       <div>
-        <span class="sv-label">Morts <Tip term="nuzlocke.graveyard" /></span>
-        <strong>{{ summary.dead }}</strong>
-        <small>{{ summary.alive }} en vie</small>
+        <dt>Captures</dt>
+        <dd>{{ summary.captures }}</dd>
       </div>
       <div v-if="summary.levelCap">
-        <span class="sv-label">Niveau max <Tip term="nuzlocke.levelCaps" /></span>
-        <strong>N. {{ summary.levelCap }}</strong>
+        <dt>Niveau max <Tip term="nuzlocke.levelCaps" /></dt>
+        <dd>{{ summary.levelCap }}</dd>
       </div>
-    </div>
+    </dl>
 
-    <div v-if="summary.here" class="here">
-      <span class="where"><Icon name="map" :size="14" /> {{ summary.here.name }}</span>
-      <span class="sv-chip" :class="STATUS[summary.here.status].cls">
-        {{ summary.here.capture ?? STATUS[summary.here.status].label }}
+    <p v-if="summary.here" class="here">
+      <Icon name="map" :size="14" />
+      <span>
+        <strong>{{ summary.here.name }}</strong> :
+        <span :class="HERE[summary.here.status].cls">{{ summary.here.capture ? `capture faite (${summary.here.capture})` : HERE[summary.here.status].text }}</span>
       </span>
       <button
         v-if="summary.here.status === 'pending' || summary.here.markedMissed"
         type="button"
-        class="sv-btn small"
+        class="link"
+        :title="summary.here.markedMissed ? '' : 'Le Pokémon de la route est K.O. ou s’est enfui : plus de capture possible ici'"
         @click="markMissed(summary.here.key, !summary.here.markedMissed)"
       >
-        {{ summary.here.markedMissed ? "Annuler « ratée »" : "Rencontre ratée ici" }}
+        {{ summary.here.markedMissed ? "annuler" : "marquer ratée" }}
       </button>
       <Tip term="nuzlocke.missed" />
-    </div>
-    <p v-else-if="place" class="here dim"><Icon name="map" :size="14" /> {{ place }} : pas de rencontre sauvage ici</p>
-
-    <p v-if="summary.unassigned" class="here">
-      <span class="sv-chip warn">{{ summary.unassigned }} lieu{{ summary.unassigned > 1 ? "x" : "" }} à rattacher</span>
-      <button type="button" class="sv-btn small" @click="openInMain(null, 'nuzlocke')">Ouvrir le Nuzlocke</button>
-      <Tip term="nuzlocke.unassigned" />
     </p>
+    <p v-else-if="place" class="here dim"><Icon name="map" :size="14" /> {{ place }} : pas de rencontre sauvage ici</p>
 
     <ul v-if="summary.warnings.length" class="warnings">
       <li v-for="w in summary.warnings" :key="w.title" :class="w.error ? 'danger' : 'warn'" :title="w.detail">
@@ -66,7 +71,7 @@ const STATUS = {
   <section v-else-if="canTrack" class="nuz sv-card offer">
     <p>
       <strong>Suivre cette partie en Nuzlocke</strong><Tip term="companion.track" /><br />
-      <small class="dim">Captures par route, morts et niveau maximum relevés à chaque sauvegarde.</small>
+      <small class="dim">Captures par route, morts et niveau maximum relevés tout seuls.</small>
     </p>
     <button type="button" class="sv-btn solid small" @click="trackNuzlocke">Activer</button>
   </section>
@@ -76,14 +81,25 @@ const STATUS = {
 .nuz {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   padding: var(--sp-3);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+header .sv-label {
+  flex: 1;
 }
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
+  margin: 0;
 }
 
 .stats div {
@@ -92,33 +108,56 @@ const STATUS = {
   gap: 2px;
 }
 
-.stats strong {
-  font-size: var(--fs-lg);
-}
-
-small {
+.stats dt {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-dim);
   font-size: var(--fs-sm);
 }
 
-.dim {
-  color: var(--text-dim);
+.stats dd {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .here {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-1) var(--sp-2);
   margin: 0;
   font-size: var(--fs-md);
 }
 
-.where {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-weight: 700;
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font: inherit;
+  font-size: var(--fs-md);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.dim,
+small {
+  color: var(--text-dim);
 }
 
 .warnings {
@@ -128,21 +167,7 @@ small {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--fs-sm);
-}
-
-.warnings li {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-}
-
-.warnings .danger {
-  color: var(--danger);
-}
-
-.warnings .warn {
-  color: var(--warn);
+  font-size: var(--fs-md);
 }
 
 .offer {
@@ -153,6 +178,5 @@ small {
 
 .offer p {
   margin: 0;
-  font-size: var(--fs-md);
 }
 </style>

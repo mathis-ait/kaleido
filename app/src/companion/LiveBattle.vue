@@ -6,10 +6,10 @@ import HpBar from "./HpBar.vue";
 import { encounterOutcome, type BattleView, type Encounter, type EncounterOutcome } from "./store";
 
 /**
- * Lecture en direct : rencontre sauvage (avec son issue) et équipe adverse du combat en cours.
- * N'apparaît que si la mémoire de l'émulateur est lue.
+ * Lecture en direct : une seule carte pour le combat en cours (adversaires et leurs PV) et,
+ * pour une rencontre sauvage, son issue pour le Nuzlocke. Visible seulement en mémoire lue.
  */
-const props = defineProps<{ battle: BattleView | null; encounter: Encounter | null }>();
+const props = defineProps<{ battle: BattleView | null; encounter: Encounter | null; place: string | null }>();
 
 const OUTCOMES: { value: EncounterOutcome; label: string }[] = [
   { value: "caught", label: "Capturé" },
@@ -17,112 +17,109 @@ const OUTCOMES: { value: EncounterOutcome; label: string }[] = [
   { value: "fled", label: "Fui" },
 ];
 const outcomeLabel = computed(() => OUTCOMES.find((o) => o.value === props.encounter?.outcome)?.label ?? "");
+
+const fighting = computed(() => !!props.battle?.foes.length);
+const title = computed(() => {
+  if (!fighting.value) return "Rencontre";
+  return props.battle!.wild ? "Combat sauvage" : "Combat de dresseur";
+});
+const where = computed(() => props.encounter?.place ?? props.place);
 </script>
 
 <template>
-  <section v-if="encounter" class="encounter sv-card" aria-live="polite">
-    <Sprite :id="encounter.species" :form="encounter.form" :shiny="encounter.shiny" :size="48" />
-    <div class="what">
-      <span class="sv-label">Rencontre <Tip term="companion.encounter" /></span>
-      <strong>{{ encounter.speciesName }}</strong>
-      <small>N. {{ encounter.level }}<template v-if="encounter.place"> · {{ encounter.place }}</template></small>
-    </div>
-    <div v-if="!encounter.outcome" class="actions" role="group" aria-label="Issue de la rencontre">
-      <button v-for="o in OUTCOMES" :key="o.value" type="button" class="sv-btn small" @click="encounterOutcome(encounter.id, o.value)">
-        {{ o.label }}
-      </button>
-    </div>
-    <span v-else class="sv-chip" :class="encounter.outcome === 'caught' ? 'ok' : 'dim'">{{ outcomeLabel }}</span>
-  </section>
+  <section class="fight sv-card" aria-live="polite">
+    <header>
+      <span class="sv-label">{{ title }} <Tip :term="fighting ? 'companion.battle' : 'companion.encounter'" /></span>
+      <small v-if="where" class="dim">{{ where }}</small>
+    </header>
 
-  <section v-if="battle && battle.foes.length" class="battle">
-    <span class="sv-label">{{ battle.wild ? "Combat sauvage" : "Combat de dresseur" }} <Tip term="companion.battle" /></span>
-    <ul>
-      <li v-for="f in battle.foes" :key="f.pid" class="foe sv-card" :class="{ ko: f.hp === 0 }">
-        <Sprite :id="f.species" :form="f.form" :shiny="f.shiny" :gender="f.gender" :size="40" />
+    <ul v-if="fighting" class="foes">
+      <li v-for="f in battle!.foes" :key="f.pid" :class="{ ko: f.hp === 0 }">
+        <Sprite :id="f.species" :form="f.form" :shiny="f.shiny" :gender="f.gender" :size="56" />
         <span class="who">
           <span class="name">
             <strong>{{ f.speciesName }}</strong>
             <small>N. {{ f.level }}</small>
+            <span v-if="f.hp === 0" class="sv-chip danger">K.O.</span>
           </span>
           <HpBar :hp="f.hp" :max="f.maxHp" />
         </span>
-        <span v-if="f.hp === 0" class="sv-chip danger">K.O.</span>
       </li>
     </ul>
+    <div v-else-if="encounter" class="foes">
+      <span class="one">
+        <Sprite :id="encounter.species" :form="encounter.form" :shiny="encounter.shiny" :size="56" />
+        <span class="name">
+          <strong>{{ encounter.speciesName }}</strong>
+          <small>N. {{ encounter.level }}</small>
+        </span>
+      </span>
+    </div>
+
+    <div v-if="encounter" class="outcome">
+      <template v-if="!encounter.outcome">
+        <span class="dim">Pour le Nuzlocke, cette rencontre est :</span>
+        <span class="actions" role="group" aria-label="Issue de la rencontre">
+          <button v-for="o in OUTCOMES" :key="o.value" type="button" class="sv-btn small" @click="encounterOutcome(encounter.id, o.value)">
+            {{ o.label }}
+          </button>
+        </span>
+      </template>
+      <template v-else>
+        <span class="dim">Rencontre notée :</span>
+        <span class="sv-chip" :class="encounter.outcome === 'caught' ? 'ok' : 'dim'">{{ outcomeLabel }}</span>
+      </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.encounter {
+.fight {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-}
-
-.what {
-  display: flex;
-  flex: 1;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
 }
 
-.what strong {
-  overflow: hidden;
-  font-size: var(--fs-base);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
 }
 
+.dim,
 small {
   color: var(--text-dim);
   font-size: var(--fs-sm);
 }
 
-.actions {
-  display: flex;
-  gap: var(--sp-1);
-}
-
-.battle {
+.foes {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-}
-
-.battle ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.foe {
+.foes li,
+.one {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-1) var(--sp-3);
 }
 
-.foe.ko {
-  border-color: var(--danger);
-}
-
-.foe.ko :deep(.sprite) {
+.foes li.ko :deep(img) {
   filter: grayscale(1);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .who {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-1);
   min-width: 0;
 }
 
@@ -130,5 +127,29 @@ small {
   display: flex;
   align-items: baseline;
   gap: var(--sp-2);
+  min-width: 0;
+}
+
+.name strong {
+  overflow: hidden;
+  font-size: var(--fs-base);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-md);
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-1);
 }
 </style>
