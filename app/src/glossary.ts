@@ -391,6 +391,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
 // Termes propres à un module : préfixe du module (« bank.format », « battle.stab »…).
 import { COMPANION_TERMS } from "./companion/terms";
 import { ADVENTURE_TERMS } from "./presets/terms";
+import { RANDOMIZER_TERMS } from "./views/randomizerTerms";
 import { PLAY_TIPS } from "./play/glossary";
 import { BANK_TERMS } from "./save/bank/terms";
 import { BATTLE_TIPS } from "./save/battle/glossary";
@@ -406,6 +407,7 @@ register("", SHOWDOWN_TERMS);
 register("play", PLAY_TIPS);
 register("companion", COMPANION_TERMS);
 register("adventure", ADVENTURE_TERMS);
+register("randomizer", RANDOMIZER_TERMS);
 register("bank", BANK_TERMS);
 register("battle", BATTLE_TIPS);
 register("gifts", GIFT_TERMS);

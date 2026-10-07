@@ -89,7 +89,7 @@ const NDS_SHINY_PRESETS = [
   { odds: 1024, label: "×8" },
   { odds: 512, label: "×16" },
   { odds: 257, label: "Max (1/257)" },
-  { odds: 1, label: "Tous ✨" },
+  { odds: 1, label: "Tous" },
 ];
 /** 3DS : le taux normal est 1 / 4 096 ; « Normal » garde la valeur par défaut des réglages. */
 const CTR_SHINY_PRESETS = [
@@ -98,7 +98,7 @@ const CTR_SHINY_PRESETS = [
   { odds: 512, label: "×8" },
   { odds: 256, label: "×16" },
   { odds: 100, label: "1 / 100" },
-  { odds: 1, label: "Tous ✨" },
+  { odds: 1, label: "Tous" },
 ];
 const shinyPresets = computed(() => (isCtr.value ? CTR_SHINY_PRESETS : NDS_SHINY_PRESETS));
 const shinyPresetOn = (odds: number) => {
@@ -292,7 +292,7 @@ const TABS: { id: TabId; label: string; intro: string }[] = [
   { id: "moves", label: "Attaques & CT", intro: "Le contenu des CT, les maîtres des capacités et qui peut les apprendre." },
   { id: "items", label: "Objets", intro: "Les objets ramassés par terre et le stock des boutiques." },
   { id: "statics", label: "Fixes & échanges", intro: "Les Pokémon rencontrés à un endroit précis, les dons et les échanges en jeu." },
-  { id: "shiny", label: "Chromatiques", intro: "La probabilité de croiser un Pokémon chromatique ✨." },
+  { id: "shiny", label: "Chromatiques", intro: "La probabilité de croiser un Pokémon chromatique." },
 ];
 const TAB_KEY = "kaleido.randomizer.tab";
 function readTab(): TabId {
@@ -615,11 +615,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div class="row first">
               <span class="row-label">
                 Format
-                <Tip title="LayeredFS" text="LayeredFS : un dossier de mod léger, ta ROM reste intacte. Seuls les fichiers modifiés sont écrits ; Luma3DS ou l'émulateur les charge à la place des originaux." />
-                <Tip
-                  title="Fichier .3ds"
-                  text="Fichier .3ds : une ROM complète à ouvrir directement dans Azahar/Citra, plus lourde (~2 Go). Elle est déchiffrée et ses signatures ne sont plus valides : parfait pour un émulateur. Sur une vraie console, il faut la convertir en CIA (par ex. « Build CIA from file » dans GodMode9) puis l'installer avec FBI sous Luma3DS — ou plus simplement utiliser la sortie LayeredFS."
-                />
+                <Tip term="randomizer.ctrOutput" />
               </span>
               <Segmented
                 v-model="settings.ctrOutput"
@@ -653,7 +649,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <div v-if="presets.length" class="section panel">
               <h3>
                 Préréglages
-                <Tip title="Préréglages" text="Remplace tous les réglages par une combinaison toute prête. Tu peux ensuite ajuster chaque option dans les onglets." />
+                <Tip term="randomizer.presets" />
               </h3>
               <div class="presets">
                 <button v-for="p in presets" :key="p.id" class="preset" @click="applyPreset(p)">
@@ -701,9 +697,9 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <h3>Statistiques, types et talents</h3>
               <Segmented v-model="settings.stats" :options="STATS_OPTS" />
               <div class="row">
-                <Toggle v-model="settings.randomTypes" label="Types aléatoires" hint="Une famille d'évolution garde les mêmes types" />
-                <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" hint="Chaque espèce reçoit des talents tirés au sort. Garde Mystik, Multitype, Illusion et Mode Transe ne sont jamais attribués." />
-                <Toggle v-model="settings.noLegendaries" label="Sans légendaires" hint="Aucun légendaire ni fabuleux n'est tiré au sort pour remplacer un autre Pokémon." />
+                <Toggle v-model="settings.randomTypes" label="Types aléatoires" term="randomizer.randomTypes" />
+                <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" term="randomizer.randomAbilities" />
+                <Toggle v-model="settings.noLegendaries" label="Sans légendaires" term="randomizer.noLegendaries" />
               </div>
             </div>
 
@@ -713,12 +709,12 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <Toggle
                   v-model="settings.easyEvolutions"
                   label="Évolutions sans échange"
-                  hint="Les évolutions par échange se font au niveau 37, ou avec l'objet habituel (Peau Métal…)"
+                  term="randomizer.easyEvolutions"
                 />
                 <Toggle
                   v-model="settings.randomMovesets"
                   label="Attaques apprises aléatoires"
-                  hint="Chaque Pokémon garde sa première attaque, les suivantes sont tirées au hasard"
+                  term="randomizer.randomMovesets"
                 />
               </div>
               <div class="row">
@@ -752,10 +748,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <template v-if="isXy">
               <h3 class="kanto-title">
                 Pokémon de Kanto (Professeur Platane)
-                <Tip
-                  title="Pokémon de Kanto"
-                  text="Dans X et Y, le Professeur Platane offre à Illumis un second starter au choix : Bulbizarre, Salamèche ou Carapuce (niveau 10). Kaleido les remplace sans reprendre les starters ci-dessus ; le niveau 10 est conservé."
-                />
+                <Tip term="randomizer.kantoStarters" />
               </h3>
               <Segmented v-model="settings.kantoStarters" :options="STARTER_OPTS" />
               <div v-if="settings.kantoStarters === 'custom'" class="custom-starters">
@@ -781,7 +774,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <h3>Pokémon sauvages</h3>
             <Segmented v-model="settings.wild" :options="WILD_OPTS" />
             <div class="row">
-              <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" hint="Un Pokémon sauvage est remplacé par une espèce de force comparable (total des statistiques de base proche) : pas de Dracolosse sur la Route 1." />
+              <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" term="randomizer.wildSimilarStrength" />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.wildLevelPercent) }}</strong>
                 <input v-model.number="settings.wildLevelPercent" type="range" min="50" max="200" step="5" />
@@ -794,7 +787,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <h3>Dresseurs</h3>
             <Segmented v-model="settings.trainers" :options="TRAINER_OPTS" />
             <div class="row">
-              <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" hint="Chaque Pokémon des dresseurs est remplacé par une espèce de force comparable, pour garder la difficulté d'origine." />
+              <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" term="randomizer.trainersSimilarStrength" />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.trainerLevelPercent) }}</strong>
                 <input v-model.number="settings.trainerLevelPercent" type="range" min="50" max="200" step="5" />
@@ -804,9 +797,9 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <Toggle
                 v-model="settings.trainerEvolutions"
                 label="Pokémon évolués selon leur niveau"
-                hint="Un Machoc niveau 40 devient Mackogneur… (niveau 40 pour les évolutions sans niveau)"
+                term="randomizer.trainerEvolutions"
               />
-              <Toggle v-model="settings.trainerMaxIvs" label="IV au maximum" hint="Tous les Pokémon des dresseurs ont des IV parfaits" />
+              <Toggle v-model="settings.trainerMaxIvs" label="IV au maximum" term="randomizer.trainerMaxIvs" />
             </div>
           </div>
 
@@ -814,10 +807,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           <div v-else-if="tab === 'moves'" class="section panel">
             <h3>CT &amp; capacités <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
             <div class="row first">
-              <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" hint="Les CS ne changent jamais" />
-              <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" hint="Platine, Noire 2 et Blanche 2" />
-              <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" hint="Tunnel, Flash… restent à leur place" />
-              <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" hint="Ces attaques infligent des dégâts fixes (20 et 40 PV) : très fortes en début de partie, elles cassent l'équilibre." />
+              <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" term="randomizer.randomTms" />
+              <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" term="randomizer.randomTutors" />
+              <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" term="randomizer.keepFieldMoves" />
+              <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" term="randomizer.noGameBreaking" />
             </div>
             <div class="row">
               <span class="row-label">Compatibilité CT</span>
@@ -828,9 +821,9 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <Segmented v-model="settings.moves.tutorCompat" :options="TUTOR_COMPAT_OPTS" />
             </div>
             <div class="row">
-              <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" hint="Pratique pour ne jamais être bloqué" />
-              <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" hint="Une évolution garde les compatibilités CT de sa forme précédente (plus logique : Dracaufeu sait tout ce que savait Salamèche)." />
-              <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" hint="Si un Pokémon apprend une attaque par niveau, il reste compatible avec la CT de cette attaque." />
+              <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" term="randomizer.fullHmCompat" />
+              <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" term="randomizer.followEvolutions" />
+              <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" term="randomizer.levelupSanity" />
             </div>
           </div>
 
@@ -846,12 +839,12 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               <Segmented v-model="settings.items.shops" :options="SHOP_OPTS" />
             </div>
             <div class="row">
-              <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" hint="Lettres, Fertilisants, Baies sans effet…" />
-              <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" hint="Les Pierres Feu, Eau, Foudre… et autres objets d'évolution sont toujours achetables quelque part, pour ne pas bloquer une évolution." />
-              <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" hint="Les objets X (Attaque +, Défense +, Vitesse +, Précision +…) augmentent une statistique pendant un combat. Cette option les garde en vente dans les boutiques après randomisation, pratique contre les combats difficiles." />
-              <Toggle v-model="settings.items.banOpShopItems" label="Pas d'objets trop forts en boutique" hint="Super Bonbon, Pépites, Œuf Chance…" />
-              <Toggle v-model="settings.items.noRareCandy" label="Sans Super Bonbon" hint="Le Super Bonbon (un niveau gratuit) n'apparaît ni au sol ni en boutique." />
-              <Toggle v-model="settings.items.noMasterBall" label="Sans Master Ball" hint="La Master Ball (capture garantie) n'apparaît pas dans les objets randomisés." />
+              <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" term="randomizer.banBadFieldItems" />
+              <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" term="randomizer.guaranteeEvolutionItems" />
+              <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" term="randomizer.guaranteeXItems" />
+              <Toggle v-model="settings.items.banOpShopItems" label="Pas d'objets trop forts en boutique" term="randomizer.banOpShopItems" />
+              <Toggle v-model="settings.items.noRareCandy" label="Sans Super Bonbon" term="randomizer.noRareCandy" />
+              <Toggle v-model="settings.items.noMasterBall" label="Sans Master Ball" term="randomizer.noMasterBall" />
             </div>
             <p class="dim note">Objets clés et CS ne bougent jamais ; une CT est toujours remplacée par une CT.</p>
           </div>
@@ -860,7 +853,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           <div v-else-if="tab === 'statics'" class="section panel">
             <h3>Pokémon fixes &amp; échanges <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
             <div class="row first">
-              <span class="row-label">Fixes et dons <Tip title="Pokémon fixes et dons" text="Les Pokémon qu'on rencontre à un endroit précis (légendaires, Ronflex qui bloque la route…) et ceux qu'on reçoit en cadeau (fossiles, œufs, starters secondaires)." /></span>
+              <span class="row-label">Fixes et dons <Tip term="randomizer.statics" /></span>
               <Segmented v-model="settings.statics.mode" :options="STATIC_OPTS" />
             </div>
             <div v-if="settings.statics.mode !== 'unchanged'" class="row">
@@ -868,21 +861,21 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 Niveaux <strong>{{ settings.statics.levelModifier >= 0 ? "+" : "" }}{{ settings.statics.levelModifier }} %</strong>
                 <input v-model.number="settings.statics.levelModifier" type="range" min="-50" max="50" step="5" />
               </label>
-              <Tip title="Niveau des Pokémon fixes" text="Augmente ou baisse le niveau de ces rencontres (les œufs ne changent pas). +20 % : un légendaire niveau 70 passe niveau 84." />
+              <Tip term="randomizer.staticLevels" />
             </div>
             <div class="row">
-              <span class="row-label">Échanges <Tip title="Échanges en jeu" text="Les Pokémon que des personnages proposent d'échanger contre l'un des tiens (par exemple Kéké le Chétiflor dans Platine)." /></span>
+              <span class="row-label">Échanges <Tip term="randomizer.trades" /></span>
               <Segmented v-model="settings.statics.trades" :options="TRADE_OPTS" />
             </div>
             <div v-if="settings.statics.trades !== 'unchanged'" class="row">
-              <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" hint="Le Pokémon reçu tient un objet tiré au sort." />
-              <Toggle v-model="settings.statics.tradeRandomIvs" label="IV aléatoires" hint="Les IV (le « potentiel génétique ») du Pokémon reçu sont tirés au sort au lieu d'être fixés par le jeu." />
+              <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" term="randomizer.tradeRandomItems" />
+              <Toggle v-model="settings.statics.tradeRandomIvs" label="IV aléatoires" term="randomizer.tradeRandomIvs" />
             </div>
           </div>
 
           <!-- Chromatiques -->
           <div v-else-if="tab === 'shiny'" class="section panel">
-            <h3>Chromatiques ✨</h3>
+            <h3 class="with-icon"><Icon name="sparkle" :size="18" /> Chromatiques</h3>
             <div class="row shiny-row first">
               <label class="shiny-input">
                 1 chance sur
@@ -897,7 +890,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <p class="dim note">
               <template v-if="isCtr">
                 Taux réel : <strong>{{ shinyLabel }}</strong>. Modifie le programme du jeu (code.bin
-                <Tip title="code.bin" text="Le programme du jeu 3DS. Kaleido y change le nombre de PID tirés à chaque Pokémon créé : le jeu garde le premier chromatique trouvé. En mod LayeredFS, c'est un petit fichier code.ips à côté du dossier romfs ; dans une ROM .3ds complète, le programme est réécrit directement." />)
+                <Tip term="randomizer.codeBin" />)
                 pour les Pokémon sauvages, fixes et offerts. Sur 3DS, on ne peut pas descendre sous 1 / 4 096, et le Charme Chroma
                 n'a plus d'effet (le taux choisi le remplace).
               </template>
@@ -913,7 +906,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               Les Pokémon qui ne doivent jamais être chromatiques (cadeaux et légendaires protégés) le restent.
             </p>
             <p v-if="!isCtr && settings.shinyOdds <= 1" class="warn-text">
-              ⚠ Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
+              <Icon name="alert" :size="14" /> Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
               doivent jamais l'être, comme Reshiram / Zekrom). Avec 100 %, ces scènes peuvent bloquer le jeu.
             </p>
           </div>
@@ -924,7 +917,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           <div class="panel card">
             <div class="card-head">
               <h3>Tes starters</h3>
-              <Toggle v-if="preview.length" v-model="showStarters" label="Voir" hint="Les starters restent cachés pour garder la surprise" />
+              <Toggle v-if="preview.length" v-model="showStarters" label="Voir" term="randomizer.showStarters" />
             </div>
             <div class="starters">
               <div v-for="(p, i) in preview" :key="`${p.id}-${i}`" class="starter" :class="{ hidden: !showStarters }">
@@ -933,7 +926,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                   <span>{{ p.name }}</span>
                 </template>
                 <template v-else>
-                  <span class="mystery" aria-label="Starter caché">?</span>
+                  <span class="mystery" aria-label="Starter caché"><Icon name="ball" :size="38" /></span>
                   <span>Surprise</span>
                 </template>
               </div>
@@ -946,7 +939,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <h3>Seed</h3>
             <div class="seed">
               <input v-model.number="seed" type="number" min="0" class="input" />
-              <button class="btn icon" title="Nouvelle seed" @click="seed = newSeed()">🎲</button>
+              <button class="btn square" title="Nouvelle seed" aria-label="Nouvelle seed" @click="seed = newSeed()"><Icon name="dice" :size="18" /></button>
             </div>
             <div class="share">
               <button class="btn" @click="shareCode">{{ copied ? "Copié !" : "Copier le code de partage" }}</button>
@@ -970,7 +963,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
           <Transition name="pop">
             <div v-if="outcome" class="panel card done">
-              <h3>✨ {{ lastWasCtr ? "Mod prêt !" : "ROM prête !" }}</h3>
+              <h3 class="with-icon"><Icon name="check" :size="18" /> {{ lastWasCtr ? "Mod prêt" : "ROM prête" }}</h3>
               <p class="dim">{{ outcome.wildSlots }} Pokémon sauvages et {{ outcome.trainerPokemon }} Pokémon de dresseurs modifiés.</p>
               <template v-if="lastWasCtr && ctrResult">
                 <p v-if="ctrResult.image" class="dim note">
@@ -997,15 +990,9 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
       </div>
     </template>
 
-    <div v-if="showLog && outcome" class="modal" @click.self="showLog = false">
-      <div class="panel log">
-        <header>
-          <h3>Journal de randomisation</h3>
-          <button class="btn" @click="showLog = false">Fermer</button>
-        </header>
-        <pre>{{ outcome.log }}</pre>
-      </div>
-    </div>
+    <Dialog v-model="showLog" title="Journal de randomisation" icon="book" :width="1000">
+      <pre v-if="outcome" class="log">{{ outcome.log }}</pre>
+    </Dialog>
   </section>
 </template>
 
@@ -1030,7 +1017,7 @@ h3 {
 }
 
 .lead {
-  font-size: 16px;
+  font-size: var(--fs-lg);
 }
 
 .empty {
@@ -1074,7 +1061,7 @@ h3 {
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 380px);
-  gap: 24px;
+  gap: var(--sp-6);
   align-items: start;
 }
 
@@ -1092,18 +1079,18 @@ h3 {
 .tabbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .tabs {
   display: flex;
   flex: 1;
   min-width: 0;
-  gap: 4px;
+  gap: var(--sp-1);
   padding: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
@@ -1121,11 +1108,11 @@ h3 {
   gap: 6px;
   padding: 8px 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-dim);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--fs-md);
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
@@ -1143,10 +1130,10 @@ h3 {
 
 .badge {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent-2) 30%, transparent);
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -1161,7 +1148,7 @@ h3 {
   min-width: 24px;
   height: 22px;
   padding: 0 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--text);
   color: var(--bg);
   font: 700 11px/1 var(--font);
@@ -1171,7 +1158,7 @@ h3 {
 .tab-intro {
   margin: -2px 4px 0;
   color: var(--text-dim);
-  font-size: 13.5px;
+  font-size: var(--fs-md);
 }
 
 .presets {
@@ -1183,7 +1170,7 @@ h3 {
 .preset {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1207,7 +1194,7 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .summary-head h3 {
@@ -1216,13 +1203,13 @@ h3 {
 
 .count {
   margin-left: 6px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 500;
 }
 
 .btn.small {
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .summary {
@@ -1238,7 +1225,7 @@ h3 {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--fs-base);
 }
 
 .summary-tab {
@@ -1246,10 +1233,10 @@ h3 {
   min-width: 118px;
   padding: 2px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   text-align: center;
 }
@@ -1269,7 +1256,7 @@ h3 {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   text-align: left;
 }
@@ -1287,7 +1274,7 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  gap: var(--sp-6);
   margin-top: 14px;
 }
 
@@ -1333,8 +1320,8 @@ h3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
+  gap: var(--sp-1);
+  font-size: var(--fs-md);
   font-weight: 600;
   animation: rise 0.35s ease both;
 }
@@ -1350,20 +1337,17 @@ h3 {
   margin: 0;
 }
 
-/* Starter caché : une Poké Ball stylisée à la place du sprite. */
+/* Starter caché : une Poké Ball à la place du sprite. */
 .mystery {
   display: grid;
   place-items: center;
   width: 64px;
   height: 64px;
-  margin: 12px;
+  margin: var(--sp-3);
+  border: 1px solid var(--border);
   border-radius: 50%;
-  border: 3px solid color-mix(in srgb, var(--text) 70%, transparent);
-  background: linear-gradient(to bottom, #e3463f 0 46%, color-mix(in srgb, var(--text) 70%, transparent) 46% 54%, #f2f2f2 54%);
-  color: #1d1d1d;
-  font-size: 22px;
-  font-weight: 800;
-  text-shadow: 0 0 6px #fff;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-dim);
 }
 
 .starter.hidden span:last-child {
@@ -1399,7 +1383,7 @@ h3 {
 
 .seed {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-top: 8px;
 }
 
@@ -1432,14 +1416,21 @@ h3 {
   border-color: var(--danger);
 }
 
-.icon {
-  padding: 8px 12px;
+/* Bouton carré à icône (nouvelle seed). Pas « .icon » : la classe atteindrait le SVG du composant Icon. */
+.with-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.square {
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .generate {
   justify-content: center;
   padding: 16px;
-  font-size: 16px;
+  font-size: var(--fs-lg);
   font-weight: 700;
 }
 
@@ -1452,7 +1443,7 @@ h3 {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .shiny-input {
@@ -1477,10 +1468,10 @@ h3 {
 .chip-btn {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
 }
 
@@ -1496,7 +1487,7 @@ h3 {
 }
 
 :root[data-theme="lagon"] .chip-btn.on {
-  background: #fff;
+  background: var(--text);
 }
 
 .chip-btn:disabled {
@@ -1507,14 +1498,14 @@ h3 {
 .warn-text {
   margin: 10px 0 0;
   color: var(--warn);
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.45;
 }
 
 .soon {
   margin-left: 8px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -1537,12 +1528,12 @@ h3 {
 .custom-starters label {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .note {
   margin: 12px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.45;
 }
 
@@ -1555,13 +1546,13 @@ h3 {
 }
 
 .note .path {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   word-break: break-all;
 }
 
 .done-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-top: 12px;
 }
 
@@ -1574,37 +1565,10 @@ h3 {
   transform: scale(0.95);
 }
 
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 40px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
-}
-
 .log {
-  display: flex;
-  flex-direction: column;
-  width: min(1000px, 100%);
-  max-height: 100%;
-  padding: 18px;
-  background: var(--bg);
-}
-
-.log header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.log pre {
-  overflow: auto;
-  margin: 12px 0 0;
+  margin: 0;
   font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   user-select: text;
   white-space: pre-wrap;
