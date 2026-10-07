@@ -1432,6 +1432,7 @@ pub fn legalize_with(pk: &Pokemon, game: Game, trainer: &Trainer, choice: Option
         score_of(game, &req, p)
             + if p.met_location() != pk.met_location() || p.version() != pk.version() { 3 } else { 0 }
             + if p.egg_location() != 0 && pk.egg_location() == 0 { 8 } else { 0 }
+            + if p.ot_name() != pk.ot_name() || p.tid() != pk.tid() { 15 } else { 0 }
     };
     run_scored(pk, game, trainer, &list, wishes_of(pk), seed, choice, explore, Some(&score))
 }
@@ -1608,7 +1609,8 @@ pub fn generate_legal(game: Game, format: PkmFormat, trainer: &Trainer, req: &Ge
     }
     let seed = rand.next_u32() as u64 | (rand.next_u32() as u64) << 32;
     // Rencontre imposée (« Créer ce Pokémon ») : la première ; sinon celle qui respecte le mieux la demande.
-    let score = |q: &Pokemon| score_of(game, req, q);
+    // Un Pokémon à un autre nom que le tien (distribution, échange) ne vient qu'en dernier.
+    let score = |q: &Pokemon| score_of(game, req, q) + if q.tid() != trainer.tid || q.ot_name() != trainer.name { 15 } else { 0 };
     let scorer: Option<&dyn Fn(&Pokemon) -> u32> = if req.encounter_index.is_some() { None } else { Some(&score) };
     let mut out = run_scored(&p, game, trainer, &list, wishes, seed, None, false, scorer);
     out.pokemon.refresh_checksum();
