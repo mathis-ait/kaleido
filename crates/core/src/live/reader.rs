@@ -379,10 +379,8 @@ impl LiveReader {
     /// que le jeu réécrit notre équipe dans le bloc de sauvegarde (expérience, PV) ou que la
     /// carte change. Observé dans melonDS sur Blanche : copie à +0x8, adversaire à +0x560.
     fn scan_battle(&mut self, src: &dyn MemorySource, ours: &[Pokemon], map: Option<u16>, full: bool) -> Option<Battle> {
-        let Console::Ds(ram) = &self.console else { return None };
-        let (base, size) = (ram.base, ram.size as usize);
+        let Console::Ds(_) = &self.console else { return None };
         let format = self.hints.format;
-        let psize = format.party_size();
         let mine: HashSet<u32> = ours.iter().map(|p| u32::from_le_bytes(key_of(p))).collect();
         let is_ours = |p: &PartyAt| p.mons.iter().all(|m| mine.contains(&u32::from_le_bytes(key_of(m))));
         let is_foe = |p: &PartyAt| p.mons.iter().all(|m| !mine.contains(&u32::from_le_bytes(key_of(m))));
@@ -401,33 +399,11 @@ impl LiveReader {
             if !full {
                 return None;
             }
-            let save_at = self.copies.iter().find(|c| c.save_block).map(|c| c.addr);
-            let bytes = src.read_vec(base, size).ok()?;
-            let words = bytes.as_chunks::<4>().0;
-            let header = |i: usize| u32::from_le_bytes(words[i]) == PARTY_SLOTS as u32 && (1..=PARTY_SLOTS as u32).contains(&u32::from_le_bytes(words[i + 1]));
-            'outer: for i in 0..words.len().saturating_sub(3) {
-                if !header(i) || !mine.contains(&u32::from_le_bytes(words[i + 2])) {
-                    continue;
-                }
-                let o = base + (i as u64 + 2) * 4;
-                if Some(o) == save_at {
-                    continue;
-                }
-                let Some(po) = read_party_at(src, format, o).ok().flatten().filter(|p| is_ours(p)) else { continue };
-                // Après nos Pokémon (l'en-tête dit combien) : la place réservée aux 6 n'est pas garantie.
-                let start = i + 2 + po.mons.len() * psize / 4;
-                let end = (i + 0x1000 / 4).min(words.len().saturating_sub(2));
-                for j in start..end {
-                    if !header(j) {
-                        continue;
-                    }
-                    let e = base + (j as u64 + 2) * 4;
-                    if let Some(pe) = read_party_at(src, format, e).ok().flatten().filter(|p| is_foe(p)) {
-                        found = Some((o, po.mons, e, pe.mons));
-                        break 'outer;
-                    }
-                }
-            }
+            // Plusieurs combats peuvent rester en RAM : un adversaire jamais vu d'abord.
+            let pairs = self.battle_pairs(src, &mine);
+            let fresh = |e: &Vec<Pokemon>| e.iter().any(|m| !self.seen_enemies.contains(&u32::from_le_bytes(key_of(m))));
+            let pick = pairs.iter().position(|p| fresh(&p.3)).or(if pairs.is_empty() { None } else { Some(0) });
+            found = pick.map(|i| pairs[i].clone());
         }
         let Some((o, ours_now, e, enemies)) = found else {
             self.ours_at = None;
@@ -465,15 +441,55 @@ impl LiveReader {
         Some(Battle { enemies, ours: ours_now, wild, new })
     }
 
-    /// Marque comme terminé le combat présent en RAM au moment de l'attache : un ancien combat
-    /// resté en mémoire ne doit pas passer pour une nouvelle rencontre.
+    /// Toutes les paires (copie de combat de notre équipe, équipe adverse qui la suit) en RAM.
+    fn battle_pairs(&self, src: &dyn MemorySource, mine: &HashSet<u32>) -> Vec<(u64, Vec<Pokemon>, u64, Vec<Pokemon>)> {
+        let Console::Ds(ram) = &self.console else { return Vec::new() };
+        let format = self.hints.format;
+        let psize = format.party_size();
+        let key = |m: &Pokemon| u32::from_le_bytes(key_of(m));
+        let save_at = self.copies.iter().find(|c| c.save_block).map(|c| c.addr);
+        let Ok(bytes) = src.read_vec(ram.base, ram.size as usize) else { return Vec::new() };
+        let words = bytes.as_chunks::<4>().0;
+        let header = |i: usize| u32::from_le_bytes(words[i]) == PARTY_SLOTS as u32 && (1..=PARTY_SLOTS as u32).contains(&u32::from_le_bytes(words[i + 1]));
+        let mut out = Vec::new();
+        for i in 0..words.len().saturating_sub(3) {
+            if !header(i) || !mine.contains(&u32::from_le_bytes(words[i + 2])) {
+                continue;
+            }
+            let o = ram.base + (i as u64 + 2) * 4;
+            if Some(o) == save_at {
+                continue;
+            }
+            let Some(po) = read_party_at(src, format, o).ok().flatten().filter(|p| p.mons.iter().all(|m| mine.contains(&key(m)))) else { continue };
+            // Après nos Pokémon (l'en-tête dit combien) : la place réservée aux 6 n'est pas garantie.
+            let start = i + 2 + po.mons.len() * psize / 4;
+            let end = (i + 0x1000 / 4).min(words.len().saturating_sub(2));
+            for j in start..end {
+                if !header(j) {
+                    continue;
+                }
+                let e = ram.base + (j as u64 + 2) * 4;
+                if let Some(pe) = read_party_at(src, format, e).ok().flatten().filter(|p| p.mons.iter().all(|m| !mine.contains(&key(m)))) {
+                    out.push((o, po.mons.clone(), e, pe.mons));
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    /// Marque comme terminés tous les combats présents en RAM au moment de l'attache : d'anciens
+    /// combats restés en mémoire ne doivent pas passer pour une nouvelle rencontre.
     pub fn prime_battle(&mut self, src: &dyn MemorySource) {
         let ours = self.copies.first().and_then(|c| read_party_at(src, self.hints.format, c.addr).ok().flatten()).map(|p| p.mons).unwrap_or_default();
+        let mine: HashSet<u32> = ours.iter().map(|p| u32::from_le_bytes(key_of(p))).collect();
+        for (_, _, _, enemies) in self.battle_pairs(src, &mine) {
+            self.seen_enemies.extend(enemies.iter().map(|m| u32::from_le_bytes(key_of(m))));
+        }
         let (map, _) = self.save_block_fields(src);
         let _ = self.scan_battle(src, &ours, map, true);
         if let Some(f) = &mut self.fight {
             f.over = true;
-            self.seen_enemies.extend(f.keys.iter().copied());
         }
     }
 }

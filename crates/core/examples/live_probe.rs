@@ -153,6 +153,53 @@ fn main() {
             std::fs::write(arg(3), bytes).unwrap();
         }
         // Rejoue un dump brut (sortie de « dump ») : replay <dump.bin> <sauvegarde> [prime]
+        // Échantillons pour chercher l'indicateur « en combat » : sample <pid> <sauvegarde> <secondes> <dossier>
+        // Capture la RAM juste après un nouveau combat (in-N) et juste après un changement de carte
+        // sans combat récent (out-N).
+        "sample" => {
+            let proc = Process::open(arg(1).parse().unwrap()).unwrap();
+            let save = SaveSession::open(&std::fs::read(arg(2)).unwrap()).unwrap();
+            let secs: u64 = arg(3).parse().unwrap_or(600);
+            let dir = std::path::PathBuf::from(arg(4));
+            std::fs::create_dir_all(&dir).unwrap();
+            let ram = scan::find_ds_ram(&proc).expect("RAM DS introuvable");
+            let mut reader = LiveReader::new(Console::Ds(ram.clone()), save.save.ram_hints());
+            let _ = reader.tick(&proc);
+            reader.prime_battle(&proc);
+            let start = std::time::Instant::now();
+            let (mut n_in, mut n_out) = (0, 0);
+            let mut last_map = None;
+            let mut last_battle = std::time::Instant::now() - std::time::Duration::from_secs(60);
+            let dump = |name: String| {
+                let mut buf = vec![0u8; ram.size as usize];
+                if proc.read(ram.base, &mut buf).is_ok() {
+                    std::fs::write(dir.join(&name), buf).unwrap();
+                    println!("{:>5} s  {name}", start.elapsed().as_secs());
+                }
+            };
+            while start.elapsed().as_secs() < secs {
+                if let Ok(Some(r)) = reader.tick(&proc) {
+                    if let Some(b) = &r.battle {
+                        if b.new {
+                            last_battle = std::time::Instant::now();
+                            std::thread::sleep(std::time::Duration::from_millis(1500));
+                            n_in += 1;
+                            dump(format!("in-{n_in}-{}.bin", if b.wild { "sauvage" } else { "dresseur" }));
+                        }
+                    }
+                    if r.map.is_some() && last_map.is_some() && r.map != last_map && last_battle.elapsed().as_secs() > 8 {
+                        std::thread::sleep(std::time::Duration::from_millis(1500));
+                        n_out += 1;
+                        dump(format!("out-{n_out}-carte{}.bin", r.map.unwrap()));
+                    }
+                    if r.map.is_some() {
+                        last_map = r.map;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            println!("fini : {n_in} combats, {n_out} changements de carte");
+        }
         // Rejoue des dumps bruts (sortie de « dump ») dans l'ordre, avec le même lecteur :
         // replay <dump1.bin,dump2.bin,…> <sauvegarde> [prime]
         "replay" => {
