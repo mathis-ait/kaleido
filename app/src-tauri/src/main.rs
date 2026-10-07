@@ -290,6 +290,14 @@ fn main() {
             library::watch_emulators(app.handle().clone());
             Ok(())
         })
+        // Fermer la fenêtre principale quitte Kaleido, compagnon de partie compris.
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                if let Some(c) = window.app_handle().get_webview_window("companion") {
+                    let _ = c.close();
+                }
+            }
+        })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(library::handle_cover(&app, &request)));
@@ -353,6 +361,7 @@ fn main() {
             companion::companion_set_compact,
             companion::companion_track_nuzlocke,
             companion::companion_mark_missed,
+            companion::companion_open_in_main,
             play::unwatch_save,
             play::watch_save_resync,
             library::library_config,

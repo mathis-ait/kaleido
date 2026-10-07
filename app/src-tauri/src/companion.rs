@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 
+use std::sync::Arc;
+
+use kaleido_core::battle::trainers::RomTrainers;
+use kaleido_core::battle::{self, Combatant, Field, SideState, Verdict};
 use kaleido_core::dex;
 use kaleido_core::nuzlocke::{self, RouteStatus, Severity};
 use kaleido_core::save::diff::{diff, Brief, DeathKind, GameEvent};
@@ -128,6 +132,8 @@ pub struct NuzlockeSummary {
     next: Option<NextLeader>,
     here: Option<RouteHere>,
     warnings: Vec<Warning>,
+    /// Lieux de capture à rattacher à une route (dans la page Nuzlocke de l'éditeur).
+    unassigned: usize,
 }
 
 /// Ce que reçoit la fenêtre du compagnon.
@@ -155,6 +161,8 @@ pub struct CompanionState {
     nuzlocke: Option<NuzlockeSummary>,
     /// ROM connue et compatible, mais suivi Nuzlocke pas encore activé.
     can_track: bool,
+    /// Prochain champion (d'après les badges) et meilleurs contres de l'équipe actuelle.
+    next_battle: Option<NextBattle>,
 }
 
 fn modified_ms(path: &Path) -> Option<u64> {
@@ -241,6 +249,7 @@ fn summary(report: &nuzlocke::Report, here: Option<&nuzlocke::Route>) -> Nuzlock
         next,
         here,
         warnings,
+        unassigned: report.unassigned.len(),
     }
 }
 
@@ -262,6 +271,7 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
         journal: Vec::new(),
         nuzlocke: None,
         can_track: false,
+        next_battle: None,
     };
     let _guard = INGEST.lock();
     let mut log = runlog::load(app, &t.path);
@@ -283,7 +293,7 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
     let mut state = nuzlocke::load_state(&t.path);
     let version = session.save.version();
     let rom_path = state.rom_path.clone().map(PathBuf::from).or_else(|| t.rom.clone());
-    let info = rom_path.and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
+    let info = rom_path.clone().and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
     let location = info.as_ref().and_then(|i| i.location_of_map(snap.map));
     let route = info.as_ref().zip(location).and_then(|(i, l)| i.route_of_location(l));
     out.place = route.map(|r| r.name.clone()).or_else(|| location.and_then(|l| place_name(snap.generation, l)));
@@ -314,13 +324,17 @@ fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
     out.journal = journal(&log);
 
     if let Some(info) = &info {
-        if tracking {
-            match nuzlocke::report(info, &session, &state) {
-                Ok(r) => out.nuzlocke = Some(summary(&r, route)),
-                Err(e) => out.error = Some(e.to_string()),
+        out.can_track = !tracking;
+        match nuzlocke::report(info, &session, &state) {
+            Ok(r) => {
+                if tracking {
+                    out.nuzlocke = Some(summary(&r, route));
+                }
+                let leader = r.caps.iter().find(|c| c.current).map(|c| &c.leader);
+                out.next_battle = rom_path.as_deref().zip(leader).and_then(|(rom, l)| next_battle(rom, &session, l));
             }
-        } else {
-            out.can_track = true;
+            Err(e) if tracking => out.error = Some(e.to_string()),
+            Err(_) => {}
         }
     }
     out.snapshot = Some(snap);
@@ -500,6 +514,120 @@ pub async fn companion_set_compact(compact: bool, app: AppHandle) -> Result<(), 
     let size = w.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
     let height = if compact { 96.0 } else { load_config(&app).height.max(360.0) };
     w.set_size(tauri::LogicalSize::new(size.width, height)).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Prochain combat : équipe du prochain champion et meilleur contre de l'équipe actuelle.
+
+/// Données de combat de la ROM de la partie (lues une fois).
+static TRAINERS: Mutex<Option<(PathBuf, Arc<RomTrainers>)>> = Mutex::new(None);
+
+fn trainers_of(path: &Path) -> Option<Arc<RomTrainers>> {
+    let mut slot = TRAINERS.lock().ok()?;
+    if let Some((p, t)) = slot.as_ref() {
+        if p == path {
+            return Some(t.clone());
+        }
+    }
+    let t = Arc::new(RomTrainers::open(path).ok()?);
+    *slot = Some((path.to_path_buf(), t.clone()));
+    Some(t)
+}
+
+/// Mon meilleur Pokémon contre un adversaire.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Counter {
+    name: String,
+    species: u16,
+    verdict: Verdict,
+    move_name: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Opponent {
+    species: u16,
+    form: u8,
+    name: String,
+    level: u8,
+    counter: Option<Counter>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextBattle {
+    label: String,
+    name: String,
+    town: String,
+    trainer_id: u16,
+    team: Vec<Opponent>,
+}
+
+fn rank(v: Verdict) -> u8 {
+    match v {
+        Verdict::Win => 0,
+        Verdict::Uncertain => 1,
+        Verdict::Lose => 2,
+        Verdict::None => 3,
+    }
+}
+
+/// Équipe du prochain champion et, pour chacun de ses Pokémon, ton meilleur contre
+/// (calcul de dégâts sans modificateurs, comme la page Combat par défaut).
+fn next_battle(rom: &Path, session: &SaveSession, leader: &nuzlocke::Leader) -> Option<NextBattle> {
+    let trainers = trainers_of(rom)?;
+    let id = *leader.trainer_ids.first()?;
+    let theirs = trainers.team(id)?;
+    let game = session.game();
+    let party = session.view().ok()?.party;
+    let mine: Vec<Combatant> = party.iter().filter_map(|v| battle::party::from_slot(game, v, Some(&trainers))).collect();
+    let (side, field) = (SideState::default(), Field::default());
+    let cells = battle::matrix(game, &mine, &side, &theirs, &side, &field);
+    let team = theirs
+        .iter()
+        .enumerate()
+        .map(|(j, them)| {
+            let counter = (0..mine.len())
+                .min_by_key(|&i| {
+                    let c = &cells[i][j];
+                    (rank(c.verdict), -(c.mine.as_ref().map_or(0.0, |m| m.min_percent) * 10.0) as i64)
+                })
+                .map(|i| Counter {
+                    name: mine[i].name.clone(),
+                    species: mine[i].species,
+                    verdict: cells[i][j].verdict,
+                    move_name: cells[i][j].mine.as_ref().map(|m| m.name.clone()),
+                });
+            Opponent { species: them.species, form: them.form, name: them.name.clone(), level: them.level, counter }
+        })
+        .collect();
+    Some(NextBattle { label: leader.label.clone(), name: leader.name.to_string(), town: leader.town.to_string(), trainer_id: id, team })
+}
+
+/// Ouvre la sauvegarde dans la fenêtre principale (éditeur ou page Combat sur ce dresseur).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenInMain {
+    path: String,
+    rom: Option<String>,
+    /// Dresseur à afficher dans la page Combat ; `None` = éditeur.
+    trainer: Option<u16>,
+    /// Page de l'éditeur à ouvrir (« nuzlocke »…).
+    page: Option<String>,
+}
+
+#[tauri::command]
+pub async fn companion_open_in_main(trainer: Option<u16>, page: Option<String>, app: AppHandle) -> Result<(), String> {
+    let t = current(&app).ok_or("aucune partie suivie")?;
+    let state = nuzlocke::load_state(&t.path);
+    let rom = state.rom_path.clone().or_else(|| t.rom.as_ref().map(|r| r.display().to_string()));
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.unminimize();
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+    app.emit("companion-open-in-main", OpenInMain { path: t.path.display().to_string(), rom, trainer, page }).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

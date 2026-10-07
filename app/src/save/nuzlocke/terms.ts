@@ -3,6 +3,10 @@ import { RULES } from "./types";
 
 /** Bulles « i » du Nuzlocke (glossaire central, préfixe « nuzlocke. ») : une par règle, puis les notions de suivi. */
 export const NUZLOCKE_TERMS: Record<string, GlossaryEntry> = {
+  unassigned: {
+    title: "Lieux à rattacher",
+    text: "Kaleido regroupe les rencontres par nom de lieu. Certains lieux ne correspondent à aucune route de la ROM (étage d'une grotte, Parc Safari, lieu sans herbes…). Choisis une fois la route à laquelle ils appartiennent, ou « Pas une route » pour un cadeau ou une rencontre fixe.",
+  },
   ...Object.fromEntries(RULES.map((r) => [r.id, { title: r.label, text: r.tip }])),
 
   nuzlocke: {

@@ -12,7 +12,7 @@ export const COMPANION_TERMS: Record<string, GlossaryEntry> = {
   },
   readOnly: {
     title: "Lecture seule",
-    text: "Pendant la partie, le compagnon ne fait que lire. Pour modifier un Pokémon, ferme le jeu puis ouvre la sauvegarde dans l'éditeur : écrire pendant que l'émulateur tourne ferait perdre l'une des deux versions.",
+    text: "Pendant la partie, le compagnon ne fait que lire. « Modifier » ouvre la sauvegarde dans l'éditeur, seulement émulateur fermé : écrire pendant qu'il tourne ferait perdre l'une des deux versions. L'éditeur garde une copie de secours avant d'écrire.",
   },
   hp: {
     title: "PV restants",
@@ -41,6 +41,10 @@ export const COMPANION_TERMS: Record<string, GlossaryEntry> = {
   journal: {
     title: "Journal de partie",
     text: "Tout ce que le compagnon a vu changer d'une sauvegarde à l'autre, avec le temps de jeu et le lieu. Il est gardé par Kaleido, même si la sauvegarde est supprimée.",
+  },
+  nextBattle: {
+    title: "Prochain combat",
+    text: "Le prochain champion d'arène (ou le Conseil 4) d'après tes badges, avec son équipe lue dans ta ROM, randomisation comprise. Pour chacun de ses Pokémon, Kaleido indique ton meilleur contre et le résultat probable du duel. « Préparer » ouvre la page Combat pour le détail des dégâts.",
   },
   badges: {
     title: "Badges et épreuves",

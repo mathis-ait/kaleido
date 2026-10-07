@@ -174,6 +174,13 @@ function setDead(m: NuzMon, dead: boolean) {
 
 const manualAlive = (m: NuzMon) => state.value?.alive.includes(m.key) ?? false;
 
+/** Rattache un lieu de capture à une route (ou le marque « pas une route » avec une clé vide). */
+function assignLocation(location: number, route: string) {
+  update((s) => {
+    s.locationRoutes = { ...(s.locationRoutes ?? {}), [location]: route };
+  });
+}
+
 function resetMon(m: NuzMon) {
   update((s) => {
     s.dead = s.dead.filter((k) => k !== m.key);
@@ -443,6 +450,21 @@ useShell(() => ({
             </span>
             <button type="button" class="sv-btn small" @click="setDead(m, false)">Il est vivant</button>
           </div>
+          <template v-if="report.unassigned.length">
+            <h3 class="sv-section-title sub">Lieux à rattacher <Tip term="nuzlocke.unassigned" /></h3>
+            <div v-for="u in report.unassigned" :key="u.location" class="mon-row">
+              <Icon name="map" :size="18" />
+              <span class="m-txt">
+                <strong>{{ u.name }}</strong>
+                <small>{{ u.count }} Pokémon capturé{{ u.count > 1 ? "s" : "" }} ici</small>
+              </span>
+              <select class="sv-select compact" :aria-label="`Route pour ${u.name}`" @change="assignLocation(u.location, ($event.target as HTMLSelectElement).value)">
+                <option value="" disabled selected>Rattacher à…</option>
+                <option v-for="r in report.routes" :key="r.key" :value="r.key">{{ r.name }}</option>
+              </select>
+              <button type="button" class="sv-btn small" title="Cadeau ou rencontre fixe : ne compte pour aucune route" @click="assignLocation(u.location, '')">Pas une route</button>
+            </div>
+          </template>
           <template v-if="report.others.length">
             <h3 class="sv-section-title sub">Hors routes <Tip term="nuzlocke.others" /></h3>
             <div v-for="m in report.others" :key="m.key" class="mon-row" :class="{ dead: m.dead }">

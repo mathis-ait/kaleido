@@ -9,9 +9,10 @@ import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import BoxGrid from "./BoxGrid.vue";
 import JournalList from "./JournalList.vue";
+import NextBattleCard from "./NextBattle.vue";
 import NuzlockePanel from "./NuzlockePanel.vue";
 import TeamCard from "./TeamCard.vue";
-import { companion, initCompanion, monName, refresh, setAutoOpen, setCompact, setOnTop } from "./store";
+import { companion, initCompanion, monName, openInMain, refresh, setAutoOpen, setCompact, setOnTop } from "./store";
 
 /**
  * Compagnon de partie : fenêtre étroite (420 à 560 px) à côté de l'émulateur. Tout se met
@@ -149,6 +150,7 @@ const tabs = [
             <Segmented v-model="tab" :options="tabs" label="Affichage" />
 
             <NuzlockePanel v-if="tab === 'team'" :summary="state.nuzlocke" :can-track="state.canTrack" :place="state.place" />
+            <NextBattleCard v-if="tab === 'team' && state.nextBattle" :battle="state.nextBattle" />
             <ul v-if="tab === 'team'" class="team">
               <TeamCard v-for="m in snap.party" :key="m.uid" :mon="m" :open="openMon === m.uid" @toggle="openMon = openMon === m.uid ? null : m.uid" />
               <li v-if="!snap.party.length" class="none">
@@ -163,7 +165,18 @@ const tabs = [
 
       <footer v-if="state" class="foot">
         <Toggle v-if="state.key" :model-value="state.autoOpen" label="Ouvrir à chaque partie" term="companion.autoOpen" @update:model-value="setAutoOpen" />
-        <span class="dim ro"><Icon name="shield" :size="13" /> Lecture seule <Tip term="companion.readOnly" /></span>
+        <span class="edit">
+          <button
+            type="button"
+            class="sv-btn small"
+            :disabled="playing"
+            :title="playing ? 'Ferme d’abord l’émulateur : écrire pendant qu’il tourne ferait perdre une des deux versions' : 'Ouvre cette sauvegarde dans l’éditeur (copie de secours automatique)'"
+            @click="openInMain(null)"
+          >
+            <Icon name="pencil" :size="13" /> Modifier
+          </button>
+          <Tip term="companion.readOnly" />
+        </span>
       </footer>
     </template>
 
@@ -290,10 +303,9 @@ h1 {
   font-size: var(--fs-sm);
 }
 
-.ro {
+.edit {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
 }
 
 /* ---- Mode barre ---- */

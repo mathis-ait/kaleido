@@ -78,6 +78,21 @@ export interface NuzlockeSummary {
   next: { label: string; name: string; town: string; aceSpecies: number; aceLevel: number } | null;
   here: { key: string; name: string; status: "pending" | "caught" | "missed" | "dupeOnly"; capture: string | null; markedMissed: boolean } | null;
   warnings: { error: boolean; title: string; detail: string }[];
+  unassigned: number;
+}
+
+export interface NextBattle {
+  label: string;
+  name: string;
+  town: string;
+  trainerId: number;
+  team: {
+    species: number;
+    form: number;
+    name: string;
+    level: number;
+    counter: { name: string; species: number; verdict: "win" | "uncertain" | "lose" | "none"; moveName: string | null } | null;
+  }[];
 }
 
 export interface CompanionState {
@@ -97,6 +112,7 @@ export interface CompanionState {
   journal: JournalEntry[];
   nuzlocke: NuzlockeSummary | null;
   canTrack: boolean;
+  nextBattle: NextBattle | null;
 }
 
 /** Évènement discret affiché quelques secondes (nouvelle capture, montée de niveau…). */
@@ -183,6 +199,15 @@ export async function trackNuzlocke() {
 export async function markMissed(route: string, missed: boolean) {
   try {
     await invoke("companion_mark_missed", { route, missed });
+  } catch (e) {
+    notice(String(e));
+  }
+}
+
+/** Ouvre la sauvegarde dans la fenêtre principale : page Combat sur ce dresseur, ou l'éditeur. */
+export async function openInMain(trainer: number | null = null, page: string | null = null) {
+  try {
+    await invoke("companion_open_in_main", { trainer, page });
   } catch (e) {
     notice(String(e));
   }

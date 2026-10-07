@@ -21,6 +21,8 @@ export interface NuzState {
   alive: string[];
   /** Morts relevées par le compagnon de partie (clé → cause). */
   autoDead: Record<string, string>;
+  /** Lieux rattachés à la main (lieu → clé de route ; "" = pas une route). */
+  locationRoutes: Record<string, string>;
   badges: number | null;
 }
 
@@ -118,6 +120,8 @@ export interface NuzReport {
   party: NuzMon[];
   others: NuzMon[];
   violations: NuzViolation[];
+  /** Lieux de capture hors des routes, à rattacher une fois. */
+  unassigned: { location: number; name: string; count: number }[];
   rules: NuzRules;
   boxNames: string[];
 }

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import Icon from "../components/Icon.vue";
-import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
-import { markMissed, trackNuzlocke, type NuzlockeSummary } from "./store";
+import { markMissed, openInMain, trackNuzlocke, type NuzlockeSummary } from "./store";
 
 /** Suivi Nuzlocke dans le compagnon : où l'on est, la rencontre du lieu, le prochain champion, les alertes. */
 defineProps<{ summary: NuzlockeSummary | null; canTrack: boolean; place: string | null }>();
@@ -51,14 +50,11 @@ const STATUS = {
     </div>
     <p v-else-if="place" class="here dim"><Icon name="map" :size="14" /> {{ place }} : pas de rencontre sauvage ici</p>
 
-    <div v-if="summary.next" class="next">
-      <Sprite :id="summary.next.aceSpecies" :size="40" />
-      <span>
-        <span class="sv-label">Prochain combat</span>
-        <span><strong>{{ summary.next.name }}</strong> · {{ summary.next.label }}<template v-if="summary.next.town"> · {{ summary.next.town }}</template></span>
-        <small>Pokémon le plus fort : N. {{ summary.next.aceLevel }}</small>
-      </span>
-    </div>
+    <p v-if="summary.unassigned" class="here">
+      <span class="sv-chip warn">{{ summary.unassigned }} lieu{{ summary.unassigned > 1 ? "x" : "" }} à rattacher</span>
+      <button type="button" class="sv-btn small" @click="openInMain(null, 'nuzlocke')">Ouvrir le Nuzlocke</button>
+      <Tip term="nuzlocke.unassigned" />
+    </p>
 
     <ul v-if="summary.warnings.length" class="warnings">
       <li v-for="w in summary.warnings" :key="w.title" :class="w.error ? 'danger' : 'warn'" :title="w.detail">
@@ -125,17 +121,6 @@ small {
   font-weight: 700;
 }
 
-.next {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-md);
-}
-
-.next > span {
-  display: flex;
-  flex-direction: column;
-}
 
 .warnings {
   display: flex;

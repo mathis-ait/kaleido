@@ -90,6 +90,10 @@ pub struct RunState {
     /// Morts détectées par le compagnon de partie en comparant les sauvegardes
     /// (K.O. puis déposé en boîte ou relâché), avec leur cause.
     pub auto_dead: BTreeMap<String, String>,
+    /// Lieux rattachés à la main (identifiant de lieu de rencontre → clé de route) : étages de
+    /// grotte, Parc Safari, lieux sans rencontres de la ROM… Une clé vide = « pas une route »
+    /// (cadeau, rencontre fixe) : le lieu n'est plus proposé.
+    pub location_routes: BTreeMap<u16, String>,
     /// Nombre de badges forcé (sinon lu dans la sauvegarde).
     pub badges: Option<u8>,
 }
@@ -263,6 +267,16 @@ pub struct Graveyard {
     pub auto: bool,
 }
 
+/// Lieu de capture qui ne correspond à aucune route : à rattacher (ou confirmer) une fois.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Unassigned {
+    pub location: u16,
+    pub name: String,
+    /// Pokémon capturés là.
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
@@ -280,6 +294,8 @@ pub struct Report {
     /// Pokémon obtenus hors des routes (starter, œufs, échanges, cadeaux).
     pub others: Vec<MonView>,
     pub violations: Vec<Violation>,
+    /// Lieux de capture à rattacher à une route.
+    pub unassigned: Vec<Unassigned>,
     pub rules: Rules,
     pub box_names: Vec<String>,
 }
@@ -423,6 +439,15 @@ fn compute(
             Origin::Event
         } else if starter_families.contains(&family) && m.view.met_level <= 5 {
             Origin::Starter
+        } else if let Some(key) = state.location_routes.get(&m.view.met_location) {
+            // Choix de l'utilisateur, prioritaire sur le regroupement par nom de lieu.
+            match rom.routes.iter().find(|r| &r.key == key) {
+                Some(r) => {
+                    m.view.route = Some(r.key.clone());
+                    Origin::Route
+                }
+                None => Origin::Gift,
+            }
         } else if let Some(&r) = route_of.get(&m.view.met_location) {
             m.view.route = Some(rom.routes[r].key.clone());
             Origin::Route
@@ -627,6 +652,17 @@ fn compute(
         level_cap,
     };
     violations.sort_by_key(|v| v.severity as u8);
+    let mut unassigned: Vec<Unassigned> = Vec::new();
+    for m in mons.iter().filter(|m| m.view.origin == Origin::Gift && m.view.met_location != 0 && !state.location_routes.contains_key(&m.view.met_location)) {
+        match unassigned.iter_mut().find(|u| u.location == m.view.met_location) {
+            Some(u) => u.count += 1,
+            None => unassigned.push(Unassigned {
+                location: m.view.met_location,
+                name: m.view.met_location_name.clone().unwrap_or_else(|| format!("Lieu n°{}", m.view.met_location)),
+                count: 1,
+            }),
+        }
+    }
     Report {
         game: rom.game,
         game_name: rom.game.name_fr(),
@@ -639,6 +675,7 @@ fn compute(
         party: mons.iter().filter(|m| m.in_party).map(|m| m.view.clone()).collect(),
         others: mons.iter().filter(|m| m.view.origin != Origin::Route).map(|m| m.view.clone()).collect(),
         violations,
+        unassigned,
         rules: rules.clone(),
         box_names: box_names.to_vec(),
     }

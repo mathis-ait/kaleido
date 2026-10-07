@@ -28,6 +28,7 @@ if (!isCompanion) {
   setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
   initUpdates();
   initGamepadNav();
+  void import("./companion/bridge").then((m) => m.initCompanionBridge());
 }
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).

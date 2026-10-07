@@ -369,3 +369,26 @@ fn mort_detectee_par_le_compagnon() {
     let r = report(&test_rom(), &s, &state).unwrap();
     assert!(!r.party.iter().find(|m| m.key == STARTER).unwrap().dead);
 }
+
+#[test]
+fn lieu_rattache_a_la_main() {
+    let mut s = scenario();
+    // Un Pokémon capturé au Mont Couronné (lieu 50), absent des routes de la ROM de test.
+    s.save.set_box_slot(0, 7, Some(caught(66, 0x1234_5607, 50, 12, 7, Some("Muscle")))).unwrap();
+    let mut state = RunState::default();
+    let r = report(&test_rom(), &s, &state).unwrap();
+    assert_eq!(r.unassigned.iter().map(|u| (u.location, u.count)).collect::<Vec<_>>(), vec![(50, 1)]);
+
+    // Rattaché à la Route 203 : il en devient la capture.
+    state.location_routes.insert(50, "Route 203".into());
+    let r = report(&test_rom(), &s, &state).unwrap();
+    assert!(r.unassigned.is_empty());
+    let r203 = r.routes.iter().find(|x| x.key == "Route 203").unwrap();
+    assert_eq!(r203.capture.as_ref().map(|m| m.species), Some(66));
+
+    // « Pas une route » : ni capture, ni question.
+    state.location_routes.insert(50, String::new());
+    let r = report(&test_rom(), &s, &state).unwrap();
+    assert!(r.unassigned.is_empty());
+    assert!(r.routes.iter().find(|x| x.key == "Route 203").unwrap().capture.is_none());
+}
