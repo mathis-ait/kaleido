@@ -354,10 +354,14 @@ fn seconde_copie_reutilisee_par_l_adversaire_ignoree() {
     // SoulSilver : pendant un combat, l'emplacement de la seconde copie de l'équipe reçoit
     // l'équipe adverse. Le compagnon ne doit pas y voir une évolution de notre Pokémon.
     let mut src = ss();
-    let (mut reader, _) = ss_party(&src);
+    let base = scan::find_ds_ram(&src).unwrap().base;
+    let saved = ss_party(&src).1;
+    // Seconde copie de notre équipe, présente avant le combat.
+    put_our_copy(&mut src, base + FIGHT, saved, 1);
+    let mut reader = attach(&src, ss_hints());
     let before = reader.tick(&src).unwrap().unwrap().party[0].species();
-    let other = reader.party_addresses()[1];
-    put_enemy(&mut src, other - 8, 10, 0x0BAD_CAFE, (0x6E14, 0xF0CC));
+    assert!(reader.party_addresses().contains(&(base + FIGHT + 8)), "seconde copie suivie");
+    put_enemy(&mut src, base + FIGHT, 10, 0x0BAD_CAFE, (0x6E14, 0xF0CC));
     for _ in 0..3 {
         if let Some(r) = reader.tick(&src).unwrap() {
             assert_eq!(r.party[0].species(), before, "notre équipe reste la nôtre");
