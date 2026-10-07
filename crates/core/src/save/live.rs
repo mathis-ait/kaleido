@@ -67,7 +67,9 @@ pub struct LiveMon {
     pub ability_name: String,
     pub nature_name: &'static str,
     pub move_names: Vec<String>,
+    pub met_location: u16,
     pub met_location_name: Option<String>,
+    pub pid: u32,
     /// Identifiant stable du Pokémon (PID + constante de chiffrement), pour suivre un même
     /// Pokémon d'une sauvegarde à l'autre.
     pub uid: String,
@@ -85,6 +87,8 @@ pub struct LiveBoxMon {
     pub is_egg: bool,
     pub shiny: bool,
     pub level: u8,
+    pub met_location: u16,
+    pub pid: u32,
     pub uid: String,
 }
 
@@ -106,6 +110,8 @@ pub struct LiveSnapshot {
     pub play_time: PlayTime,
     /// Badges obtenus (Gen 4-6) ou épreuves des îles terminées (Gen 7).
     pub badges: Option<u8>,
+    /// Carte (Gen 4-5) ou zone (Gen 6-7) de la dernière sauvegarde, à traduire avec la ROM.
+    pub map: u16,
     pub party: Vec<LiveMon>,
     pub boxes: Vec<LiveBox>,
 }
@@ -137,6 +143,8 @@ fn live_mon(game: Game, slot: Slot, p: &Pokemon) -> LiveMon {
         ability_name: v.ability_name,
         nature_name: v.summary.nature_name,
         move_names: v.move_names,
+        met_location: v.details.met_location,
+        pid: v.summary.pid,
         met_location_name: v.met_location_name,
         uid: uid(p),
         species_name: v.species_name,
@@ -168,6 +176,8 @@ impl SaveSession {
                         is_egg: sum.is_egg,
                         shiny: sum.shiny,
                         level: sum.level,
+                        met_location: p.met_location(),
+                        pid: sum.pid,
                         uid: uid(&p),
                     });
                 }
@@ -183,6 +193,7 @@ impl SaveSession {
             play_time: trainer.play_time,
             trainer,
             badges: s.badges(),
+            map: s.current_map(),
             party,
             boxes,
         })

@@ -53,6 +53,8 @@ pub(super) struct Consts {
     /// Sac, relatif au bloc général (`PlayerBag4*.BaseOffset` de PKHeX).
     bag: usize,
     pub(super) dex: usize,
+    /// Carte actuelle, relative au bloc général.
+    map: usize,
     hgss: bool,
 }
 
@@ -69,6 +71,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             party: 0x98,
             bag: 0x624,
             dex: 0x12DC,
+            map: 0x1238,
             hgss: false,
         },
         SaveVersion::Platinum => Consts {
@@ -80,6 +83,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             party: 0xA0,
             bag: 0x630,
             dex: 0x1328,
+            map: 0x1280,
             hgss: false,
         },
         _ => Consts {
@@ -91,6 +95,7 @@ pub(super) fn consts(version: SaveVersion) -> Consts {
             party: 0x98,
             bag: 0x644,
             dex: 0x12B8,
+            map: 0x1234,
             hgss: true,
         },
     }
@@ -216,6 +221,8 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
         box_name_max: BOX_NAME_BYTES / 2 - 1,
         items: general + c.bag,
         dex: general + c.dex,
+        // Vérifié : PKHeX SAV4DP.cs / SAV4Pt.cs / SAV4HGSS.cs (`M` = u16 en General[0x1238 / 0x1280 / 0x1234]).
+        map: general + c.map,
         checks: Checks::Gen4(Gen4Checks {
             blocks: vec![
                 FooterBlock { name: "bloc général", start: general, size: c.general_size, footer: c.footer },

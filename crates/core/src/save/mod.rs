@@ -22,6 +22,7 @@
 
 pub mod checksum;
 pub mod convert;
+pub mod diff;
 pub mod edit;
 mod gen4;
 mod gen5;
@@ -209,6 +210,8 @@ struct Layout {
     items: usize,
     /// Début des données du Pokédex (voir [`pokedex`]).
     dex: usize,
+    /// Numéro (`u16`) de la carte où le joueur a sauvegardé.
+    map: usize,
     checks: Checks,
 }
 
@@ -357,6 +360,12 @@ impl SaveFile {
     /// Gen 6 : PKHeX `Misc6XY` / `Misc6AO` `Badges = Data[0xC]` (argent en 0x8).
     /// Gen 7 : pas de badges ; renvoie les îles terminées (bits 0-3), tampons 1 à 4 de
     /// PKHeX `Misc7.Stamps` (`u32` en Misc + 0x8, argent en Misc + 0x4, tampons à partir du bit 4).
+    /// Carte (Gen 4-5) ou zone (Gen 6-7) où le joueur se trouvait en sauvegardant :
+    /// numéro à traduire en lieu avec les en-têtes de cartes de la ROM.
+    pub fn current_map(&self) -> u16 {
+        rd_u16(&self.data, self.layout.map)
+    }
+
     pub fn badges(&self) -> Option<u8> {
         if self.generation() == 7 {
             let at = self.layout.trainer.money + 4;

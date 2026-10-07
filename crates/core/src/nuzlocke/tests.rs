@@ -174,6 +174,7 @@ fn test_rom() -> RomInfo {
         starters: vec![387, 390, 393],
         family,
         seed: Some(42),
+        map_locations: Vec::new(),
     }
 }
 
@@ -246,8 +247,8 @@ fn report_on_synthetic_save() {
     // Le starter (rencontré au niveau 5 sur la Route 201) ne compte pas comme capture.
     let starter = r.party.iter().find(|m| m.key == STARTER).unwrap();
     assert_eq!(starter.origin, Origin::Starter);
-    assert!(starter.dead);
-    assert_eq!(starter.death_cause.as_deref(), Some("K.O. dans l'équipe"));
+    // K.O. dans l'équipe : avertissement seulement, il n'est mort qu'une fois déposé (voir le compagnon).
+    assert!(!starter.dead && starter.fainted);
 
     // Route 202 : Étourvol est un doublon (famille d'Étourmi), Lixy compte ensuite.
     let r202 = route("Route 202");
@@ -263,18 +264,19 @@ fn report_on_synthetic_save() {
     assert_eq!(r.graveyard_box.as_ref().map(|g| (g.index, g.auto)), Some((1, true)));
 
     assert_eq!(r.stats.captures, 3);
-    assert_eq!(r.stats.dead, 2);
+    assert_eq!(r.stats.dead, 1);
     assert_eq!(r.stats.routes_caught, 3);
     assert_eq!(r.stats.routes_missed, 1);
     assert_eq!(r.stats.badges, 0);
     assert_eq!(r.stats.level_cap, Some(14));
     assert_eq!(r.seed, Some(42));
-    assert_eq!(r.graveyard.len(), 2);
+    assert_eq!(r.graveyard.len(), 1);
 
     let rules: Vec<(&str, Option<&str>)> = r.violations.iter().map(|v| (v.rule, v.mon.as_deref())).collect();
     assert!(rules.contains(&("levelCap", Some("12345602"))), "{rules:?}"); // Étourvol N. 20 > 14
     assert!(!rules.contains(&("levelCap", Some("12345603")))); // Lixy N. 10
-    assert!(rules.contains(&("dead", Some(STARTER))));
+    assert!(rules.contains(&("fainted", Some(STARTER))));
+    assert!(!rules.contains(&("dead", Some(STARTER))));
     assert!(rules.contains(&("onePerRoute", Some("12345605"))));
     assert!(rules.contains(&("nickname", Some("12345606")))); // Racaillou sans surnom
     assert!(rules.contains(&("dupes", Some("12345602"))));
@@ -350,4 +352,20 @@ fn state_file_roundtrip() {
     assert_eq!(old.badges, Some(3));
     assert!(old.rules.dupes_clause);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn mort_detectee_par_le_compagnon() {
+    let s = scenario();
+    let mut state = RunState::default();
+    // Le compagnon a vu le starter K.O. passer en boîte : mort.
+    state.auto_dead.insert(STARTER.into(), "K.O. puis déposé en boîte".into());
+    let r = report(&test_rom(), &s, &state).unwrap();
+    let starter = r.party.iter().find(|m| m.key == STARTER).unwrap();
+    assert!(starter.dead && !starter.fainted);
+    assert_eq!(starter.death_cause.as_deref(), Some("K.O. puis déposé en boîte"));
+    // Marqué vivant à la main : la décision manuelle l'emporte.
+    state.alive.insert(STARTER.into());
+    let r = report(&test_rom(), &s, &state).unwrap();
+    assert!(!r.party.iter().find(|m| m.key == STARTER).unwrap().dead);
 }

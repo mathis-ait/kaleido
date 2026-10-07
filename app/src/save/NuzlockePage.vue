@@ -421,6 +421,7 @@ useShell(() => ({
                 <template v-if="report.stats.levelCap && m.level > report.stats.levelCap && state.rules.levelCaps"> · au-dessus du maximum</template>
                 · {{ m.route ?? ORIGIN_LABEL[m.origin] }}
                 <template v-if="m.deathCause"> · {{ m.deathCause }}</template>
+                <template v-else-if="m.fainted"> · K.O. : à déposer en boîte</template>
               </small>
             </span>
             <button v-if="!m.dead" type="button" class="sv-btn small danger" @click="setDead(m, true)">Marquer mort</button>

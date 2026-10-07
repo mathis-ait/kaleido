@@ -109,12 +109,29 @@ pub struct RomInfo {
     pub family: Vec<u16>,
     /// Seed Kaleido si la ROM a été randomisée par Kaleido.
     pub seed: Option<u64>,
+    /// Lieu (identifiant de nom de lieu, comme le lieu de rencontre) de chaque carte ou zone,
+    /// index = numéro de carte enregistré dans la sauvegarde (voir `SaveFile::current_map`).
+    #[serde(skip)]
+    pub map_locations: Vec<u16>,
 }
+
+/// En-tête de carte : fichier de rencontres sauvages (s'il y en a) et lieu.
+type MapEntry = (Option<u16>, u16);
 
 impl RomInfo {
     /// Espèce de base de la famille (l'espèce elle-même si inconnue).
     pub fn family_of(&self, species: u16) -> u16 {
         self.family.get(species as usize).copied().filter(|&f| f != 0).unwrap_or(species)
+    }
+
+    /// Lieu de la carte `map` (numéro lu dans la sauvegarde).
+    pub fn location_of_map(&self, map: u16) -> Option<u16> {
+        self.map_locations.get(map as usize).copied()
+    }
+
+    /// Route Nuzlocke qui regroupe ce lieu.
+    pub fn route_of_location(&self, location: u16) -> Option<&Route> {
+        self.routes.iter().find(|r| r.location_ids.contains(&location))
     }
 
     pub fn supports(game: Game) -> bool {
@@ -165,20 +182,22 @@ pub fn read(game: &GameRom) -> Result<RomInfo, RomError> {
     };
     let place_names = game.text_file(names_text)?;
     let enc = game.narc(paths.encounters)?;
-    let zones = match g {
+    let maps = match g {
         Game::Platinum => platinum_zones(game, enc.files.len(), place_names.len())?,
         Game::Black2 | Game::White2 => b2w2_zones(game)?,
         Game::Diamond | Game::Pearl => diamond_pearl_zones(game, enc.files.len(), place_names.len())?,
         Game::HeartGold | Game::SoulSilver => hgss_zones(game, enc.files.len(), place_names.len())?,
         _ => bw_zones(game)?,
     };
+    let zones: Vec<(u16, u16)> = maps.iter().filter_map(|&(wild, location)| wild.map(|w| (w, location))).collect();
+    let map_locations = maps.iter().map(|&(_, location)| location).collect();
     let french = game.rom().header().region() == Some('F');
     let routes = group_routes(g, &zones, &enc.files, &place_names, french);
 
     let leaders = read_leaders(game, &paths)?;
     let starters = starters::read(game, paths.starters).map(|s| s.to_vec()).unwrap_or_default();
     let family = read_families(game, &paths).unwrap_or_default();
-    Ok(RomInfo { game: g, routes, leaders, starters, family, seed: None })
+    Ok(RomInfo { game: g, routes, leaders, starters, family, seed: None, map_locations })
 }
 
 const PT_HEADER_SIZE: usize = 24;
@@ -200,7 +219,7 @@ fn platinum_table_ok(arm9: &[u8], at: usize, enc_count: usize, name_count: usize
 }
 
 /// (fichier de rencontres, identifiant de lieu) pour chaque carte de Platine.
-fn platinum_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<(u16, u16)>, RomError> {
+fn platinum_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<MapEntry>, RomError> {
     let arm9 = game.rom().arm9_decompressed()?;
     let at = if platinum_table_ok(&arm9, PT_HEADER_OFFSET, enc_count, name_count) {
         PT_HEADER_OFFSET
@@ -215,9 +234,9 @@ fn platinum_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result
         .as_chunks::<PT_HEADER_SIZE>()
         .0
         .iter()
-        .filter_map(|e| {
+        .map(|e| {
             let wild = u16::from_le_bytes([e[0x0E], e[0x0F]]);
-            (wild != 0xFFFF).then_some((wild, e[0x12] as u16))
+            ((wild != 0xFFFF).then_some(wild), e[0x12] as u16)
         })
         .collect())
 }
@@ -228,7 +247,7 @@ fn gen4_header_count(game: &GameRom) -> Result<usize, RomError> {
 }
 
 /// Diamant / Perle : comme Platine, nom du lieu sur 16 bits (`MapTableNameIndexSize=2`).
-fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<(u16, u16)>, RomError> {
+fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<MapEntry>, RomError> {
     let arm9 = game.rom().arm9_decompressed()?;
     let count = gen4_header_count(game)?;
     let rd = |e: &[u8], i: usize| u16::from_le_bytes([e[i], e[i + 1]]);
@@ -266,15 +285,15 @@ fn diamond_pearl_zones(game: &GameRom, enc_count: usize, name_count: usize) -> R
         .as_chunks::<PT_HEADER_SIZE>()
         .0
         .iter()
-        .filter_map(|e| {
+        .map(|e| {
             let wild = rd(e, 0x0E);
-            (wild != 0xFFFF).then_some((wild, rd(e, 0x12)))
+            ((wild != 0xFFFF).then_some(wild), rd(e, 0x12))
         })
         .collect())
 }
 
 /// HeartGold / SoulSilver : rencontres sur un octet en tête d'en-tête.
-fn hgss_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<(u16, u16)>, RomError> {
+fn hgss_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec<MapEntry>, RomError> {
     let arm9 = game.rom().arm9_decompressed()?;
     let count = gen4_header_count(game)?;
     // UPR-ZX `MapTableARM9Offset` selon le code du jeu.
@@ -296,21 +315,21 @@ fn hgss_zones(game: &GameRom, enc_count: usize, name_count: usize) -> Result<Vec
     if !ok {
         return Err(RomError::Layout("table des cartes de HeartGold / SoulSilver inattendue".into()));
     }
-    Ok(headers.iter().filter(|e| e[0] != 0xFF).map(|e| (e[0] as u16, e[0x12] as u16)).collect())
+    Ok(headers.iter().map(|e| ((e[0] != 0xFF).then_some(e[0] as u16), e[0x12] as u16)).collect())
 }
 
 const BW_HEADERS: &str = "a/0/1/2";
 const BW_HEADER_SIZE: usize = 48;
 
-fn bw_zones(game: &GameRom) -> Result<Vec<(u16, u16)>, RomError> {
+fn bw_zones(game: &GameRom) -> Result<Vec<MapEntry>, RomError> {
     let narc = game.narc(BW_HEADERS)?;
     let d = narc.files.first().ok_or_else(|| RomError::Layout("en-têtes de cartes absents".into()))?;
     Ok(d.as_chunks::<BW_HEADER_SIZE>()
         .0
         .iter()
-        .filter_map(|e| {
+        .map(|e| {
             let wild = u16::from_le_bytes([e[0x14], e[0x15]]);
-            (wild != 0xFFFF).then_some((wild, e[0x1A] as u16))
+            ((wild != 0xFFFF).then_some(wild), e[0x1A] as u16)
         })
         .collect())
 }
@@ -319,10 +338,10 @@ fn bw_zones(game: &GameRom) -> Result<Vec<(u16, u16)>, RomError> {
 /// fichier de rencontres est un u8 en +0x14 (0xFF = aucun ; l'octet suivant porte des
 /// drapeaux), comme dans `loadWildMapNames` de l'UPR. Nom du lieu = u8 en +0x1A, index
 /// dans le fichier de textes 109. Vérifié sur Noire 2 (Route 19 = 124, Route 20 = 125…).
-fn b2w2_zones(game: &GameRom) -> Result<Vec<(u16, u16)>, RomError> {
+fn b2w2_zones(game: &GameRom) -> Result<Vec<MapEntry>, RomError> {
     let narc = game.narc(BW_HEADERS)?;
     let d = narc.files.first().ok_or_else(|| RomError::Layout("en-têtes de cartes absents".into()))?;
-    Ok(d.as_chunks::<BW_HEADER_SIZE>().0.iter().filter(|e| e[0x14] != 0xFF).map(|e| (e[0x14] as u16, e[0x1A] as u16)).collect())
+    Ok(d.as_chunks::<BW_HEADER_SIZE>().0.iter().map(|e| ((e[0x14] != 0xFF).then_some(e[0x14] as u16), e[0x1A] as u16)).collect())
 }
 
 /// Nom français d'un lieu : texte de la ROM si elle est française, sinon liste de

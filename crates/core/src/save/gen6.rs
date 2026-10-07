@@ -154,6 +154,8 @@ pub(super) struct CtrOffsets {
     pub(super) language: usize,
     /// Bloc du Pokédex (début, taille).
     pub(super) dex: (usize, usize),
+    /// Zone actuelle (`u16`), dans le bloc « Situation ».
+    pub(super) map: usize,
 }
 
 /// Construit la disposition 3DS et vérifie que chaque zone tombe dans un bloc.
@@ -205,6 +207,7 @@ pub(super) fn ctr_layout(format: PkmFormat, data: &[u8], o: &CtrOffsets, gen7: b
         box_name_max: BOX_NAME_BYTES / 2 - 1,
         items: o.items,
         dex: o.dex.0,
+        map: o.map,
         checks: Checks::Ctr { blocks, gen7 },
     };
     Ok((layout, warnings))
@@ -231,6 +234,8 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
         items_len: if version == SaveVersion::XY { 0xB88 } else { 0xB90 },
         language: 0x14000 + 0x2D,
         dex: (0x15000, if version == SaveVersion::XY { 0x6A0 } else { 0x11CC }),
+        // Vérifié : PKHeX SaveBlockAccessor6XY/AO (bloc 4 « Situation » en 0x1400), Situation6.cs (`M` en +2).
+        map: 0x1402,
     }
 }
 

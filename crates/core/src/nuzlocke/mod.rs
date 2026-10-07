@@ -18,7 +18,7 @@ pub mod rom_ctr;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -87,6 +87,9 @@ pub struct RunState {
     pub dead: BTreeSet<String>,
     /// Pokémon déclarés vivants malgré des PV à 0 ou leur place au cimetière.
     pub alive: BTreeSet<String>,
+    /// Morts détectées par le compagnon de partie en comparant les sauvegardes
+    /// (K.O. puis déposé en boîte ou relâché), avec leur cause.
+    pub auto_dead: BTreeMap<String, String>,
     /// Nombre de badges forcé (sinon lu dans la sauvegarde).
     pub badges: Option<u8>,
 }
@@ -162,8 +165,12 @@ pub struct MonView {
     pub route: Option<String>,
     pub catch: Option<CatchKind>,
     pub dead: bool,
-    /// Pourquoi il est compté mort : « K.O. dans l'équipe », « Cimetière », « Marqué à la main ».
+    /// Pourquoi il est compté mort : « Rangé au cimetière », « Marqué mort à la main », ou la
+    /// cause relevée par le compagnon (« K.O. puis déposé en boîte »…).
     pub death_cause: Option<String>,
+    /// K.O. dans l'équipe mais pas encore compté mort : un Rappel peut encore le sauver,
+    /// il le sera s'il est déposé en boîte ou relâché dans cet état.
+    pub fainted: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -352,6 +359,7 @@ fn read_mons(session: &SaveSession, box_names: &[String]) -> Result<Vec<Mon>, Sa
                 catch: None,
                 dead: false,
                 death_cause: None,
+                fainted: false,
             },
             is_egg: s.is_egg,
             egg_location: d.egg_location,
@@ -427,15 +435,17 @@ fn compute(
             None
         } else if state.dead.contains(key) {
             Some("Marqué mort à la main")
+        } else if let Some(c) = state.auto_dead.get(key) {
+            Some(c.as_str())
         } else if graveyard_box.as_ref().is_some_and(|g| m.box_index == Some(g.index)) {
             Some("Rangé au cimetière")
-        } else if m.in_party && m.hp == Some(0) {
-            Some("K.O. dans l'équipe")
         } else {
             None
         };
         m.view.dead = cause.is_some();
         m.view.death_cause = cause.map(str::to_string);
+        // Décision du mode Nuzlocke automatique : un K.O. en équipe n'est qu'un avertissement.
+        m.view.fainted = !m.view.dead && m.in_party && m.hp == Some(0) && !state.alive.contains(key);
     }
 
     // --- Captures par route, dans l'ordre chronologique.
@@ -496,22 +506,31 @@ fn compute(
     let mut push = |severity, rule, title: String, detail: String, m: &MonView| {
         violations.push(Violation { severity, rule, title, detail, mon: Some(m.key.clone()), route: m.route.clone() })
     };
-    let name = |m: &MonView| if m.is_nicknamed { format!("{} ({})", m.nickname, m.species_name) } else { m.species_name.clone() };
+    let name = |m: &MonView| {
+        if m.is_nicknamed && m.nickname != m.species_name {
+            format!("{} ({})", m.nickname, m.species_name)
+        } else {
+            m.species_name.clone()
+        }
+    };
     let cap_leader = current.first().map(|&i| &rom.leaders[i]);
     for m in &mons {
         let v = &m.view;
         if m.in_party && v.dead {
-            let manual = state.dead.contains(&v.key);
             push(
-                if manual { Severity::Error } else { Severity::Warning },
+                Severity::Error,
                 "dead",
                 format!("{} est mort mais encore dans l'équipe", name(v)),
-                if manual {
-                    "Un Pokémon mort ne doit plus combattre : range-le dans le cimetière.".into()
-                } else {
-                    "Ses PV sont à 0 : en Nuzlocke, un Pokémon K.O. est mort. Range-le dans le cimetière (ou marque-le vivant si c'est une erreur)."
-                        .into()
-                },
+                "Un Pokémon mort ne doit plus combattre : range-le dans le cimetière.".into(),
+                v,
+            );
+        }
+        if v.fainted {
+            push(
+                Severity::Warning,
+                "fainted",
+                format!("{} est K.O. : à déposer en boîte", name(v)),
+                "En Nuzlocke, un Pokémon K.O. est perdu. Dépose-le dans une boîte : Kaleido le comptera mort à la sauvegarde suivante. S'il a été ranimé par erreur avec un Rappel, marque-le vivant.".into(),
                 v,
             );
         }

@@ -53,8 +53,31 @@ export interface LiveSnapshot {
   trainer: { name: string; displayId: number };
   playTime: PlayTimeView;
   badges: number | null;
+  map: number;
   party: LiveMon[];
   boxes: { name: string; mons: LiveBoxMon[] }[];
+}
+
+export interface JournalEntry {
+  at: number;
+  playSeconds: number;
+  place: string | null;
+  kind: "caught" | "hatched" | "evolved" | "levelUp" | "fainted" | "revived" | "died" | "gone" | "badge";
+  text: string;
+  key: string | null;
+  species: number | null;
+}
+
+export interface NuzlockeSummary {
+  captures: number;
+  routes: number;
+  routesCaught: number;
+  alive: number;
+  dead: number;
+  levelCap: number | null;
+  next: { label: string; name: string; town: string; aceSpecies: number; aceLevel: number } | null;
+  here: { key: string; name: string; status: "pending" | "caught" | "missed" | "dupeOnly"; capture: string | null; markedMissed: boolean } | null;
+  warnings: { error: boolean; title: string; detail: string }[];
 }
 
 export interface CompanionState {
@@ -67,6 +90,13 @@ export interface CompanionState {
   error: string | null;
   onTop: boolean;
   autoOpen: boolean;
+  /** Lieu de la dernière sauvegarde (quand la ROM est connue). */
+  place: string | null;
+  /** Nouveautés depuis la lecture précédente. */
+  events: string[];
+  journal: JournalEntry[];
+  nuzlocke: NuzlockeSummary | null;
+  canTrack: boolean;
 }
 
 /** Évènement discret affiché quelques secondes (nouvelle capture, montée de niveau…). */
@@ -98,33 +128,12 @@ function notice(text: string) {
 
 export const monName = (m: { nickname: string; speciesName: string; isEgg: boolean }) => (m.isEgg ? "Œuf" : m.nickname || m.speciesName);
 
-/** Ce qui a changé entre deux sauvegardes, en phrases courtes (le journal complet viendra avec le suivi Nuzlocke). */
-export function changes(before: LiveSnapshot, after: LiveSnapshot): string[] {
-  const out: string[] = [];
-  const all = (s: LiveSnapshot) => [...s.party, ...s.boxes.flatMap((b) => b.mons)];
-  const old = new Map(all(before).map((m) => [m.uid, m]));
-  for (const m of all(after)) {
-    const prev = old.get(m.uid);
-    if (!prev) out.push(m.isEgg ? "Nouvel œuf" : `Nouveau Pokémon : ${monName(m)} (N. ${m.level})`);
-    else if (prev.isEgg && !m.isEgg) out.push(`${m.speciesName} est sorti de l'œuf`);
-    else if (prev.species !== m.species) out.push(`${prev.speciesName} a évolué en ${m.speciesName}`);
-    else if (m.level > prev.level && after.party.some((p) => p.uid === m.uid)) out.push(`${monName(m)} passe au N. ${m.level}`);
-  }
-  if ((after.badges ?? 0) !== (before.badges ?? 0) && after.badges !== null) {
-    const count = (b: number) => [...b.toString(2)].filter((c) => c === "1").length;
-    const n = count(after.badges) - count(before.badges ?? 0);
-    if (n > 0) out.push(after.generation === 7 ? "Nouvelle épreuve terminée" : "Nouveau badge !");
-  }
-  return out;
-}
-
 function apply(s: CompanionState | null, announce: boolean) {
   companion.state = s;
   companion.loaded = true;
   if (!s?.snapshot) return;
-  if (announce && companion.snapshot) {
-    const found = changes(companion.snapshot, s.snapshot);
-    if (found.length) found.slice(0, 4).forEach(notice);
+  if (announce) {
+    if (s.events.length) s.events.slice(0, 4).forEach(notice);
     else notice("Sauvegarde lue");
   }
   companion.snapshot = s.snapshot;
@@ -159,4 +168,22 @@ export function initCompanion() {
     .then((r) => (companion.running = r))
     .catch(() => undefined);
   listen<string[]>("emulators-running", (e) => (companion.running = e.payload)).catch(() => undefined);
+}
+
+/** Active le suivi Nuzlocke avec la ROM lancée (règles par défaut, modifiables dans l'éditeur). */
+export async function trackNuzlocke() {
+  try {
+    await invoke("companion_track_nuzlocke");
+  } catch (e) {
+    notice(String(e));
+  }
+}
+
+/** « Rencontre ratée ici » : fuite ou K.O. du sauvage, rien de visible dans la sauvegarde. */
+export async function markMissed(route: string, missed: boolean) {
+  try {
+    await invoke("companion_mark_missed", { route, missed });
+  } catch (e) {
+    notice(String(e));
+  }
 }

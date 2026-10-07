@@ -9,11 +9,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 
+use kaleido_core::dex;
+use kaleido_core::nuzlocke::{self, RouteStatus, Severity};
+use kaleido_core::save::diff::{diff, Brief, DeathKind, GameEvent};
 use kaleido_core::save::session::{LiveSnapshot, SaveSession};
+use kaleido_core::save::SaveError;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::play::FileWatch;
+use crate::runlog;
 
 const LABEL: &str = "companion";
 /// Relevé plus serré que pour l'éditeur : la sauvegarde doit apparaître en moins de 2 s.
@@ -58,16 +63,72 @@ fn save_config(app: &AppHandle, c: &CompanionConfig) -> Result<(), String> {
     fs::write(path, serde_json::to_vec_pretty(c).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
-/// Partie suivie par le compagnon.
-struct Session {
+/// Partie suivie : sauvegarde, nom du jeu, clé de la bibliothèque, ROM lancée.
+#[derive(Clone)]
+struct Target {
     path: PathBuf,
     title: String,
     key: Option<String>,
+    /// ROM lancée depuis la bibliothèque : sert à nommer le lieu et à proposer le suivi Nuzlocke.
+    rom: Option<PathBuf>,
+}
+
+struct Session {
+    target: Target,
     _watch: FileWatch,
 }
 
 #[derive(Default)]
 pub struct Companion(Mutex<Option<Session>>);
+
+/// Une lecture à la fois : la surveillance et l'interface peuvent demander l'état en même temps,
+/// et chaque lecture compare à la précédente puis l'enregistre.
+static INGEST: Mutex<()> = Mutex::new(());
+
+/// Prochain champion (ou Conseil 4) et son Pokémon le plus fort.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextLeader {
+    label: String,
+    name: String,
+    town: String,
+    ace_species: u16,
+    ace_level: u8,
+}
+
+/// Route Nuzlocke du lieu de la sauvegarde.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteHere {
+    key: String,
+    name: String,
+    status: RouteStatus,
+    capture: Option<String>,
+    marked_missed: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Warning {
+    error: bool,
+    title: String,
+    detail: String,
+}
+
+/// Résumé du suivi Nuzlocke pour le compagnon.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NuzlockeSummary {
+    captures: usize,
+    routes: usize,
+    routes_caught: usize,
+    alive: usize,
+    dead: usize,
+    level_cap: Option<u8>,
+    next: Option<NextLeader>,
+    here: Option<RouteHere>,
+    warnings: Vec<Warning>,
+}
 
 /// Ce que reçoit la fenêtre du compagnon.
 #[derive(Clone, Serialize)]
@@ -85,6 +146,15 @@ pub struct CompanionState {
     error: Option<String>,
     on_top: bool,
     auto_open: bool,
+    /// Lieu de la dernière sauvegarde (avec la ROM).
+    place: Option<String>,
+    /// Nouveautés depuis la lecture précédente, à annoncer.
+    events: Vec<String>,
+    /// Journal de partie, du plus récent au plus ancien (100 dernières entrées).
+    journal: Vec<runlog::JournalEntry>,
+    nuzlocke: Option<NuzlockeSummary>,
+    /// ROM connue et compatible, mais suivi Nuzlocke pas encore activé.
+    can_track: bool,
 }
 
 fn modified_ms(path: &Path) -> Option<u64> {
@@ -92,42 +162,180 @@ fn modified_ms(path: &Path) -> Option<u64> {
     Some(t.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64)
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// Message clair pour les sauvegardes qu'on ne peut pas lire.
+fn friendly(e: SaveError) -> String {
+    match e {
+        SaveError::MissingBeef => "aucune partie enregistrée dans ce fichier pour l'instant".into(),
+        e => e.to_string(),
+    }
+}
+
 /// Lit la sauvegarde ; si elle est illisible (émulateur en pleine écriture), relit un peu plus tard.
-fn read_snapshot(path: &Path) -> Result<LiveSnapshot, String> {
+fn read_save(path: &Path) -> Result<(SaveSession, LiveSnapshot), String> {
     let mut last = String::new();
     for attempt in 0..=RETRIES {
         if attempt > 0 {
             std::thread::sleep(RETRY);
         }
-        match fs::read(path).map_err(|e| e.to_string()).and_then(|b| SaveSession::open(&b).and_then(|s| s.live()).map_err(|e| e.to_string())) {
-            Ok(s) => return Ok(s),
+        let read = fs::read(path).map_err(|e| e.to_string()).and_then(|b| {
+            let session = SaveSession::open(&b).map_err(friendly)?;
+            let live = session.live().map_err(friendly)?;
+            Ok((session, live))
+        });
+        match read {
+            Ok(r) => return Ok(r),
             Err(e) => last = e,
         }
     }
     Err(last)
 }
 
-fn state_of(app: &AppHandle, path: &Path, title: &str, key: Option<&String>) -> CompanionState {
-    let exists = path.is_file();
-    let (snapshot, error) = if exists {
-        match read_snapshot(path) {
-            Ok(s) => (Some(s), None),
-            Err(e) => (None, Some(e)),
-        }
-    } else {
-        (None, None)
-    };
+#[cfg(test)]
+fn read_snapshot(path: &Path) -> Result<LiveSnapshot, String> {
+    read_save(path).map(|(_, s)| s)
+}
+
+/// Nom d'un lieu sans la précision entre parenthèses de la liste de PKHeX.
+fn place_name(generation: u8, location: u16) -> Option<String> {
+    let n = dex::location_name(generation, location)?;
+    Some(match n.rsplit_once(" (") {
+        Some((base, _)) if n.ends_with(')') => base.to_string(),
+        _ => n.to_string(),
+    })
+}
+
+fn summary(report: &nuzlocke::Report, here: Option<&nuzlocke::Route>) -> NuzlockeSummary {
+    let next = report.caps.iter().find(|c| c.current).map(|c| NextLeader {
+        label: c.leader.label.clone(),
+        name: c.leader.name.to_string(),
+        town: c.leader.town.to_string(),
+        ace_species: c.leader.ace_species,
+        ace_level: c.leader.ace_level,
+    });
+    let here = here.and_then(|r| report.routes.iter().find(|v| v.key == r.key)).map(|v| RouteHere {
+        key: v.key.clone(),
+        name: v.name.clone(),
+        status: v.status,
+        capture: v.capture.as_ref().map(|m| if m.is_nicknamed { m.nickname.clone() } else { m.species_name.clone() }),
+        marked_missed: v.marked_missed,
+    });
+    let warnings = report
+        .violations
+        .iter()
+        .filter(|v| v.severity != Severity::Info)
+        .take(6)
+        .map(|v| Warning { error: v.severity == Severity::Error, title: v.title.clone(), detail: v.detail.clone() })
+        .collect();
+    let s = &report.stats;
+    NuzlockeSummary {
+        captures: s.captures,
+        routes: s.routes,
+        routes_caught: s.routes_caught,
+        alive: s.alive,
+        dead: s.dead,
+        level_cap: s.level_cap,
+        next,
+        here,
+        warnings,
+    }
+}
+
+/// Lit la sauvegarde, la compare à la précédente, tient le journal et le suivi Nuzlocke à jour.
+fn ingest(app: &AppHandle, t: &Target) -> CompanionState {
     let config = load_config(app);
-    CompanionState {
-        path: path.display().to_string(),
-        title: title.to_string(),
-        key: key.cloned(),
-        exists,
-        modified: modified_ms(path),
-        snapshot,
-        error,
+    let mut out = CompanionState {
+        path: t.path.display().to_string(),
+        title: t.title.clone(),
+        key: t.key.clone(),
+        exists: t.path.is_file(),
+        modified: modified_ms(&t.path),
+        snapshot: None,
+        error: None,
         on_top: config.on_top,
-        auto_open: key.map(|k| config.auto_open.get(k).copied().unwrap_or(true)).unwrap_or(true),
+        auto_open: t.key.as_ref().map(|k| config.auto_open.get(k).copied().unwrap_or(true)).unwrap_or(true),
+        place: None,
+        events: Vec::new(),
+        journal: Vec::new(),
+        nuzlocke: None,
+        can_track: false,
+    };
+    let _guard = INGEST.lock();
+    let mut log = runlog::load(app, &t.path);
+    let journal = |log: &runlog::RunLog| log.journal.iter().rev().take(100).cloned().collect();
+    if !out.exists {
+        out.journal = journal(&log);
+        return out;
+    }
+    let (session, snap) = match read_save(&t.path) {
+        Ok(r) => r,
+        Err(e) => {
+            out.error = Some(e);
+            out.journal = journal(&log);
+            return out;
+        }
+    };
+
+    // ROM : celle liée au Nuzlocke, sinon celle lancée depuis la bibliothèque.
+    let mut state = nuzlocke::load_state(&t.path);
+    let version = session.save.version();
+    let rom_path = state.rom_path.clone().map(PathBuf::from).or_else(|| t.rom.clone());
+    let info = rom_path.and_then(|p| crate::nuzlocke::rom_info_sync(app, p).ok()).filter(|i| nuzlocke::compatible(i.game, version));
+    let location = info.as_ref().and_then(|i| i.location_of_map(snap.map));
+    let route = info.as_ref().zip(location).and_then(|(i, l)| i.route_of_location(l));
+    out.place = route.map(|r| r.name.clone()).or_else(|| location.and_then(|l| place_name(snap.generation, l)));
+
+    // Ce qui s'est passé depuis la dernière lecture.
+    let brief = Brief::from(&snap);
+    let events = log.last.as_ref().map(|last| diff(last, &brief)).unwrap_or_default();
+    let tracking = state.rom_path.is_some();
+    let mut deaths = false;
+    for e in &events {
+        if let (true, GameEvent::Died { mon, how }) = (tracking, e) {
+            let cause = match how {
+                DeathKind::Deposited => "K.O. puis déposé en boîte",
+                DeathKind::Released => "K.O. puis relâché",
+            };
+            deaths |= state.auto_dead.insert(mon.key.clone(), cause.into()).is_none();
+        }
+    }
+    if deaths {
+        let _ = nuzlocke::store_state(&t.path, &state);
+    }
+    if log.last.as_ref() != Some(&brief) {
+        log.record(&events, now_ms(), brief.play_seconds, out.place.as_deref());
+        log.last = Some(brief);
+        let _ = runlog::store(app, &t.path, &log);
+    }
+    out.events = events.iter().map(GameEvent::text).collect();
+    out.journal = journal(&log);
+
+    if let Some(info) = &info {
+        if tracking {
+            match nuzlocke::report(info, &session, &state) {
+                Ok(r) => out.nuzlocke = Some(summary(&r, route)),
+                Err(e) => out.error = Some(e.to_string()),
+            }
+        } else {
+            out.can_track = true;
+        }
+    }
+    out.snapshot = Some(snap);
+    out
+}
+
+fn current(app: &AppHandle) -> Option<Target> {
+    app.state::<Companion>().0.lock().ok()?.as_ref().map(|s| s.target.clone())
+}
+
+/// Relit tout et prévient la fenêtre (après une action de l'utilisateur).
+fn push(app: &AppHandle) {
+    if let Some(t) = current(app) {
+        let s = ingest(app, &t);
+        let _ = app.emit("companion-update", s);
     }
 }
 
@@ -183,20 +391,27 @@ fn open_window(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Suit la sauvegarde `path` (qui peut ne pas encore exister : nouvelle partie) et affiche la fenêtre.
-fn open(app: &AppHandle, path: PathBuf, title: String, key: Option<String>) -> Result<(), String> {
+fn open(app: &AppHandle, target: Target) -> Result<(), String> {
     {
         let state = app.state::<Companion>();
         let mut slot = state.0.lock().map_err(|e| e.to_string())?;
-        let same = slot.as_ref().is_some_and(|s| s.path == path);
-        if !same {
+        let same = slot.as_ref().is_some_and(|s| s.target.path == target.path);
+        if same {
+            // Même sauvegarde : on garde la surveillance, en complétant ce qu'on apprend (ROM…).
+            if let Some(s) = slot.as_mut() {
+                s.target.rom = target.rom.or(s.target.rom.take());
+                s.target.key = target.key.or(s.target.key.take());
+                if !target.title.is_empty() {
+                    s.target.title = target.title;
+                }
+            }
+        } else {
             let handle = app.clone();
-            let (t, k) = (title.clone(), key.clone());
-            let watch = FileWatch::spawn(path.clone(), POLL, DEBOUNCE, move |p| {
-                let s = state_of(&handle, p, &t, k.as_ref());
+            let watch = FileWatch::spawn(target.path.clone(), POLL, DEBOUNCE, move |_| {
                 // Diffusé à toutes les fenêtres : seule celle du compagnon l'écoute.
-                let _ = handle.emit("companion-update", s);
+                push(&handle);
             });
-            *slot = Some(Session { path, title, key, _watch: watch });
+            *slot = Some(Session { target, _watch: watch });
         }
     }
     open_window(app)
@@ -206,16 +421,16 @@ fn open(app: &AppHandle, path: PathBuf, title: String, key: Option<String>) -> R
 
 /// Ouvre le compagnon sur la sauvegarde `path`.
 #[tauri::command]
-pub async fn companion_open(path: PathBuf, title: String, key: Option<String>, app: AppHandle) -> Result<(), String> {
-    open(&app, path, title, key)
+pub async fn companion_open(path: PathBuf, title: String, key: Option<String>, rom: Option<PathBuf>, app: AppHandle) -> Result<(), String> {
+    open(&app, Target { path, title, key, rom })
 }
 
 /// Ouverture automatique au lancement d'un jeu, si l'utilisateur ne l'a pas désactivée pour ce jeu.
 #[tauri::command]
-pub async fn companion_launch(path: PathBuf, title: String, key: Option<String>, app: AppHandle) -> Result<bool, String> {
+pub async fn companion_launch(path: PathBuf, title: String, key: Option<String>, rom: Option<PathBuf>, app: AppHandle) -> Result<bool, String> {
     let enabled = key.as_ref().map(|k| load_config(&app).auto_open.get(k).copied().unwrap_or(true)).unwrap_or(true);
     if enabled {
-        open(&app, path, title, key)?;
+        open(&app, Target { path, title, key, rom })?;
     }
     Ok(enabled)
 }
@@ -223,13 +438,41 @@ pub async fn companion_launch(path: PathBuf, title: String, key: Option<String>,
 /// État actuel (lu sur le disque) de la partie suivie.
 #[tauri::command]
 pub async fn companion_state(app: AppHandle) -> Result<Option<CompanionState>, String> {
-    let current = {
-        let state = app.state::<Companion>();
-        let slot = state.0.lock().map_err(|e| e.to_string())?;
-        slot.as_ref().map(|s| (s.path.clone(), s.title.clone(), s.key.clone()))
-    };
-    let Some((path, title, key)) = current else { return Ok(None) };
-    crate::blocking(move || Ok(Some(state_of(&app, &path, &title, key.as_ref())))).await
+    let Some(t) = current(&app) else { return Ok(None) };
+    crate::blocking(move || Ok(Some(ingest(&app, &t)))).await
+}
+
+/// Active le suivi Nuzlocke de la partie avec la ROM lancée.
+#[tauri::command]
+pub async fn companion_track_nuzlocke(app: AppHandle) -> Result<(), String> {
+    let t = current(&app).ok_or("aucune partie suivie")?;
+    let rom = t.rom.clone().ok_or("ROM de la partie inconnue : lance le jeu depuis la bibliothèque")?;
+    crate::blocking(move || {
+        let mut state = nuzlocke::load_state(&t.path);
+        state.rom_path = Some(rom.display().to_string());
+        nuzlocke::store_state(&t.path, &state).map_err(|e| format!("enregistrement impossible : {e}"))?;
+        push(&app);
+        Ok(())
+    })
+    .await
+}
+
+/// « Rencontre ratée ici » (fuite, K.O. du sauvage) : la sauvegarde n'en garde aucune trace.
+#[tauri::command]
+pub async fn companion_mark_missed(route: String, missed: bool, app: AppHandle) -> Result<(), String> {
+    let t = current(&app).ok_or("aucune partie suivie")?;
+    crate::blocking(move || {
+        let mut state = nuzlocke::load_state(&t.path);
+        if missed {
+            state.missed.insert(route);
+        } else {
+            state.missed.remove(&route);
+        }
+        nuzlocke::store_state(&t.path, &state).map_err(|e| format!("enregistrement impossible : {e}"))?;
+        push(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]

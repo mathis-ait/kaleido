@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager};
 
 mod bank;
 mod companion;
+mod runlog;
 mod discover;
 mod battle;
 mod emusaves;
@@ -350,6 +351,8 @@ fn main() {
             companion::companion_set_on_top,
             companion::companion_set_auto_open,
             companion::companion_set_compact,
+            companion::companion_track_nuzlocke,
+            companion::companion_mark_missed,
             play::unwatch_save,
             play::watch_save_resync,
             library::library_config,

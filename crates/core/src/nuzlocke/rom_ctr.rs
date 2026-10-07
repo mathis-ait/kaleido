@@ -69,12 +69,12 @@ pub fn read(game: &CtrGameRom) -> Result<RomInfo, RomError> {
         return Err(RomError::Unsupported(format!("le mode Nuzlocke ne gère pas encore {}", g.name_fr())));
     }
     let names = game.text_file(place_names_text(g))?;
-    let zones = if g.generation() == 7 { alola_zones(game)? } else { gen6_zones(game)? };
+    let (zones, map_locations) = if g.generation() == 7 { alola_zones(game)? } else { gen6_zones(game)? };
     let routes = group_routes(g, &zones, &names);
     let leaders = read_leaders(game)?;
     let starters = read_starters(game).unwrap_or_default();
     let family = read_families(game).unwrap_or_default();
-    Ok(RomInfo { game: g, routes, leaders, starters, family, seed: None })
+    Ok(RomInfo { game: g, routes, leaders, starters, family, seed: None, map_locations })
 }
 
 /// Une zone : identifiant du lieu et rencontres (fichier décompressé).
@@ -96,14 +96,15 @@ fn decompressed(d: &[u8]) -> Vec<u8> {
 const GEN6_ZONE_SIZE: usize = 0x38;
 
 /// X / Y et ROSA : un fichier par zone, puis la table des zones (entrée `n` de `n × 0x38` octets).
-fn gen6_zones(game: &CtrGameRom) -> Result<Vec<Zone>, RomError> {
+/// Renvoie aussi le lieu de chaque zone (index = numéro de zone de la sauvegarde).
+fn gen6_zones(game: &CtrGameRom) -> Result<(Vec<Zone>, Vec<u16>), RomError> {
     let garc = game.garc(game.layout.encounters)?;
     let table_index = (1..garc.len())
         .rev()
         .find(|&i| garc.file(i).is_some_and(|d| d.len() == i * GEN6_ZONE_SIZE))
         .ok_or_else(|| RomError::Layout("table des zones introuvable dans l'archive des rencontres".into()))?;
     let table = garc.file(table_index).unwrap_or_default();
-    Ok(table
+    let zones: Vec<Zone> = table
         .as_chunks::<GEN6_ZONE_SIZE>()
         .0
         .iter()
@@ -113,7 +114,9 @@ fn gen6_zones(game: &CtrGameRom) -> Result<Vec<Zone>, RomError> {
             location: u16_at(z, 0x1C) & 0x3FF,
             data: std::rc::Rc::new(decompressed(garc.file(i).unwrap_or_default())),
         })
-        .collect())
+        .collect();
+    let locations = zones.iter().map(|z| z.location).collect();
+    Ok((zones, locations))
 }
 
 /// Fichiers d'un paquet « mini » (`EA`, `WD`…) : `u16` nombre @2, puis `nombre + 1` positions `u32`.
@@ -133,7 +136,8 @@ const AREA_FIRST: usize = 9;
 const AREA_STRIDE: usize = 11;
 
 /// Soleil / Lune, Ultra : chaque zone rattachée à son aire de rencontres via son monde.
-fn alola_zones(game: &CtrGameRom) -> Result<Vec<Zone>, RomError> {
+/// Renvoie aussi le lieu de chaque zone (index = numéro de zone de la sauvegarde).
+fn alola_zones(game: &CtrGameRom) -> Result<(Vec<Zone>, Vec<u16>), RomError> {
     // Zones et mondes sont compressés (LZ11), sauf le monde de chaque zone.
     let raw = |d: Option<&[u8]>| -> Vec<u8> {
         let d = d.unwrap_or_default();
@@ -149,6 +153,12 @@ fn alola_zones(game: &CtrGameRom) -> Result<Vec<Zone>, RomError> {
     let (zone_data, zone_world) = (raw(zd.file(0)), raw(zd.file(1)));
     let world_files: Vec<Vec<u8>> = (0..wd.len()).map(|i| raw(wd.file(i))).collect();
     let worlds: Vec<&[u8]> = world_files.iter().map(|f| mini_unpack(f, b"WD").first().copied().unwrap_or_default()).collect();
+    let locations = zone_data
+        .as_chunks::<ZONE7_SIZE>()
+        .0
+        .iter()
+        .map(|z| u32::from_le_bytes([z[0x1C], z[0x1D], z[0x1E], z[0x1F]]).min(u16::MAX as u32) as u16)
+        .collect();
     let mut areas: BTreeMap<usize, std::rc::Rc<Vec<u8>>> = BTreeMap::new();
     let mut out = Vec::new();
     for (i, z) in zone_data.as_chunks::<ZONE7_SIZE>().0.iter().enumerate() {
@@ -172,7 +182,7 @@ fn alola_zones(game: &CtrGameRom) -> Result<Vec<Zone>, RomError> {
         let location = u32::from_le_bytes([z[0x1C], z[0x1D], z[0x1E], z[0x1F]]);
         out.push(Zone { file: file as u16, location: location.min(u16::MAX as u32) as u16, data });
     }
-    Ok(out)
+    Ok((out, locations))
 }
 
 /// Nom principal d'un lieu : texte de la ROM, sinon liste de PKHeX (sans le sous-lieu).
@@ -650,6 +660,7 @@ mod tests {
             starters: Vec::new(),
             family: Vec::new(),
             seed: None,
+            map_locations: Vec::new(),
         };
         assert_eq!(alola_badges(&rom, 0), 0);
         assert_eq!(alola_badges(&rom, 0b0001), 0b11); // Althéo et Pectorius battus

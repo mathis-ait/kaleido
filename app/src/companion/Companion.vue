@@ -8,6 +8,8 @@ import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import BoxGrid from "./BoxGrid.vue";
+import JournalList from "./JournalList.vue";
+import NuzlockePanel from "./NuzlockePanel.vue";
 import TeamCard from "./TeamCard.vue";
 import { companion, initCompanion, monName, refresh, setAutoOpen, setCompact, setOnTop } from "./store";
 
@@ -16,7 +18,7 @@ import { companion, initCompanion, monName, refresh, setAutoOpen, setCompact, se
  * à jour seul à chaque sauvegarde en jeu ; rien n'est écrit dans la sauvegarde.
  */
 
-const tab = ref<"team" | "boxes">("team");
+const tab = ref<"team" | "boxes" | "journal">("team");
 const openMon = ref<string | null>(null);
 
 const state = computed(() => companion.state);
@@ -57,6 +59,7 @@ const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 const tabs = [
   { value: "team" as const, label: "Équipe" },
   { value: "boxes" as const, label: "Boîtes" },
+  { value: "journal" as const, label: "Journal" },
 ];
 </script>
 
@@ -88,7 +91,7 @@ const tabs = [
           <h1>{{ state?.title || snap?.game || "Compagnon" }}<Tip term="companion.companion" /></h1>
           <p>
             <span class="sv-chip" :class="playing ? 'ok' : 'dim'">{{ playing ? "En jeu" : "Émulateur fermé" }}</span>
-            <span class="dim">Sauvegarde {{ ago(state?.modified) }}</span>
+            <span class="dim">Sauvegarde {{ ago(state?.modified) }}<template v-if="state?.place"> · {{ state.place }}</template></span>
             <Tip term="companion.saveTiming" />
           </p>
         </div>
@@ -145,13 +148,15 @@ const tabs = [
 
             <Segmented v-model="tab" :options="tabs" label="Affichage" />
 
+            <NuzlockePanel v-if="tab === 'team'" :summary="state.nuzlocke" :can-track="state.canTrack" :place="state.place" />
             <ul v-if="tab === 'team'" class="team">
               <TeamCard v-for="m in snap.party" :key="m.uid" :mon="m" :open="openMon === m.uid" @toggle="openMon = openMon === m.uid ? null : m.uid" />
               <li v-if="!snap.party.length" class="none">
                 <EmptyState compact icon="ball" title="Équipe vide">Ton équipe apparaîtra ici après ta première capture.</EmptyState>
               </li>
             </ul>
-            <BoxGrid v-else :snapshot="snap" />
+            <BoxGrid v-else-if="tab === 'boxes'" :snapshot="snap" />
+            <JournalList v-else :entries="state.journal" />
           </template>
         </template>
       </main>

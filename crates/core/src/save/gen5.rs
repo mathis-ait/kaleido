@@ -152,6 +152,9 @@ pub(super) fn layout(version: SaveVersion, data: &[u8]) -> Result<(Layout, Vec<S
         items: ITEMS,
         box_name_max: 0x14 / 2 - 1,
         dex,
+        // Vérifié : PKHeX SaveBlockAccessor5BW/B2W2 (bloc 28 « Trainer Position » en 0x19500)
+        // et PlayerPosition5.cs (`M` en +0x80).
+        map: 0x19500 + 0x80,
         checks: Checks::Gen5(NdsChecks { blocks, table: t.offset, table_len: t.len, table_chk: table_chk_at(&t) }),
     };
     Ok((layout, Vec::new()))

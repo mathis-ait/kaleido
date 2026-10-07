@@ -38,21 +38,22 @@ fn supported(version: kaleido_core::save::SaveVersion) -> bool {
 }
 
 /// Lit la ROM (ou la reprend du cache) hors du fil de l'interface.
-async fn rom_info(app: &AppHandle, path: PathBuf) -> Result<Arc<RomInfo>, String> {
+pub(crate) async fn rom_info(app: &AppHandle, path: PathBuf) -> Result<Arc<RomInfo>, String> {
+    let app = app.clone();
+    crate::blocking(move || rom_info_sync(&app, path)).await
+}
+
+/// Même chose depuis un fil qui peut attendre (surveillance du compagnon).
+pub(crate) fn rom_info_sync(app: &AppHandle, path: PathBuf) -> Result<Arc<RomInfo>, String> {
     if let Some(info) = app.state::<RomCache>().0.lock().map_err(|e| e.to_string())?.get(&path) {
         return Ok(info.clone());
     }
-    let key = path.clone();
-    let info = crate::blocking(move || {
-        if !path.exists() {
-            return Err(format!("ROM introuvable : {}", path.display()));
-        }
-        // ROM DS (.nds) ou jeu 3DS (image ou dossier extrait).
-        let info = nuzlocke::rom_ctr::read_path(&path).map_err(|e| e.to_string())?;
-        Ok(Arc::new(info))
-    })
-    .await?;
-    app.state::<RomCache>().0.lock().map_err(|e| e.to_string())?.insert(key, info.clone());
+    if !path.exists() {
+        return Err(format!("ROM introuvable : {}", path.display()));
+    }
+    // ROM DS (.nds) ou jeu 3DS (image ou dossier extrait).
+    let info = Arc::new(nuzlocke::rom_ctr::read_path(&path).map_err(|e| e.to_string())?);
+    app.state::<RomCache>().0.lock().map_err(|e| e.to_string())?.insert(path, info.clone());
     Ok(info)
 }
 

@@ -34,6 +34,14 @@ export const COMPANION_TERMS: Record<string, GlossaryEntry> = {
     title: "Ouvrir à chaque partie",
     text: "Le compagnon s'ouvre tout seul quand tu lances ce jeu depuis la bibliothèque. Réglage mémorisé jeu par jeu.",
   },
+  track: {
+    title: "Suivi Nuzlocke automatique",
+    text: "Kaleido compare chaque sauvegarde à la précédente : un nouveau Pokémon compte comme la capture de son lieu de rencontre, un Pokémon K.O. déposé en boîte ou relâché est mort. Les règles (doublons, surnoms, niveau maximum…) se règlent dans la page Nuzlocke de l'éditeur. Seule une rencontre ratée (fuite) est à signaler à la main.",
+  },
+  journal: {
+    title: "Journal de partie",
+    text: "Tout ce que le compagnon a vu changer d'une sauvegarde à l'autre, avec le temps de jeu et le lieu. Il est gardé par Kaleido, même si la sauvegarde est supprimée.",
+  },
   badges: {
     title: "Badges et épreuves",
     text: "Badges d'arène obtenus (Gen 4 à 6), ou épreuves des îles terminées en Soleil / Lune et Ultra. Lus dans la sauvegarde.",

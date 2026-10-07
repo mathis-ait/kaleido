@@ -19,6 +19,8 @@ export interface NuzState {
   missed: string[];
   dead: string[];
   alive: string[];
+  /** Morts relevées par le compagnon de partie (clé → cause). */
+  autoDead: Record<string, string>;
   badges: number | null;
 }
 
@@ -44,6 +46,8 @@ export interface NuzMon {
   catch: CatchKind | null;
   dead: boolean;
   deathCause: string | null;
+  /** K.O. dans l'équipe, pas encore compté mort (il le sera une fois déposé en boîte). */
+  fainted: boolean;
 }
 
 export interface NuzEncounter {

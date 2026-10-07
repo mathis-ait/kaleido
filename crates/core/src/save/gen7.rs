@@ -41,6 +41,8 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             items_len: 0xE28,
             language: 0x1400 + 0x35,
             dex: (0x2C00, 0xF78),
+            // Vérifié : PKHeX SaveBlockAccessor7USUM (bloc 1 « Situation » en 0x1000), Situation7.cs (`M` en +0).
+            map: 0x1000,
         }
     } else {
         CtrOffsets {
@@ -57,6 +59,8 @@ pub(super) fn offsets(version: SaveVersion) -> CtrOffsets {
             items_len: 0xDE0,
             language: 0x1200 + 0x35,
             dex: (0x2A00, 0xF78),
+            // Vérifié : PKHeX SaveBlockAccessor7SM (bloc 1 « Situation » en 0xE00).
+            map: 0xE00,
         }
     }
 }

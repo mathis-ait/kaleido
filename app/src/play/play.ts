@@ -497,7 +497,13 @@ export async function play(o: PlayOptions): Promise<PlayResult | null> {
     };
     // Compagnon de partie (DS / 3DS) : s'ouvre à côté de l'émulateur, sauf si désactivé pour ce jeu.
     if (opts.platform !== "switch" && result.savePath) {
-      invoke("companion_launch", { path: result.savePath, title: opts.title ?? "", key: opts.trackKey ?? null }).catch(() => undefined);
+      invoke("companion_launch", {
+        path: result.savePath,
+        title: opts.title ?? "",
+        key: opts.trackKey ?? null,
+        // Jeu 3DS randomisé (dossier extrait + mod) : c'est le dossier qui porte les vraies rencontres.
+        rom: opts.modRomfs ? (opts.trackKey ?? opts.rom) : opts.rom,
+      }).catch(() => undefined);
     }
     if (result.warnings.length) await message(result.warnings.join("\n\n"), { title: "À savoir", kind: "info" });
     return result;

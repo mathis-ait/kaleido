@@ -147,5 +147,5 @@ export function formatDuration(seconds: number): string {
 export async function openCompanionOf(d: Detection) {
   const path = statusOf(d)?.savePath;
   if (!path) return;
-  await invoke("companion_open", { path, title: d.game?.name ?? d.title, key: d.path });
+  await invoke("companion_open", { path, title: d.game?.name ?? d.title, key: d.path, rom: d.path });
 }
