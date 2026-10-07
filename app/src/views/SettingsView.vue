@@ -231,6 +231,24 @@ h2 {
   color: var(--text);
 }
 
+/* Crédits : nom à gauche, description lisible à côté (pas de valeur en gras alignée à droite). */
+.about .sv-dl {
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-5);
+  margin: 0;
+}
+
+.about .sv-dl dt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.about .sv-dl dd {
+  color: var(--text-dim);
+  font-weight: 400;
+  text-align: left;
+}
+
 .update {
   display: flex;
   flex-direction: column;
