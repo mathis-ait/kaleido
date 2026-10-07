@@ -189,14 +189,15 @@ useShell(() => ({
 
 const time = ref(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
 
-const dock: { icon: string; label: string; run: () => void; tone?: string }[] = [
-  { icon: "folder-open", label: "Ouvrir une sauvegarde (Ctrl+O)", run: () => emit("open"), tone: "#ff7a6b" },
+// Icônes monochromes : des teintes en dur seraient illisibles sur le fond clair du thème Jour.
+const dock: { icon: string; label: string; run: () => void }[] = [
+  { icon: "folder-open", label: "Ouvrir une sauvegarde (Ctrl+O)", run: () => emit("open") },
   { icon: "save", label: "Enregistrer (Ctrl+S)", run: () => writeSave() },
-  { icon: "upload", label: "Enregistrer sous…", run: () => emit("save-as"), tone: "#ffc65c" },
-  { icon: "play", label: "Jouer : lancer le jeu avec cette sauvegarde", run: () => playOpenSave(), tone: "#5ce0a0" },
-  { icon: "send", label: "Envoyer au jeu (ferme le jeu avant)", run: () => sendToGame(), tone: "#5ad1ff" },
-  { icon: "grid", label: "Boîtes (Ctrl+1)", run: () => goTo("boxes"), tone: "#7fb2ff" },
-  { icon: "undo", label: "Annuler (Ctrl+Z)", run: () => history(false), tone: "#7ef0b0" },
+  { icon: "upload", label: "Enregistrer sous…", run: () => emit("save-as") },
+  { icon: "play", label: "Jouer : lancer le jeu avec cette sauvegarde", run: () => playOpenSave() },
+  { icon: "send", label: "Envoyer au jeu (ferme le jeu avant)", run: () => sendToGame() },
+  { icon: "grid", label: "Boîtes (Ctrl+1)", run: () => goTo("boxes") },
+  { icon: "undo", label: "Annuler (Ctrl+Z)", run: () => history(false) },
   { icon: "settings", label: "Apparence de Kaleido", run: () => (nav.view = "settings") },
   { icon: "power", label: "Fermer la sauvegarde", run: () => closeSave() },
 ];
@@ -271,7 +272,7 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
 
     <!-- Dock d'actions rapides -->
     <div class="dock">
-      <button v-for="d in dock" :key="d.label" class="dock-btn" :title="d.label" :aria-label="d.label" :style="{ color: d.tone }" @click="d.run">
+      <button v-for="d in dock" :key="d.label" class="dock-btn" :title="d.label" :aria-label="d.label" @click="d.run">
         <Icon :name="d.icon" :size="24" />
       </button>
     </div>
@@ -304,21 +305,24 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   height: 64px;
   padding: 0;
   overflow: hidden;
-  border: 3px solid rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
   border-radius: 50%;
-  background: linear-gradient(160deg, #ffffff, #dfe8f5);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-  transition: transform 0.15s, box-shadow 0.15s;
+  background: var(--surface);
+  color: var(--text);
+  transition: transform 0.15s;
 }
 
-.bubble:hover,
-.bubble.on {
+.bubble:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 3px var(--accent-2), 0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+/* Pokémon sélectionné : un seul contour net, couleur du texte. */
+.bubble.on {
+  outline: 3px solid var(--text);
+  outline-offset: 3px;
 }
 
 .bubble.trainer {
-  color: #1d4fb8;
   font: 700 26px var(--font-display);
 }
 
@@ -343,26 +347,28 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   font-variant-numeric: tabular-nums;
 }
 
+/* Titre de la tuile choisie : simple ligne de texte, sans bandeau. */
 .band {
   display: flex;
   align-items: baseline;
-  gap: 26px;
-  margin-right: 40px;
-  padding: 12px 40px 12px 64px;
-  background: color-mix(in srgb, var(--bg) 55%, rgba(0, 20, 60, 0.4));
-  clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 100%, 0 100%);
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-2) 48px 0;
 }
 
 .band h2 {
-  font-size: 26px;
-  font-weight: 300;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--accent-2);
+  margin: 0;
+  font: 600 24px var(--font-display);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .band span {
-  font-size: 14px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--fs-base);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .strip-wrap {
@@ -394,16 +400,19 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   height: 272px;
   padding: 18px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: #fff;
   text-align: left;
-  box-shadow: 0 12px 28px rgba(0, 20, 70, 0.3);
-  transition: transform 0.18s, box-shadow 0.18s, filter 0.18s;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  transition: transform 0.18s, filter 0.18s;
 }
 
+/* Tuile choisie : un seul contour net (couleur du texte), comme sur console.
+   Le padding de la bande (30 px) laisse la place au contour et à l'agrandissement. */
 .tile.focus {
-  transform: scale(1.04);
-  box-shadow: 0 0 0 4px #fff, 0 0 0 9px color-mix(in srgb, var(--accent-2) 80%, transparent), 0 18px 34px rgba(0, 20, 70, 0.35);
+  transform: scale(1.03);
+  outline: 3px solid var(--text);
+  outline-offset: 4px;
 }
 
 .tile.soon {
@@ -441,14 +450,14 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
 
 .label strong {
   display: block;
-  font-size: 21px;
+  font-size: var(--fs-xl);
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .label small {
   display: block;
   margin-top: 2px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   opacity: 0.92;
 }
 
@@ -457,9 +466,9 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   top: 12px;
   right: 12px;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(0, 0, 0, 0.25);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -472,11 +481,15 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 2px solid #fff;
+  border: 1px solid var(--border);
   border-radius: 50%;
-  background: rgba(20, 60, 140, 0.7);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.arrow:hover {
+  background: var(--panel-hover);
 }
 
 .arrow.left {
@@ -494,9 +507,9 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   align-self: center;
   margin-bottom: 18px;
   padding: 18px 40px;
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 16%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
   backdrop-filter: blur(10px);
 }
 
@@ -505,15 +518,15 @@ const dock: { icon: string; label: string; run: () => void; tone?: string }[] = 
   place-items: center;
   width: 64px;
   height: 64px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 50%;
-  background: #3b4250;
-  color: #fff;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
-  transition: transform 0.15s;
+  background: var(--surface);
+  color: var(--text);
+  transition: transform 0.15s, background-color 0.15s;
 }
 
 .dock-btn:hover {
-  transform: translateY(-3px) scale(1.05);
+  transform: translateY(-2px);
+  background: var(--panel-hover);
 }
 </style>

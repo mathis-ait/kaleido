@@ -156,15 +156,14 @@ useShell(() => ({
   place-items: center;
   width: 72px;
   height: 72px;
-  border: 3px solid #fff;
   border-radius: 50%;
-  background: linear-gradient(160deg, #6fb4ff, #2f6fd6);
+  background: var(--male);
   color: #fff;
   font: 700 30px var(--font-display);
 }
 
 .avatar.female {
-  background: linear-gradient(160deg, #ff9ccc, #e0558f);
+  background: var(--female);
 }
 
 .form {

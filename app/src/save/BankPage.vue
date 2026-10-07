@@ -906,7 +906,7 @@ const GENS = [4, 5, 6, 7];
   max-height: 100%;
 }
 
-.slot:hover {
+.slot:hover:not(.selected) {
   background: color-mix(in srgb, var(--text) 20%, transparent);
 }
 

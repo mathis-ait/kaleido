@@ -107,7 +107,7 @@ onMounted(refresh);
         label="Réduire les animations"
         hint="Affiche une image fixe du même style au lieu des modèles animés (moins de mouvement, moins de calcul). Activé d'office si Windows demande de réduire les animations."
       />
-      <Toggle v-model="shinyPreview" label="Aperçu chromatique ✨" hint="Montre les aperçus ci-dessus en version chromatique." />
+      <Toggle v-model="shinyPreview" label="Aperçu chromatique" hint="Montre les aperçus ci-dessus en version chromatique." />
     </div>
 
     <h2>Sprites</h2>
@@ -204,7 +204,7 @@ h2 {
 }
 
 .good {
-  color: #3ccf7a;
+  color: var(--ok);
 }
 
 .bad {
@@ -223,30 +223,44 @@ h2 {
   white-space: pre-wrap;
 }
 
+/* Trois thèmes : trois colonnes égales, la rangée est pleine. */
 .themes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   margin-top: 24px;
 }
 
-.theme {
+.theme,
+.style {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding: 14px;
   text-align: left;
-  transition: transform 0.15s, outline-color 0.15s;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
+  transition: background 0.15s, color 0.15s;
 }
 
-.theme:hover {
-  transform: translateY(-2px);
+.theme:hover:not(.active),
+.style:hover:not(.active) {
+  background: var(--panel-hover);
 }
 
-.theme.active {
-  outline-color: var(--accent);
+/* Sélection : inversion fond / texte, comme les onglets. L'aperçu garde ses propres couleurs. */
+.theme.active,
+.style.active {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.theme.active small,
+.style.active small {
+  color: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+.style.active .stage {
+  background-color: var(--bg);
 }
 
 .preview {
@@ -276,25 +290,6 @@ small,
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 16px;
   margin-top: 18px;
-}
-
-.style {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-  text-align: left;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  transition: transform 0.15s, outline-color 0.15s;
-}
-
-.style:hover {
-  transform: translateY(-2px);
-}
-
-.style.active {
-  outline-color: var(--accent);
 }
 
 /* Petite scène où les Pokémon d'aperçu se tiennent côte à côte. */

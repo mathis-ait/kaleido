@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import Icon from "../../components/Icon.vue";
 import Tip from "../../components/Tip.vue";
 import Combo from "../../components/Combo.vue";
 import { lists, saveState } from "../../saveStore";
@@ -138,7 +139,7 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
         </div>
       </div>
       <div class="sv-row mine">
-        <span v-if="isMine" class="ok">✓ C'est ton Pokémon ({{ view.trainer.name }})</span>
+        <span v-if="isMine" class="ok"><Icon name="check" :size="14" /> C'est ton Pokémon ({{ view.trainer.name }})</span>
         <template v-else>
           <span class="dim">Dresseur différent de la sauvegarde ({{ view.trainer.name }}).</span>
           <button class="sv-btn" @click="useMine">Mettre mes infos de dresseur</button>
@@ -220,8 +221,8 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
     <section>
       <h3 class="sv-section-title">Chromatique <Tip term="shiny" /></h3>
       <div class="sv-row">
-        <button class="sv-btn" :class="{ solid: p.shiny }" @click="apply({ shiny: 'star' })">★ Chromatique</button>
-        <button class="sv-btn" @click="apply({ shiny: 'square' })">■ Carré</button>
+        <button class="sv-btn" :class="{ solid: p.shiny }" @click="apply({ shiny: 'star' })">Chromatique</button>
+        <button class="sv-btn" @click="apply({ shiny: 'square' })">Chromatique carré</button>
         <button class="sv-btn" @click="apply({ shiny: 'keepPid' })">Garder le PID</button>
         <button class="sv-btn" :class="{ solid: !p.shiny }" @click="apply({ shiny: 'none' })">Normal</button>
       </div>
@@ -261,6 +262,9 @@ const displayTid = computed(() => (gen.value >= 7 ? String(((props.p.sid * 65536
 }
 
 .ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--ok);
   font-weight: 600;
 }

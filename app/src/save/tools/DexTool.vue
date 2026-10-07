@@ -181,7 +181,7 @@ async function catchShown() {
 }
 
 .counter.red i {
-  background: #ff6b6b;
+  background: var(--danger);
 }
 
 .actions {
@@ -243,7 +243,7 @@ async function catchShown() {
   position: absolute;
   top: 5px;
   left: 8px;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   opacity: 0.8;
 }

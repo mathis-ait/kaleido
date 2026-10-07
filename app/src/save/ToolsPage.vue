@@ -39,7 +39,7 @@ useShell(() => (tool.value ? {} : { hint: "Choisis un outil", actions: [] }));
     </template>
     <template v-else>
       <header class="tool-head">
-        <button class="back" aria-label="Retour aux outils" @click="saveState.tool = null"><Icon name="chevron-left" /></button>
+        <button class="sv-round" aria-label="Retour aux outils" @click="saveState.tool = null"><Icon name="chevron-left" /></button>
         <span class="ico small" :style="{ background: tool.color }"><Icon :name="tool.icon" :size="20" /></span>
         <div>
           <h2>{{ tool.title }}</h2>
@@ -77,11 +77,12 @@ useShell(() => (tool.value ? {} : { hint: "Choisis un outil", actions: [] }));
 
 .card:hover {
   transform: translateY(-3px);
+  background: var(--panel-hover);
 }
 
 .card strong {
   margin-top: 8px;
-  font-size: 19px;
+  font-size: var(--fs-xl);
 }
 
 .card small {
@@ -106,7 +107,7 @@ useShell(() => (tool.value ? {} : { hint: "Choisis un outil", actions: [] }));
 .later {
   margin-top: 26px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .tool-head {
@@ -117,21 +118,11 @@ useShell(() => (tool.value ? {} : { hint: "Choisis un outil", actions: [] }));
 }
 
 .tool-head h2 {
-  font-size: 22px;
+  font-size: var(--fs-xl);
 }
 
 .tool-head small {
   color: var(--text-dim);
-}
-
-.back {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 .tool-body {

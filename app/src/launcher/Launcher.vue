@@ -6,7 +6,7 @@ import Backdrop from "./Backdrop.vue";
 import TitleScene from "./TitleScene.vue";
 import Icon from "../components/Icon.vue";
 import { openRom } from "../editor";
-import { hideGame, libraryUi } from "../games";
+import { UPDATE_LABEL, hideGame, libraryUi } from "../games";
 import { removeItem } from "../library";
 import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
 import NewAdventure from "./NewAdventure.vue";
@@ -423,6 +423,9 @@ const meta = computed(() => {
   const parts = [PLATFORM_LABEL[platformOf(g)]];
   if (g.generation) parts.push(`${g.generation}ᵉ génération`);
   if (g.language) parts.push(g.language.replace("Multilingue (français inclus)", "Multilingue"));
+  // Jeu Switch : mise à jour trouvée à côté, seulement si sa version est connue.
+  const update = g.details.find((d) => d.label === UPDATE_LABEL)?.value;
+  if (update && /^\d/.test(update)) parts.push(`${UPDATE_LABEL} ${update}`);
   return parts;
 });
 </script>
@@ -483,7 +486,7 @@ const meta = computed(() => {
             <button v-if="canRandomize(game)" class="ghost" @click="startAdventure"><Icon name="dice" :size="16" /> Nouvelle aventure</button>
             <button v-if="status?.saveExists" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
             <button class="ghost" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods</button>
-            <button class="ghost icon" title="Plus d'actions" @click="openMenu">⋯</button>
+            <button class="ghost icon" title="Plus d'actions" aria-label="Plus d'actions" @click="openMenu">⋯</button>
           </div>
           <p v-if="notice" class="notice">{{ notice }}</p>
         </div>
@@ -514,6 +517,7 @@ const meta = computed(() => {
           :class="{ selected: i === index, kaleido: isKaleidoRom(g) }"
           :style="itemStyle(i)"
           :aria-label="g.title"
+          tabindex="-1"
           @click="clickCover(i)"
           @pointermove="i === index && onTilt($event)"
           @pointerleave="tilt = { x: 0, y: 0 }"
@@ -522,7 +526,6 @@ const meta = computed(() => {
             <img v-if="coverUrl(g)" :src="coverUrl(g)!" :alt="g.title" draggable="false" />
             <span v-else class="fallback">{{ g.title }}</span>
             <span v-if="isKaleidoRom(g)" class="ribbon">Randomisée</span>
-            <span class="shine" />
           </div>
           <div class="reflection" aria-hidden="true">
             <img v-if="coverUrl(g)" :src="coverUrl(g)!" alt="" draggable="false" />
@@ -627,7 +630,7 @@ const meta = computed(() => {
   transition: background 0.2s, color 0.2s;
 }
 
-.tabs button:hover {
+.tabs button:hover:not(.active) {
   color: #fff;
 }
 
@@ -987,10 +990,10 @@ h1 {
   transition: transform 0.2s ease-out, box-shadow 0.45s ease;
 }
 
+/* Sélection : un anneau blanc net, sans halo coloré. */
 .selected .card {
   box-shadow:
     0 0 0 4px #fff,
-    0 0 36px 4px color-mix(in srgb, var(--tint) 55%, transparent),
     0 28px 50px rgba(0, 0, 0, 0.55);
 }
 
@@ -1005,7 +1008,7 @@ h1 {
   align-items: flex-end;
   height: 100%;
   padding: 16px;
-  background: linear-gradient(135deg, var(--tint), #1b1f3b);
+  background: color-mix(in srgb, var(--tint) 45%, #1b1f3b);
   font-size: 18px;
   font-weight: 800;
   text-align: left;
@@ -1022,30 +1025,6 @@ h1 {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.02em;
-}
-
-/* Reflet qui balaie la jaquette sélectionnée. */
-.shine {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.28) 50%, transparent 60%);
-  background-size: 250% 100%;
-  background-position: 150% 0;
-  pointer-events: none;
-}
-
-.selected .shine {
-  animation: shine 4.5s ease-in-out infinite;
-}
-
-@keyframes shine {
-  0%,
-  60% {
-    background-position: 150% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
 }
 
 .counter {

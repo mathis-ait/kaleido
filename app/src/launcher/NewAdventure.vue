@@ -6,6 +6,7 @@ import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
 import type { PadAction } from "./gamepad";
+import type { AdventurePreset } from "../presets";
 import {
   adventure,
   applySeedText,
@@ -63,11 +64,23 @@ async function copyCode() {
   setTimeout(() => (copied.value = false), 1800);
 }
 
+/** Supprime un preset personnel puis rend le focus à la carte sélectionnée. */
+async function remove(p: AdventurePreset) {
+  await removePreset(p);
+  await nextTick();
+  cards.value[adventure.index]?.focus();
+}
+
 /** Manette et clavier, transmis par le lanceur. */
 function handle(a: PadAction) {
   if (adventure.step === "preset") {
     const n = adventure.presets.length;
     if (!n) return a === "back" && closeAdventure();
+    // Corbeille d'un preset personnel : Menu (X / M) y amène le focus, A / Entrée supprime, B / Échap revient à la carte.
+    const trash = document.activeElement instanceof HTMLElement && document.activeElement.classList.contains("remove") ? document.activeElement : null;
+    if (trash && a === "accept") return trash.click();
+    if (trash && a === "back") return cards.value[adventure.index]?.focus();
+    if (a === "menu") return cards.value[adventure.index]?.parentElement?.querySelector<HTMLElement>(".remove")?.focus();
     if (a === "left") adventure.index = Math.max(adventure.index - 1, 0);
     else if (a === "right") adventure.index = Math.min(adventure.index + 1, n - 1);
     else if (a === "up") adventure.index = Math.max(adventure.index - COLUMNS, 0);
@@ -103,29 +116,36 @@ defineExpose({ handle });
 
     <!-- 2. Le preset -->
     <section v-if="adventure.step === 'preset'" class="presets">
-      <button
-        v-for="(p, i) in adventure.presets"
-        :key="p.id"
-        :ref="(el) => (cards[i] = el as HTMLElement)"
-        type="button"
-        class="card sv-card"
-        :class="{ on: i === adventure.index }"
-        @mouseenter="adventure.index = i"
-        @click="choosePreset(p)"
-      >
-        <span class="card-head">
-          <strong>{{ p.name }}</strong>
-          <span v-if="p.user" class="sv-chip dim">Ton preset</span>
-          <span v-if="p.companion?.nuzlocke" class="sv-chip accent">Compagnon</span>
-        </span>
-        <span class="tagline">{{ p.tagline }}</span>
-        <ul>
-          <li v-for="c in p.changes" :key="c.label"><Icon :name="c.icon" :size="15" /> {{ c.label }}</li>
-        </ul>
-        <span v-if="p.user" class="remove" role="button" tabindex="-1" title="Supprimer ce preset" @click.stop="removePreset(p)">
+      <!-- La corbeille est une sœur de la carte (pas de bouton dans un bouton) : atteignable au clavier. -->
+      <div v-for="(p, i) in adventure.presets" :key="p.id" class="slot" @mouseenter="adventure.index = i">
+        <button
+          :ref="(el) => (cards[i] = el as HTMLElement)"
+          type="button"
+          class="card sv-card"
+          :class="{ on: i === adventure.index }"
+          @click="choosePreset(p)"
+        >
+          <span class="card-head" :class="{ removable: p.user }">
+            <strong>{{ p.name }}</strong>
+            <span v-if="p.user" class="sv-chip dim">Ton preset</span>
+            <span v-if="p.companion?.nuzlocke" class="sv-chip accent">Compagnon</span>
+          </span>
+          <span class="tagline">{{ p.tagline }}</span>
+          <ul>
+            <li v-for="c in p.changes" :key="c.label"><Icon :name="c.icon" :size="15" /> {{ c.label }}</li>
+          </ul>
+        </button>
+        <button
+          v-if="p.user"
+          type="button"
+          class="remove"
+          :aria-label="`Supprimer le preset ${p.name}`"
+          title="Supprimer ce preset"
+          @click="remove(p)"
+        >
           <Icon name="trash" :size="14" />
-        </span>
-      </button>
+        </button>
+      </div>
       <p class="hint">
         {{ padConnected ? "Croix pour choisir · A pour valider · B pour revenir" : "Flèches pour choisir · Entrée pour valider · Échap pour revenir" }}
       </p>
@@ -138,7 +158,7 @@ defineExpose({ handle });
         Kaleido randomise le jeu en mémoire pour te montrer le début de l'aventure.
       </EmptyState>
       <div v-else-if="adventure.preview" class="grid" :class="{ busy: adventure.loading }">
-        <div class="block starters">
+        <div class="block sv-panel starters">
           <span class="sv-label">Tes starters</span>
           <ul>
             <li v-for="s in adventure.preview.starters" :key="s.id">
@@ -147,7 +167,7 @@ defineExpose({ handle });
             </li>
           </ul>
         </div>
-        <div v-if="route" class="block">
+        <div v-if="route" class="block sv-panel">
           <span class="sv-label">Première route · {{ route.name }}</span>
           <ul class="mons">
             <li v-for="m in shownRoute" :key="m.species" :title="`${m.name} · ${levels(m)}`">
@@ -157,7 +177,7 @@ defineExpose({ handle });
             <li v-if="route.encounters.length > MAX_ROUTE" class="more">+{{ route.encounters.length - MAX_ROUTE }}</li>
           </ul>
         </div>
-        <div v-if="adventure.preview.firstLeader" class="block">
+        <div v-if="adventure.preview.firstLeader" class="block sv-panel">
           <span class="sv-label">Premier champion · {{ adventure.preview.firstLeader.name }} ({{ adventure.preview.firstLeader.label }})</span>
           <ul class="mons">
             <li v-for="(m, i) in adventure.preview.firstLeader.team" :key="i">
@@ -217,6 +237,8 @@ defineExpose({ handle });
   gap: var(--sp-4);
   padding: var(--sp-6) 34px;
   overflow: auto;
+  /* Le lanceur écrit en blanc : la fenêtre reprend la couleur du thème (lisible en Jour). */
+  color: var(--text);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(14px);
 }
@@ -268,8 +290,19 @@ defineExpose({ handle });
   align-content: start;
 }
 
-.card {
+/* La carte choisie suit le focus : son anneau de sélection suffit, pas de second contour. */
+.card.on:focus-visible {
+  outline: none;
+}
+
+.slot {
   position: relative;
+  display: flex;
+}
+
+.card {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -282,6 +315,11 @@ defineExpose({ handle });
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+}
+
+/* Place de la corbeille (presets personnels), en haut à droite. */
+.card-head.removable {
+  padding-right: var(--sp-6);
 }
 
 .card-head strong {
@@ -311,12 +349,22 @@ defineExpose({ handle });
 
 .remove {
   position: absolute;
-  top: var(--sp-3);
-  right: var(--sp-3);
+  top: var(--sp-2);
+  right: var(--sp-2);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-dim);
+  cursor: pointer;
 }
 
-.remove:hover {
+.remove:hover,
+.remove:focus-visible {
   color: var(--danger);
 }
 
@@ -353,9 +401,6 @@ defineExpose({ handle });
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: var(--panel);
 }
 
 .starters ul {
@@ -455,6 +500,11 @@ defineExpose({ handle });
   color: var(--bg);
   font-size: var(--fs-lg);
   font-weight: 700;
+  transition: background-color 0.15s;
+}
+
+.play:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 86%, var(--bg));
 }
 
 .play:disabled {

@@ -28,7 +28,16 @@ const items: { id: ViewId; label: string; icon: string }[] = [
     </div>
 
     <nav>
-      <button v-for="item in items" :key="item.id" class="nav-item" :class="{ active: view === item.id }" :title="item.label" @click="view = item.id">
+      <button
+        v-for="item in items"
+        :key="item.id"
+        type="button"
+        class="nav-item"
+        :class="{ active: view === item.id }"
+        :aria-current="view === item.id ? 'page' : undefined"
+        :title="item.label"
+        @click="view = item.id"
+      >
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path :d="item.icon" />
         </svg>
@@ -37,7 +46,14 @@ const items: { id: ViewId; label: string; icon: string }[] = [
       </button>
     </nav>
 
-    <button class="nav-item settings" :class="{ active: view === 'settings' }" @click="view = 'settings'">
+    <button
+      type="button"
+      class="nav-item settings"
+      :class="{ active: view === 'settings' }"
+      :aria-current="view === 'settings' ? 'page' : undefined"
+      title="Apparence"
+      @click="view = 'settings'"
+    >
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
         <circle cx="12" cy="12" r="3" />
         <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
@@ -93,7 +109,7 @@ nav {
   height: 9px;
   border: 2px solid var(--sidebar);
   border-radius: 50%;
-  background: #3ccf7a;
+  background: var(--ok);
 }
 
 .nav-item {
@@ -112,35 +128,28 @@ nav {
   transition: background 0.15s, color 0.15s;
 }
 
-.nav-item:hover {
-  background: var(--panel-hover);
+.nav-item:hover:not(.active) {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
   color: var(--text);
 }
 
+/* Page affichée : fond plein, texte inversé (même langage que les onglets et pastilles). */
 .nav-item.active {
-  background: var(--panel-hover);
-  color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
 }
 
-.nav-item.active::before {
-  content: "";
-  position: absolute;
-  left: -16px;
-  top: 8px;
-  bottom: 8px;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: var(--prism);
-}
-
+/* Compteur neutre : teinte de la couleur courante, lisible que la ligne soit choisie (inversée) ou non. */
 .count {
   margin-left: auto;
   min-width: 22px;
   padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--prism);
-  color: var(--on-accent);
-  font-size: 11px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: inherit;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   text-align: center;
 }
@@ -157,17 +166,14 @@ nav {
   padding: 0;
 }
 
+/* Le point « mise à jour » reste visible : c'est le seul signal dans la barre réduite. */
 .compact .brand > div,
-.compact .nav-item span {
+.compact .nav-item span:not(.update-dot) {
   display: none;
 }
 
 .compact .nav-item {
   justify-content: center;
   padding: 12px;
-}
-
-.compact .nav-item.active::before {
-  left: -10px;
 }
 </style>

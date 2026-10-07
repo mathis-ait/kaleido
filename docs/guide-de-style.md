@@ -7,10 +7,14 @@ Kaleido doit ressembler à une console : sobre, lisible, la même d'une page à 
 1. **Un seul jeu de composants.** Une page consomme les composants et classes ci-dessous, elle ne les réimplémente pas. Pas de `.chip`, `.round`, `.btn-line`, `.panel` ou `dl` redéfinis localement.
 2. **Jetons, pas de valeurs en dur.** Espacements, rayons, tailles de texte et couleurs passent par les variables de `styles/main.css`. Une couleur hexadécimale dans une page est un bug. Seule exception : les tables de données en TypeScript (couleurs des types dans `TypeBadge`, familles de rencontre dans `legality.ts`, formats de cartes dans `gifts/terms.ts`), définies une seule fois.
 3. **Un « i » sur chaque terme technique**, alimenté par le glossaire central (`<Tip term="…">`). Aucun terme sans entrée, aucune bulle écrite en dur dans une page (`title=` / `text=` inline).
-4. **Finition console.** Pas de barre d'accent colorée à gauche, pas d'emoji ni de symbole (★, ⚡) en guise de badge, pas de halo ni de pulsation animés, pas de dégradé décoratif. La sélection se montre par l'inversion texte / fond (pastille blanche en Lagon), comme les onglets.
+4. **Finition console.** Pas de barre d'accent colorée à gauche, pas d'emoji ni de symbole (★, ⚡) en guise de badge, pas de halo ni de pulsation animés, pas de dégradé décoratif. La sélection se montre par l'inversion texte / fond (pastille claire en thème sombre), comme les onglets. Le survol ne s'applique jamais à l'élément sélectionné (`:hover:not(.on)`).
 5. **Clavier et manette partout.** Tout élément interactif est un vrai `<button>` (ou un champ), atteignable au Tab et à la croix de la manette, avec un focus visible (anneau `--focus`, global). Entrée et Espace activent le bouton qui a le focus ; les raccourcis de la barre du bas ne les volent pas.
 6. **Trois états par page ou panneau** : vide (avec l'action pour en sortir), chargement, erreur en français lisible (avec « Réessayer » quand ça a du sens). Jamais d'erreur avalée en silence.
 7. **Français simple, mêmes mots partout** : « N. 50 » pour le niveau, « Chromatique », « Talent », « Objet tenu », « Lieu de rencontre », « Dresseur d'origine ». Tutoiement.
+
+## Thèmes
+
+Trois thèmes : **Prisme Nuit** (`nuit`, par défaut), **Prisme Jour** (`jour`) et **Graphite** (`graphite`), posés par `data-theme` sur la racine. Une page ne teste jamais le thème : elle lit les jetons.
 
 ## Jetons (`styles/main.css`)
 
@@ -20,16 +24,16 @@ Kaleido doit ressembler à une console : sobre, lisible, la même d'une page à 
 | Rayons | `--radius-panel` 18 · `--radius-card` 12 · `--radius-sm` 10 · `--radius-xs` 6 · `--radius-pill` | panneaux · cases et fiches · champs · petites étiquettes · pastilles et boutons |
 | Texte | `--fs-xs` 11 · `--fs-sm` 12 · `--fs-md` 13 · `--fs-base` 14 · `--fs-lg` 16 · `--fs-xl` 20 | libellés en capitales · détails · corps des listes · corps · sous-titres · titres de panneau |
 | Couleurs de thème | `--text`, `--text-dim`, `--bg`, `--panel`, `--panel-hover`, `--surface`, `--border`, `--accent*`, `--on-accent` | |
+| Ombres | `--shadow`, `--shadow-pop`, `--shadow-dialog` | panneaux · éléments flottants (bulle « i », liste déroulante, menu) · fenêtres modales ; une valeur par thème |
+| Interrupteur | `--switch-knob` | pastille du `Toggle`, blanche sur la piste éteinte comme allumée |
 | Couleurs de sens | `--ok`, `--warn` / `--warn-bg`, `--danger`, `--shiny`, `--male`, `--female`, `--focus` | réussite, avertissement, erreur, chromatique, sexe, focus |
-
-Le thème Pixel remet tous les rayons à 2–4 px : un rayon écrit en dur casse ce thème.
 
 ## Classes partagées (`save/form.css`, importé globalement)
 
 | Classe | Rôle |
 | --- | --- |
 | `.sv-panel` | panneau en verre (rayon `--radius-panel`) |
-| `.sv-btn`, `.solid`, `.danger`, `.small` | bouton pastille ; `solid` pour l'action principale |
+| `.sv-btn`, `.solid`, `.danger`, `.small` | bouton pastille ; `solid` pour l'action principale. Les anciennes `.btn` / `.btn-primary` (`main.css`) n'en sont plus que des alias visuels : le nouveau code utilise `sv-btn` |
 | `.sv-round` (`.sq` carré) | bouton d'icône rond : flèches de boîte, fermer |
 | `.sv-chip` + `.on`, `.ok`, `.warn`, `.danger`, `.dim`, `.shiny`, `.accent` | étiquette ; `button.sv-chip` = filtre activable ; `.accent` = catégorie neutre (rôle d'un dresseur) |
 | `.sv-card` (+ `.on`) | carte ou case sélectionnable |
@@ -81,16 +85,5 @@ Avant d'ajouter un terme de module, vérifier qu'il n'existe pas déjà en terme
 node scripts/pageshots.mjs <dossier> <sauvegarde> [préfixe] [pages] [thèmes] [largeurs]
 ```
 
-capture chaque page dans les thèmes Lagon, Réseau, Pixel et Prisme Nuit, à 1280 et 1920 px (app lancée avec `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`).
+capture chaque page dans les thèmes Prisme Nuit, Prisme Jour et Graphite, à 1280 et 1920 px (app lancée avec `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`).
 
-## Avant / après (chantier 0, Lagon, 1280 px)
-
-| Page | Avant | Après |
-| --- | --- | --- |
-| Banque | ![](screenshots/coherence/bank-avant.png) | ![](screenshots/coherence/bank-apres.png) |
-| Nuzlocke | ![](screenshots/coherence/nuzlocke-avant.png) | ![](screenshots/coherence/nuzlocke-apres.png) |
-| Combat | ![](screenshots/coherence/battle-avant.png) | ![](screenshots/coherence/battle-apres.png) |
-| Cadeaux mystère | ![](screenshots/coherence/gifts-avant.png) | ![](screenshots/coherence/gifts-apres.png) |
-| Rencontres | ![](screenshots/coherence/encounters-avant.png) | ![](screenshots/coherence/encounters-apres.png) |
-| Showdown | ![](screenshots/coherence/showdown-avant.png) | ![](screenshots/coherence/showdown-apres.png) |
-| Équipes stratégiques | ![](screenshots/coherence/teams-avant.png) | ![](screenshots/coherence/teams-apres.png) |

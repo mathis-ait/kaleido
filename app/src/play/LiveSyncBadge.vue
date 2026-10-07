@@ -91,9 +91,7 @@ const title = computed(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #34d399;
-  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-  animation: pulse 2.4s infinite;
+  background: var(--ok);
 }
 
 .changed {
@@ -103,23 +101,9 @@ const title = computed(() => {
 
 .changed .dot {
   background: var(--warn);
-  animation: none;
 }
 
 .reloaded .dot {
   background: var(--accent-2);
-  animation: none;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
-  }
 }
 </style>

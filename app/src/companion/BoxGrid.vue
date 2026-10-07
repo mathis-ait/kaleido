@@ -38,7 +38,7 @@ function step(d: number) {
       <button type="button" class="sv-round" aria-label="Boîte suivante" @click="step(1)"><Icon name="chevron-right" /></button>
       <small>{{ current?.mons.length ?? 0 }}/30 · {{ total }} au total</small>
     </header>
-    <div class="grid" role="grid" :aria-label="current?.name">
+    <div class="grid" role="group" :aria-label="current?.name">
       <button
         v-for="(m, i) in cells"
         :key="i"
@@ -107,6 +107,12 @@ header small {
   min-width: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* Anneau de focus posé sur le contour de la case : sans décalage, il ne double pas
+   l'anneau de sélection et ne déborde pas sur les cases voisines. */
+.cell:focus-visible {
+  outline-offset: 0;
 }
 
 .cell:disabled {

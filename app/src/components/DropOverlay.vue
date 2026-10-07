@@ -7,12 +7,10 @@ defineProps<{ visible: boolean }>();
 <template>
   <Transition name="fade">
     <div v-if="visible" class="overlay">
-      <div class="ring">
-        <div class="ring-inner">
-          <KaleidoLogo :size="72" class="spin" />
-          <h2>Lâche ici</h2>
-          <p>ROM DS, ROM 3DS, dossier extrait ou sauvegarde</p>
-        </div>
+      <div class="zone">
+        <KaleidoLogo :size="72" />
+        <h2>Lâche ici</h2>
+        <p>ROM DS, ROM 3DS, dossier extrait ou sauvegarde</p>
       </div>
     </div>
   </Transition>
@@ -30,31 +28,17 @@ defineProps<{ visible: boolean }>();
   pointer-events: none;
 }
 
-.ring {
-  position: relative;
-  padding: 3px;
-  border-radius: 28px;
-  overflow: hidden;
-}
-
-/* Bordure prismatique qui tourne */
-.ring::before {
-  content: "";
-  position: absolute;
-  inset: -50%;
-  background: conic-gradient(var(--accent), var(--accent-2), var(--accent-3), var(--accent));
-  animation: rotate 3s linear infinite;
-}
-
-.ring-inner {
-  position: relative;
+/* Zone de dépôt : cadre en pointillés fixe (ni dégradé ni rotation). */
+.zone {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   padding: 48px 72px;
-  border-radius: 25px;
-  background: var(--bg);
+  border: 2px dashed color-mix(in srgb, var(--text) 45%, transparent);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-dialog);
   text-align: center;
 }
 
@@ -65,16 +49,6 @@ h2 {
 p {
   margin: 0;
   color: var(--text-dim);
-}
-
-.spin {
-  animation: rotate 6s linear infinite;
-}
-
-@keyframes rotate {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .fade-enter-active,

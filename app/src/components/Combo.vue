@@ -200,15 +200,22 @@ onBeforeUnmount(close);
   outline: none;
   text-overflow: ellipsis;
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .field.has-lead {
   padding-left: 40px;
 }
 
+.field:hover:not(:focus, :disabled) {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+/* Même focus que `.sv-input` (save/form.css). */
 .open .field,
 .field:focus {
-  border-color: var(--accent-2);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
   cursor: text;
 }
 
@@ -246,10 +253,10 @@ onBeforeUnmount(close);
   overflow-y: auto;
   list-style: none;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-pop);
 }
 
 .combo-list.above {
@@ -279,13 +286,19 @@ onBeforeUnmount(close);
   font-size: 12px;
 }
 
-.combo-list li.active {
-  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
-}
-
 .combo-list li.good {
   color: var(--ok);
-  background: color-mix(in srgb, #3ccf7a 12%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+/* Ligne pointée (clavier ou souris) : déclarée après `.good`, sinon la surbrillance
+   disparaissait sur les choix conseillés et la navigation au clavier devenait aveugle. */
+.combo-list li.active {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.combo-list li.good.active {
+  background: color-mix(in srgb, var(--ok) 24%, transparent);
 }
 
 .combo-list li.good + li:not(.good) {

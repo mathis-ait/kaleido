@@ -89,7 +89,7 @@ const tabs = [
     <template v-else>
       <header class="top">
         <div class="title">
-          <h1>{{ state?.title || snap?.game || "Compagnon" }}<Tip term="companion.companion" /></h1>
+          <h1><span class="name">{{ state?.title || snap?.game || "Compagnon" }}</span><Tip term="companion.companion" /></h1>
           <p>
             <span class="sv-chip" :class="playing ? 'ok' : 'dim'">{{ playing ? "En jeu" : "Émulateur fermé" }}</span>
             <span class="dim">Sauvegarde {{ ago(state?.modified) }}<template v-if="state?.place"> · {{ state.place }}</template></span>
@@ -102,6 +102,7 @@ const tabs = [
             class="sv-round sq"
             :class="{ active: state?.onTop }"
             :aria-pressed="!!state?.onTop"
+            aria-label="Toujours au premier plan"
             :title="state?.onTop ? 'Ne plus garder au premier plan' : 'Toujours au premier plan'"
             @click="setOnTop(!state?.onTop)"
           >
@@ -213,11 +214,17 @@ const tabs = [
   min-width: 0;
 }
 
+/* Points de suspension sur le nom seul : sur le h1 en flex, ils ne s'affichaient pas et le « i » était rogné. */
 h1 {
   display: flex;
   align-items: center;
-  overflow: hidden;
+  min-width: 0;
   font-size: var(--fs-lg);
+}
+
+h1 .name {
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -236,7 +243,9 @@ h1 {
   gap: var(--sp-1);
 }
 
-.sv-round.active {
+/* Le survol de .sv-round ne doit pas effacer l'état actif (même spécificité). */
+.sv-round.active,
+.sv-round.active:hover:not(:disabled) {
   border-color: var(--text);
   background: var(--text);
   color: var(--bg);

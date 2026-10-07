@@ -19,6 +19,8 @@
   --warn-bg: rgba(251, 191, 36, 0.1);
   --danger: #f87171;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 14px 36px rgba(0, 0, 0, 0.35);
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 
@@ -40,150 +42,37 @@
   --warn-bg: rgba(217, 119, 6, 0.1);
   --danger: #dc2626;
   --shadow: 0 10px 30px rgba(30, 35, 90, 0.1);
+  /* Ombres teintées et légères : un noir à 40 % salit un fond clair. */
+  --shadow-pop: 0 12px 32px rgba(30, 35, 90, 0.16);
+  --shadow-dialog: 0 24px 60px rgba(30, 35, 90, 0.2);
   color-scheme: light;
 }
 
-:root[data-theme="ds"] {
-  --bg: #d9dde3;
-  --bg-glow-1: rgba(47, 111, 214, 0.12);
-  --bg-glow-2: rgba(255, 255, 255, 0.6);
-  --sidebar: #1d2a3a;
-  --panel: #eef1f5;
-  --panel-hover: #ffffff;
-  --border: #b5bcc7;
-  --text: #1d2a3a;
-  --text-dim: #566476;
-  --accent: #2f6fd6;
-  --accent-2: #5aa0ff;
-  --accent-3: #2f6fd6;
-  --on-accent: #ffffff;
-  --warn: #a15c00;
-  --warn-bg: rgba(255, 170, 0, 0.14);
-  --danger: #c62828;
-  --shadow: 0 2px 0 #b5bcc7;
-  color-scheme: light;
-}
-
-:root[data-theme="lagon"] {
-  --bg: #145fc0;
-  --bg-glow-1: rgba(110, 220, 255, 0.45);
-  --bg-glow-2: rgba(8, 40, 130, 0.65);
-  --sidebar: rgba(8, 45, 120, 0.45);
-  --panel: rgba(8, 40, 110, 0.28);
-  --panel-hover: rgba(255, 255, 255, 0.16);
-  --border: rgba(255, 255, 255, 0.26);
-  --text: #ffffff;
-  --text-dim: rgba(230, 242, 255, 0.9);
-  --accent: #ffffff;
-  --accent-2: #8ff0ff;
-  --accent-3: #c7f6ff;
-  --on-accent: #0b4fae;
-  --warn: #ffe27a;
-  --warn-bg: rgba(255, 226, 122, 0.16);
-  --danger: #ffb4b4;
-  --shadow: 0 12px 32px rgba(5, 40, 120, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  color-scheme: dark;
-}
-
-/* Lignes de lumière en diagonale, comme un menu de console. */
-:root[data-theme="lagon"] body {
-  background:
-    linear-gradient(115deg, transparent 0 62%, rgba(255, 255, 255, 0.12) 62.2%, transparent 62.6%),
-    linear-gradient(115deg, transparent 0 78%, rgba(255, 255, 255, 0.08) 78.2%, transparent 78.8%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 48px),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 48px),
-    radial-gradient(900px 600px at 0% 0%, var(--bg-glow-1), transparent 60%),
-    radial-gradient(900px 700px at 100% 100%, var(--bg-glow-2), transparent 60%),
-    var(--bg);
-}
-
-:root[data-theme="lagon"] .chip-accent,
-:root[data-theme="lagon"] .btn-primary {
-  background: #ffffff;
-  color: var(--on-accent);
-}
-
-:root[data-theme="reseau"] {
-  --bg: #10161f;
-  --bg-glow-1: rgba(47, 211, 230, 0.16);
-  --bg-glow-2: rgba(255, 93, 143, 0.1);
-  --sidebar: #0b1017;
-  --panel: rgba(28, 39, 53, 0.82);
-  --panel-hover: rgba(47, 211, 230, 0.12);
-  --border: rgba(47, 211, 230, 0.22);
-  --text: #e9f6fb;
-  --text-dim: #8fa6b8;
-  --accent: #2fd3e6;
-  --accent-2: #5ce1ff;
-  --accent-3: #ff5d8f;
-  --on-accent: #06222a;
-  --warn: #ffd166;
-  --warn-bg: rgba(255, 209, 102, 0.14);
-  --danger: #ff6b81;
-  --shadow: 0 0 0 1px rgba(47, 211, 230, 0.08), 0 10px 30px rgba(0, 0, 0, 0.45);
-  color-scheme: dark;
-}
-
-/* Grille lumineuse du PSS. */
-:root[data-theme="reseau"] body {
-  background:
-    repeating-linear-gradient(0deg, rgba(47, 211, 230, 0.06) 0 1px, transparent 1px 36px),
-    repeating-linear-gradient(90deg, rgba(47, 211, 230, 0.06) 0 1px, transparent 1px 36px),
-    radial-gradient(900px 600px at 10% 0%, var(--bg-glow-1), transparent 60%),
-    radial-gradient(800px 600px at 100% 100%, var(--bg-glow-2), transparent 60%),
-    var(--bg);
-}
-
-:root[data-theme="pixel"] {
-  --bg: #9bbc0f;
+/* Graphite : gris neutres, aucun halo ni dégradé ; une seule touche de bleu (interrupteurs, focus). */
+:root[data-theme="graphite"] {
+  --bg: #131416;
   --bg-glow-1: transparent;
   --bg-glow-2: transparent;
-  --sidebar: #0f380f;
-  --panel: #8bac0f;
-  --panel-hover: #a7c728;
-  --border: #306230;
-  --text: #0f380f;
-  --text-dim: #306230;
-  --accent: #0f380f;
-  --accent-2: #306230;
-  --accent-3: #306230;
-  --on-accent: #9bbc0f;
-  --warn: #0f380f;
-  --warn-bg: rgba(15, 56, 15, 0.12);
-  --danger: #5a1a0a;
-  --shadow: 4px 4px 0 #306230;
-  --radius: 4px;
-  --radius-sm: 2px;
-  --font-display: "Cascadia Mono", Consolas, "Courier New", monospace;
-  color-scheme: light;
-}
-
-/* Écran de Game Boy : trame de pixels, pas de flou. */
-:root[data-theme="pixel"] body {
-  background:
-    repeating-linear-gradient(0deg, rgba(15, 56, 15, 0.05) 0 2px, transparent 2px 4px),
-    repeating-linear-gradient(90deg, rgba(15, 56, 15, 0.05) 0 2px, transparent 2px 4px),
-    var(--bg);
-  image-rendering: pixelated;
-}
-
-:root[data-theme="pixel"] * {
-  backdrop-filter: none !important;
-}
-
-:root[data-theme="pixel"] .sidebar {
-  --text: #9bbc0f;
-  --text-dim: #8bac0f;
-  --panel-hover: rgba(155, 188, 15, 0.12);
-  --border: rgba(155, 188, 15, 0.25);
-}
-
-/* La barre latérale du thème DS est sombre : on y inverse le texte. */
-:root[data-theme="ds"] .sidebar {
-  --text: #e8eef6;
-  --text-dim: #9fb0c4;
-  --panel-hover: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.1);
+  --sidebar: #0f1012;
+  --panel: rgba(255, 255, 255, 0.035);
+  --panel-hover: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #ececee;
+  --text-dim: #8e9096;
+  --accent: #ececee;
+  --accent-2: #8ab4f8;
+  --accent-3: #ececee;
+  --on-accent: #131416;
+  --warn: #e5c07b;
+  --warn-bg: rgba(229, 192, 123, 0.1);
+  --danger: #ef8a8a;
+  --shadow: none;
+  /* Menus et fenêtres gardent une ombre : sans elle, ils se confondent avec la page. */
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --prism: linear-gradient(var(--accent), var(--accent));
+  --surface: #1b1c1f;
+  color-scheme: dark;
 }
 
 :root {
@@ -225,29 +114,14 @@
   --male: #5aa9ff;
   --female: #ff7eb6;
   --focus: var(--accent-2);
+  /* Pastille des interrupteurs : blanche sur la piste grise comme sur la piste colorée. */
+  --switch-knob: #ffffff;
 }
 
-:root[data-theme="jour"],
-:root[data-theme="ds"] {
+:root[data-theme="jour"] {
   --shiny: #b7791f;
   --male: #1d6fd6;
   --female: #d6336c;
-}
-
-:root[data-theme="lagon"] {
-  --focus: #ffffff;
-}
-
-/* Game Boy : angles droits, couleurs de la palette. */
-:root[data-theme="pixel"] {
-  --radius-panel: 4px;
-  --radius-card: 2px;
-  --radius-xs: 2px;
-  --radius-pill: 2px;
-  --shiny: #0f380f;
-  --male: #0f380f;
-  --female: #306230;
-  --focus: #0f380f;
 }
 
 /* Vert « tout va bien » (légal, attaques apprenables…), lisible sur chaque fond. */
@@ -259,14 +133,6 @@
   --ok: #15803d;
 }
 
-:root[data-theme="ds"] {
-  --ok: #1d7a3e;
-}
-
-:root[data-theme="pixel"] {
-  --ok: #0f380f;
-}
-
 /* Surface opaque (menus déroulants, fenêtres) : la transparence du verre y nuit à la lisibilité. */
 :root,
 :root[data-theme="nuit"] {
@@ -275,22 +141,6 @@
 
 :root[data-theme="jour"] {
   --surface: #ffffff;
-}
-
-:root[data-theme="ds"] {
-  --surface: #f4f6f9;
-}
-
-:root[data-theme="lagon"] {
-  --surface: #0f4fa8;
-}
-
-:root[data-theme="reseau"] {
-  --surface: #17212d;
-}
-
-:root[data-theme="pixel"] {
-  --surface: #a7c728;
 }
 
 /* ---------- Base ---------- */
@@ -310,7 +160,7 @@ body,
 
 body {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: var(--fs-base);
   color: var(--text);
   background:
     radial-gradient(900px 600px at 85% -10%, var(--bg-glow-1), transparent 60%),
@@ -358,20 +208,26 @@ select option {
 
 /* ---------- Composants partagés ---------- */
 
+/* Même dessin que `.sv-btn` (save/form.css) : pastille au trait, action principale en aplat inversé. */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--panel);
-  transition: background 0.15s, transform 0.15s, border-color 0.15s;
+  padding: 9px 16px;
+  border: 1.5px solid color-mix(in srgb, var(--text) 65%, transparent);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--panel-hover);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 18%, transparent);
 }
 
 .btn:disabled {
@@ -379,18 +235,17 @@ select option {
   cursor: not-allowed;
 }
 
+/* Les états :hover / :active ci-dessus sont plus spécifiques que `.btn-primary` :
+   on les redéfinit ici, sinon le texte (couleur du fond) disparaît au survol ou à l'appui. */
 .btn-primary {
-  border: none;
-  color: var(--on-accent);
-  background: var(--prism);
-  background-size: 160% 100%;
-  transition: background-position 0.4s, transform 0.15s;
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: var(--prism);
-  background-size: 160% 100%;
-  background-position: 100% 0;
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 86%, var(--bg));
 }
 
 .panel {
@@ -414,27 +269,37 @@ select option {
   white-space: nowrap;
 }
 
+/* Catégorie (plateforme, génération) : même teinte que `.sv-chip.accent`, sans dégradé. */
 .chip-accent {
-  color: var(--on-accent);
+  color: var(--text);
   border-color: transparent;
-  background: var(--prism);
+  background: color-mix(in srgb, var(--accent-2) 24%, transparent);
 }
 
+/* Mot mis en avant dans un titre : couleur d'accent unie (pas de texte en dégradé). */
 .prism-text {
-  background: var(--prism);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
 }
 
 ::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* --border seul est presque invisible en thème clair : poignée un peu plus marquée. */
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 999px;
   border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text) 32%, transparent);
   background-clip: content-box;
 }
 

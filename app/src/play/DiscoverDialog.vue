@@ -276,7 +276,7 @@ h3 {
   width: 35%;
   height: 100%;
   border-radius: inherit;
-  background: var(--prism);
+  background: var(--accent);
   animation: slide 1.1s ease-in-out infinite alternate;
 }
 

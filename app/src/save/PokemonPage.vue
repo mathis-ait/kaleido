@@ -185,7 +185,7 @@ const locationText = computed(() => {
       </div>
       <div class="toggles">
         <button
-          class="round-tog"
+          class="round-tog shiny"
           :class="{ on: p.shiny }"
           :title="`${p.shiny ? 'Chromatique' : 'Non chromatique'} — clic : basculer · Maj : carré · Alt : garder le PID`"
           @click="onShiny"
@@ -242,7 +242,7 @@ const locationText = computed(() => {
 
     <!-- Onglets -->
     <section class="main">
-      <nav class="tabs">
+      <nav class="sv-seg tabs">
         <button v-for="t in TABS" :key="t.id" :class="{ on: tab === t.id }" @click="tab = t.id">{{ t.label }}</button>
       </nav>
       <div class="body sv-panel">
@@ -328,8 +328,12 @@ const locationText = computed(() => {
   align-items: center;
   padding: 8px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.pick:hover {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
 .pkm {
@@ -354,9 +358,9 @@ const locationText = computed(() => {
   place-items: center;
   width: 190px;
   height: 190px;
-  border: 10px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 6px solid color-mix(in srgb, var(--text) 10%, transparent);
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--text) 16%, transparent), transparent 70%);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .card h2 {
@@ -388,18 +392,23 @@ const locationText = computed(() => {
   height: 46px;
   border: 2px solid transparent;
   border-radius: 50%;
-  background: color-mix(in srgb, #1a2340 55%, transparent);
-  color: color-mix(in srgb, var(--text) 75%, transparent);
-  transition: border-color 0.15s, transform 0.15s;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text-dim);
+  transition: border-color 0.15s, background-color 0.15s;
 }
 
-.round-tog:hover:not(:disabled) {
-  transform: translateY(-2px);
+.round-tog:hover:not(:disabled, .on) {
+  background: color-mix(in srgb, var(--text) 20%, transparent);
 }
 
+/* Actif (chromatique, œuf) : contour net couleur du texte, l'étoile prend la couleur chromatique. */
 .round-tog.on {
-  border-color: #ffd84d;
-  color: #ffd84d;
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.round-tog.on.shiny {
+  color: var(--shiny);
 }
 
 .round-tog:disabled {
@@ -412,11 +421,11 @@ const locationText = computed(() => {
 }
 
 .g-male .g {
-  color: #6fb4ff;
+  color: var(--male);
 }
 
 .g-female .g {
-  color: #ff8cc4;
+  color: var(--female);
 }
 
 .ball {
@@ -441,7 +450,7 @@ const locationText = computed(() => {
   margin-top: 8px;
   padding: 12px 14px;
   border: 1px solid;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   text-align: left;
 }
 
@@ -455,8 +464,8 @@ const locationText = computed(() => {
 }
 
 .legal.ok {
-  border-color: #6ee7a8;
-  background: color-mix(in srgb, #22c55e 20%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
   color: var(--ok);
 }
 
@@ -503,28 +512,20 @@ const locationText = computed(() => {
   min-height: 0;
 }
 
+/* Onglets : pastilles partagées (.sv-seg), un peu plus grandes ici. */
 .tabs {
-  display: flex;
-  flex-wrap: wrap;
   align-self: flex-start;
-  gap: 4px;
-  padding: 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+  padding: 4px;
 }
 
 .tabs button {
   padding: 8px 18px;
-  border: none;
-  border-radius: 999px;
-  background: none;
-  font-weight: 600;
+  font-size: var(--fs-base);
 }
 
-.tabs button.on {
-  background: var(--text);
-  color: var(--bg);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 55%, transparent);
+/* Onglet choisi : l'inversion suffit, pas d'anneau de focus en plus. */
+.tabs button.on:focus-visible {
+  outline: none;
 }
 
 .body {
@@ -548,7 +549,7 @@ const locationText = computed(() => {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
@@ -577,7 +578,7 @@ const locationText = computed(() => {
   margin-bottom: 12px;
   padding: 12px 14px;
   border: 1px solid;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
 }
 
 .verdict > div {
@@ -596,8 +597,8 @@ const locationText = computed(() => {
 }
 
 .verdict.ok {
-  border-color: #6ee7a8;
-  background: color-mix(in srgb, #22c55e 14%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
   color: var(--ok);
 }
 
@@ -616,7 +617,7 @@ const locationText = computed(() => {
 .changes {
   margin-bottom: 12px;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--accent-2) 14%, transparent);
 }
 

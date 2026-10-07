@@ -3,7 +3,7 @@
 //
 // Usage : node scripts/pageshots.mjs <dossier de sortie> <sauvegarde> [préfixe] [pages] [thèmes] [largeurs]
 //   pages    : liste séparée par des virgules (défaut : toutes)
-//   thèmes   : défaut lagon,reseau,pixel,nuit
+//   thèmes   : défaut nuit,jour,graphite
 //   largeurs : défaut 1280,1920
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +26,7 @@ const PAGES = {
   smogon: `(async () => { __kaleido.saveStore.goTo("boxes"); const m = await import("/src/save/showdown/api.ts"); m.showdownUi.smogon = true; })()`,
 };
 const pages = pagesArg ? pagesArg.split(",") : Object.keys(PAGES);
-const themes = (themesArg ?? "lagon,reseau,pixel,nuit").split(",");
+const themes = (themesArg ?? "nuit,jour,graphite").split(",");
 const widths = (widthsArg ?? "1280,1920").split(",").map(Number);
 
 const targets = await (await fetch("http://127.0.0.1:9222/json")).json();

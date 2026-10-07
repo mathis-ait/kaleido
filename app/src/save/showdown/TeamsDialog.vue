@@ -433,7 +433,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: var(--sp-3);
   min-height: 0;
-  padding: var(--sp-4) var(--sp-5);
+  /* Pas de marge en bas : la barre d'actions collante se pose pile sur le bord, sans laisser passer de fiche dessous. */
+  padding: var(--sp-4) var(--sp-5) 0;
   overflow: auto;
 }
 
@@ -540,12 +541,13 @@ onBeforeUnmount(() => {
 /* Toujours visibles en bas de l'aperçu, même quand les six fiches défilent. */
 .actions {
   position: sticky;
-  bottom: calc(-1 * var(--sp-4));
+  bottom: 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
-  margin: auto calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4));
+  margin: auto calc(-1 * var(--sp-5)) 0;
   padding: var(--sp-3) var(--sp-5);
   border-top: 1px solid var(--border);
   background: var(--surface);

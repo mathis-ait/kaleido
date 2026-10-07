@@ -42,4 +42,12 @@ export const PLAY_TIPS: Record<string, GlossaryEntry> = {
     title: "Copies de sécurité",
     text: "Avant de remplacer un fichier, Kaleido en garde une copie à côté : <fichier>.kaleido-<date>.bak. Un ancien mod 3DS est déplacé dans load/kaleido-backups. Pour revenir en arrière, renomme la copie.",
   },
+  optimalSettings: {
+    title: "Réglages optimaux",
+    text: "Kaleido choisit les réglages graphiques adaptés à ta carte graphique (résolution, filtres, cache des shaders…) et les écrit dans la configuration de l'émulateur. Ton ancienne configuration est gardée de côté : « Restaurer » la remet exactement.",
+  },
+  otherMods: {
+    title: "Autres mods",
+    text: "Mods déjà présents dans le dossier de l'émulateur, installés sans Kaleido. Les désactiver les range dans un dossier de Kaleido (rien n'est supprimé) ; les réactiver les remet en place.",
+  },
 };

@@ -90,12 +90,24 @@ const ko = computed(() => !props.mon.isEgg && props.mon.maxHp > 0 && props.mon.h
   padding: var(--sp-2) var(--sp-3);
   border: none;
   background: none;
+  border-radius: inherit;
   color: inherit;
   text-align: left;
+  transition: background-color 0.15s;
 }
 
 .head:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+/* La carte rogne ce qui dépasse : l'anneau de focus est tracé à l'intérieur. */
+.head:focus-visible {
+  outline-offset: -2px;
+}
+
+.open .head {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .ko :deep(.sprite) {

@@ -190,16 +190,17 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
 
 .name small {
   display: block;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 
+/* Stat favorisée / défavorisée par la nature : rouge / bleu lisibles dans les trois thèmes. */
 .name.up {
-  color: #ff9a8a;
+  color: var(--danger);
 }
 
 .name.down {
-  color: #8ac2ff;
+  color: var(--male);
 }
 
 .dim {
@@ -211,7 +212,7 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
 }
 
 .perfect {
-  border-color: #7cf0a4 !important;
+  border-color: var(--ok) !important;
 }
 
 .total {
@@ -235,15 +236,15 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
   border-radius: 6px;
   background: transparent;
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 800;
   cursor: pointer;
 }
 
 .hyper.on {
-  border-color: #ffc94d;
-  background: color-mix(in srgb, #ffc94d 22%, transparent);
-  color: #ffd877;
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .hp {
@@ -266,11 +267,11 @@ const randomIvs = () => Array.from({ length: 6 }, () => Math.floor(Math.random()
 }
 
 .bar span.up {
-  background: #ff9a8a;
+  background: var(--danger);
 }
 
 .bar span.down {
-  background: #8ac2ff;
+  background: var(--male);
 }
 
 .foot {

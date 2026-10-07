@@ -180,8 +180,8 @@ function commitByte(key: ByteKey) {
 blockquote {
   margin: 0;
   padding: 10px 14px;
-  border-left: 3px solid var(--accent-2);
-  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--text) 6%, transparent);
   font-size: 14px;
   line-height: 1.5;

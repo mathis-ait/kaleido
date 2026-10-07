@@ -186,8 +186,8 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
   justify-content: flex-end;
   gap: 4px;
   padding: 18px;
-  background: var(--prism);
-  color: var(--on-accent);
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  color: var(--text);
 }
 
 .ph-platform {
@@ -221,9 +221,10 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
   backdrop-filter: blur(6px);
 }
 
+/* Pastille « Randomisée » : inversée (claire) au lieu d'un dégradé, posée sur la jaquette. */
 .badge.prism {
-  background: var(--prism);
-  color: var(--on-accent);
+  background: rgba(255, 255, 255, 0.92);
+  color: #16181f;
 }
 
 .play {
@@ -235,15 +236,15 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
   gap: 8px;
   padding: 10px 22px;
   border: none;
-  border-radius: 999px;
-  background: var(--prism);
-  color: var(--on-accent);
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  color: var(--bg);
   font-weight: 700;
   font-size: 15px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   transform: translate(-50%, 6px);
   opacity: 0;
-  transition: opacity 0.18s ease, transform 0.18s ease, filter 0.15s;
+  transition: opacity 0.18s ease, transform 0.18s ease, background-color 0.15s;
 }
 
 .tile:hover .play,
@@ -254,7 +255,7 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
 }
 
 .play:hover:not(:disabled) {
-  filter: brightness(1.12);
+  background: color-mix(in srgb, var(--text) 86%, var(--bg));
 }
 
 .play:disabled {
@@ -311,10 +312,11 @@ h3 {
   color: var(--text-dim);
   font-size: 18px;
   line-height: 1;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .icon-btn:hover {
-  background: var(--panel-hover);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
   color: var(--text);
 }
 
@@ -327,8 +329,8 @@ h3 {
   flex-direction: column;
   min-width: 220px;
   padding: 6px;
-  background: var(--bg);
-  box-shadow: var(--shadow);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
 }
 
 .menu button {
@@ -345,7 +347,7 @@ h3 {
 }
 
 .menu button:hover {
-  background: var(--panel-hover);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 .menu .danger {

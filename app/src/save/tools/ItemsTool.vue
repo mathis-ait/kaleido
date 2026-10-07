@@ -308,10 +308,11 @@ useShell(() => ({
   font-weight: 700;
 }
 
+/* Actif : inversion texte / fond, comme les onglets. */
 .flag.on {
-  border-color: #ffd84d;
-  background: #ffd84d;
-  color: #5a4300;
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
 }
 
 .del {

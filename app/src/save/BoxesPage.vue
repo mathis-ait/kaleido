@@ -234,21 +234,22 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
 <template>
   <div class="boxes">
     <!-- Boîte -->
-    <section class="box panel">
+    <section class="box sv-panel">
       <header class="box-head">
-        <button class="round" aria-label="Boîte précédente (Pg↑)" @click="changeBox(-1)"><Icon name="chevron-left" /></button>
+        <button class="sv-round" aria-label="Boîte précédente (Pg↑)" @click="changeBox(-1)"><Icon name="chevron-left" /></button>
         <input
           v-if="renaming"
           ref="renameInput"
           v-model="newName"
-          class="rename"
+          class="sv-input rename"
+          aria-label="Nom de la boîte"
           :maxlength="view.boxNameMax"
           @keydown.enter.prevent="commitRename"
           @keydown.esc.stop.prevent="renaming = false"
           @blur="commitRename"
         />
         <h2 v-else title="Double-clic pour renommer" @dblclick="startRename">{{ view.boxNames[saveState.box] }}</h2>
-        <button class="round" aria-label="Boîte suivante (Pg↓)" @click="changeBox(1)"><Icon name="chevron-right" /></button>
+        <button class="sv-round" aria-label="Boîte suivante (Pg↓)" @click="changeBox(1)"><Icon name="chevron-right" /></button>
         <span class="fill">{{ view.boxFill[saveState.box] }}/30</span>
         <div class="sv-dots">
           <button
@@ -293,8 +294,8 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
 
     <aside class="side">
       <!-- Équipe -->
-      <section class="panel party">
-        <h3>Équipe</h3>
+      <section class="sv-panel party">
+        <h3 class="sv-label">Équipe</h3>
         <div class="party-grid">
           <button
             v-for="(p, i) in partySlots"
@@ -316,20 +317,20 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
       </section>
 
       <!-- Fiche du Pokémon sélectionné -->
-      <section v-if="sel" class="panel detail">
+      <section v-if="sel" class="sv-panel detail">
         <div class="detail-head">
           <Sprite :id="sel.species" :shiny="sel.shiny" :size="96" />
           <div>
-            <h3>{{ sel.nickname || sel.speciesName }} <span class="gender">{{ genderSymbol(sel.gender) }}</span></h3>
+            <h3>{{ sel.nickname || sel.speciesName }} <span class="gender" :class="sel.gender">{{ genderSymbol(sel.gender) }}</span></h3>
             <div class="chips">
-              <span class="chip-w">N. {{ sel.level }}</span>
-              <span v-if="sel.shiny" class="chip-gold">★ Chromatique</span>
-              <span v-if="sel.isEgg" class="chip-soft">Œuf</span>
-              <span v-if="sel.isNicknamed" class="chip-soft">{{ sel.speciesName }}</span>
+              <span class="sv-chip on">N. {{ sel.level }}</span>
+              <span v-if="sel.shiny" class="sv-chip shiny">Chromatique</span>
+              <span v-if="sel.isEgg" class="sv-chip">Œuf</span>
+              <span v-if="sel.isNicknamed" class="sv-chip">{{ sel.speciesName }}</span>
             </div>
           </div>
         </div>
-        <dl>
+        <dl class="sv-dl">
           <dt>Emplacement</dt>
           <dd>{{ locationText(sel.slot) }}</dd>
           <dt>Nature</dt>
@@ -345,37 +346,37 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
           <dt>Données <Tip term="checksum" /></dt>
           <dd :class="sel.checksumValid ? 'ok' : 'bad'">{{ sel.checksumValid ? "Intactes" : "Somme de contrôle invalide" }}</dd>
         </dl>
-        <ul class="moves">
+        <ul class="sv-moves">
           <li v-for="m in sel.moveNames" :key="m">{{ m }}</li>
         </ul>
-        <button class="btn-big" @click="editPokemon(sel)"><Icon name="pencil" :size="16" /> Modifier</button>
+        <button class="sv-btn solid big" @click="editPokemon(sel)"><Icon name="pencil" :size="16" /> Modifier</button>
         <div class="row">
-          <button class="btn-line" @click="copySel"><Icon name="copy" :size="15" /> Copier</button>
-          <button class="btn-line" @click="exportSelected"><Icon name="file" :size="15" /> Exporter</button>
-          <button class="btn-line" :class="{ danger: confirmDelete }" @click="doDelete">
+          <button class="sv-btn" @click="copySel"><Icon name="copy" :size="15" /> Copier</button>
+          <button class="sv-btn" @click="exportSelected"><Icon name="file" :size="15" /> Exporter</button>
+          <button class="sv-btn" :class="{ danger: confirmDelete }" @click="doDelete">
             <Icon name="trash" :size="15" /> {{ confirmDelete ? "Confirmer" : "Supprimer" }}
           </button>
         </div>
       </section>
 
       <!-- Case vide -->
-      <section v-else-if="emptySel" class="panel detail">
+      <section v-else-if="emptySel" class="sv-panel detail">
         <h3>Case vide</h3>
         <p class="dim">{{ locationText(emptySel) }}</p>
-        <label class="lbl">Nouveau Pokémon</label>
+        <label class="sv-label">Nouveau Pokémon</label>
         <Combo v-model="newSpecies" :options="speciesOptions" sprites placeholder="Espèce…" />
-        <label class="lbl">Niveau</label>
-        <input v-model.number="newLevel" class="num-input" type="number" min="1" max="100" />
+        <label class="sv-label">Niveau</label>
+        <input v-model.number="newLevel" class="sv-input" type="number" min="1" max="100" />
         <p class="dim small">Il sera attrapé par toi ({{ view.trainer.name }}), dans une Poké Ball, avec ses données de base. Tu pourras tout modifier ensuite.</p>
-        <button class="btn-big" @click="createPokemon(emptySel, newSpecies, newLevel)"><Icon name="plus" :size="16" /> Créer ici</button>
-        <button class="btn-line full" title="Sets conseillés par Smogon pour cette espèce" @click="showdownUi.smogon = true"><Icon name="swords" :size="15" /> Sets stratégiques</button>
+        <button class="sv-btn solid big" @click="createPokemon(emptySel, newSpecies, newLevel)"><Icon name="plus" :size="16" /> Créer ici</button>
+        <button class="sv-btn full" title="Sets conseillés par Smogon pour cette espèce" @click="showdownUi.smogon = true"><Icon name="swords" :size="15" /> Sets stratégiques</button>
         <div class="row">
-          <button class="btn-line" @click="importInto(emptySel)"><Icon name="download" :size="15" /> Importer un .pk{{ view.generation }}</button>
-          <button class="btn-line" :disabled="!clipboard" @click="paste"><Icon name="copy" :size="15" /> Coller</button>
+          <button class="sv-btn" @click="importInto(emptySel)"><Icon name="download" :size="15" /> Importer un .pk{{ view.generation }}</button>
+          <button class="sv-btn" :disabled="!clipboard" @click="paste"><Icon name="copy" :size="15" /> Coller</button>
         </div>
       </section>
 
-      <section v-else class="panel detail empty-help">
+      <section v-else class="sv-panel detail empty-help">
         <Icon name="grid" :size="36" />
         <p>Choisis un Pokémon pour voir sa fiche, ou une case vide pour en créer un.</p>
         <p class="dim small">Glisser pour déplacer · Maj : copier · Alt : écraser <Tip term="dragModes" /></p>
@@ -402,14 +403,6 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
   height: 100%;
 }
 
-.panel {
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--panel);
-  backdrop-filter: blur(14px);
-  box-shadow: var(--shadow);
-}
-
 .box {
   display: flex;
   flex-direction: column;
@@ -420,42 +413,29 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
 .box-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+/* Nom de la boîte et champ de renommage : même largeur de base, rien ne saute au double-clic. */
+.box-head h2,
+.rename {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  text-align: center;
 }
 
 .box-head h2 {
-  min-width: 160px;
-  font-size: 22px;
-  font-weight: 600;
-  text-align: center;
+  min-width: 180px;
+  white-space: nowrap;
   cursor: text;
 }
 
+/* Champ partagé (.sv-input), juste resserré à la hauteur des flèches. */
 .rename {
+  flex-shrink: 0;
   width: 180px;
-  padding: 6px 10px;
-  border: 1px solid var(--accent-2);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-  color: var(--text);
-  font: 600 18px var(--font);
-  text-align: center;
-  outline: none;
-}
-
-.round {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-}
-
-.round:hover {
-  background: var(--panel-hover);
+  padding: 2px 10px;
 }
 
 .sv-dots {
@@ -466,13 +446,9 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
 
 .fill {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-variant-numeric: tabular-nums;
 }
-
-
-
-
 
 .grid {
   display: grid;
@@ -499,13 +475,15 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
   transition: transform 0.12s, background 0.12s, box-shadow 0.12s;
 }
 
-.slot:hover {
+.slot:hover:not(.selected) {
   background: color-mix(in srgb, var(--text) 20%, transparent);
 }
 
+/* Case choisie : un seul contour net, couleur du texte (le padding de la grille lui laisse la place). */
 .slot.selected {
-  background: color-mix(in srgb, var(--text) 26%, transparent);
-  box-shadow: 0 0 0 3px #fff, 0 0 0 7px color-mix(in srgb, var(--accent-2) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 24%, transparent);
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
   z-index: 1;
 }
 
@@ -519,9 +497,10 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
   bottom: 9px;
   left: 8px;
   padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
-  font-size: 11px;
+  border-radius: var(--radius-xs);
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -529,15 +508,15 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
   position: absolute;
   top: 6px;
   left: 6px;
-  color: #ff5a7a;
-  fill: #ff5a7a;
+  color: var(--shiny);
+  fill: var(--shiny);
 }
 
 .slot .egg {
   position: absolute;
   top: 6px;
   right: 6px;
-  color: #fff1c4;
+  color: var(--text-dim);
 }
 
 .bar {
@@ -551,11 +530,11 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
 }
 
 .bar.male {
-  background: #5aa9ff;
+  background: var(--male);
 }
 
 .bar.female {
-  background: #ff7eb6;
+  background: var(--female);
 }
 
 .side {
@@ -577,10 +556,7 @@ h3 {
 
 .party h3 {
   margin-bottom: 10px;
-  color: var(--text-dim);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--fs-xs);
 }
 
 .party-grid {
@@ -611,7 +587,15 @@ h3 {
 }
 
 .gender {
-  color: var(--accent-2);
+  color: var(--text-dim);
+}
+
+.gender.male {
+  color: var(--male);
+}
+
+.gender.female {
+  color: var(--female);
 }
 
 .chips {
@@ -621,85 +605,13 @@ h3 {
   margin-top: 4px;
 }
 
-.chip-w,
-.chip-gold,
-.chip-soft {
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chip-w {
-  background: var(--text);
-  color: var(--bg);
-}
-
-.chip-gold {
-  background: #ffe27a;
-  color: #6b4b00;
-}
-
-.chip-soft {
-  background: color-mix(in srgb, var(--text) 16%, transparent);
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 5px 12px;
-  margin: 0;
-  font-size: 13px;
-}
-
-dt {
-  display: flex;
-  align-items: center;
-  color: var(--text-dim);
-}
-
-dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
-}
-
-dd.ok {
-  color: var(--ok);
-}
-
-dd.bad {
-  color: var(--danger);
-}
-
-.moves {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.moves li {
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.btn-big {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+.sv-btn.big {
   padding: 11px;
-  border: none;
-  border-radius: 999px;
-  background: var(--text);
-  color: var(--bg);
   font-weight: 700;
+}
+
+.sv-btn.full {
+  width: 100%;
 }
 
 .row {
@@ -708,53 +620,8 @@ dd.bad {
   gap: 8px;
 }
 
-.btn-line.full {
-  width: 100%;
-  margin-top: 8px;
-}
-
-.btn-line {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+.row .sv-btn {
   padding: 9px 10px;
-  border: 1.5px solid color-mix(in srgb, var(--text) 70%, transparent);
-  border-radius: 999px;
-  background: transparent;
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.btn-line:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-}
-
-.btn-line:disabled {
-  opacity: 0.4;
-}
-
-.btn-line.danger {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.lbl {
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.num-input {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-  color: var(--text);
-  font: 600 14px var(--font);
 }
 
 .dim {
@@ -763,7 +630,7 @@ dd.bad {
 }
 
 .small {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.45;
 }
 
@@ -791,10 +658,10 @@ dd.bad {
 
 .ghost .mode {
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--text);
   color: var(--bg);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
 }
 </style>

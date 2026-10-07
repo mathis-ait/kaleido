@@ -4,6 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
+import SearchField from "../components/SearchField.vue";
 import Tip from "../components/Tip.vue";
 import SwitchMusic from "./SwitchMusic.vue";
 import { titleIdOf } from "../games";
@@ -253,10 +254,7 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
           <section class="block tune">
             <div class="block-head">
               <h3><Icon name="sliders" :size="17" /> Réglages optimaux {{ plan ? (/^[AEIOUaeiou]/.test(plan.emulator) ? "d'" : "de ") + plan.emulator : "de l'émulateur" }}</h3>
-              <Tip
-                title="Réglages optimaux"
-                text="Kaleido choisit les réglages graphiques selon ta carte graphique (résolution, filtres, cache des shaders…) et les écrit dans la configuration de l'émulateur. Une copie de ton ancienne configuration est gardée : « Restaurer » la remet exactement."
-              />
+              <Tip term="play.optimalSettings" />
             </div>
 
             <template v-if="emulatorMissing">
@@ -354,10 +352,7 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
           <section v-if="cheats" class="block">
             <div class="block-head">
               <h3><Icon name="wand" :size="17" /> Codes activés ({{ enabledCount }} / {{ cheats.length }})</h3>
-              <label class="search">
-                <Icon name="search" :size="14" />
-                <input v-model="cheatQuery" type="search" placeholder="Chercher un code (money, shiny, walk…)" />
-              </label>
+              <SearchField v-model="cheatQuery" class="cheat-search" placeholder="Chercher un code (money, shiny, walk…)" />
               <label class="only"><input v-model="onlyEnabled" type="checkbox" /> Activés seulement</label>
             </div>
             <p class="dim small">Les noms viennent de la base anglaise. Le jeu doit être relancé pour prendre en compte un changement.</p>
@@ -377,10 +372,7 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
           <section v-if="view?.others.length" class="block">
             <div class="block-head">
               <h3><Icon name="folder" :size="17" /> Autres mods de ce jeu</h3>
-              <Tip
-                title="Autres mods"
-                text="Mods déjà présents dans le dossier de l'émulateur, installés sans Kaleido. Les désactiver les déplace dans un dossier de Kaleido (rien n'est supprimé) ; les réactiver les remet en place."
-              />
+              <Tip term="play.otherMods" />
             </div>
             <ul class="others">
               <li v-for="o in view.others" :key="o.name" :class="{ off: !o.enabled }">
@@ -511,8 +503,8 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
 
 .tier.ultra,
 .tier.high {
-  background: var(--prism);
-  color: #fff;
+  background: var(--text);
+  color: var(--bg);
 }
 
 .settings {
@@ -605,8 +597,8 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
 }
 
 .badge.rec {
-  background: var(--prism);
-  color: #fff;
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
 }
 
 .badge.on {
@@ -644,30 +636,13 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
 .bar div {
   height: 100%;
   border-radius: inherit;
-  background: var(--prism);
+  background: var(--accent);
   transition: width 0.25s ease;
 }
 
-.search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.cheat-search {
+  width: 260px;
   margin-left: auto;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--text-dim);
-}
-
-.search input {
-  width: 230px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
 }
 
 .only {

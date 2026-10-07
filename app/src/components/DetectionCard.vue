@@ -6,6 +6,7 @@ import { openSave } from "../saveStore";
 import { library, removeItem } from "../library";
 import { nav } from "../nav";
 import { RANDOMIZABLE, isKaleidoRom, isRom as isRomFile, type Detection, type FileKind } from "../types";
+import Icon from "./Icon.vue";
 
 const props = defineProps<{ item: Detection }>();
 
@@ -51,15 +52,17 @@ function formatSize(bytes: number): string {
 
 <template>
   <article class="card panel" :class="[`kind-${item.kind}`, { unknown: item.kind === 'unknown' }]">
-    <button class="remove" @click="removeItem(item.path)" aria-label="Retirer de la bibliothèque" title="Retirer">×</button>
+    <button type="button" class="remove" @click="removeItem(item.path)" aria-label="Retirer de la bibliothèque" title="Retirer">
+      <Icon name="x" :size="15" />
+    </button>
 
     <div class="chips">
-      <span v-if="platformLabel" class="chip chip-accent">{{ platformLabel }}</span>
-      <span class="chip">{{ KIND_LABELS[item.kind] }}</span>
-      <span v-if="item.generation" class="chip">Gen {{ item.generation }}</span>
-      <span v-if="item.language" class="chip" :class="{ fr: item.isFrench }">{{ item.language }}</span>
-      <span v-if="randomized" class="chip kaleido" title="ROM générée par Kaleido">✨ Kaleido</span>
-      <span v-if="duplicateOf" class="chip dup" :title="`Contenu identique à : ${duplicateOf.fileName}`">Doublon</span>
+      <span v-if="platformLabel" class="sv-chip accent">{{ platformLabel }}</span>
+      <span class="sv-chip dim">{{ KIND_LABELS[item.kind] }}</span>
+      <span v-if="item.generation" class="sv-chip dim">Gen {{ item.generation }}</span>
+      <span v-if="item.language" class="sv-chip" :class="item.isFrench ? 'ok' : 'dim'">{{ item.language }}</span>
+      <span v-if="randomized" class="sv-chip" title="ROM générée par Kaleido">Kaleido</span>
+      <span v-if="duplicateOf" class="sv-chip warn" :title="`Contenu identique à : ${duplicateOf.fileName}`">Doublon</span>
     </div>
 
     <h3>{{ item.title }}</h3>
@@ -79,17 +82,17 @@ function formatSize(bytes: number): string {
 
     <div class="actions">
       <template v-if="isRom">
-        <button v-if="canRandomize" class="btn btn-primary" @click="randomize">Randomiser</button>
-        <button v-else-if="item.kaleido" class="btn btn-primary" title="Copie le code pour régénérer la même ROM à partir de l'originale" @click="copyShareCode">
+        <button v-if="canRandomize" type="button" class="sv-btn solid" @click="randomize">Randomiser</button>
+        <button v-else-if="item.kaleido" type="button" class="sv-btn solid" title="Copie le code pour régénérer la même ROM à partir de l'originale" @click="copyShareCode">
           {{ copiedCode ? "Code copié !" : "Copier le code" }}
         </button>
-        <button v-else class="btn btn-primary" disabled :title="randomized ? 'Déjà randomisée : pars de la ROM d\'origine' : 'Pas encore pris en charge par le randomizer'">
+        <button v-else type="button" class="sv-btn solid" disabled :title="randomized ? 'Déjà randomisée : pars de la ROM d\'origine' : 'Pas encore pris en charge par le randomizer'">
           Randomiser
         </button>
-        <button v-if="canEdit" class="btn" @click="openRom(item.path)">Éditer</button>
-        <button v-else class="btn" disabled title="Jeu non identifié">Éditer</button>
+        <button v-if="canEdit" type="button" class="sv-btn" @click="openRom(item.path)">Éditer</button>
+        <button v-else type="button" class="sv-btn" disabled title="Jeu non identifié">Éditer</button>
       </template>
-      <button v-else-if="isSave" class="btn btn-primary" @click="openSave(item.path)">Ouvrir la sauvegarde</button>
+      <button v-else-if="isSave" type="button" class="sv-btn solid" @click="openSave(item.path)">Ouvrir la sauvegarde</button>
     </div>
   </article>
 </template>
@@ -104,41 +107,36 @@ function formatSize(bytes: number): string {
   overflow: hidden;
 }
 
-/* Liseré prismatique en haut de la carte */
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--prism);
-}
-
-.card.unknown::before {
-  background: var(--border);
+/* Fichier non reconnu : carte en retrait plutôt qu'un liseré coloré. */
+.card.unknown {
+  border-style: dashed;
 }
 
 .remove {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
   color: var(--text-dim);
-  font-size: 18px;
-  line-height: 1;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition: opacity 0.15s, background-color 0.15s, color 0.15s;
 }
 
-.card:hover .remove {
+/* Visible au survol de la carte, mais aussi au clavier et à la manette. */
+.card:hover .remove,
+.card:focus-within .remove {
   opacity: 1;
 }
 
 .remove:hover {
-  background: var(--panel-hover);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
   color: var(--text);
 }
 
@@ -147,26 +145,6 @@ function formatSize(bytes: number): string {
   flex-wrap: wrap;
   gap: 6px;
   padding-right: 28px;
-}
-
-.chip.kaleido {
-  color: var(--on-accent);
-  border-color: transparent;
-  background: var(--prism);
-}
-
-:root[data-theme="lagon"] .chip.kaleido {
-  background: #fff;
-}
-
-.chip.dup {
-  color: var(--warn);
-  border-color: var(--warn);
-}
-
-.chip.fr {
-  color: var(--accent-2);
-  border-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
 }
 
 h3 {

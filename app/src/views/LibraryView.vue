@@ -4,7 +4,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import GameTile from "../components/GameTile.vue";
 import Launcher from "../launcher/Launcher.vue";
 import { audio } from "../launcher/audio";
+import Banner from "../components/Banner.vue";
 import Icon from "../components/Icon.vue";
+import SearchField from "../components/SearchField.vue";
 import Segmented from "../components/Segmented.vue";
 import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
@@ -90,7 +92,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
         <button class="btn" @click="pickFiles"><Icon name="plus" :size="16" /> Ajouter des jeux</button>
         <button class="btn" title="Trouver les jeux et les émulateurs rangés n'importe où sur le PC" @click="discovering = true"><Icon name="search" :size="16" /> Rechercher sur ce PC</button>
         <button class="btn" :disabled="games.scanning" title="Relire les dossiers" @click="rescan"><Icon name="refresh" :size="16" /></button>
-        <button class="btn" :title="audio.music ? 'Couper la musique au survol' : 'Musique au survol'" @click="audio.music = !audio.music">{{ audio.music ? "♪ Musique" : "♪ Coupée" }}</button>
+        <button class="btn" :title="audio.music ? 'Couper la musique au survol' : 'Musique au survol'" :aria-pressed="audio.music" @click="audio.music = !audio.music">{{ audio.music ? "Musique activée" : "Musique coupée" }}</button>
         <button v-if="allGames.length" class="btn btn-primary" @click="libraryUi.mode = 'launcher'"><Icon name="play" :size="15" /> Mode lanceur</button>
       </div>
     </header>
@@ -130,7 +132,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
       <span class="dim">Dossiers suivis :</span>
       <span v-for="f in games.config.folders" :key="f" class="folder chip" :title="f">
         <Icon name="folder" :size="13" /> {{ folderName(f) }}
-        <button aria-label="Ne plus suivre ce dossier" title="Ne plus suivre ce dossier" @click="removeFolder(f)">×</button>
+        <button aria-label="Ne plus suivre ce dossier" title="Ne plus suivre ce dossier" @click="removeFolder(f)"><Icon name="x" :size="12" /></button>
       </span>
     </div>
 
@@ -144,14 +146,11 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
           { value: 'switch', label: 'Switch' },
         ]"
       />
-      <label class="search">
-        <Icon name="search" :size="15" />
-        <input v-model="query" type="search" placeholder="Rechercher un jeu" />
-      </label>
+      <SearchField v-model="query" class="search" placeholder="Rechercher un jeu" />
       <span v-if="games.scanning" class="dim">Analyse des dossiers…</span>
     </div>
 
-    <p v-if="games.error" class="error">{{ games.error }}</p>
+    <Banner v-if="games.error" class="error" :retry="rescan">{{ games.error }}</Banner>
 
     <div v-if="shown.length" class="grid">
       <GameTile v-for="g in shown" :key="g.path" :game="g" />
@@ -276,7 +275,7 @@ h1 {
 .bar div {
   height: 100%;
   border-radius: inherit;
-  background: var(--prism);
+  background: var(--accent);
   transition: width 0.25s ease;
 }
 
@@ -309,11 +308,13 @@ h1 {
 }
 
 .folder button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
   border: none;
+  border-radius: 50%;
   background: none;
   color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1;
 }
 
 .folder button:hover {
@@ -329,24 +330,7 @@ h1 {
 }
 
 .search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--text-dim);
-}
-
-.search input {
-  width: 200px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
+  width: 260px;
 }
 
 .grid {
@@ -384,7 +368,6 @@ h1 {
 
 .error {
   margin-top: 14px;
-  color: var(--danger);
 }
 
 @media (max-width: 1100px) {

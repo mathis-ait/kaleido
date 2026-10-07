@@ -151,8 +151,8 @@ useShell(() => ({
     <div class="bar">
       <input v-model="search" class="sv-input search" placeholder="Chercher une sauvegarde…" />
       <div class="chips">
-        <button :class="{ on: genFilter === null }" @click="genFilter = null">Toutes</button>
-        <button v-for="g in gens" :key="g" :class="{ on: genFilter === g }" @click="genFilter = g">Gen {{ g }}</button>
+        <button class="sv-chip" :class="{ on: genFilter === null }" @click="genFilter = null">Toutes</button>
+        <button v-for="g in gens" :key="g" class="sv-chip" :class="{ on: genFilter === g }" @click="genFilter = g">Gen {{ g }}</button>
       </div>
       <span class="count">{{ shown.length }} sauvegarde{{ shown.length > 1 ? "s" : "" }}</span>
       <button class="sv-btn" @click="refresh"><Icon name="refresh" :size="15" /> Actualiser</button>
@@ -176,7 +176,7 @@ useShell(() => ({
       </div>
 
       <section v-for="g in groups" :key="g.title">
-        <h3>{{ g.title }} · {{ g.list.length }}</h3>
+        <h3 class="sv-label">{{ g.title }} · {{ g.list.length }}</h3>
         <div class="cards">
           <button
             v-for="s in g.list"
@@ -192,9 +192,9 @@ useShell(() => ({
             <div class="info">
               <div class="title">
                 <strong>{{ s.game.replace("Pokémon ", "") }}</strong>
-                <span v-if="isOpen(s)" class="chip on">Ouverte</span>
-                <span class="chip">Gen {{ s.generation }}</span>
-                <span v-if="emulatorOf[s.path]" class="chip emu" :title="`Trouvée automatiquement chez ${emulatorOf[s.path]} : ${s.path}`">{{ emulatorOf[s.path] }}</span>
+                <span v-if="isOpen(s)" class="sv-chip on">Ouverte</span>
+                <span class="sv-chip dim">Gen {{ s.generation }}</span>
+                <span v-if="emulatorOf[s.path]" class="sv-chip accent" :title="`Trouvée automatiquement chez ${emulatorOf[s.path]} : ${s.path}`">{{ emulatorOf[s.path] }}</span>
               </div>
               <div class="who">
                 <span :class="s.trainer.gender">{{ s.trainer.gender === "female" ? "♀" : "♂" }}</span>
@@ -246,41 +246,31 @@ useShell(() => ({
 
 .chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.chips button {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.chips button.on {
-  background: var(--text);
-  color: var(--bg);
+.chips .sv-chip {
+  padding: 5px 13px;
 }
 
 .count {
   margin-left: auto;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .scroll {
   flex: 1;
   min-height: 0;
+  /* Marge intérieure compensée : l'anneau de focus des cartes n'est jamais rogné par le défilement. */
+  margin: -6px;
+  padding: 6px;
   overflow-y: auto;
 }
 
 section h3 {
   margin: 14px 0 10px;
-  color: var(--text-dim);
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .cards {
@@ -294,18 +284,22 @@ section h3 {
   gap: 16px;
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-panel);
   background: color-mix(in srgb, var(--text) 7%, transparent);
   text-align: left;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.card:hover {
-  transform: translateY(-2px);
+.card:hover:not(.sel) {
+  border-color: color-mix(in srgb, var(--text) 35%, transparent);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 
+/* Sélection : un seul contour de 2 px, tracé à l'intérieur de la carte (jamais rogné). */
 .card.sel {
-  box-shadow: 0 0 0 3px #fff, 0 0 0 7px color-mix(in srgb, var(--accent-2) 60%, transparent);
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--text);
 }
 
 .cover {
@@ -315,7 +309,7 @@ section h3 {
   width: 92px;
   height: 92px;
   border: 3px solid #fff;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   color: #fff;
   font: 800 20px var(--font-display);
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
@@ -331,31 +325,13 @@ section h3 {
 
 .title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 
 .title strong {
-  font-size: 18px;
-}
-
-.chip {
-  padding: 1px 9px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.chip.emu {
-  border-color: var(--accent-2);
-  color: var(--accent-2);
-}
-
-.chip.on {
-  border-color: #fff;
-  background: #fff;
-  color: #1d4fb8;
+  font-size: var(--fs-lg);
 }
 
 .who {
@@ -366,11 +342,11 @@ section h3 {
 }
 
 .who .male {
-  color: #6fb4ff;
+  color: var(--male);
 }
 
 .who .female {
-  color: #ff8cc4;
+  color: var(--female);
 }
 
 .facts {

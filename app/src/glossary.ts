@@ -376,6 +376,20 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "Objet épinglé en tête de liste ou dans le menu Y (selon le jeu).",
   },
 
+  // --- Éditeur de ROM
+  catchRate: {
+    title: "Taux de capture",
+    text: "De 1 à 255 : plus il est haut, plus le Pokémon est facile à attraper. Repères : 3 pour les légendaires, 45 pour les starters, 255 pour Rattata ou Chenipan.",
+  },
+  outputLayeredFs: {
+    title: "Sortie LayeredFS",
+    text: "Un dossier de mod léger : seuls les fichiers modifiés sont écrits, et Luma3DS (sur console) ou l'émulateur les lit à la place des originaux. Ta ROM reste intacte.",
+  },
+  outputRom3ds: {
+    title: "Sortie fichier .3ds",
+    text: "Une copie complète de ta ROM, déjà modifiée et prête à ouvrir dans Azahar ou Citra. Elle pèse à peu près autant que la ROM. Sur console, convertis-la en CIA ou choisis plutôt LayeredFS.",
+  },
+
   // --- Pokédex
   seen: {
     title: "Vu",

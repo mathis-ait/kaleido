@@ -3,7 +3,10 @@ import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import Banner from "../components/Banner.vue";
 import Combo, { type ComboOption } from "../components/Combo.vue";
+import Icon from "../components/Icon.vue";
+import SearchField from "../components/SearchField.vue";
 import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import StatRadar from "../components/StatRadar.vue";
@@ -302,7 +305,7 @@ async function saveCtr(src: string) {
       <h1>Éditeur de ROM</h1>
       <p class="lead">Modifie les Pokémon d'un jeu : statistiques, types, talents, taux de capture et attaques apprises.</p>
 
-      <div v-if="editor.error" class="error">{{ editor.error }}</div>
+      <Banner v-if="editor.error" class="msg" :dismiss="() => (editor.error = null)">{{ editor.error }}</Banner>
 
       <div v-if="openableRoms.length" class="picker">
         <button v-for="rom in openableRoms" :key="rom.path" class="pick panel" @click="openRom(rom.path)">
@@ -319,7 +322,7 @@ async function saveCtr(src: string) {
 
     <!-- Chargement -->
     <div v-else-if="editor.loadingPath" class="loading">
-      <div class="spinner" />
+      <Icon name="refresh" :size="32" class="sv-spin" />
       <p>Lecture de la ROM…</p>
     </div>
 
@@ -344,18 +347,18 @@ async function saveCtr(src: string) {
         </div>
       </header>
 
-      <p v-if="readOnly" class="notice">
+      <Banner v-if="readOnly" tone="warn" class="msg">
         L'édition de ce jeu n'est pas encore disponible : seuls Diamant, Perle, Platine, HeartGold, SoulSilver, Noire, Blanche et, sur 3DS, X, Y,
         Rubis Oméga, Saphir Alpha, Soleil, Lune, Ultra-Soleil et Ultra-Lune sont modifiables pour l'instant. Tu peux toujours consulter son Pokédex.
-      </p>
-      <div v-if="saveError" class="error">{{ saveError }}</div>
-      <div v-else-if="editor.error" class="error">{{ editor.error }}</div>
+      </Banner>
+      <Banner v-if="saveError" class="msg" :dismiss="() => (saveError = null)">{{ saveError }}</Banner>
+      <Banner v-else-if="editor.error" class="msg" :dismiss="() => (editor.error = null)">{{ editor.error }}</Banner>
       <div v-if="saved" class="success">
         <span>
           ROM enregistrée ({{ saved.count }} Pokémon modifié{{ saved.count > 1 ? "s" : "" }}). La suite de l'édition se fait sur cette copie ; l'originale n'a pas été touchée.
         </span>
         <button class="btn" @click="revealItemInDir(saved.path)">Afficher dans le dossier</button>
-        <button class="close-x" aria-label="Fermer" @click="saved = null">×</button>
+        <button class="close-x" aria-label="Fermer" @click="saved = null"><Icon name="x" :size="14" /></button>
       </div>
       <div v-if="ctrSaved" class="success">
         <span>
@@ -375,17 +378,14 @@ async function saveCtr(src: string) {
           }}
         </span>
         <button class="btn" @click="revealItemInDir(ctrSaved.image ?? ctrSaved.romfs ?? '')">Afficher dans le dossier</button>
-        <button class="close-x" aria-label="Fermer" @click="ctrSaved = null">×</button>
+        <button class="close-x" aria-label="Fermer" @click="ctrSaved = null"><Icon name="x" :size="14" /></button>
       </div>
 
       <div v-if="isCtr && !readOnly" class="ctr-output panel">
         <span class="row-label">
           Sortie 3DS
-          <Tip title="LayeredFS" text="Un dossier de mod léger : seules les archives modifiées sont écrites ; Luma3DS ou l'émulateur les charge à la place des originales. Ta ROM reste intacte." />
-          <Tip
-            title="Fichier .3ds"
-            text="Une copie complète et déchiffrée de ta ROM (environ sa taille), à ouvrir directement dans Azahar/Citra. Sur console, convertis-la en CIA ou préfère LayeredFS."
-          />
+          <Tip term="outputLayeredFs" />
+          <Tip term="outputRom3ds" />
         </span>
         <Segmented
           v-model="ctrOutput"
@@ -411,13 +411,13 @@ async function saveCtr(src: string) {
         <!-- Liste des espèces -->
         <aside class="list panel">
           <div class="filters">
-            <input v-model="query" class="field" type="search" placeholder="Nom, numéro, talent…" />
+            <SearchField v-model="query" placeholder="Nom, numéro, talent…" />
             <div class="filter-row">
-              <select v-model="typeFilter" class="field">
+              <select v-model="typeFilter" class="sv-select" aria-label="Type">
                 <option value="">Tous les types</option>
                 <option v-for="[key, name] in types" :key="key" :value="key">{{ name }}</option>
               </select>
-              <select v-model="sortKey" class="field" aria-label="Trier">
+              <select v-model="sortKey" class="sv-select" aria-label="Trier">
                 <option value="id">N°</option>
                 <option value="name">Nom</option>
                 <option value="total">Total</option>
@@ -455,10 +455,10 @@ async function saveCtr(src: string) {
                 <span v-if="modified" class="chip chip-mod">Modifié</span>
               </h2>
               <div v-if="cur && editor.data" class="type-pickers">
-                <select class="field" :value="cur.types[0]" aria-label="Type 1" @change="setType(0, $event)">
+                <select class="sv-select" :value="cur.types[0]" aria-label="Type 1" @change="setType(0, $event)">
                   <option v-for="t in typeOptions(cur.types[0])" :key="t.index" :value="t.index">{{ t.tag.name }}</option>
                 </select>
-                <select class="field" :value="secondType" aria-label="Type 2" @change="setType(1, $event)">
+                <select class="sv-select" :value="secondType" aria-label="Type 2" @change="setType(1, $event)">
                   <option :value="-1">Aucun second type</option>
                   <option v-for="t in typeOptions(cur.types[1]).filter((t) => t.index !== cur!.types[0])" :key="t.index" :value="t.index">{{ t.tag.name }}</option>
                 </select>
@@ -467,8 +467,8 @@ async function saveCtr(src: string) {
             </div>
             <div class="hero-nav">
               <button v-if="modified" class="btn" title="Revenir aux valeurs du jeu d'origine" @click="revert">Rétablir l'original</button>
-              <button class="btn" :disabled="!neighbour(-1)" title="Pokémon précédent" @click="select(neighbour(-1)!.id)">‹</button>
-              <button class="btn" :disabled="!neighbour(1)" title="Pokémon suivant" @click="select(neighbour(1)!.id)">›</button>
+              <button class="btn" :disabled="!neighbour(-1)" title="Pokémon précédent" aria-label="Pokémon précédent" @click="select(neighbour(-1)!.id)"><Icon name="chevron-left" :size="16" /></button>
+              <button class="btn" :disabled="!neighbour(1)" title="Pokémon suivant" aria-label="Pokémon suivant" @click="select(neighbour(1)!.id)"><Icon name="chevron-right" :size="16" /></button>
             </div>
           </div>
 
@@ -490,7 +490,7 @@ async function saveCtr(src: string) {
                       :aria-label="s.label"
                       @input="setStat(i, $event)"
                     />
-                    <input type="number" min="1" max="255" class="field num" :value="shownStats[i]" :disabled="readOnly" :aria-label="s.label" @change="setStat(i, $event)" />
+                    <input type="number" min="1" max="255" class="sv-input num" :value="shownStats[i]" :disabled="readOnly" :aria-label="s.label" @change="setStat(i, $event)" />
                   </div>
                   <div class="stat-row total-row">
                     <span class="stat-label">Total</span>
@@ -519,18 +519,15 @@ async function saveCtr(src: string) {
                   <Combo :model-value="cur.abilities[1] === cur.abilities[0] ? 0 : cur.abilities[1]" :options="abilityOptions" none-label="Aucun" @update:model-value="setAbility(1, $event)" />
                 </label>
                 <label v-if="editor.data?.hiddenAbility">
-                  <span>Talent caché <Tip title="Talent caché" text="Troisième talent, obtenu surtout via le Monde des Rêves (Pokémon Global Link) et certaines rencontres spéciales." /></span>
+                  <span>Talent caché <Tip term="hiddenAbility" /></span>
                   <Combo :model-value="cur.abilities[2]" :options="abilityOptions" none-label="Aucun" @update:model-value="setAbility(2, $event)" />
                 </label>
                 <label>
                   <span>
                     Taux de capture
-                    <Tip
-                      title="Taux de capture"
-                      text="De 1 à 255 : plus il est haut, plus le Pokémon est facile à attraper. Repères : 3 pour les légendaires, 45 pour les starters, 255 pour Rattata ou Chenipan."
-                    />
+                    <Tip term="catchRate" />
                   </span>
-                  <input type="number" min="1" max="255" class="field" :value="cur.catchRate" @change="setCatchRate" />
+                  <input type="number" min="1" max="255" class="sv-input" :value="cur.catchRate" @change="setCatchRate" />
                 </label>
               </div>
               <dl v-else class="facts">
@@ -558,7 +555,7 @@ async function saveCtr(src: string) {
                       type="number"
                       :min="minLevel"
                       max="100"
-                      class="field"
+                      class="sv-input"
                       :value="m.level"
                       :title="m.level === 0 ? 'Niveau 0 : attaque apprise à l\'évolution' : undefined"
                       aria-label="Niveau"
@@ -566,10 +563,10 @@ async function saveCtr(src: string) {
                     />
                   </label>
                   <Combo :model-value="m.move" :options="moveOptions" @update:model-value="setMove(i, $event)" />
-                  <button class="remove" title="Retirer cette attaque" @click="removeMove(i)">×</button>
+                  <button class="remove" title="Retirer cette attaque" aria-label="Retirer cette attaque" @click="removeMove(i)"><Icon name="x" :size="14" /></button>
                 </div>
               </div>
-              <button class="btn add" :disabled="cur.learnset.length >= editor.data.maxLearnset" @click="addMove">+ Ajouter une attaque</button>
+              <button class="btn add" :disabled="cur.learnset.length >= editor.data.maxLearnset" @click="addMove"><Icon name="plus" :size="15" /> Ajouter une attaque</button>
             </section>
           </div>
         </div>
@@ -616,11 +613,11 @@ h3 {
   gap: 6px;
   padding: 18px;
   text-align: left;
-  transition: transform 0.15s;
+  transition: background 0.15s;
 }
 
 .pick:hover {
-  transform: translateY(-2px);
+  background: var(--panel-hover);
 }
 
 .pick strong {
@@ -639,26 +636,14 @@ h3 {
   padding: 20px 24px;
 }
 
-.error,
-.notice,
+.msg {
+  margin-top: 16px;
+}
+
 .success {
   margin-top: 16px;
   padding: 12px 16px;
   border-radius: var(--radius-sm);
-}
-
-.error {
-  border: 1px solid var(--danger);
-  color: var(--danger);
-}
-
-.notice {
-  border: 1px solid var(--warn);
-  background: var(--warn-bg);
-  color: var(--text);
-}
-
-.success {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -692,10 +677,17 @@ h3 {
 }
 
 .close-x {
+  display: grid;
+  place-items: center;
+  padding: 4px;
   border: none;
+  border-radius: 50%;
   background: none;
   color: var(--text-dim);
-  font-size: 20px;
+}
+
+.close-x:hover {
+  color: var(--text);
 }
 
 .loading {
@@ -704,21 +696,6 @@ h3 {
   gap: 16px;
   margin-top: 120px;
   color: var(--text-dim);
-}
-
-.spinner {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: conic-gradient(var(--accent), var(--accent-2), var(--accent-3), transparent);
-  mask: radial-gradient(circle, transparent 55%, #000 56%);
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .head {
@@ -752,25 +729,6 @@ h3 {
   background: color-mix(in srgb, var(--bg) 35%, transparent);
   font-size: 12px;
   font-weight: 700;
-}
-
-.field {
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  outline: none;
-  min-width: 0;
-}
-
-.field:focus {
-  border-color: var(--accent);
-}
-
-.field:disabled {
-  opacity: 0.7;
 }
 
 /* ---------- Espace de travail : liste + fiche ---------- */
@@ -833,13 +791,23 @@ h3 {
   text-align: left;
 }
 
-.item:hover {
+.item:hover:not(.on) {
   background: var(--panel-hover);
 }
 
+/* Sélection : inversion fond / texte, comme .sv-list-item. */
 .item.on {
-  background: var(--panel-hover);
-  box-shadow: inset 0 0 0 1px var(--accent-2);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.item.on .item-main small,
+.item.on .item-total {
+  color: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+.item.on .dot {
+  background: var(--bg);
 }
 
 /* Les icônes pokesprite ont beaucoup de marge transparente. */
@@ -875,7 +843,6 @@ h3 {
   height: 8px;
   border-radius: 50%;
   background: var(--accent-2);
-  box-shadow: 0 0 8px var(--accent-2);
 }
 
 .item-total {
@@ -913,7 +880,7 @@ h3 {
   width: 150px;
   height: 150px;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 30%, transparent), transparent 70%);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
   border: 2px solid color-mix(in srgb, var(--text) 15%, transparent);
 }
 
@@ -948,7 +915,8 @@ h3 {
   gap: 8px;
 }
 
-.type-pickers .field {
+.type-pickers .sv-select {
+  width: auto;
   min-width: 170px;
 }
 
@@ -1061,7 +1029,7 @@ h3 {
 }
 
 .up {
-  color: #4ade80;
+  color: var(--ok);
 }
 
 .down {
@@ -1135,20 +1103,21 @@ h3 {
   font-size: 13px;
 }
 
-.lvl .field {
+.lvl .sv-input {
   width: 58px;
   padding: 7px 8px;
   text-align: right;
 }
 
 .remove {
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 30px;
   border: none;
   border-radius: 50%;
   background: none;
   color: var(--text-dim);
-  font-size: 18px;
 }
 
 .remove:hover {

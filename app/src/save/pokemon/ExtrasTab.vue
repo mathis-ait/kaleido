@@ -257,15 +257,15 @@ const medalCount = computed(() => st.value?.medals.filter(Boolean).length ?? 0);
 }
 
 .mark.on {
-  border-color: #6fb4ff;
-  color: #6fb4ff;
-  background: color-mix(in srgb, #6fb4ff 18%, transparent);
+  border-color: var(--male);
+  color: var(--male);
+  background: color-mix(in srgb, var(--male) 18%, transparent);
 }
 
 .mark.red {
-  border-color: #ff7a8a;
-  color: #ff7a8a;
-  background: color-mix(in srgb, #ff7a8a 18%, transparent);
+  border-color: var(--female);
+  color: var(--female);
+  background: color-mix(in srgb, var(--female) 18%, transparent);
 }
 
 section .sv-help {
@@ -326,7 +326,7 @@ section .sv-help {
 }
 
 .medal.on {
-  background: color-mix(in srgb, #ffc94d 14%, transparent);
+  background: color-mix(in srgb, var(--shiny) 14%, transparent);
   color: var(--text);
 }
 

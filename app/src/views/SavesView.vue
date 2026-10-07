@@ -123,6 +123,49 @@ onBeforeUnmount(() => {
   clearInterval(clock);
 });
 
+// ---- Actions du bas : jamais de libellé tronqué. Quand la moitié droite de la barre ne suffit pas,
+// les dernières actions (les moins importantes) ne gardent que leur touche, libellé en infobulle.
+const actionsBox = ref<HTMLElement | null>(null);
+const ruler = ref<HTMLElement | null>(null);
+/** Nombre d'actions, en partant de la fin, réduites à leur touche. */
+const bare = ref(0);
+const isBare = (i: number) => i >= shell.actions.length - bare.value;
+
+function fitActions() {
+  const box = actionsBox.value;
+  const r = ruler.value;
+  if (!box || !r) return;
+  // La règle cachée affiche toutes les actions en entier : largeurs naturelles, sans dépendre de l'état affiché.
+  const acts = Array.from(r.children) as HTMLElement[];
+  const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
+  const full = acts.map((a) => a.getBoundingClientRect().width);
+  const keyOnly = acts.map((a) => {
+    const cs = getComputedStyle(a);
+    return a.querySelector("kbd")!.getBoundingClientRect().width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  });
+  let need = full.reduce((s, w) => s + w, 0) + gap * Math.max(0, acts.length - 1);
+  let n = 0;
+  while (n < acts.length && need > box.clientWidth + 0.5) {
+    const i = acts.length - 1 - n;
+    need -= full[i] - keyOnly[i];
+    n++;
+  }
+  bare.value = n;
+}
+
+let fitObserver: ResizeObserver | undefined;
+onMounted(() => {
+  fitObserver = new ResizeObserver(() => fitActions());
+  if (actionsBox.value) fitObserver.observe(actionsBox.value);
+  document.fonts?.ready.then(fitActions);
+});
+onBeforeUnmount(() => fitObserver?.disconnect());
+watch(
+  () => shell.actions.map((a) => `${a.cap ?? a.key}\u0000${a.label}`).join("\u0001"),
+  () => nextTick(fitActions),
+  { immediate: true },
+);
+
 const time = computed(() => now.value.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
 const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pokemon: PokemonPage, encounters: EncountersPage, tools: ToolsPage, gifts: GiftsPage, nuzlocke: NuzlockePage, manager: ManagerPage, bank: BankPage, battle: BattlePage };
 </script>
@@ -203,10 +246,24 @@ const pages: Record<SavePage, unknown> = { home: HomePage, boxes: BoxesPage, pok
       <button v-if="view" class="home-btn" :class="{ on: saveState.page === 'home' }" title="Accueil (Ctrl+H)" @click="goTo('home')">
         <Icon name="home" :size="22" />
       </button>
-      <div class="right">
-        <button v-for="a in shell.actions" :key="a.key + a.label" class="act" :disabled="a.disabled" @click="a.run()">
-          <kbd>{{ a.cap ?? a.key }}</kbd> <span class="lbl">{{ a.label }}</span>
+      <div ref="actionsBox" class="right">
+        <button
+          v-for="(a, i) in shell.actions"
+          :key="a.key + a.label"
+          class="act"
+          :disabled="a.disabled"
+          :title="isBare(i) ? `${a.label} (${a.cap ?? a.key})` : undefined"
+          :aria-label="isBare(i) ? a.label : undefined"
+          @click="a.run()"
+        >
+          <kbd>{{ a.cap ?? a.key }}</kbd> <span v-if="!isBare(i)" class="lbl">{{ a.label }}</span>
         </button>
+      </div>
+      <!-- Règle invisible : les actions en entier, pour savoir ce qui tient -->
+      <div ref="ruler" class="ruler" aria-hidden="true">
+        <span v-for="a in shell.actions" :key="a.key + a.label" class="act">
+          <kbd>{{ a.cap ?? a.key }}</kbd> <span class="lbl">{{ a.label }}</span>
+        </span>
       </div>
     </footer>
   </section>
@@ -289,7 +346,7 @@ kbd {
   transition: background 0.15s, color 0.15s;
 }
 
-.tabs button:hover {
+.tabs button:hover:not(.on) {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
@@ -300,15 +357,24 @@ kbd {
     display: none;
   }
 
+  .tabs {
+    gap: 2px;
+  }
+
   .tabs button:not(.on) {
-    padding: 7px 10px;
+    padding: 7px 8px;
   }
 }
 
 .tabs button.on {
   background: var(--text);
   color: var(--bg);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 60%, transparent);
+}
+
+/* Focus sur l'onglet affiché : anneau à l'intérieur de la pastille, pas de second contour. */
+.tabs button.on:focus-visible {
+  outline-color: var(--bg);
+  outline-offset: -4px;
 }
 
 .status {
@@ -370,6 +436,8 @@ kbd {
   padding-top: 10px;
 }
 
+/* Racine de <SyncBanner> (« banner sync ») : la mise en page vient d'ici, ses couleurs de son propre fichier.
+   Les autres bandeaux passent par <Banner> (.sv-banner). */
 .banner {
   display: flex;
   align-items: center;
@@ -377,23 +445,6 @@ kbd {
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: 13px;
-}
-
-.banner.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.banner.danger {
-  border: 1px solid var(--danger);
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
-}
-
-.banner .x {
-  margin-left: auto;
-  border: none;
-  background: none;
 }
 
 /* ---- Page ---- */
@@ -444,7 +495,8 @@ kbd {
   min-width: 0;
 }
 
-/* Les actions se tassent vers la droite ; ce qui ne tient pas est coupé à droite, jamais sous le bouton Accueil. */
+/* Les actions se tassent vers la droite, jamais sous le bouton Accueil. Elles ne rétrécissent pas :
+   quand la place manque, fitActions() réduit les dernières à leur touche. */
 .right {
   flex-wrap: nowrap;
   overflow: hidden;
@@ -454,9 +506,20 @@ kbd {
   margin-left: auto;
 }
 
-/* « Retour » ne se tasse jamais : c'est l'aide qui se coupe. */
-.left > .act {
+/* « Retour » et les actions ne se tassent jamais : c'est l'aide qui se coupe. */
+.left > .act,
+.right > .act {
   flex-shrink: 0;
+}
+
+.ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 16px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .hint {
@@ -469,9 +532,7 @@ kbd {
 
 .act {
   display: inline-flex;
-  flex-shrink: 1;
   align-items: center;
-  min-width: 0;
   gap: 8px;
   padding: 4px 6px;
   border: none;
@@ -484,11 +545,6 @@ kbd {
 .act kbd {
   flex-shrink: 0;
   border-radius: var(--radius-pill);
-}
-
-.act .lbl {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .act:hover:not(:disabled) {

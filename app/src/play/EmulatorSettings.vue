@@ -200,7 +200,7 @@ header {
 }
 
 .state.ok {
-  color: #34d399;
+  color: var(--ok);
 }
 
 .state.bad {
@@ -251,7 +251,7 @@ header {
 }
 
 .test.ok {
-  color: #34d399;
+  color: var(--ok);
 }
 
 .dim {

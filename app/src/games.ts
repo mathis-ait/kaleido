@@ -21,7 +21,12 @@ export interface SwitchGame {
   title: string;
   size: number;
   hasUpdate: boolean;
+  /** Version affichée de la mise à jour trouvée (« 1.1.1 »), si le nom du fichier l'indique. */
+  updateVersion: string | null;
 }
+
+/** Libellé de la mise à jour dans les détails d'un jeu Switch. */
+export const UPDATE_LABEL = "Mise à jour";
 
 /** Bibliothèque de jeux : dossiers et fichiers mémorisés d'une session à l'autre. */
 export const games = reactive({
@@ -45,10 +50,14 @@ function switchDetection(g: SwitchGame): Detection {
     game: null,
     platform: "switch",
     generation: null,
-    language: g.hasUpdate ? "Mise à jour trouvée" : null,
+    // La langue d'un jeu Switch n'est pas lue (contenu chiffré) : rien plutôt qu'une info fausse.
+    language: null,
     isFrench: false,
     size: g.size,
-    details: [{ label: "Title ID", value: g.titleId }],
+    details: [
+      { label: "Title ID", value: g.titleId },
+      ...(g.hasUpdate ? [{ label: UPDATE_LABEL, value: g.updateVersion ?? "trouvée" }] : []),
+    ],
     warnings: [],
     kaleido: null,
     fingerprint: null,

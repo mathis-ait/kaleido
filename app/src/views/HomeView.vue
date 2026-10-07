@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { open } from "@tauri-apps/plugin-dialog";
+import Banner from "../components/Banner.vue";
 import DetectionCard from "../components/DetectionCard.vue";
 import KaleidoLogo from "../components/KaleidoLogo.vue";
 import { addPaths, library } from "../library";
@@ -25,7 +26,7 @@ async function pickFolder() {
 <template>
   <section class="home">
     <header>
-      <h1>Bienvenue dans <span class="prism-text">Kaleido</span></h1>
+      <h1>Bienvenue dans Kaleido</h1>
       <p class="lead">Randomise et modifie tes jeux Pokémon DS et 3DS, en français.</p>
     </header>
 
@@ -43,9 +44,8 @@ async function pickFolder() {
 
     <div v-if="library.pending" class="pending">Analyse en cours…</div>
 
-    <div v-for="(err, i) in library.errors" :key="i" class="error">
-      <span>{{ err }}</span>
-      <button @click="library.errors.splice(i, 1)" aria-label="Fermer">×</button>
+    <div v-if="library.errors.length" class="errors">
+      <Banner v-for="(err, i) in library.errors" :key="i" :dismiss="() => library.errors.splice(i, 1)">{{ err }}</Banner>
     </div>
 
     <TransitionGroup name="card" tag="div" class="grid">
@@ -121,22 +121,11 @@ h1 {
   color: var(--text-dim);
 }
 
-.error {
+.errors {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--danger);
-  color: var(--danger);
-}
-
-.error button {
-  border: none;
-  background: none;
-  font-size: 18px;
-  line-height: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
 .grid {

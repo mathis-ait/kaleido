@@ -121,7 +121,6 @@ small {
   font-weight: 700;
 }
 
-
 .warnings {
   display: flex;
   flex-direction: column;

@@ -29,6 +29,11 @@
   grid-column: 1 / -1;
 }
 
+/* Un sélecteur à pastilles garde sa largeur naturelle au lieu de s'étirer sur tout le champ. */
+.sv-field > .sv-seg {
+  align-self: flex-start;
+}
+
 .sv-label {
   display: flex;
   align-items: center;
@@ -51,11 +56,25 @@
   color: var(--text);
   font: 600 14px var(--font);
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.sv-input:hover:not(:focus, :disabled),
+.sv-select:hover:not(:focus, :disabled) {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+/* Le contour global est retiré sur les champs : le focus passe par un liseré de 2 px. */
 .sv-input:focus,
 .sv-select:focus {
-  border-color: var(--accent-2);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.sv-input:disabled,
+.sv-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sv-input.invalid {
@@ -98,6 +117,7 @@
   font-weight: 600;
   font-size: 13px;
   white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .sv-btn:hover:not(:disabled) {
@@ -109,10 +129,21 @@
   cursor: default;
 }
 
+.sv-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+
 .sv-btn.solid {
   border-color: var(--text);
   background: var(--text);
   color: var(--bg);
+}
+
+/* `.sv-btn:active:not(:disabled)` est plus spécifique que `.solid` : sans cette règle, le fond
+   redevient transparent à l'appui (Espace, manette) et le texte, couleur du fond, disparaît. */
+.sv-btn.solid:hover:not(:disabled),
+.sv-btn.solid:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 86%, var(--bg));
 }
 
 .sv-btn.small {
@@ -135,6 +166,7 @@
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 2px;
+  transition: color 0.15s;
 }
 
 .sv-link:hover {
@@ -144,6 +176,14 @@
 .sv-btn.danger {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+.sv-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.sv-btn.danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
 }
 
 .sv-section-title {
@@ -173,15 +213,23 @@
   color: var(--text-dim);
   font-weight: 600;
   font-size: 13px;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.sv-seg button:hover:not(:disabled) {
+/* Survol : seulement les options non choisies (l'option choisie garde son texte inversé). */
+.sv-seg button:hover:not(:disabled, .on) {
   color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.sv-seg button:active:not(:disabled, .on) {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
 }
 
 .sv-seg button.on {
   background: var(--text);
   color: var(--bg);
+  cursor: default;
 }
 
 .sv-seg button:disabled {
@@ -209,7 +257,7 @@
   width: 44px;
   height: 24px;
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--text) 22%, transparent);
+  background: color-mix(in srgb, var(--text) 26%, transparent);
   transition: background 0.2s;
 }
 
@@ -221,8 +269,11 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background: var(--switch-knob);
+  /* Liseré fin : sans lui, la pastille blanche se perd sur la piste claire du thème Jour. */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text) 22%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s;
 }
 
@@ -235,7 +286,7 @@
 }
 
 .sv-switch input:focus-visible + .track {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -261,8 +312,18 @@
   width: 32px;
 }
 
+.sv-round {
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+/* Pas --panel-hover : en thème clair il vaut du blanc pur, plus pâle que l'état de repos. */
 .sv-round:hover:not(:disabled) {
-  background: var(--panel-hover);
+  border-color: color-mix(in srgb, var(--text) 30%, transparent);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.sv-round:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
 }
 
 .sv-round:disabled {
@@ -286,6 +347,7 @@
   font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 button.sv-chip {
@@ -295,9 +357,18 @@ button.sv-chip {
   font-weight: 600;
 }
 
-button.sv-chip:hover:not(:disabled) {
+button.sv-chip:hover:not(:disabled, .on) {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+button.sv-chip:active:not(:disabled, .on) {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+button.sv-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .sv-chip.on,
@@ -347,16 +418,24 @@ button.sv-chip.on {
   background: color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text);
   text-align: left;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
-button.sv-card:hover:not(:disabled) {
+button.sv-card:hover:not(:disabled, .on) {
+  border-color: color-mix(in srgb, var(--text) 35%, transparent);
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 
 .sv-card.on {
   border-color: var(--text);
   background: color-mix(in srgb, var(--text) 16%, transparent);
-  box-shadow: 0 0 0 2px var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+
+/* Focus sur la carte choisie : l'anneau de focus recouvre exactement l'anneau de sélection
+   (même épaisseur, collé à la bordure) au lieu d'ajouter un second contour. */
+.sv-card.on:focus-visible {
+  outline-offset: 0;
 }
 
 /* Ligne d'une liste à choix (espèces, fichiers) : sélection = texte et fond inversés. */
@@ -371,6 +450,7 @@ button.sv-card:hover:not(:disabled) {
   background: transparent;
   color: var(--text);
   text-align: left;
+  transition: background-color 0.12s;
 }
 
 .sv-list-item:hover:not(.on) {
@@ -581,6 +661,11 @@ button.sv-card:hover:not(:disabled) {
   background: none;
   color: inherit;
   font-weight: 700;
+  text-underline-offset: 2px;
+}
+
+.sv-banner button:hover {
+  text-decoration: underline;
 }
 
 .sv-spin {
@@ -614,7 +699,7 @@ button.sv-card:hover:not(:disabled) {
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   background: var(--surface);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden;
 }
 

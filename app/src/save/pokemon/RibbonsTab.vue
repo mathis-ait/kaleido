@@ -89,7 +89,7 @@ function clearAll() {
 }
 
 .ribbon.on {
-  background: color-mix(in srgb, #ffc94d 14%, transparent);
+  background: color-mix(in srgb, var(--shiny) 14%, transparent);
   color: var(--text);
   font-weight: 600;
 }

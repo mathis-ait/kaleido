@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import Banner from "../components/Banner.vue";
 import Dialog from "../components/Dialog.vue";
 import Icon from "../components/Icon.vue";
 import Segmented from "../components/Segmented.vue";
@@ -316,6 +317,28 @@ watch(tab, (t) => {
     /* stockage indisponible : l'onglet ne sera simplement pas mémorisé */
   }
 });
+/** Onglets cachés de chaque côté : le bord correspondant s'estompe au lieu de couper un libellé net. */
+const tabEdges = reactive({ start: false, end: false });
+function updateTabEdges() {
+  const el = tabsEl.value;
+  if (!el) return;
+  tabEdges.start = el.scrollLeft > 1;
+  tabEdges.end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+}
+let tabsObserver: ResizeObserver | undefined;
+onMounted(() => {
+  tabsObserver = new ResizeObserver(updateTabEdges);
+  watch(
+    tabsEl,
+    (el) => {
+      tabsObserver?.disconnect();
+      if (el) tabsObserver?.observe(el);
+      updateTabEdges();
+    },
+    { immediate: true },
+  );
+});
+onBeforeUnmount(() => tabsObserver?.disconnect());
 const currentTab = computed(() => TABS.find((t) => t.id === tab.value) ?? TABS[0]);
 function stepTab(delta: number) {
   const i = TABS.findIndex((t) => t.id === tab.value);
@@ -428,6 +451,11 @@ const changes = computed<Change[]>(() => {
   return out;
 });
 const changeCount = (id: TabId) => changes.value.filter((c) => c.tab === id).length;
+// Les pastilles « n modifs » élargissent la barre sans la redimensionner.
+watch(
+  () => TABS.map((t) => changeCount(t.id)).join(),
+  () => nextTick(updateTabEdges),
+);
 const modifs = (n: number) => `${n} modif${n > 1 ? "s" : ""}`;
 const tabLabel = (id: TabId) => TABS.find((t) => t.id === id)?.label ?? id;
 
@@ -487,6 +515,8 @@ async function shareCode() {
   setTimeout(() => (copied.value = false), 1500);
 }
 const copied = ref(false);
+// Le message d'erreur disparaît dès qu'on corrige le code.
+watch(shareInput, () => (shareError.value = false));
 
 async function importCode() {
   const parsed = await invoke<[number, RandomizerSettings] | null>("parse_share_code", { code: shareInput.value });
@@ -549,7 +579,10 @@ async function generateCtr() {
   }
 }
 
-const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" : ""}${p - 100} %`);
+// Déclaration de fonction (hissée) : le résumé des modifs l'appelle dès l'initialisation.
+function levelLabel(p: number) {
+  return p === 100 ? "inchangés" : `${p > 100 ? "+" : ""}${p - 100} %`;
+}
 </script>
 
 <template>
@@ -559,13 +592,13 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
         <h1>Randomizer</h1>
         <p class="lead">Une nouvelle aventure à chaque seed. Partage le code pour que tes amis jouent exactement la même.</p>
       </div>
-      <button class="btn" title="Revenir aux réglages par défaut" @click="reset">Réinitialiser</button>
+      <button class="sv-btn" title="Revenir aux réglages par défaut" @click="reset">Réinitialiser</button>
     </header>
 
     <!-- Choix de la ROM -->
-    <div v-if="!roms.length" class="panel empty">
+    <div v-if="!roms.length" class="sv-panel empty">
       <p>Ajoute d'abord une ROM Pokémon DS ou 3DS (de Diamant / Perle à Ultra-Soleil / Ultra-Lune) dans la bibliothèque.</p>
-      <button class="btn btn-primary" @click="nav.view = 'home'">Ajouter une ROM</button>
+      <button class="sv-btn solid" @click="nav.view = 'home'">Ajouter une ROM</button>
     </div>
 
     <template v-else>
@@ -573,8 +606,9 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
         <button
           v-for="r in roms"
           :key="r.path"
-          class="rom panel"
-          :class="{ active: romPath === r.path }"
+          class="rom sv-card"
+          :class="{ on: romPath === r.path }"
+          :aria-pressed="romPath === r.path"
           :disabled="!supported(r.game?.id)"
           :title="supported(r.game?.id) ? r.path : 'Pas encore pris en charge par le randomizer'"
           @click="romPath = r.path"
@@ -588,32 +622,41 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
         <div class="options">
           <!-- Onglets des réglages (Q / E ou Ctrl+Tab) -->
           <div class="tabbar">
-            <kbd class="cap" title="Onglet précédent (Q)" @click="stepTab(-1)">Q</kbd>
-            <nav ref="tabsEl" class="tabs" role="tablist" aria-label="Réglages du randomizer">
-              <button
-                v-for="t in TABS"
-                :key="t.id"
-                role="tab"
-                :aria-selected="tab === t.id"
-                :class="{ on: tab === t.id }"
-                @click="tab = t.id"
+            <button type="button" class="cap" tabindex="-1" title="Onglet précédent (Q)" aria-label="Onglet précédent" @click="stepTab(-1)">Q</button>
+            <div class="tabs-frame">
+              <nav
+                ref="tabsEl"
+                class="tabs"
+                :class="{ 'more-start': tabEdges.start, 'more-end': tabEdges.end }"
+                role="tablist"
+                aria-label="Réglages du randomizer"
+                @scroll.passive="updateTabEdges"
               >
-                {{ t.label }}
-                <span v-if="t.id !== 'general' && changeCount(t.id)" class="badge" :title="`${modifs(changeCount(t.id))} par rapport aux réglages par défaut`">
-                  {{ modifs(changeCount(t.id)) }}
-                </span>
-              </button>
-            </nav>
-            <kbd class="cap" title="Onglet suivant (E)" @click="stepTab(1)">E</kbd>
+                <button
+                  v-for="t in TABS"
+                  :key="t.id"
+                  role="tab"
+                  :aria-selected="tab === t.id"
+                  :class="{ on: tab === t.id }"
+                  @click="tab = t.id"
+                >
+                  {{ t.label }}
+                  <span v-if="t.id !== 'general' && changeCount(t.id)" class="badge" :title="`${modifs(changeCount(t.id))} par rapport aux réglages par défaut`">
+                    {{ modifs(changeCount(t.id)) }}
+                  </span>
+                </button>
+              </nav>
+            </div>
+            <button type="button" class="cap" tabindex="-1" title="Onglet suivant (E)" aria-label="Onglet suivant" @click="stepTab(1)">E</button>
           </div>
           <p class="tab-intro">{{ currentTab.intro }}</p>
 
           <!-- Général : préréglages, sortie 3DS, résumé -->
           <template v-if="tab === 'general'">
-          <div v-if="isCtr" class="section panel">
+          <div v-if="isCtr" class="section sv-panel">
             <h3>Sortie 3DS</h3>
-            <div class="row first">
-              <span class="row-label">
+            <div class="row field first">
+              <span class="sv-label">
                 Format
                 <Tip term="randomizer.ctrOutput" />
               </span>
@@ -626,8 +669,8 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 ]"
               />
             </div>
-            <div v-if="settings.ctrOutput !== 'rom3ds'" class="row">
-              <span class="row-label">Dossier pour</span>
+            <div v-if="settings.ctrOutput !== 'rom3ds'" class="row field">
+              <span class="sv-label">Dossier pour</span>
               <Segmented
                 v-model="target"
                 :options="[
@@ -646,13 +689,13 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </p>
           </div>
 
-            <div v-if="presets.length" class="section panel">
+            <div v-if="presets.length" class="section sv-panel">
               <h3>
                 Préréglages
                 <Tip term="randomizer.presets" />
               </h3>
               <div class="presets">
-                <button v-for="p in presets" :key="p.id" class="preset" @click="applyPreset(p)">
+                <button v-for="p in presets" :key="p.id" class="preset sv-card" @click="applyPreset(p)">
                   <strong>{{ p.name }}</strong>
                   <small>{{ p.description }}</small>
                 </button>
@@ -673,10 +716,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               </template>
             </Dialog>
 
-            <div class="section panel">
+            <div class="section sv-panel">
               <div class="summary-head">
                 <h3>Résumé <span class="dim count">{{ changes.length ? modifs(changes.length) : "réglages par défaut" }}</span></h3>
-                <button v-if="changes.length" class="btn small" @click="reset">Tout réinitialiser</button>
+                <button v-if="changes.length" class="sv-btn small" @click="reset">Tout réinitialiser</button>
               </div>
               <p v-if="!changes.length" class="dim note">
                 Rien n'a été modifié : starters Plante · Feu · Eau, sauvages par zone et dresseurs aléatoires de puissance
@@ -684,7 +727,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               </p>
               <ul v-else class="summary">
                 <li v-for="(c, i) in changes" :key="i">
-                  <button class="summary-tab" :title="`Aller à l'onglet ${tabLabel(c.tab)}`" @click="tab = c.tab">{{ tabLabel(c.tab) }}</button>
+                  <button class="sv-chip summary-tab" :title="`Aller à l'onglet ${tabLabel(c.tab)}`" @click="tab = c.tab">{{ tabLabel(c.tab) }}</button>
                   <span>{{ c.text }}</span>
                 </li>
               </ul>
@@ -693,19 +736,19 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
 
           <!-- Pokémon : statistiques, types, talents, évolutions -->
           <template v-else-if="tab === 'pokemon'">
-            <div class="section panel">
+            <div class="section sv-panel">
               <h3>Statistiques, types et talents</h3>
               <Segmented v-model="settings.stats" :options="STATS_OPTS" />
-              <div class="row">
+              <div class="toggles">
                 <Toggle v-model="settings.randomTypes" label="Types aléatoires" term="randomizer.randomTypes" />
                 <Toggle v-model="settings.randomAbilities" label="Talents aléatoires" term="randomizer.randomAbilities" />
                 <Toggle v-model="settings.noLegendaries" label="Sans légendaires" term="randomizer.noLegendaries" />
               </div>
             </div>
 
-            <div class="section panel">
+            <div class="section sv-panel">
               <h3>Évolutions, attaques et capture</h3>
-              <div class="row first">
+              <div class="toggles first">
                 <Toggle
                   v-model="settings.easyEvolutions"
                   label="Évolutions sans échange"
@@ -717,15 +760,15 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                   term="randomizer.randomMovesets"
                 />
               </div>
-              <div class="row">
-                <span class="row-label">Capture</span>
+              <div class="row field">
+                <span class="sv-label">Capture</span>
                 <Segmented v-model="settings.catchRate" :options="CATCH_OPTS" />
               </div>
             </div>
           </template>
 
           <!-- Starters -->
-          <div v-else-if="tab === 'starters'" class="section panel">
+          <div v-else-if="tab === 'starters'" class="section sv-panel">
             <h3>Starters</h3>
             <Segmented v-model="settings.starters" :options="STARTER_OPTS" />
             <div v-if="settings.starters === 'custom'" class="custom-starters">
@@ -733,7 +776,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 <Sprite v-if="settings.customStarters[i]" :id="settings.customStarters[i]" :size="44" />
                 <input
                   v-model="customNames[i]"
-                  class="input"
+                  class="sv-input"
                   list="kaleido-species"
                   :placeholder="['Starter Plante', 'Starter Feu', 'Starter Eau'][i]"
                   :class="{ invalid: customNames[i] && !settings.customStarters[i] }"
@@ -756,7 +799,7 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                   <Sprite v-if="settings.customKantoStarters?.[i]" :id="settings.customKantoStarters[i]" :size="44" />
                   <input
                     v-model="customKantoNames[i]"
-                    class="input"
+                    class="sv-input"
                     list="kaleido-species"
                     :placeholder="['Au lieu de Bulbizarre', 'Au lieu de Salamèche', 'Au lieu de Carapuce'][i]"
                     :class="{ invalid: customKantoNames[i] && !settings.customKantoStarters?.[i] }"
@@ -770,10 +813,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <!-- Pokémon sauvages -->
-          <div v-else-if="tab === 'wild'" class="section panel">
+          <div v-else-if="tab === 'wild'" class="section sv-panel">
             <h3>Pokémon sauvages</h3>
             <Segmented v-model="settings.wild" :options="WILD_OPTS" />
-            <div class="row">
+            <div class="toggles">
               <Toggle v-model="settings.wildSimilarStrength" label="Puissance similaire" term="randomizer.wildSimilarStrength" />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.wildLevelPercent) }}</strong>
@@ -783,17 +826,17 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <!-- Dresseurs -->
-          <div v-else-if="tab === 'trainers'" class="section panel">
+          <div v-else-if="tab === 'trainers'" class="section sv-panel">
             <h3>Dresseurs</h3>
             <Segmented v-model="settings.trainers" :options="TRAINER_OPTS" />
-            <div class="row">
+            <div class="toggles">
               <Toggle v-model="settings.trainersSimilarStrength" label="Puissance similaire" term="randomizer.trainersSimilarStrength" />
               <label class="slider">
                 Niveaux <strong>{{ levelLabel(settings.trainerLevelPercent) }}</strong>
                 <input v-model.number="settings.trainerLevelPercent" type="range" min="50" max="200" step="5" />
               </label>
             </div>
-            <div class="row">
+            <div class="toggles">
               <Toggle
                 v-model="settings.trainerEvolutions"
                 label="Pokémon évolués selon leur niveau"
@@ -804,23 +847,23 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <!-- CT & capacités -->
-          <div v-else-if="tab === 'moves'" class="section panel">
+          <div v-else-if="tab === 'moves'" class="section sv-panel">
             <h3>CT &amp; capacités <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row first">
+            <div class="toggles first">
               <Toggle v-model="settings.moves.randomTms" label="CT aléatoires" term="randomizer.randomTms" />
               <Toggle v-model="settings.moves.randomTutors" label="Maîtres des capacités aléatoires" term="randomizer.randomTutors" />
               <Toggle v-model="settings.moves.keepFieldMoves" label="Garder les attaques de terrain" term="randomizer.keepFieldMoves" />
               <Toggle v-model="settings.moves.noGameBreaking" label="Sans Sonicboom / Draco-Rage" term="randomizer.noGameBreaking" />
             </div>
-            <div class="row">
-              <span class="row-label">Compatibilité CT</span>
+            <div class="row field">
+              <span class="sv-label">Compatibilité CT</span>
               <Segmented v-model="settings.moves.tmCompat" :options="TM_COMPAT_OPTS" />
             </div>
-            <div class="row">
-              <span class="row-label">Maîtres des capacités</span>
+            <div class="row field">
+              <span class="sv-label">Maîtres des capacités</span>
               <Segmented v-model="settings.moves.tutorCompat" :options="TUTOR_COMPAT_OPTS" />
             </div>
-            <div class="row">
+            <div class="toggles">
               <Toggle v-model="settings.moves.fullHmCompat" label="Toutes les CS pour tous" term="randomizer.fullHmCompat" />
               <Toggle v-model="settings.moves.followEvolutions" label="Les évolutions héritent" term="randomizer.followEvolutions" />
               <Toggle v-model="settings.moves.levelupSanity" label="Garder les CT des attaques apprises" term="randomizer.levelupSanity" />
@@ -828,17 +871,17 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <!-- Objets & boutiques -->
-          <div v-else-if="tab === 'items'" class="section panel">
+          <div v-else-if="tab === 'items'" class="section sv-panel">
             <h3>Objets &amp; boutiques <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row first">
-              <span class="row-label">Objets au sol</span>
+            <div class="row field first">
+              <span class="sv-label">Objets au sol</span>
               <Segmented v-model="settings.items.fieldItems" :options="FIELD_OPTS" />
             </div>
-            <div class="row">
-              <span class="row-label">Boutiques</span>
+            <div class="row field">
+              <span class="sv-label">Boutiques</span>
               <Segmented v-model="settings.items.shops" :options="SHOP_OPTS" />
             </div>
-            <div class="row">
+            <div class="toggles">
               <Toggle v-model="settings.items.banBadFieldItems" label="Pas d'objets inutiles" term="randomizer.banBadFieldItems" />
               <Toggle v-model="settings.items.guaranteeEvolutionItems" label="Pierres d'évolution en vente" term="randomizer.guaranteeEvolutionItems" />
               <Toggle v-model="settings.items.guaranteeXItems" label="Objets X en vente" term="randomizer.guaranteeXItems" />
@@ -850,10 +893,10 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
           </div>
 
           <!-- Pokémon fixes & échanges -->
-          <div v-else-if="tab === 'statics'" class="section panel">
+          <div v-else-if="tab === 'statics'" class="section sv-panel">
             <h3>Pokémon fixes &amp; échanges <span v-if="isCtr" class="soon">DS uniquement pour l'instant</span></h3>
-            <div class="row first">
-              <span class="row-label">Fixes et dons <Tip term="randomizer.statics" /></span>
+            <div class="row field first">
+              <span class="sv-label">Fixes et dons <Tip term="randomizer.statics" /></span>
               <Segmented v-model="settings.statics.mode" :options="STATIC_OPTS" />
             </div>
             <div v-if="settings.statics.mode !== 'unchanged'" class="row">
@@ -863,26 +906,34 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
               </label>
               <Tip term="randomizer.staticLevels" />
             </div>
-            <div class="row">
-              <span class="row-label">Échanges <Tip term="randomizer.trades" /></span>
+            <div class="row field">
+              <span class="sv-label">Échanges <Tip term="randomizer.trades" /></span>
               <Segmented v-model="settings.statics.trades" :options="TRADE_OPTS" />
             </div>
-            <div v-if="settings.statics.trades !== 'unchanged'" class="row">
+            <div v-if="settings.statics.trades !== 'unchanged'" class="toggles">
               <Toggle v-model="settings.statics.tradeRandomItems" label="Objets tenus aléatoires" term="randomizer.tradeRandomItems" />
               <Toggle v-model="settings.statics.tradeRandomIvs" label="IV aléatoires" term="randomizer.tradeRandomIvs" />
             </div>
           </div>
 
           <!-- Chromatiques -->
-          <div v-else-if="tab === 'shiny'" class="section panel">
-            <h3 class="with-icon"><Icon name="sparkle" :size="18" /> Chromatiques</h3>
+          <div v-else-if="tab === 'shiny'" class="section sv-panel">
+            <h3>Chromatiques</h3>
             <div class="row shiny-row first">
               <label class="shiny-input">
                 1 chance sur
-                <input v-model.number="settings.shinyOdds" class="input" type="number" min="1" max="65536" />
+                <input v-model.number="settings.shinyOdds" class="sv-input" type="number" min="1" max="65536" />
               </label>
               <div class="chips-row">
-                <button v-for="q in shinyPresets" :key="q.odds" class="chip-btn" :class="{ on: shinyPresetOn(q.odds) }" @click="settings.shinyOdds = q.odds">
+                <button
+                  v-for="q in shinyPresets"
+                  :key="q.odds"
+                  type="button"
+                  class="sv-chip"
+                  :class="{ on: shinyPresetOn(q.odds) }"
+                  :aria-pressed="shinyPresetOn(q.odds)"
+                  @click="settings.shinyOdds = q.odds"
+                >
                   {{ q.label }}
                 </button>
               </div>
@@ -905,16 +956,16 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             <p v-if="isCtr && settings.shinyOdds <= 1" class="dim note">
               Les Pokémon qui ne doivent jamais être chromatiques (cadeaux et légendaires protégés) le restent.
             </p>
-            <p v-if="!isCtr && settings.shinyOdds <= 1" class="warn-text">
-              <Icon name="alert" :size="14" /> Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
+            <Banner v-if="!isCtr && settings.shinyOdds <= 1" tone="warn" class="note-banner">
+              Expérimental : certains événements relancent le tirage tant que le Pokémon est chromatique (Pokémon qui ne
               doivent jamais l'être, comme Reshiram / Zekrom). Avec 100 %, ces scènes peuvent bloquer le jeu.
-            </p>
+            </Banner>
           </div>
         </div>
 
         <!-- Colonne de droite : aperçu et génération -->
         <aside class="side">
-          <div class="panel card">
+          <div class="sv-panel card">
             <div class="card-head">
               <h3>Tes starters</h3>
               <Toggle v-if="preview.length" v-model="showStarters" label="Voir" term="randomizer.showStarters" />
@@ -935,34 +986,45 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
             </div>
           </div>
 
-          <div class="panel card">
+          <div class="sv-panel card">
             <h3>Seed</h3>
             <div class="seed">
-              <input v-model.number="seed" type="number" min="0" class="input" />
-              <button class="btn square" title="Nouvelle seed" aria-label="Nouvelle seed" @click="seed = newSeed()"><Icon name="dice" :size="18" /></button>
+              <input v-model.number="seed" type="number" min="0" class="sv-input" aria-label="Seed" />
+              <button class="sv-btn" title="Nouvelle seed" aria-label="Nouvelle seed" @click="seed = newSeed()"><Icon name="dice" :size="16" /></button>
             </div>
-            <div class="share">
-              <button class="btn" @click="shareCode">{{ copied ? "Copié !" : "Copier le code de partage" }}</button>
-            </div>
+            <button class="sv-btn share" @click="shareCode">
+              <Icon :name="copied ? 'check' : 'copy'" :size="14" /> {{ copied ? "Copié" : "Copier le code de partage" }}
+            </button>
             <div class="seed">
-              <input v-model="shareInput" class="input" placeholder="Coller un code KLD1-…" :class="{ invalid: shareError }" @keydown.enter="importCode" />
-              <button class="btn" :disabled="!shareInput" @click="importCode">Importer</button>
+              <input
+                v-model="shareInput"
+                class="sv-input"
+                placeholder="Coller un code KLD1-…"
+                aria-label="Code de partage"
+                :class="{ invalid: shareError }"
+                @keydown.enter="importCode"
+              />
+              <button class="sv-btn" :disabled="!shareInput" @click="importCode">Importer</button>
             </div>
+            <p v-if="shareError" class="error-text share-error">Code de partage illisible : vérifie qu'il commence par KLD1- et qu'il est complet.</p>
           </div>
 
-          <button class="recap" :title="changes.map((c) => c.text).join('\n') || 'Réglages par défaut'" @click="tab = 'general'">
-            <span>{{ changes.length ? `${modifs(changes.length)} par rapport aux réglages par défaut` : "Réglages par défaut" }}</span>
-            <small>Voir le résumé</small>
+          <button class="recap sv-card" :title="changes.map((c) => c.text).join('\n') || 'Réglages par défaut'" @click="tab = 'general'">
+            <span class="recap-text">
+              <span>{{ changes.length ? `${modifs(changes.length)} par rapport aux réglages par défaut` : "Réglages par défaut" }}</span>
+              <small>Voir le résumé</small>
+            </span>
+            <Icon name="chevron-right" :size="16" />
           </button>
 
-          <button class="btn btn-primary generate" :disabled="!selected || !supported(selected.game?.id) || running" @click="generate">
+          <button class="sv-btn solid generate" :disabled="!selected || !supported(selected.game?.id) || running" @click="generate">
             {{ running ? "Génération…" : !isCtr ? "Générer la ROM" : settings.ctrOutput === "layered_fs" ? "Générer le mod 3DS" : "Générer la ROM 3DS" }}
           </button>
 
-          <div v-if="runError" class="panel card error">{{ runError }}</div>
+          <Banner v-if="runError" tone="danger" :dismiss="() => (runError = null)">{{ runError }}</Banner>
 
           <Transition name="pop">
-            <div v-if="outcome" class="panel card done">
+            <div v-if="outcome" class="sv-panel card done">
               <h3 class="with-icon"><Icon name="check" :size="18" /> {{ lastWasCtr ? "Mod prêt" : "ROM prête" }}</h3>
               <p class="dim">{{ outcome.wildSlots }} Pokémon sauvages et {{ outcome.trainerPokemon }} Pokémon de dresseurs modifiés.</p>
               <template v-if="lastWasCtr && ctrResult">
@@ -976,8 +1038,8 @@ const levelLabel = (p: number) => (p === 100 ? "inchangés" : `${p > 100 ? "+" :
                 </p>
               </template>
               <div class="done-actions">
-                <button v-if="outputPath" class="btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
-                <button class="btn" @click="showLog = true">Voir le journal</button>
+                <button v-if="outputPath" class="sv-btn" @click="revealItemInDir(outputPath)">Ouvrir le dossier</button>
+                <button class="sv-btn" @click="showLog = true">Voir le journal</button>
               </div>
               <PlayPanel
                 :platform="lastWasCtr ? '3ds' : 'nds'"
@@ -1007,7 +1069,7 @@ h1 {
 }
 
 h3 {
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
   font-size: 15px;
 }
 
@@ -1020,18 +1082,32 @@ h3 {
   font-size: var(--fs-lg);
 }
 
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
 .empty {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
 }
 
+.empty p {
+  margin: 0;
+}
+
+/* Choix de la ROM : cartes partagées (.sv-card), la ROM choisie est cerclée. */
 .roms {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 20px 0;
+  margin: var(--sp-5) 0;
 }
 
 .rom {
@@ -1039,14 +1115,8 @@ h3 {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 12px 16px;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  text-align: left;
-}
-
-.rom.active {
-  outline-color: var(--accent);
+  min-width: 150px;
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .rom:disabled {
@@ -1072,31 +1142,50 @@ h3 {
 }
 
 .section {
-  padding: 18px 20px;
+  padding: 18px var(--sp-5);
 }
 
-/* Barre d'onglets façon éditeur de sauvegardes : pastille blanche, halo cyan. */
+/* Barre d'onglets façon éditeur de sauvegardes : l'onglet actif est inversé, sans halo. */
 .tabbar {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
 }
 
-.tabs {
-  display: flex;
+.tabs-frame {
   flex: 1;
   min-width: 0;
-  gap: var(--sp-1);
   padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--sp-1);
   overflow-x: auto;
   scrollbar-width: none;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  /* L'onglet amené à l'écran ne finit pas sous le bord estompé. */
+  scroll-padding-inline: 40px;
 }
 
 .tabs::-webkit-scrollbar {
   display: none;
+}
+
+/* Onglets cachés d'un côté : ce bord s'estompe au lieu de couper un libellé net. */
+.tabs.more-end {
+  mask-image: linear-gradient(to right, black calc(100% - 40px), transparent);
+}
+
+.tabs.more-start {
+  mask-image: linear-gradient(to left, black calc(100% - 40px), transparent);
+}
+
+.tabs.more-start.more-end {
+  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
 }
 
 /* Une seule ligne : les onglets se partagent la largeur et défilent si elle manque. */
@@ -1106,7 +1195,7 @@ h3 {
   justify-content: center;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: var(--sp-2) 14px;
   border: none;
   border-radius: var(--radius-pill);
   background: transparent;
@@ -1114,10 +1203,10 @@ h3 {
   font-weight: 600;
   font-size: var(--fs-md);
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.tabs button:hover {
+.tabs button:hover:not(.on) {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
@@ -1125,38 +1214,44 @@ h3 {
 .tabs button.on {
   background: var(--text);
   color: var(--bg);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 60%, transparent);
 }
 
+/* La barre défile (overflow) : l'anneau de focus passe à l'intérieur pour ne pas être rogné. */
+.tabs button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Nombre de modifications : teinte du texte de l'onglet, lisible qu'il soit actif ou non. */
 .badge {
   padding: 1px 7px;
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--accent-2) 30%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: inherit;
   font-size: var(--fs-xs);
   font-weight: 700;
 }
 
-.tabs button.on .badge {
-  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
-  color: var(--bg);
-}
-
 .cap {
   display: inline-grid;
+  flex: none;
   place-items: center;
   min-width: 24px;
   height: 22px;
   padding: 0 6px;
+  border: none;
   border-radius: var(--radius-xs);
   background: var(--text);
   color: var(--bg);
-  font: 700 11px/1 var(--font);
-  cursor: pointer;
+  font: 700 var(--fs-xs) / 1 var(--font);
+  transition: background-color 0.15s;
+}
+
+.cap:hover {
+  background: color-mix(in srgb, var(--text) 80%, var(--bg));
 }
 
 .tab-intro {
-  margin: -2px 4px 0;
+  margin: -2px var(--sp-1) 0;
   color: var(--text-dim);
   font-size: var(--fs-md);
 }
@@ -1171,23 +1266,20 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text) 4%, transparent);
-  color: var(--text);
-  text-align: left;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.preset:hover {
-  border-color: var(--accent);
-  background: var(--panel-hover);
+  padding: var(--sp-3) 14px;
 }
 
 .preset small {
   color: var(--text-dim);
   line-height: 1.35;
+}
+
+.save-preset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
 }
 
 .summary-head {
@@ -1205,11 +1297,6 @@ h3 {
   margin-left: 6px;
   font-size: var(--fs-md);
   font-weight: 500;
-}
-
-.btn.small {
-  padding: 6px 12px;
-  font-size: var(--fs-md);
 }
 
 .summary {
@@ -1230,56 +1317,37 @@ h3 {
 
 .summary-tab {
   flex: none;
+  justify-content: center;
   min-width: 118px;
-  padding: 2px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  text-align: center;
 }
 
-.summary-tab:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.recap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 10px 14px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  font-size: var(--fs-md);
-  font-weight: 600;
-  text-align: left;
-}
-
-.recap small {
-  color: var(--text-dim);
-  font-weight: 500;
-}
-
-.recap:hover {
-  border-color: var(--accent);
-}
-
+/* Lignes de réglages : un libellé au-dessus de son sélecteur, pour un alignement constant. */
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-6);
-  margin-top: 14px;
+  gap: var(--sp-3) var(--sp-6);
+  margin-top: var(--sp-4);
 }
 
-.row.first {
-  margin-top: 4px;
+.row.field {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+/* Interrupteurs en colonnes alignées plutôt qu'en ligne qui se replie au hasard. */
+.toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: center;
+  gap: var(--sp-3) var(--sp-6);
+  margin-top: var(--sp-4);
+}
+
+.row.first,
+.toggles.first {
+  margin-top: var(--sp-1);
 }
 
 .slider {
@@ -1310,10 +1378,29 @@ h3 {
   padding: 18px;
 }
 
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+
+.card-head h3 {
+  margin: 0;
+}
+
+/* Aperçu des starters : même hauteur, que les sprites soient visibles ou cachés. */
 .starters {
   display: flex;
   justify-content: space-around;
   min-height: 110px;
+}
+
+.starters > p {
+  align-self: center;
+  margin: 0;
+  font-size: var(--fs-md);
+  text-align: center;
 }
 
 .starter {
@@ -1321,20 +1408,11 @@ h3 {
   flex-direction: column;
   align-items: center;
   gap: var(--sp-1);
+  min-width: 0;
   font-size: var(--fs-md);
   font-weight: 600;
-  animation: rise 0.35s ease both;
-}
-
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.card-head h3 {
-  margin: 0;
+  text-align: center;
+  animation: rise 0.25s ease both;
 }
 
 /* Starter caché : une Poké Ball à la place du sprite. */
@@ -1355,17 +1433,17 @@ h3 {
 }
 
 .starter:nth-child(2) {
-  animation-delay: 0.06s;
+  animation-delay: 0.05s;
 }
 
 .starter:nth-child(3) {
-  animation-delay: 0.12s;
+  animation-delay: 0.1s;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.9);
+    transform: translateY(6px);
   }
 }
 
@@ -1373,77 +1451,67 @@ h3 {
   flex: 1;
 }
 
-.save-preset {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-3) 0 0;
-}
-
 .seed {
   display: flex;
   gap: var(--sp-2);
-  margin-top: 8px;
+  margin-top: var(--sp-2);
+}
+
+.seed .sv-input {
+  flex: 1;
 }
 
 .share {
-  margin-top: 8px;
-}
-
-.share .btn {
   width: 100%;
-  justify-content: center;
+  margin-top: var(--sp-2);
 }
 
-.input {
-  flex: 1;
+.share-error {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+/* Rappel des modifications : carte cliquable qui mène au résumé (onglet Général). */
+.recap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 10px 14px;
+  color: var(--text-dim);
+}
+
+.recap-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
   color: var(--text);
-  font: inherit;
-  outline: none;
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
-.input:focus {
-  border-color: var(--accent);
+.recap-text small {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 500;
 }
 
-.input.invalid {
-  border-color: var(--danger);
+.generate {
+  padding: 14px;
+  font-size: var(--fs-lg);
+  font-weight: 700;
 }
 
-/* Bouton carré à icône (nouvelle seed). Pas « .icon » : la classe atteindrait le SVG du composant Icon. */
 .with-icon {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
 }
 
-.square {
-  padding: var(--sp-2) var(--sp-3);
-}
-
-.generate {
-  justify-content: center;
-  padding: 16px;
-  font-size: var(--fs-lg);
-  font-weight: 700;
-}
-
-.error,
 .error-text {
   color: var(--danger);
-}
-
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-4);
 }
 
 .shiny-input {
@@ -1454,9 +1522,8 @@ h3 {
   font-weight: 600;
 }
 
-.shiny-input .input {
+.shiny-input .sv-input {
   width: 110px;
-  flex: none;
 }
 
 .chips-row {
@@ -1465,53 +1532,20 @@ h3 {
   gap: 6px;
 }
 
-.chip-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-dim);
+.chips-row .sv-chip {
+  padding: 5px 12px;
   font-size: var(--fs-md);
-  font-weight: 600;
 }
 
-.chip-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--panel-hover);
-}
-
-.chip-btn.on {
-  background: var(--prism);
-  color: var(--on-accent);
-  border-color: transparent;
-}
-
-:root[data-theme="lagon"] .chip-btn.on {
-  background: var(--text);
-}
-
-.chip-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.warn-text {
-  margin: 10px 0 0;
-  color: var(--warn);
-  font-size: var(--fs-md);
-  line-height: 1.45;
+.note-banner {
+  margin-top: var(--sp-3);
 }
 
 .soon {
-  margin-left: 8px;
+  margin-left: var(--sp-2);
   color: var(--text-dim);
   font-size: var(--fs-sm);
   font-weight: 500;
-}
-
-.row-label {
-  color: var(--text-dim);
-  font-weight: 600;
 }
 
 .kanto-title {
@@ -1529,20 +1563,17 @@ h3 {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+  min-width: 0;
 }
 
 .note {
-  margin: 12px 0 0;
+  margin: var(--sp-3) 0 0;
   font-size: var(--fs-md);
   line-height: 1.45;
 }
 
 .done h3 {
   font-size: 18px;
-}
-
-.row.first {
-  margin-top: 4px;
 }
 
 .note .path {
@@ -1552,17 +1583,18 @@ h3 {
 
 .done-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 .pop-enter-active {
-  transition: opacity 0.3s, transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  transition: opacity 0.2s, transform 0.2s ease-out;
 }
 
 .pop-enter-from {
   opacity: 0;
-  transform: scale(0.95);
+  transform: translateY(6px);
 }
 
 .log {

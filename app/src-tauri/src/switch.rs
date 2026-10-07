@@ -41,6 +41,8 @@ pub struct SwitchGame {
     pub size: u64,
     /// Une mise à jour du jeu a aussi été trouvée.
     pub has_update: bool,
+    /// Version affichée de la plus récente mise à jour trouvée (`1.1.1`), si le nom du fichier l'indique.
+    pub update_version: Option<String>,
 }
 
 /// Nature d'un title ID.
@@ -287,6 +289,22 @@ pub fn name_from_file(file: &str) -> String {
     }
 }
 
+/// Version affichée écrite dans un nom de fichier (`… Upd v1.1.1 [01…800][v196608].nsp` → « 1.1.1 »).
+/// Le `[v196608]` entre crochets est le numéro interne, sans lien simple avec la version affichée : ignoré.
+pub fn display_version_in_name(name: &str) -> Option<String> {
+    let stem = Path::new(name).file_stem().map_or(name.to_string(), |s| s.to_string_lossy().into_owned());
+    stem.split([' ', '_', '(', ')', '[', ']']).find_map(|t| {
+        let v = t.strip_prefix(['v', 'V'])?;
+        let ok = v.contains('.') && v.split('.').all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+        ok.then(|| v.to_string())
+    })
+}
+
+/// Compare deux versions `a.b.c` numériquement.
+fn version_key(v: &str) -> Vec<u32> {
+    v.split('.').map(|p| p.parse().unwrap_or(0)).collect()
+}
+
 const USER_AGENT: &str = concat!("Kaleido/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mathis-ait/kaleido)");
 
 #[derive(Deserialize)]
@@ -395,7 +413,10 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
     for path in files {
         let Some(tid) = title_id_of(&path, key.as_ref()) else { continue };
         match title_kind(tid) {
-            TitleKind::Update => updates.push(base_title_id(tid)),
+            TitleKind::Update => {
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                updates.push((base_title_id(tid), display_version_in_name(&name)));
+            }
             TitleKind::Dlc => {}
             TitleKind::Base => {
                 let hex = format!("{tid:016X}");
@@ -411,12 +432,15 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
                     title_id: hex,
                     title,
                     has_update: false,
+                    update_version: None,
                 });
             }
         }
     }
     for g in &mut games {
-        g.has_update = updates.iter().any(|u| format!("{u:016X}") == g.title_id);
+        let mine: Vec<_> = updates.iter().filter(|(u, _)| format!("{u:016X}") == g.title_id).collect();
+        g.has_update = !mine.is_empty();
+        g.update_version = mine.iter().filter_map(|(_, v)| v.clone()).max_by_key(|v| version_key(v));
     }
     if cache.len() != before {
         if let (Some(p), Ok(json)) = (names_path(app), serde_json::to_vec(&*cache)) {
@@ -440,6 +464,9 @@ mod tests {
         assert_eq!(base_title_id(0x01001F5010DFB001), 0x01001F5010DFA000);
         assert_eq!(title_kind(0x01001F5010DFA800), TitleKind::Update);
         assert_eq!(name_from_file("Pokemon Legends Arceus Upd v1.1.1 [01001F5010DFA800][v196608].nsp"), "Pokemon Legends Arceus Upd v1.1.1");
+        assert_eq!(display_version_in_name("Pokemon Legends Arceus Upd v1.1.1 [01001F5010DFA800][v196608].nsp").as_deref(), Some("1.1.1"));
+        assert_eq!(display_version_in_name("Pokemon Legends Arceus [01001F5010DFA800][v196608].nsp"), None);
+        assert!(version_key("1.10.0") > version_key("1.9.2"));
     }
 
     #[test]

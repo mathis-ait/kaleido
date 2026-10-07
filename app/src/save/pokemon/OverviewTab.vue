@@ -125,7 +125,7 @@ const languages = computed(() => LANGUAGES.filter((l) => !l.since || gen.value >
       </select>
       <p v-if="gen === 4" class="sv-help">En Gen 4 la nature vient du PID : il sera recalculé.</p>
     </div>
-    <div class="sv-field">
+    <div class="sv-field gender">
       <span class="sv-label">Sexe <Tip term="gender" /></span>
       <div class="sv-seg">
         <button :class="{ on: p.gender === 'male' }" :disabled="!!genderLocked && genderLocked !== 'male'" @click="setGender('male')">♂ Mâle</button>
@@ -170,6 +170,11 @@ const languages = computed(() => LANGUAGES.filter((l) => !l.since || gen.value >
 </template>
 
 <style scoped>
+/* Les trois choix de sexe ne tiennent pas dans une colonne de 220 px : deux colonnes. */
+.gender {
+  grid-column: span 2;
+}
+
 .other {
   flex: 1;
   min-width: 200px;
