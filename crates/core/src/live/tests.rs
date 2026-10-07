@@ -348,3 +348,19 @@ fn scenario_nuzlocke_rejoue_en_memoire() {
     s.delete(p1).unwrap();
     assert!(step(&mut src, &s).is_empty(), "relâché K.O. : pas de mort annoncée par la mémoire");
 }
+
+#[test]
+fn seconde_copie_reutilisee_par_l_adversaire_ignoree() {
+    // SoulSilver : pendant un combat, l'emplacement de la seconde copie de l'équipe reçoit
+    // l'équipe adverse. Le compagnon ne doit pas y voir une évolution de notre Pokémon.
+    let mut src = ss();
+    let (mut reader, _) = ss_party(&src);
+    let before = reader.tick(&src).unwrap().unwrap().party[0].species();
+    let other = reader.party_addresses()[1];
+    put_enemy(&mut src, other - 8, 10, 0x0BAD_CAFE, (0x6E14, 0xF0CC));
+    for _ in 0..3 {
+        if let Some(r) = reader.tick(&src).unwrap() {
+            assert_eq!(r.party[0].species(), before, "notre équipe reste la nôtre");
+        }
+    }
+}

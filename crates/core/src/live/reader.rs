@@ -313,8 +313,18 @@ impl LiveReader {
         let mut best: Option<(u64, bool, PartyAt)> = None;
         let mut torn = false;
         let tick = self.tick;
+        // Nos Pokémon : ceux de la sauvegarde et du bloc de sauvegarde en RAM. Une autre copie
+        // n'est crue que si elle ne contient qu'eux : SoulSilver réutilise l'emplacement de sa
+        // seconde copie pour l'équipe adverse pendant un combat.
+        let mut trusted: HashSet<u32> = self.hints.party_keys.iter().copied().collect();
+        if let Some(c) = self.copies.iter().find(|c| c.save_block) {
+            if let Ok(Some(p)) = read_party_at(src, format, c.addr) {
+                trusted.extend(p.mons.iter().map(|m| u32::from_le_bytes(key_of(m))));
+            }
+        }
         for c in &mut self.copies {
             match read_party_at(src, format, c.addr)? {
+                Some(p) if !c.save_block && !p.mons.iter().all(|m| trusted.contains(&u32::from_le_bytes(key_of(m)))) => {}
                 Some(p) => {
                     if p.raw != c.raw {
                         c.raw = p.raw.clone();
@@ -374,7 +384,7 @@ impl LiveReader {
         let format = self.hints.format;
         let psize = format.party_size();
         let mine: HashSet<u32> = ours.iter().map(|p| u32::from_le_bytes(key_of(p))).collect();
-        let is_ours = |p: &PartyAt| p.mons.first().is_some_and(|m| mine.contains(&u32::from_le_bytes(key_of(m))));
+        let is_ours = |p: &PartyAt| p.mons.iter().all(|m| mine.contains(&u32::from_le_bytes(key_of(m))));
         let is_foe = |p: &PartyAt| p.mons.iter().all(|m| !mine.contains(&u32::from_le_bytes(key_of(m))));
         let save_raw = self.copies.iter().find(|c| c.save_block).map(|c| c.raw.clone()).unwrap_or_default();
 
