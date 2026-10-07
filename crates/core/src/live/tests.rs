@@ -224,3 +224,88 @@ fn ram_dsi_de_16_mio() {
     assert_eq!((found.game_code.as_str(), found.size), ("IREF", scan::DSI_RAM_SIZE));
     assert_eq!(found.host(0x02FF_FE00), 0x4000_0000 + scan::DSI_HEADER_OFFSET);
 }
+
+/// Scénario Nuzlocke de `diff_tests` (Platine) rejoué en mémoire : à chaque étape, le bloc général
+/// de la partie est recopié dans une RAM DS figée, sans aucune sauvegarde intermédiaire. La lecture
+/// en direct doit annoncer chaque K.O. dès le tick suivant et ne jamais annoncer de mort.
+#[test]
+fn scenario_nuzlocke_rejoue_en_memoire() {
+    use crate::save::diff::{diff_memory, Brief, GameEvent};
+    use crate::save::session::{PokemonPatch, SaveSession, Slot};
+
+    const BASE: u64 = 0x2_0000_0000;
+    const AT: u64 = 0x10_0000;
+    let mut s = SaveSession::open(&crate::save::demo_save().unwrap()).unwrap();
+    // La sauvegarde de départ : seule vérité « fichier » pendant tout le scénario.
+    let file = s.live().unwrap();
+    let hints = s.save.ram_hints();
+    let start = hints.trainer_name.min(hints.party).saturating_sub(0x100);
+    let end = hints.map.max(hints.party + 6 * 236) + 0x100;
+
+    let mut ram = vec![0u8; DS_RAM_SIZE as usize];
+    ram[DS_HEADER_OFFSET as usize..][..0x12].copy_from_slice(b"POKEMON PL\0\0CPUF01");
+    let mut src = DumpSource::new().with_zone(BASE, ram);
+    let sync = |src: &mut DumpSource, s: &SaveSession| {
+        // Le jeu garde l'équipe chiffrée en RAM, au même endroit relatif que dans le fichier.
+        let bytes = s.save.to_bytes();
+        src.poke(BASE + AT, &bytes[start..end]);
+    };
+    sync(&mut src, &s);
+    let mut reader = attach(&src, hints);
+    let mut prev: Option<Brief> = None;
+    let mut step = |src: &mut DumpSource, s: &SaveSession| -> Vec<String> {
+        sync(src, s);
+        let read = reader.tick(src).unwrap().expect("équipe lue");
+        let brief = Brief::from(&file.with_memory(&read.party, read.map, read.badges));
+        let events = prev.as_ref().map(|p| diff_memory(p, &brief)).unwrap_or_default();
+        prev = Some(brief);
+        events
+            .iter()
+            .map(|e| match e {
+                GameEvent::Fainted { mon } => format!("ko {}", mon.species),
+                GameEvent::Revived { mon } => format!("soin {}", mon.species),
+                GameEvent::Caught { mon } => format!("capture {}", mon.species),
+                GameEvent::LevelUp { mon, .. } => format!("niveau {} {}", mon.species, mon.level),
+                GameEvent::Evolved { mon, .. } => format!("évolution {}", mon.species),
+                other => format!("autre {other:?}"),
+            })
+            .collect()
+    };
+    let p3 = Slot::Party { index: 3 };
+    let p1 = Slot::Party { index: 1 };
+    let set_hp = |s: &mut SaveSession, slot: Slot, hp: u16| {
+        let Slot::Party { index } = slot else { unreachable!() };
+        let mut p = s.get(slot).unwrap().unwrap();
+        p.set_current_hp(hp);
+        s.save.set_party_slot(index, Some(p)).unwrap();
+    };
+    let level = |s: &mut SaveSession, slot: Slot, l: u8, species: Option<u16>| {
+        let patch = PokemonPatch { level: Some(l), species, ..PokemonPatch::default() };
+        s.patch(slot, &patch).unwrap();
+    };
+
+    assert!(step(&mut src, &s).is_empty());
+    s.create(p3, 396, 3).unwrap();
+    assert_eq!(step(&mut src, &s), ["capture 396"]);
+    level(&mut s, p3, 5, None);
+    assert_eq!(step(&mut src, &s), ["niveau 396 5"]);
+    // Capture rangée au PC : invisible en mémoire (boîtes non relues), annoncée à la sauvegarde.
+    s.create(Slot::Box { r#box: 1, index: 0 }, 399, 4).unwrap();
+    assert!(step(&mut src, &s).is_empty());
+    set_hp(&mut s, p3, 0);
+    assert_eq!(step(&mut src, &s), ["ko 396"]);
+    assert!(step(&mut src, &s).is_empty(), "pas de K.O. répété");
+    set_hp(&mut s, p3, 10);
+    assert_eq!(step(&mut src, &s), ["soin 396"]);
+    level(&mut s, p3, 14, Some(397));
+    assert_eq!(step(&mut src, &s), ["évolution 397", "niveau 397 14"]);
+    set_hp(&mut s, p3, 0);
+    assert_eq!(step(&mut src, &s), ["ko 397"]);
+    // Déposé K.O. au PC : la mort reste comptée à la sauvegarde, jamais en mémoire.
+    s.move_pokemon(p3, Slot::Box { r#box: 2, index: 0 }).unwrap();
+    assert!(step(&mut src, &s).is_empty());
+    set_hp(&mut s, p1, 0);
+    assert_eq!(step(&mut src, &s), ["ko 448"]);
+    s.delete(p1).unwrap();
+    assert!(step(&mut src, &s).is_empty(), "relâché K.O. : pas de mort annoncée par la mémoire");
+}

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use kaleido_core::live::{maps, reader::LiveReader};
-use kaleido_core::save::diff::{diff, Brief, GameEvent};
+use kaleido_core::save::diff::{diff_memory, Brief, GameEvent};
 use kaleido_core::save::session::{game_of, LiveFoe, LiveSnapshot, SaveSession};
 use kaleido_core::save::{Pokemon, RamHints, SaveVersion};
 use serde::Serialize;
@@ -234,16 +234,17 @@ fn attach(base: &Base, info: &mut LiveInfo) -> Option<Attached> {
         reader.set_battle(map.battle_scan());
         let _ = reader.tick(&proc);
         reader.prime_battle(&proc);
-        let info = LiveInfo { status: "ingame", enabled: true, emulator: Some(name.to_string()), verified: map.party_verified(&id), game: Some(id), detail: None };
+        let info = LiveInfo {
+            status: "ingame",
+            enabled: true,
+            emulator: Some(name.to_string()),
+            verified: map.party_verified(&id),
+            game: Some(id),
+            detail: None,
+        };
         return Some(Attached { proc, reader, info });
     }
     None
-}
-
-/// Évènements de la mémoire gardés : la sauvegarde reste seule juge des morts, des départs en
-/// boîte et des badges (les boîtes ne sont pas relues en mémoire).
-fn keep(e: &GameEvent) -> bool {
-    matches!(e, GameEvent::Fainted { .. } | GameEvent::Revived { .. } | GameEvent::LevelUp { .. } | GameEvent::Evolved { .. } | GameEvent::Hatched { .. } | GameEvent::Caught { .. })
 }
 
 /// Empreinte de ce qui se voit à l'écran : on ne prévient la fenêtre que si elle change.
@@ -348,7 +349,7 @@ fn run(app: AppHandle, save: PathBuf, stop: Arc<AtomicBool>) {
                     let snap = b.snapshot.with_memory(&read.party, read.map, read.badges);
                     let brief = Brief::from(&snap);
                     if let Some(p) = &prev {
-                        events.extend(diff(p, &brief).iter().filter(|e| keep(e)).map(GameEvent::text));
+                        events.extend(diff_memory(p, &brief).iter().map(GameEvent::text));
                     }
                     prev = Some(brief);
 

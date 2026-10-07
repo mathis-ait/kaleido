@@ -170,7 +170,17 @@ const BATTLE_SCAN: u64 = 2;
 
 impl LiveReader {
     pub fn new(console: Console, hints: RamHints) -> Self {
-        LiveReader { console, hints, copies: Vec::new(), tick: 0, searched_at: None, seen_enemies: HashSet::new(), enemy_at: None, misses: 0, battle: true }
+        LiveReader {
+            console,
+            hints,
+            copies: Vec::new(),
+            tick: 0,
+            searched_at: None,
+            seen_enemies: HashSet::new(),
+            enemy_at: None,
+            misses: 0,
+            battle: true,
+        }
     }
 
     /// Active ou coupe la recherche de l'équipe adverse.
@@ -300,7 +310,8 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let battle = if self.battle && matches!(self.console, Console::Ds(_)) && tick % BATTLE_SCAN == 0 { self.scan_battle(src, &party.mons) } else { None };
+        let battle =
+            if self.battle && matches!(self.console, Console::Ds(_)) && tick % BATTLE_SCAN == 0 { self.scan_battle(src, &party.mons) } else { None };
         Ok(Some(LiveRead { party: party.mons, map, badges, battle }))
     }
 

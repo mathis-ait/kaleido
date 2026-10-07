@@ -50,7 +50,12 @@ fn main() {
             let mut reader = LiveReader::new(console, hints);
             let t = Instant::now();
             let first = reader.tick(&proc);
-            println!("premier tick en {:?} ({}), copies {:x?}", t.elapsed(), first.as_ref().map(|r| r.is_some()).unwrap_or(false), reader.party_addresses());
+            println!(
+                "premier tick en {:?} ({}), copies {:x?}",
+                t.elapsed(),
+                first.as_ref().map(|r| r.is_some()).unwrap_or(false),
+                reader.party_addresses()
+            );
             reader.prime_battle(&proc);
             let secs: u64 = arg(3).parse().unwrap_or(10);
             let end = Instant::now() + Duration::from_secs(secs);
@@ -64,9 +69,33 @@ fn main() {
                 ticks += 1;
                 let line = match r {
                     Ok(Some(r)) => {
-                        let party: Vec<String> = r.party.iter().map(|p| format!("{} N.{} {}/{}", p.species(), p.party_level().unwrap_or(0), p.current_hp(), p.party_stats().map_or(0, |s| s[0]))).collect();
+                        let party: Vec<String> = r
+                            .party
+                            .iter()
+                            .map(|p| {
+                                format!(
+                                    "{} N.{} {}/{}",
+                                    p.species(),
+                                    p.party_level().unwrap_or(0),
+                                    p.current_hp(),
+                                    p.party_stats().map_or(0, |s| s[0])
+                                )
+                            })
+                            .collect();
                         let battle = r.battle.map(|b| {
-                            let e: Vec<String> = b.enemies.iter().map(|p| format!("{} N.{} {}/{}", p.species(), p.party_level().unwrap_or(0), p.current_hp(), p.party_stats().map_or(0, |s| s[0]))).collect();
+                            let e: Vec<String> = b
+                                .enemies
+                                .iter()
+                                .map(|p| {
+                                    format!(
+                                        "{} N.{} {}/{}",
+                                        p.species(),
+                                        p.party_level().unwrap_or(0),
+                                        p.current_hp(),
+                                        p.party_stats().map_or(0, |s| s[0])
+                                    )
+                                })
+                                .collect();
                             format!(" | combat {} {}{:?}", if b.wild { "sauvage" } else { "dresseur" }, if b.new { "NOUVEAU " } else { "" }, e)
                         });
                         format!("carte {:?} badges {:?} équipe {:?}{}", r.map, r.badges, party, battle.unwrap_or_default())
