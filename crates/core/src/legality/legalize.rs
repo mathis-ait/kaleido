@@ -103,6 +103,8 @@ pub struct EncounterOption {
     pub version: u8,
     pub version_name: String,
     pub generation: u8,
+    /// Titre de la distribution (cadeau mystère), s'il y en a un.
+    pub title: Option<String>,
 }
 
 /// Résultat de « Rendre légal ».
@@ -245,6 +247,7 @@ fn origin_games(game: Game) -> Vec<Game> {
 fn plans(game: Game, species: u16, form: u8, level: u8, prefer_version: u8) -> Vec<Plan> {
     let mut out: Vec<(u32, Plan)> = Vec::new();
     let format = game.generation();
+    let mut event_gens: Vec<u8> = Vec::new();
     for (gi, og) in origin_games(game).into_iter().enumerate() {
         let chain = evolution::chain(format, species, form, level);
         let list = encounters::encounters(og);
@@ -267,6 +270,30 @@ fn plans(game: Game, species: u16, form: u8, level: u8, prefer_version: u8) -> V
                     continue;
                 }
                 let version = if e.versions.contains(&prefer_version) { prefer_version } else { e.versions[0] };
+                out.push(((gi as u32) * 100 + kind_rank(e, species), Plan { enc: e.clone(), version }));
+            }
+        }
+        // Distributions (cadeaux mystère) de cette génération : en dernier recours (Fabuleux…).
+        if !event_gens.contains(&og.generation()) {
+            event_gens.push(og.generation());
+            let mine: Vec<u8> = Game::ALL.iter().filter(|g| g.generation() == og.generation()).flat_map(|g| game_versions(*g).iter().copied()).collect();
+            for e in super::events::events(og.generation()) {
+                let Some(stage) = chain.iter().find(|st| st.species == e.species && (e.form == st.form || e.form >= 30)) else { continue };
+                if e.level_min > level || stage.species > dex::max_species(game) {
+                    continue;
+                }
+                let need = chain.iter().take_while(|s| s.species != stage.species).map(|s| s.level_min).max().unwrap_or(1);
+                if need > level {
+                    continue;
+                }
+                let version = if e.versions.contains(&prefer_version) {
+                    prefer_version
+                } else {
+                    match e.versions.iter().copied().find(|v| mine.contains(v)) {
+                        Some(v) => v,
+                        None => continue,
+                    }
+                };
                 out.push(((gi as u32) * 100 + kind_rank(e, species), Plan { enc: e.clone(), version }));
             }
         }
@@ -1213,12 +1240,13 @@ fn option_of(id: usize, plan: &Plan) -> EncounterOption {
         version: plan.version,
         version_name: dex::game_name(plan.version).unwrap_or("?").to_string(),
         generation: e.generation,
+        title: e.title.clone(),
     }
 }
 
 /// Deux rencontres équivalentes pour l'utilisateur (même type, lieu, version et espèce).
 fn same_option(a: &EncounterOption, b: &EncounterOption) -> bool {
-    a.kind_label == b.kind_label && a.location == b.location && a.version == b.version && a.species == b.species
+    a.kind_label == b.kind_label && a.location == b.location && a.version == b.version && a.species == b.species && a.title == b.title
 }
 
 /// Applique une rencontre, puis corrige les champs secondaires si besoin.
@@ -1278,17 +1306,12 @@ fn run_scored(
     }
     let forced = forced && chosen.is_some();
     let mut options: Vec<EncounterOption> = Vec::new();
-    let mut tried: Vec<EncounterOption> = Vec::new();
-    for (id, plan) in plans.iter().enumerate().take(MAX_PLANS) {
+    for (id, opt) in try_order(plans) {
+        let plan = &plans[id];
         let satisfied = chosen.is_some() && (forced || score.is_none() || chosen_score == 0);
         if satisfied && (!explore || options.len() >= MAX_OPTIONS) {
             break;
         }
-        let opt = option_of(id, plan);
-        if tried.iter().any(|o| same_option(o, &opt)) {
-            continue;
-        }
-        tried.push(opt.clone());
         if Some(id) == choice && chosen.is_some() {
             options.push(opt);
             continue;
@@ -1311,9 +1334,37 @@ fn run_scored(
     }
     let mut out = chosen.or(best).unwrap_or_else(|| LegalizeOutcome::plain(pk.clone(), Vec::new(), analyze(pk, game), false));
     if explore {
+        options.sort_by_key(|o| o.id);
         out.options = options;
     }
     out
+}
+
+/// Ordre d'essai des rencontres : la première de chaque (type, espèce, version) d'abord,
+/// pour que l'œuf, le don ou la distribution soient essayés même quand l'espèce a des
+/// dizaines de zones sauvages, puis les autres lieux ; doublons écartés, [`MAX_PLANS`] au plus.
+fn try_order(plans: &[Plan]) -> Vec<(usize, EncounterOption)> {
+    let mut distinct: Vec<(usize, EncounterOption)> = Vec::new();
+    for (id, plan) in plans.iter().enumerate() {
+        let opt = option_of(id, plan);
+        if !distinct.iter().any(|(_, o)| same_option(o, &opt)) {
+            distinct.push((id, opt));
+        }
+    }
+    let coarse = |o: &EncounterOption| (o.kind_label.clone(), o.species, o.version, o.title.clone());
+    let mut order: Vec<(usize, EncounterOption)> = Vec::new();
+    for (id, o) in &distinct {
+        if !order.iter().any(|(_, x)| coarse(x) == coarse(o)) {
+            order.push((*id, o.clone()));
+        }
+    }
+    for (id, o) in distinct {
+        if !order.iter().any(|(i, _)| *i == id) {
+            order.push((id, o));
+        }
+    }
+    order.truncate(MAX_PLANS);
+    order
 }
 
 /// Graine stable d'un Pokémon : l'aperçu et l'application donnent le même résultat.
@@ -1548,6 +1599,10 @@ pub fn generate_legal(game: Game, format: PkmFormat, trainer: &Trainer, req: &Ge
         }
     }
     list.extend(plans(game, species, req.form, level, prefer));
+    // Forme qui se change en jeu (Kyurem Noir, Démétéros Totémique, Motisma…) : rencontres de la forme de base.
+    if req.form != 0 && verify::form_changeable(species) {
+        list.extend(plans(game, species, 0, level, prefer));
+    }
     if list.is_empty() {
         return Err(format!("{name} ne s'obtient pas dans ce jeu (ni par capture, ni par reproduction)"));
     }

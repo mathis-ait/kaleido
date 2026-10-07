@@ -191,7 +191,7 @@ fn location_name(generation: u8, loc: u16) -> String {
 }
 
 /// Espèces dont la forme change hors combat (`FormInfo.FormChange` de PKHeX, + saisons).
-fn form_changeable(species: u16) -> bool {
+pub(crate) fn form_changeable(species: u16) -> bool {
     matches!(
         species,
         412 | 676 | 741 | 479 | 386 | 483 | 484 | 487 | 492 | 493 | 641 | 642 | 645 | 646 | 647 | 649 | 720 | 773 | 800 | 585 | 586 | 718 | 351 | 421

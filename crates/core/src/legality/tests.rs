@@ -604,3 +604,82 @@ fn egg_move_sets_are_kept() {
     assert!(out.changes.iter().any(|c| c.term == "eggMoves"), "{:?}", out.changes);
     assert_eq!(out.pokemon.ivs(), [31; 6]);
 }
+
+/// Mesure du PRD : sets Smogon (corpus figé, `scripts/smogon-corpus.mjs`) importés légaux
+/// du premier coup. « Intacts » : légaux sans aucun écart avec le set.
+#[test]
+fn prd_smogon_corpus() {
+    use crate::dex::Lang;
+    use crate::save::showdown_apply::request_of_set;
+    use crate::showdown::{parse_team, resolve};
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/smogon");
+    let (mut all, mut all_legal, mut all_intact) = (0, 0, 0);
+    for (gen, game, format) in [(4, Game::HGSS, PkmFormat::Gen4), (5, Game::B2W2, PkmFormat::Gen5), (6, Game::ORAS, PkmFormat::Gen6), (7, Game::USUM, PkmFormat::Gen7)] {
+        let Ok(text) = std::fs::read_to_string(dir.join(format!("gen{gen}.txt"))) else { continue };
+        let (mut total, mut legal, mut intact) = (0, 0, 0);
+        let mut notes = Vec::new();
+        for set in parse_team(&text) {
+            let r = resolve(&set, game, Lang::En);
+            if r.error.is_some() {
+                continue;
+            }
+            total += 1;
+            let req = request_of_set(&r);
+            let start = std::time::Instant::now();
+            match generate_legal(game, format, &trainer(), &req) {
+                Ok(out) if out.success => {
+                    legal += 1;
+                    if out.adjustments.iter().all(|a| a.term == "ev") {
+                        intact += 1;
+                    } else {
+                        notes.push(format!("  {} : {:?}", r.species_name, out.adjustments.iter().map(|a| a.text.as_str()).collect::<Vec<_>>()));
+                    }
+                }
+                Ok(out) => notes.push(format!(
+                    "  {} ILLÉGAL : {:?}",
+                    r.species_name,
+                    out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| c.title.as_str()).collect::<Vec<_>>()
+                )),
+                Err(e) => notes.push(format!("  {} IMPOSSIBLE : {e}", r.species_name)),
+            }
+            assert!(start.elapsed().as_secs_f64() < 5.0, "{} trop lent", r.species_name);
+        }
+        println!("Gen {gen} ({game:?}) : {legal}/{total} légaux, {intact}/{total} intacts\n{}", notes.join("\n"));
+        all += total;
+        all_legal += legal;
+        all_intact += intact;
+    }
+    println!("Corpus Smogon : {all_legal}/{all} légaux du premier coup, {all_intact}/{all} sans écart avec le set");
+    assert!(all >= 150, "corpus Smogon manquant ({all} sets)");
+    assert!(all_legal * 100 >= all * 95, "cible du PRD : 95 % ({all_legal}/{all})");
+}
+
+/// Point de départ du PRD : les mêmes sets Smogon importés « tels quels » (ancien import).
+#[test]
+fn prd_smogon_corpus_as_is_baseline() {
+    use crate::dex::Lang;
+    use crate::save::session::SaveSession;
+    use crate::save::showdown_apply::ImportTarget;
+    use crate::showdown::parse_team;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/smogon");
+    let saves: [(u8, Vec<u8>); 2] = [
+        (4, crate::save::demo_save().unwrap()),
+        (7, std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/pkhex/sm_project_802.main")).unwrap()),
+    ];
+    for (gen, bytes) in saves {
+        let Ok(text) = std::fs::read_to_string(dir.join(format!("gen{gen}.txt"))) else { continue };
+        let (mut total, mut legal) = (0, 0);
+        for set in parse_team(&text) {
+            let mut s = SaveSession::open(&bytes).unwrap();
+            if s.save.trainer().name.is_empty() {
+                s.set_trainer(&crate::save::edit::TrainerPatch { name: Some("Thisma".into()), ..Default::default() }).unwrap();
+            }
+            let game = s.game();
+            let Ok(report) = s.import_sets(std::slice::from_ref(&set), Lang::En, ImportTarget::Box { r#box: 5 }, false) else { continue };
+            let Some(slot) = report.sets[0].slot else { continue };
+            total += 1;
+            legal += (analyze(&s.get(slot).unwrap().unwrap(), game).verdict != Verdict::Illegal) as usize;
+        }
+        println!("Gen {gen}, import tel quel : {legal}/{total} légaux");
+    }
+}
