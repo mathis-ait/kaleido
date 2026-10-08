@@ -29,8 +29,11 @@
       "codes": ["IPKE", "IPKF", "IPKD", "IPKI", "IPKS", "IPKJ", "IPKK", "IPGE", "IPGF", "IPGD", "IPGI", "IPGS", "IPGJ", "IPGK"],
       "party": { "method": "signature", "verified": ["IPGF"] },
       "saveBlock": { "verified": ["IPGF"] },
-      "battle": { "method": "partyHeader", "verified": [] },
-      "notes": "Vérifié dans melonDS 1.1 sur Argent SoulSilver FR (IPGF) : RAM principale au début d'une allocation de l'émulateur, équipe trouvée en deux copies (bloc de sauvegarde + une seconde), nom et numéro du dresseur à la même distance que dans le fichier, carte lue en direct (61 dans le labo, 60 dehors après quelques pas). Combat non observé.",
+      "battle": { "method": "partyHeader", "verified": ["IPGF"] },
+      "battleFlags": [
+        { "codes": ["IPGF"], "address": "0x021356FC", "value": 1 }
+      ],
+      "notes": "Indicateur « en combat » 0x021356FC (u32) : 1 en combat, 0 hors combat, observé sur 8 captures dans 2 sessions melonDS 1.1 (rencontres sur la Route 29, fuites). Vérifié dans melonDS 1.1 sur Argent SoulSilver FR (IPGF) : RAM principale au début d'une allocation de l'émulateur, équipe trouvée en deux copies (bloc de sauvegarde + une seconde), nom et numéro du dresseur à la même distance que dans le fichier, carte lue en direct (61 dans le labo, 60 dehors après quelques pas). Combat non observé.",
       "reference": [
         { "what": "pointeur vers le bloc général (US)", "address": "0x0211186C", "offsets": { "party": "0xD088" }, "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)", "verified": false }
       ]
