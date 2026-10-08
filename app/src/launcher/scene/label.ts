@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasTexture, SRGBColorSpace } from "three";
 import { hash32, type SupportModel, type Wear } from "./models";
+import { findLabel } from "./labelRect";
 
 /**
  * Étiquette d'une cartouche, préparée dans un canvas hors écran : image choisie par
@@ -12,7 +13,7 @@ import { hash32, type SupportModel, type Wear } from "./models";
  */
 
 /** À changer quand la composition change : les étiquettes en cache sont alors refaites. */
-const LABEL_VERSION = 8;
+const LABEL_VERSION = 10;
 
 export interface LabelInput {
   /** Clé du jeu (`cartridgeKey`). */
@@ -25,9 +26,10 @@ export interface LabelInput {
   randomized: boolean;
   /** Image fournie par l'utilisateur (Inspecter) : elle prime sur tout le reste. */
   custom: boolean;
-  /** Photo de la vraie carte (`cover://`) et position de l'étiquette dans la photo : elle prime sur l'étiquette neutre. */
+  /** Jeu (identifiant de games.rs), pour les proportions propres à certaines photos. */
+  game: string | null;
+  /** Photo de la vraie cartouche (`cover://`) : elle prime sur l'étiquette neutre. */
   photo: string | null;
-  photoCrop: { x: number; y: number; w: number; h: number } | null;
   /** Taille de l'étiquette en mm, quand le modèle 3D la donne (sinon la zone du support). */
   size?: [number, number];
 }
@@ -244,15 +246,22 @@ async function toCanvas(blob: Blob): Promise<HTMLCanvasElement | null> {
  * plus un petit autocollant KALEIDO sur une ROM randomisée. Null si la photo manque.
  */
 async function photoLabel(input: LabelInput): Promise<HTMLCanvasElement | null> {
-  if (!input.photo || !input.photoCrop) return null;
+  if (!input.photo) return null;
   const img = await loadImage(input.photo);
   if (!img) return null;
+  // Étiquette repérée sur une copie réduite de la photo (rapide), puis découpée dans l'originale.
+  const scale = Math.min(1, 360 / Math.max(img.naturalWidth, img.naturalHeight));
+  const probe = document.createElement("canvas");
+  probe.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  probe.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const pg = probe.getContext("2d", { willReadFrequently: true })!;
+  pg.drawImage(img, 0, 0, probe.width, probe.height);
+  const c = findLabel(pg.getImageData(0, 0, probe.width, probe.height).data, probe.width, probe.height, input.support.id, input.game);
   const [w, h] = labelSize(input.support, input.size);
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const g = canvas.getContext("2d", { willReadFrequently: true })!;
-  const c = input.photoCrop;
   g.save();
   g.beginPath();
   g.roundRect(0, 0, w, h, w * 0.025);

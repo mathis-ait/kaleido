@@ -165,23 +165,58 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
     })
 }
 
-/// Photo de face d'une vraie carte DS ou 3DS sur GameTDB, étiquette comprise, d'après le
-/// code de la ROM (`photo-ds-CPUF`) : d'abord la région de la ROM (la française pour une carte
-/// 3DS « toutes régions »), puis les versions américaine et européenne, en anglais. Jamais une
-/// autre langue : sans photo, le lanceur compose l'étiquette depuis la jaquette française.
+/// Photos de face de vraies cartouches sur LaunchBox, relevées une fois pour les jeux pris en
+/// charge (`cart_photos.json` : jeu → `fr|en <fichier>`, régions européennes puis américaines,
+/// jamais une autre langue). Images publiques, sans clé.
+const CART_PHOTOS: &str = include_str!("cart_photos.json");
+const LAUNCHBOX_IMAGES: &str = "https://images.launchbox-app.com";
+
+fn launchbox_photos(game: &str) -> Vec<(bool, String)> {
+    static TABLE: std::sync::OnceLock<std::collections::HashMap<String, Vec<String>>> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| serde_json::from_str(CART_PHOTOS).unwrap_or_default());
+    table
+        .get(game)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.split_once(' '))
+        .map(|(lang, file)| (lang == "fr", format!("{LAUNCHBOX_IMAGES}/{file}")))
+        .collect()
+}
+
+/// Photo de face d'une vraie cartouche, étiquette comprise (`photo-<plateforme>-<jeu>[-<code>]`) :
+/// LaunchBox en français, GameTDB dans la région de la ROM, LaunchBox en anglais, puis GameTDB
+/// en anglais (américaine, européenne). Jamais une autre langue : sans photo, le lanceur
+/// affiche une étiquette neutre.
 fn cart_urls(key: &str) -> Option<Vec<String>> {
     let rest = key.strip_prefix("photo-")?;
-    let (platform, code) = rest.split_once('-')?;
-    if !matches!(platform, "ds" | "3ds") || code.len() != 4 || !code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+    let mut parts = rest.split('-');
+    let platform = parts.next()?;
+    let game = parts.next()?;
+    let code = parts.next();
+    if parts.next().is_some() || !matches!(platform, "ds" | "3ds" | "gba" | "gb") || game.is_empty() || !game.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') {
         return None;
     }
-    let base = &code[..3];
-    const REGIONS: [(char, &str); 11] = [('F', "FR"), ('E', "US"), ('O', "US"), ('P', "EN"), ('X', "EN"), ('D', "DE"), ('S', "ES"), ('I', "IT"), ('H', "NL"), ('J', "JA"), ('K', "KO")];
-    let own = code.chars().last()?;
-    let own = if REGIONS.iter().any(|(c, _)| *c == own) { own } else { 'F' };
-    let mut tries: Vec<(char, &str)> = REGIONS.iter().copied().filter(|(c, _)| *c == own).collect();
-    tries.extend(REGIONS.iter().copied().filter(|(c, r)| *c != own && matches!(*r, "US" | "EN")));
-    Some(tries.into_iter().map(|(suffix, region)| format!("{GAMETDB_URL}/{platform}/cart/{region}/{base}{suffix}.png")).collect())
+    if code.is_some_and(|c| c.len() != 4 || !c.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())) {
+        return None;
+    }
+    let photos = launchbox_photos(game);
+    let mut urls: Vec<String> = photos.iter().filter(|(fr, _)| *fr).map(|(_, u)| u.clone()).collect();
+    // GameTDB : cartes DS et 3DS seulement, d'après le code de la ROM.
+    let mut tdb_own = Vec::new();
+    let mut tdb_english = Vec::new();
+    if let (Some(code), true) = (code, matches!(platform, "ds" | "3ds")) {
+        const REGIONS: [(char, &str); 11] = [('F', "FR"), ('E', "US"), ('O', "US"), ('P', "EN"), ('X', "EN"), ('D', "DE"), ('S', "ES"), ('I', "IT"), ('H', "NL"), ('J', "JA"), ('K', "KO")];
+        let base = &code[..3];
+        let own = code.chars().last()?;
+        let own = if REGIONS.iter().any(|(c, _)| *c == own) { own } else { 'F' };
+        let url = |(suffix, region): &(char, &str)| format!("{GAMETDB_URL}/{platform}/cart/{region}/{base}{suffix}.png");
+        tdb_own = REGIONS.iter().filter(|(c, _)| *c == own).map(url).collect();
+        tdb_english = REGIONS.iter().filter(|(c, r)| *c != own && matches!(*r, "US" | "EN")).map(url).collect();
+    }
+    urls.extend(tdb_own);
+    urls.extend(photos.iter().filter(|(fr, _)| !*fr).map(|(_, u)| u.clone()));
+    urls.extend(tdb_english);
+    (!urls.is_empty()).then_some(urls)
 }
 
 fn libretro_url(repo: &str, name: &str) -> String {
@@ -195,7 +230,7 @@ fn libretro_url(repo: &str, name: &str) -> String {
 /// définition (768×680), libretro, GameTDB en taille moyenne (400×352), puis la
 /// boîte européenne.
 pub fn cover_urls(game: &str) -> Vec<String> {
-    // Étiquette réelle d'une carte (mode Cartouche du lanceur) : `photo-<plateforme>-<code>`.
+    // Étiquette réelle d'une cartouche (mode Cartouche du lanceur) : `photo-<plateforme>-<jeu>[-<code>]`.
     if let Some(urls) = cart_urls(game) {
         return urls;
     }
@@ -667,12 +702,14 @@ mod tests {
             ]
         );
         assert!(cover_urls("pokemon_stadium").is_empty());
-        let ds = cover_urls("photo-ds-CPUF");
-        assert_eq!(ds[0], "https://art.gametdb.com/ds/cart/FR/CPUF.png");
-        assert_eq!(ds[1], "https://art.gametdb.com/ds/cart/US/CPUE.png");
-        assert_eq!(cover_urls("photo-3ds-ECRA")[0], "https://art.gametdb.com/3ds/cart/FR/ECRF.png");
-        assert!(!cover_urls("photo-ds-IRAF").iter().any(|u| u.contains("/ES/") || u.contains("/JA/")));
-        assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-BPEF").is_empty());
+        // Blanche 2 : photo française de LaunchBox d'abord, puis GameTDB (région de la ROM), puis l'anglais.
+        let w2 = cover_urls("photo-ds-white2-IRDF");
+        assert!(w2[0].starts_with("https://images.launchbox-app.com/") && w2[1] == "https://art.gametdb.com/ds/cart/FR/IRDF.png");
+        assert!(!w2.iter().any(|u| u.contains("/ES/") || u.contains("/JA/")));
+        // Cartouche GBA : LaunchBox seulement ; code facultatif (Game Boy).
+        assert!(cover_urls("photo-gba-emerald-BPEF").iter().all(|u| u.contains("launchbox")));
+        assert!(!cover_urls("photo-gb-red").is_empty());
+        assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-inconnu").is_empty() && cover_urls("photo-switch-arceus").is_empty());
         assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
         assert!(switch_cover_id("nx-0100").is_none());
     }

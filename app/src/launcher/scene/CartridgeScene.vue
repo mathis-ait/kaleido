@@ -42,7 +42,7 @@ import type { Detection } from "../../types";
 import { isKaleidoRom } from "../../types";
 import { currentTheme } from "../../theme";
 import { audio, insertClick } from "../audio";
-import { PHOTO_CROP, cartPhotoKey, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
+import { cartPhotoKey, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
 import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
 import { REAL_MODELS, disposeTemplates, instantiate, realTemplate, type RealTemplate } from "./realModels";
@@ -360,7 +360,7 @@ function applyMaterial(item: Item, center: boolean) {
 function labelInput(item: Item) {
   const d = item.game;
   const seedDetail = d.details.find((x) => x.label === "Seed")?.value;
-  const photo = item.real ? cartPhotoKey(d) : null;
+  const photo = cartPhotoKey(d);
   return {
     key: item.key,
     title: d.game?.name ?? d.title,
@@ -369,8 +369,8 @@ function labelInput(item: Item) {
     seed: d.kaleido?.seed ?? (seedDetail ? Number(seedDetail) : null),
     randomized: isKaleidoRom(d),
     custom: item.look.customLabel,
+    game: d.game?.id ?? null,
     photo: photo ? convertFileSrc(`${photo}.png`, "cover") : null,
-    photoCrop: PHOTO_CROP[item.look.support.id] ?? null,
     size: item.real?.labelSize,
   };
 }

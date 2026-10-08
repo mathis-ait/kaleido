@@ -227,20 +227,15 @@ export function cartridgeCode(d: Pick<Detection, "platform" | "details" | "game"
 }
 
 /**
- * Photo de la vraie carte (GameTDB, servie par `cover://` : voir `cart_urls` dans library.rs),
- * d'après le code de l'en-tête : `photo-ds-CPUF`, `photo-3ds-ECRA`. GameTDB n'a ni GBA, ni GB, ni Switch.
+ * Photo de la vraie cartouche, servie par `cover://` (voir `cart_urls` dans library.rs) :
+ * `photo-<plateforme>-<jeu>[-<code de la ROM>]`, d'après LaunchBox et GameTDB. Pas de
+ * photo de carte Switch.
  */
-export function cartPhotoKey(d: Pick<Detection, "platform" | "details">): string | null {
+export function cartPhotoKey(d: Pick<Detection, "platform" | "details" | "game">): string | null {
+  const platforms: Record<string, string> = { nds: "ds", "3ds": "3ds", gba: "gba", gb: "gb" };
+  const platform = platforms[d.platform ?? ""];
+  if (!platform || !d.game) return null;
   const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
-  let code = "";
-  if (d.platform === "nds") code = detail("Code jeu");
-  else if (d.platform === "3ds") code = detail("Code produit").split("-").pop() ?? "";
-  if (!/^[A-Z0-9]{4}$/.test(code)) return null;
-  return `photo-${d.platform === "nds" ? "ds" : "3ds"}-${code}`;
+  const code = d.platform === "3ds" ? (detail("Code produit").split("-").pop() ?? "") : detail("Code jeu");
+  return /^[A-Z0-9]{4}$/.test(code) ? `photo-${platform}-${d.game.id}-${code}` : `photo-${platform}-${d.game.id}`;
 }
-
-/** Étiquette dans la photo GameTDB d'une carte (fractions de l'image), sans le plastique autour. */
-export const PHOTO_CROP: Partial<Record<Support, { x: number; y: number; w: number; h: number }>> = {
-  ds: { x: 0.1, y: 0.06, w: 0.8, h: 0.815 },
-  "3ds": { x: 0.097, y: 0.093, w: 0.747, h: 0.812 },
-};

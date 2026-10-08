@@ -77,10 +77,11 @@ describe("models", () => {
 });
 
 describe("photo de la vraie carte", () => {
-  it("clé d'après le code de l'en-tête", () => {
-    expect(cartPhotoKey({ platform: "nds", details: [{ label: "Code jeu", value: "CPUF" }] })).toBe("photo-ds-CPUF");
-    expect(cartPhotoKey({ platform: "3ds", details: [{ label: "Code produit", value: "CTR-P-ECRA" }] })).toBe("photo-3ds-ECRA");
-    expect(cartPhotoKey({ platform: "gba", details: [{ label: "Code jeu", value: "BPEF" }] })).toBeNull();
-    expect(cartPhotoKey({ platform: "nds", details: [] })).toBeNull();
+  const game = (id: string, platform: "nds" | "3ds" | "gba" | "gb" | "switch") => ({ id, name: id, generation: 4, platform: platform as "nds" });
+  it("clé d'après le jeu et le code de l'en-tête", () => {
+    expect(cartPhotoKey({ platform: "nds", game: game("platinum", "nds"), details: [{ label: "Code jeu", value: "CPUF" }] })).toBe("photo-ds-platinum-CPUF");
+    expect(cartPhotoKey({ platform: "3ds", game: game("omega_ruby", "3ds"), details: [{ label: "Code produit", value: "CTR-P-ECRA" }] })).toBe("photo-3ds-omega_ruby-ECRA");
+    expect(cartPhotoKey({ platform: "gb", game: game("red", "gb"), details: [] })).toBe("photo-gb-red");
+    expect(cartPhotoKey({ platform: "switch", game: null, details: [] })).toBeNull();
   });
 });
