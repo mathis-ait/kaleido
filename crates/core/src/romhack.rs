@@ -124,10 +124,13 @@ pub fn nds_game_code(data: &[u8]) -> Option<String> {
     data.get(0x0C..0x10).map(|c| String::from_utf8_lossy(c).into_owned())
 }
 
-/// Applique un patch (xdelta / VCDIFF ou IPS, reconnu à sa signature).
+/// Applique un patch (xdelta / VCDIFF, BPS ou IPS, reconnu à sa signature).
 pub fn apply_patch(base: &[u8], patch: &[u8]) -> Result<Vec<u8>> {
     if patch.starts_with(&[0xD6, 0xC3, 0xC4]) {
         return Ok(kaleido_formats::vcdiff::apply(base, patch)?);
+    }
+    if patch.starts_with(b"BPS1") {
+        return Ok(kaleido_formats::bps::apply(base, patch)?);
     }
     if patch.starts_with(b"PATCH") {
         let mut out = base.to_vec();

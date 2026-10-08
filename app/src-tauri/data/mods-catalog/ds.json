@@ -1,0 +1,140 @@
+{
+  "titles": [
+    "ADA",
+    "APA",
+    "CPU",
+    "IPK",
+    "IPG",
+    "IRB",
+    "IRA",
+    "IRE",
+    "IRD"
+  ],
+  "gamebanana": null,
+  "notes": [
+    "Sur DS, pas de LayeredFS : tous les mods ici sont des patchs (.xdelta) à appliquer sur une ROM propre. Kaleido sait déjà appliquer un xdelta (HeartGold Generations, non repris ici).",
+    "Codes de jeu : ADA Diamant, APA Perle, CPU Platine, IPK HeartGold, IPG SoulSilver, IRB Noire, IRA Blanche, IRE Noire 2, IRD Blanche 2. Les hacks de Drayano exigent les ROM américaines (4e lettre du code : E pour Platine/HGSS, O pour Noire/Blanche et Noire 2/Blanche 2, ex. CPUE, IPKE, IREO). Vérifier le code complet et afficher un message clair si la ROM est française (CPUF, IPKF, IRBF…) : le patch échouera ou donnera un jeu cassé.",
+    "Renegade Platinum : deux patchs fournis, pour Platine v1.0 et v1.1 (Rev 1) ; patchs optionnels dans le même zip (version « Classic », accélération, taux chromatique 1/4096 ou 1/8192). Pour appliquer plus de deux patchs, désactiver la vérification de checksum. Kaleido pourrait détecter la révision de la ROM et choisir le bon .xdelta automatiquement.",
+    "Drayano distribue ses hacks sur son Google Drive, lien sur son compte X (https://x.com/Drayano60). Les fils Project Pokémon sont la source fiable de documentation ; PokéCommunity est derrière Cloudflare.",
+    "Traductions françaises : aucune traduction FR officielle des hacks de Drayano. Une version FR de Renegade Platinum circule dans la communauté francophone (vidéos/streams 2025, combinée avec Pokémon qui suit et couleurs selon les IV) mais sa source n'a pas pu être vérifiée : ne pas l'intégrer sans lien officiel. Sources fiables pour chercher des traductions FR : Pokémon Trash, forum ROM hacking (https://www.pokemontrash.com/club/rom-hacking/), Pokébip (https://www.pokebip.com/), Project Pokémon et les Discord officiels des hacks. Pour Blaze Black 2 / Volt White 2, le forum Pokémon Trash confirme qu'il n'y a pas de traduction FR.",
+    "Diamant / Perle : aucun romhack majeur en patch fiable trouvé (Renegade Platinum est le choix évident pour Sinnoh).",
+    "Non vérifié donc non ajouté : une éventuelle « Blaze Black / Volt White Redux » (seul BB2/VW2 Redux est confirmé).",
+    "Écartés : sauvegardes 100 %, « Play as… » (skins), Ryujin Edition (bêta SoulSilver FR, seulement jusqu'à Doublonville, 152 vues — à surveiller car en français), Wrong Station (BW2, très récent), cris de Stadium 2.",
+    "Popularité des entrées manuelles = estimations (téléchargements Project Pokémon quand connus : Blaze Black 2/Volt White 2 v1.1 = 435 586)."
+  ],
+  "mods": [
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Télécharge RenegadePlatinumV130.zip (Google Drive lié dans le fil) et donne à Kaleido le .xdelta qui correspond à la révision de ta ROM Platine USA. Pas de traduction française officielle.",
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "CPU"
+      ],
+      "id": "web:renegade-platinum",
+      "page": "https://projectpokemon.org/home/forums/topic/52294-pok%C3%A9mon-renegade-platinum/",
+      "kind": "patch",
+      "name": "Pokémon Renegade Platinum",
+      "description": "Le hack de référence de Platine par Drayano : les 493 Pokémon capturables sans échange, dresseurs et Champions bien plus forts, types et talents modernisés (dont le type Fée) et beaucoup de conforts.",
+      "category": "romhack",
+      "gameVersion": "Platine USA v1.0 ou v1.1 (Rev 1) — hack v1.3.0",
+      "author": "Drayano",
+      "popularity": 1000000
+    },
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Prends l'archive « followingrenegadeintegrationpatches_20 » (rediffusion des patchs d'origine, liens Reddit morts) et suis son lisez-moi. Ne pas cumuler avec Renegade Platinum seul.",
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "CPU"
+      ],
+      "id": "gb:632062",
+      "page": "https://gamebanana.com/mods/632062",
+      "kind": "patch",
+      "name": "Renegade Platinum + Pokémon qui suit",
+      "description": "Patchs qui fusionnent Renegade Platinum et Following Platinum : ton Pokémon te suit dans Sinnoh pendant toute l'aventure Renegade.",
+      "category": "romhack",
+      "gameVersion": "Platine USA + Renegade Platinum 1.3.0",
+      "author": "MegaMarble (rediffusion)",
+      "popularity": 4469
+    },
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Patch sur le Google Drive de Drayano (lien sur son compte X). Sacred Gold s'applique sur HeartGold, Storm Silver sur SoulSilver. Pas de traduction française.",
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "IPK",
+        "IPG"
+      ],
+      "id": "web:sacred-gold-storm-silver",
+      "page": "https://x.com/Drayano60",
+      "kind": "patch",
+      "name": "Pokémon Sacred Gold / Storm Silver",
+      "description": "Version enrichie de HeartGold/SoulSilver par Drayano : les 493 Pokémon capturables, Johto et Kanto plus difficiles, statistiques, talents et attaques revus, sans évolution par échange.",
+      "category": "romhack",
+      "gameVersion": "HeartGold USA (Sacred Gold) / SoulSilver USA (Storm Silver)",
+      "author": "Drayano",
+      "popularity": 800000
+    },
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Télécharge l'archive sur Project Pokémon. Pas de traduction française connue.",
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "IRB",
+        "IRA"
+      ],
+      "id": "web:blaze-black-volt-white",
+      "page": "https://projectpokemon.org/home/files/file/2466-pok%C3%A9mon-blaze-black-pok%C3%A9mon-volt-white/",
+      "kind": "patch",
+      "name": "Pokémon Blaze Black / Volt White",
+      "description": "Noire/Blanche par Drayano : les 649 Pokémon capturables pendant l'aventure, dresseurs plus durs, Pokémon et attaques rééquilibrés.",
+      "category": "romhack",
+      "gameVersion": "Noire / Blanche USA",
+      "author": "Drayano",
+      "popularity": 300000
+    },
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Patch xdelta sur le Google Drive de Drayano (lien sur son compte X). Blaze Black 2 Redux = Noire 2, Volt White 2 Redux = Blanche 2. L'ancienne version non-Redux (v1.1) reste sur https://projectpokemon.org/home/files/file/2465-pok%C3%A9mon-blaze-black-2-pok%C3%A9mon-volt-white-2/ . Pas de traduction française.",
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "IRE",
+        "IRD"
+      ],
+      "id": "web:blaze-black-2-redux",
+      "page": "https://x.com/Drayano60",
+      "kind": "patch",
+      "name": "Pokémon Blaze Black 2 / Volt White 2 Redux",
+      "description": "La version modernisée du hack de Noire 2/Blanche 2 : tous les Pokémon disponibles, IA plus intelligente, équipes adverses repensées, plusieurs modes de difficulté et une version « Classic » plus légère.",
+      "category": "romhack",
+      "gameVersion": "Noire 2 / Blanche 2 USA",
+      "author": "Drayano et AphexCubed",
+      "popularity": 600000
+    }
+  ]
+}

@@ -32,4 +32,5 @@ if (!isCompanion) {
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).
 if (import.meta.env.DEV) {
   Object.assign(window, { __kaleido: { nav, library, editor, addPaths, openRom, currentTheme, saveState, openSave, saveStore, updates } });
+  void import("./play/mods").then((m) => Object.assign((window as unknown as { __kaleido: object }).__kaleido, { modsDialog: m.modsDialog }));
 }

@@ -1,7 +1,7 @@
 import { reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { titleIdOf } from "../games";
+import { titleIdOf, UPDATE_LABEL } from "../games";
 import type { Detection } from "../types";
 import { defaultEmulator, type EmulatorId, type PlayPlatform } from "./play";
 
@@ -11,9 +11,11 @@ export interface ModTarget {
   platform: PlayPlatform;
   titleId: string | null;
   rom: string | null;
+  /** Version du jeu installée (mise à jour Switch). */
+  gameVersion: string | null;
 }
 
-export type ModCategory = "fps" | "graphics" | "resolution" | "display" | "textures" | "cheats" | "other";
+export type ModCategory = "fps" | "graphics" | "textures" | "style" | "qol" | "gameplay" | "romhack" | "audio" | "ui" | "cheats" | "resolution" | "display" | "other";
 
 export interface ModEntry {
   id: string;
@@ -22,20 +24,32 @@ export interface ModEntry {
   category: ModCategory;
   group: string | null;
   recommended: boolean;
+  /** « auto », « gamebanana » / « manual » (catalogue), « explorer » / « local » (installé hors catalogue). */
+  source: string;
   author: string;
   page: string;
   size: number | null;
   gameVersion: string | null;
   installed: boolean;
+  enabled: boolean;
   updateAvailable: boolean;
   conflicts: string[];
+  overlaps: string[];
+  requires: string[];
+  exclusive: boolean;
   warning: string | null;
+  thumbnail: string | null;
+  gb: number | null;
+  popularity: number | null;
+  kind: string | null;
 }
 
 export interface OtherMod {
   name: string;
   enabled: boolean;
   category: ModCategory;
+  overlaps: string[];
+  canToggle: boolean;
 }
 
 export interface ModsView {
@@ -46,6 +60,67 @@ export interface ModsView {
   others: OtherMod[];
   notes: string[];
   errors: string[];
+  gamebanana: number | null;
+  installedGb: number[];
+  canImport: boolean;
+}
+
+export interface InstallOptions {
+  disableConflicts?: boolean;
+  file?: number | null;
+  variant?: string | null;
+  local?: string | null;
+}
+
+export interface InstallResult {
+  view: ModsView | null;
+  variants: string[];
+  output: string | null;
+}
+
+export interface GbItem {
+  id: number;
+  name: string;
+  thumbnail: string | null;
+  author: string;
+  category: string;
+  likes: number;
+  views: number;
+  added: number;
+  updated: number;
+  hasFiles: boolean;
+  obsolete: boolean;
+  version: string;
+}
+
+export interface GbPage {
+  total: number;
+  complete: boolean;
+  items: GbItem[];
+  hidden: number;
+}
+
+export interface GbCategory {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface GbProfile {
+  id: number;
+  name: string;
+  text: string;
+  files: { id: number; name: string; size: number; date: number; description: string; downloads: number }[];
+  images: string[];
+  thumbnail: string | null;
+  version: string;
+  obsolete: boolean;
+  likes: number;
+  views: number;
+  downloads: number;
+  updated: number;
+  author: string;
+  category: string;
 }
 
 export interface Cheat {
@@ -73,17 +148,41 @@ export const CATEGORY_LABEL: Record<ModCategory, string> = {
   fps: "Fluidité : vrais 60 FPS",
   graphics: "Graphismes",
   textures: "Textures HD",
+  style: "Apparence des personnages et des Pokémon",
+  qol: "Confort de jeu",
+  gameplay: "Gameplay et difficulté",
+  romhack: "Romhacks",
+  audio: "Musiques et sons",
+  ui: "Interface et manettes",
+  cheats: "Codes de triche",
   resolution: "Résolution calculée par le jeu",
   display: "Écrans ultra-larges",
-  cheats: "Codes de triche",
   other: "Autres",
 };
 
-export const CATEGORY_ORDER: ModCategory[] = ["fps", "graphics", "textures", "cheats", "resolution", "display", "other"];
+/** Libellés courts (filtres). */
+export const CATEGORY_SHORT: Record<ModCategory, string> = {
+  fps: "Fluidité",
+  graphics: "Graphismes",
+  textures: "Textures",
+  style: "Apparence",
+  qol: "Confort",
+  gameplay: "Gameplay",
+  romhack: "Romhacks",
+  audio: "Audio",
+  ui: "Interface",
+  cheats: "Triche",
+  resolution: "Résolution",
+  display: "Ultra-large",
+  other: "Autres",
+};
+
+export const CATEGORY_ORDER: ModCategory[] = ["fps", "graphics", "textures", "style", "qol", "gameplay", "romhack", "audio", "ui", "cheats", "resolution", "display", "other"];
 
 export function targetOf(d: Detection): ModTarget {
   const platform: PlayPlatform = d.platform === "switch" ? "switch" : d.platform === "3ds" ? "3ds" : d.platform === "gba" || d.platform === "gb" ? "gba" : "nds";
-  return { platform, titleId: titleIdOf(d), rom: platform === "nds" || platform === "gba" ? d.path : null };
+  const gameVersion = d.details.find((x) => x.label === UPDATE_LABEL)?.value ?? null;
+  return { platform, titleId: titleIdOf(d), rom: platform === "nds" || platform === "gba" ? d.path : null, gameVersion: gameVersion && /^d/.test(gameVersion) ? gameVersion : null };
 }
 
 /** Émulateur dont on règle la configuration pour ce jeu. */
@@ -113,16 +212,21 @@ listen<ModProgress & { id: string }>("mod-install", (e) => {
 
 export const listMods = (target: ModTarget) => invoke<ModsView>("mods_list", { target });
 
-export async function installMod(target: ModTarget, id: string, disableConflicts: boolean) {
+export async function installMod(target: ModTarget, id: string, options: InstallOptions) {
   modProgress[id] = { step: "download", done: 0, total: 0 };
   try {
-    return await invoke<ModsView>("mods_install", { target, id, disableConflicts });
+    return await invoke<InstallResult>("mods_install", { target, id, options });
   } finally {
     delete modProgress[id];
   }
 }
 
 export const uninstallMod = (target: ModTarget, id: string) => invoke<ModsView>("mods_uninstall", { target, id });
+export const toggleMod = (target: ModTarget, id: string, enabled: boolean) => invoke<ModsView>("mods_toggle", { target, id, enabled });
+export const browseMods = (game: number, query: string, sort: string, category: number | null, page: number) => invoke<GbPage>("mods_browse", { game, query, sort, category, page });
+export const modCategories = (game: number) => invoke<GbCategory[]>("mods_categories", { game });
+export const modDetails = (id: number) => invoke<GbProfile>("mods_details", { id });
+export const downloadsDir = () => invoke<string | null>("mods_downloads_dir");
 export const toggleOther = (target: ModTarget, name: string, enabled: boolean) => invoke<ModsView>("mods_toggle_other", { target, name, enabled });
 export const listCheats = (target: ModTarget) => invoke<Cheat[]>("cheats_list", { target });
 export const setCheats = (target: ModTarget, enabled: string[]) => invoke<Cheat[]>("cheats_set", { target, enabled });
@@ -131,6 +235,13 @@ const tuneTarget = (target: ModTarget) => ({ emulator: tuneEmulator(target.platf
 export const tunePlan = (target: ModTarget) => invoke<TunePlan>("tune_plan", { target: tuneTarget(target) });
 export const tuneApply = (target: ModTarget) => invoke<TunePlan>("tune_apply", { target: tuneTarget(target) });
 export const tuneRestore = (target: ModTarget) => invoke<TunePlan>("tune_restore", { target: tuneTarget(target) });
+
+/** « 12,3 k » pour les compteurs de vues. */
+export function formatCount(n: number) {
+  if (n < 1000) return String(n);
+  if (n < 1e6) return `${(n / 1000).toFixed(n < 1e4 ? 1 : 0).replace(".", ",")} k`;
+  return `${(n / 1e6).toFixed(1).replace(".", ",")} M`;
+}
 
 export function formatSize(bytes: number | null) {
   if (bytes === null) return null;

@@ -20,6 +20,7 @@ mod bank;
 mod companion;
 mod runlog;
 mod discover;
+mod gamebanana;
 mod battle;
 mod emusaves;
 mod gifts;
@@ -28,6 +29,8 @@ mod labels;
 mod library;
 mod live;
 mod mods;
+mod mods_catalog;
+mod nexus;
 mod nuzlocke;
 mod nxmusic;
 mod overlay;
@@ -492,6 +495,11 @@ fn main() {
             mods::mods_install,
             mods::mods_uninstall,
             mods::mods_toggle_other,
+            mods::mods_toggle,
+            mods::mods_browse,
+            mods::mods_categories,
+            mods::mods_details,
+            mods::mods_downloads_dir,
             mods::cheats_list,
             mods::cheats_set,
             romhacks::romhacks_list,
