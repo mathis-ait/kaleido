@@ -10,6 +10,7 @@ name = "kaleido"
 path = "src/main.rs"
 
 [dependencies]
+sha2 = "0.10"
 kaleido-formats.workspace = true
 kaleido-core.workspace = true
 serde_json.workspace = true

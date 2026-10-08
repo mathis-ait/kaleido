@@ -497,3 +497,52 @@ pub fn search_bytes(rom: &RomFsSource, pattern: &str, filter: &str) -> CliResult
     }
     Ok(())
 }
+
+/// Extrait `code.bin` (décompressé) et `exheader.bin` d'une ROM 3DS vers `out`,
+/// et affiche la version et la disposition mémoire (sections de l'ExHeader).
+/// Point de départ du reverse engineering « 60 fps natif » (`ctr-smooth`).
+pub fn extract_code(path: &str, out: &str) -> CliResult {
+    use kaleido_formats::ctr::{read_code, CtrImage};
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut f = std::fs::File::open(path)?;
+    let image = CtrImage::probe(&mut f)?.ok_or("conteneur 3DS non reconnu")?;
+    let ncch = image.ncch.ok_or("partition NCCH illisible (chiffrée ?)")?;
+    if ncch.encrypted {
+        return Err("partition chiffrée : déchiffrer la ROM d'abord".into());
+    }
+    let mut header = [0u8; 0x200];
+    f.seek(SeekFrom::Start(ncch.offset))?;
+    f.read_exact(&mut header)?;
+    // ExHeader (0x400) + descripteur d'accès (0x400) juste après l'en-tête NCCH.
+    let mut exheader = vec![0u8; 0x800];
+    f.seek(SeekFrom::Start(ncch.offset + 0x200))?;
+    f.read_exact(&mut exheader)?;
+    let stored = read_code(&mut f, ncch.offset)?;
+    let code = if stored.compressed { kaleido_formats::lz::decompress_blz(&stored.raw)? } else { stored.raw.clone() };
+
+    let u16 = |d: &[u8], o: usize| u16::from_le_bytes([d[o], d[o + 1]]);
+    let u32 = |d: &[u8], o: usize| u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
+    let section = |o: usize| (u32(&exheader, o), u32(&exheader, o + 4), u32(&exheader, o + 8));
+    let (text_addr, text_pages, text_size) = section(0x10);
+    let (ro_addr, ro_pages, ro_size) = section(0x20);
+    let (data_addr, data_pages, data_size) = section(0x30);
+    let name = String::from_utf8_lossy(&exheader[..8]).trim_end_matches('\0').to_string();
+
+    std::fs::create_dir_all(out)?;
+    std::fs::write(format!("{out}/code.bin"), &code)?;
+    std::fs::write(format!("{out}/exheader.bin"), &exheader)?;
+    let sha = { use sha2::Digest; sha2::Sha256::digest(&code).iter().map(|b| format!("{b:02x}")).collect::<String>() };
+    println!("Title ID       : {:016X}", ncch.program_id);
+    println!("Code produit   : {}", ncch.product_code);
+    println!("Version NCCH   : 0x{:04X} (v{}.{}.{})", u16(&header, 0x112), u16(&header, 0x112) >> 10, (u16(&header, 0x112) >> 4) & 0x3F, u16(&header, 0x112) & 0xF);
+    println!("ExHeader       : {name}, remaster 0x{:04X}, code {}", u16(&exheader, 0x0E), if stored.compressed { "compressé (BLZ)" } else { "brut" });
+    println!(".text          : 0x{text_addr:08X}, {text_size:#x} octets ({text_pages} pages)");
+    println!(".rodata        : 0x{ro_addr:08X}, {ro_size:#x} octets ({ro_pages} pages)");
+    println!(".data          : 0x{data_addr:08X}, {data_size:#x} octets ({data_pages} pages)");
+    println!(".bss           : {:#x} octets", u32(&exheader, 0x3C));
+    println!("Pile           : {:#x} octets", u32(&exheader, 0x1C));
+    println!("code.bin       : {} octets, SHA-256 {sha}", code.len());
+    println!("→ {out}/code.bin, {out}/exheader.bin");
+    Ok(())
+}
