@@ -182,6 +182,10 @@ onMounted(() => {
         <dd>Dabomstew, Ajarmar et contributeurs, GPLv3 : emplacements des données des ROM (fichiers d'offsets Gen 1 à 7)</dd>
         <dt>PokeAPI</dt>
         <dd>BSD-3 : puissance, précision et catégorie des attaques</dd>
+        <dt>Modèles 3D des cartouches</dt>
+        <dd>CC-BY 4.0, Sketchfab : « DS game card » par maney, « 3DS Game Cartridge » par JodieWebster, « Pokemon Cartridge (Gameboy) » par thegraphicsgeek, « Nintendo Switch game Cartridge v2 » par maxns1980</dd>
+        <dt>GameTDB</dt>
+        <dd>Photos des étiquettes de cartes DS et 3DS</dd>
       </dl>
       <p>
         <strong>Compagnon en direct.</strong> Pour suivre ta partie à la seconde (PV, rencontres, K.O.), le compagnon lit la

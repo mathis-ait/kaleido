@@ -5,7 +5,7 @@ import { hash32, type SupportModel, type Wear } from "./models";
 /**
  * Étiquette d'une cartouche, préparée dans un canvas hors écran : image choisie par
  * l'utilisateur, sinon photo de la vraie carte (zone de l'étiquette), sinon étiquette
- * neutre avec le titre du jeu, en attendant un scan (ScreenScraper).
+ * neutre avec le titre du jeu.
  *
  * Cache mémoire par clé, et cache disque en PNG (`label_cache`, labels.rs) pour les
  * étiquettes tirées des photos.
@@ -175,7 +175,7 @@ function splitTitle(g: CanvasRenderingContext2D, title: string, maxWidth: number
 }
 
 /**
- * Étiquette neutre, en attendant le scan de la vraie étiquette : papier uni et titre du
+ * Étiquette neutre, sans photo de la vraie étiquette : papier uni et titre du
  * jeu imprimé au centre. Pas de fausse étiquette reconstituée depuis la jaquette.
  */
 async function neutralLabel(input: LabelInput): Promise<HTMLCanvasElement> {
