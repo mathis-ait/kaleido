@@ -23,16 +23,22 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "ADAF"
+        ]
       },
       "saveBlock": {
-        "verified": []
+        "verified": [
+          "ADAF"
+        ]
       },
       "battle": {
         "method": "partyHeader",
-        "verified": []
+        "verified": [
+          "ADAF"
+        ]
       },
-      "notes": "Overlay de combat 11 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Bloc général en RAM supposé identique au fichier (comme HGSS, vérifié) : dresseur 0x64, équipe 0x98, carte 0x1238 du bloc. RAM principale trouvée par l'en-tête dans melonDS 1.1 (ADAF, écran titre) ; équipe non vérifiée en jeu (pas de sauvegarde Diamant dans le dossier de test).",
+      "notes": "Vérifié dans melonDS 1.1 sur Diamant FR (ADAF, Rev 5), nouvelle partie : équipe lue en direct (Tortipouss), carte lue dans le bloc de sauvegarde en RAM (414 maison, 411, 342 Route 201). Combat : overlay 11 présent en RAM pendant un combat sauvage (Keunotor N.3 lu sur la Route 201), fin du combat vue (fuite). Le combat scripté du choix du starter (Étourmi) ne charge pas l'overlay 11 : il n'est pas vu comme un combat. Bloc général : dresseur 0x64, équipe 0x98, carte 0x1238.",
       "battleOverlay": 11
     },
     {
