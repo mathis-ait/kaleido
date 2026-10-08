@@ -5,110 +5,326 @@
     {
       "game": "DP",
       "console": "ds",
-      "codes": ["ADAE", "ADAF", "ADAD", "ADAI", "ADAS", "ADAJ", "ADAK", "APAE", "APAF", "APAD", "APAI", "APAS", "APAJ", "APAK"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
-      "battle": { "method": "partyHeader", "verified": [] },
-      "notes": "Bloc général en RAM supposé identique au fichier (comme HGSS, vérifié) : dresseur 0x64, équipe 0x98, carte 0x1238 du bloc. RAM principale trouvée par l'en-tête dans melonDS 1.1 (ADAF, écran titre) ; équipe non vérifiée en jeu (pas de sauvegarde Diamant dans le dossier de test)."
+      "codes": [
+        "ADAE",
+        "ADAF",
+        "ADAD",
+        "ADAI",
+        "ADAS",
+        "ADAJ",
+        "ADAK",
+        "APAE",
+        "APAF",
+        "APAD",
+        "APAI",
+        "APAS",
+        "APAJ",
+        "APAK"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
+      "battle": {
+        "method": "partyHeader",
+        "verified": []
+      },
+      "notes": "Overlay de combat 11 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Bloc général en RAM supposé identique au fichier (comme HGSS, vérifié) : dresseur 0x64, équipe 0x98, carte 0x1238 du bloc. RAM principale trouvée par l'en-tête dans melonDS 1.1 (ADAF, écran titre) ; équipe non vérifiée en jeu (pas de sauvegarde Diamant dans le dossier de test).",
+      "battleOverlay": 11
     },
     {
       "game": "Pt",
       "console": "ds",
-      "codes": ["CPUE", "CPUF", "CPUD", "CPUI", "CPUS", "CPUJ", "CPUK"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
-      "battle": { "method": "partyHeader", "verified": [] },
-      "notes": "Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280. RAM principale trouvée par l'en-tête dans melonDS 1.1 (CPUE, écran titre) ; équipe non vérifiée en jeu : la ROM Platine Europe du dossier de test n'a pas de sauvegarde.",
+      "codes": [
+        "CPUE",
+        "CPUF",
+        "CPUD",
+        "CPUI",
+        "CPUS",
+        "CPUJ",
+        "CPUK"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
+      "battle": {
+        "method": "partyHeader",
+        "verified": []
+      },
+      "notes": "Overlay de combat 16 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280. RAM principale trouvée par l'en-tête dans melonDS 1.1 (CPUE, écran titre) ; équipe non vérifiée en jeu : la ROM Platine Europe du dossier de test n'a pas de sauvegarde.",
       "reference": [
-        { "what": "pointeur vers le bloc général (US)", "address": "0x02101D2C", "offsets": { "party": "0xD094" }, "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)", "verified": false }
-      ]
+        {
+          "what": "pointeur vers le bloc général (US)",
+          "address": "0x02101D2C",
+          "offsets": {
+            "party": "0xD094"
+          },
+          "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)",
+          "verified": false
+        }
+      ],
+      "battleOverlay": 16
     },
     {
       "game": "HGSS",
       "console": "ds",
-      "codes": ["IPKE", "IPKF", "IPKD", "IPKI", "IPKS", "IPKJ", "IPKK", "IPGE", "IPGF", "IPGD", "IPGI", "IPGS", "IPGJ", "IPGK"],
-      "party": { "method": "signature", "verified": ["IPGF"] },
-      "saveBlock": { "verified": ["IPGF"] },
-      "battle": { "method": "partyHeader", "verified": ["IPGF"] },
-      "battleFlags": [
-        { "codes": ["IPGF"], "address": "0x021356FC", "value": 1 }
+      "codes": [
+        "IPKE",
+        "IPKF",
+        "IPKD",
+        "IPKI",
+        "IPKS",
+        "IPKJ",
+        "IPKK",
+        "IPGE",
+        "IPGF",
+        "IPGD",
+        "IPGI",
+        "IPGS",
+        "IPGJ",
+        "IPGK"
       ],
+      "party": {
+        "method": "signature",
+        "verified": [
+          "IPGF"
+        ]
+      },
+      "saveBlock": {
+        "verified": [
+          "IPGF"
+        ]
+      },
+      "battle": {
+        "method": "partyHeader",
+        "verified": [
+          "IPGF"
+        ]
+      },
       "notes": "Indicateur « en combat » 0x021356FC (u32) : 1 en combat, 0 hors combat, observé sur 8 captures dans 2 sessions melonDS 1.1 (rencontres sur la Route 29, fuites). Vérifié dans melonDS 1.1 sur Argent SoulSilver FR (IPGF) : RAM principale au début d'une allocation de l'émulateur, équipe trouvée en deux copies (bloc de sauvegarde + une seconde), nom et numéro du dresseur à la même distance que dans le fichier, carte lue en direct (61 dans le labo, 60 dehors après quelques pas). Combat non observé.",
       "reference": [
-        { "what": "pointeur vers le bloc général (US)", "address": "0x0211186C", "offsets": { "party": "0xD088" }, "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)", "verified": false }
-      ]
+        {
+          "what": "pointeur vers le bloc général (US)",
+          "address": "0x0211186C",
+          "offsets": {
+            "party": "0xD088"
+          },
+          "source": "scripts Lua communautaires pour DeSmuME (affichage d'équipe Gen 4)",
+          "verified": false
+        }
+      ],
+      "battleOverlay": 12
     },
     {
       "game": "BW",
       "console": "ds",
-      "codes": ["IRBO", "IRBF", "IRBD", "IRBI", "IRBS", "IRBJ", "IRBK", "IRAO", "IRAF", "IRAD", "IRAI", "IRAS", "IRAJ", "IRAK"],
-      "party": { "method": "signature", "verified": ["IRAF"] },
-      "saveBlock": { "verified": ["IRAF"] },
-      "battle": { "method": "partyHeader", "verified": ["IRAF"] },
-      "battleFlags": [
-        { "codes": ["IRAF"], "address": "0x020AA150", "value": 1 }
+      "codes": [
+        "IRBO",
+        "IRBF",
+        "IRBD",
+        "IRBI",
+        "IRBS",
+        "IRBJ",
+        "IRBK",
+        "IRAO",
+        "IRAF",
+        "IRAD",
+        "IRAI",
+        "IRAS",
+        "IRAJ",
+        "IRAK"
       ],
-      "notes": "Indicateur « en combat » 0x020AA150 (u32) : 1 en combat, 0 hors combat, observé sur 10 captures dans 3 sessions melonDS 1.1 (Blanche FR d'origine et randomisée par Kaleido : rencontres, fuite, retour sur la même carte). Vérifié dans melonDS 1.1 sur Blanche FR randomisée par Kaleido (IRAF) : équipe de deux Pokémon trouvée en deux copies, dresseur à +0x5FC de l'équipe comme dans le fichier (bloc 0x18E00 / 0x19400), carte lue égale à celle de la sauvegarde (391). Changement de carte et combat non observés ; badges (0x21204 dans le fichier, loin de l'équipe) non vérifiés."
+      "party": {
+        "method": "signature",
+        "verified": [
+          "IRAF"
+        ]
+      },
+      "saveBlock": {
+        "verified": [
+          "IRAF"
+        ]
+      },
+      "battle": {
+        "method": "partyHeader",
+        "verified": [
+          "IRAF"
+        ]
+      },
+      "battleFlags": [
+        {
+          "codes": [
+            "IRAF"
+          ],
+          "address": "0x020AA150",
+          "value": 1
+        }
+      ],
+      "notes": "Combat : overlay 93 présent en RAM seulement en combat (8 captures, 2 sessions). Indicateur « en combat » 0x020AA150 (u32) : 1 en combat, 0 hors combat, observé sur 10 captures dans 3 sessions melonDS 1.1 (Blanche FR d'origine et randomisée par Kaleido : rencontres, fuite, retour sur la même carte). Vérifié dans melonDS 1.1 sur Blanche FR randomisée par Kaleido (IRAF) : équipe de deux Pokémon trouvée en deux copies, dresseur à +0x5FC de l'équipe comme dans le fichier (bloc 0x18E00 / 0x19400), carte lue égale à celle de la sauvegarde (391). Changement de carte et combat non observés ; badges (0x21204 dans le fichier, loin de l'équipe) non vérifiés.",
+      "battleOverlay": 93
     },
     {
       "game": "B2W2",
       "console": "ds",
-      "codes": ["IREO", "IREF", "IRED", "IREI", "IRES", "IREJ", "IREK", "IRDO", "IRDF", "IRDD", "IRDI", "IRDS", "IRDJ", "IRDK"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
-      "battle": { "method": "partyHeader", "verified": [] },
-      "notes": "Même organisation que Noir / Blanc supposée. RAM principale trouvée par l'en-tête dans melonDS 1.1 (IREF, écran titre, console DS) ; équipe non vérifiée : la ROM Noire 2 FR du dossier de test n'a pas de sauvegarde."
+      "codes": [
+        "IREO",
+        "IREF",
+        "IRED",
+        "IREI",
+        "IRES",
+        "IREJ",
+        "IREK",
+        "IRDO",
+        "IRDF",
+        "IRDD",
+        "IRDI",
+        "IRDS",
+        "IRDJ",
+        "IRDK"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
+      "battle": {
+        "method": "partyHeader",
+        "verified": []
+      },
+      "notes": "Overlay de combat 167 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Même organisation que Noir / Blanc supposée. RAM principale trouvée par l'en-tête dans melonDS 1.1 (IREF, écran titre, console DS) ; équipe non vérifiée : la ROM Noire 2 FR du dossier de test n'a pas de sauvegarde.",
+      "battleOverlay": 167
     },
     {
       "game": "XY",
       "console": "3ds",
-      "titleIds": ["0004000000055D00", "0004000000055E00"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
+      "titleIds": [
+        "0004000000055D00",
+        "0004000000055E00"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
       "battle": null,
       "notes": "Équipe cherchée par constante de chiffrement dans les grandes zones (FCRAM) d'Azahar ; nombre de Pokémon après les 6 emplacements. Non vérifié : Azahar n'est pas installé sur le poste de développement.",
       "reference": [
-        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x08CE1CF8", "source": "PKMN-NTR", "verified": false },
-        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x08C861C8", "source": "PKMN-NTR", "verified": false }
+        {
+          "what": "équipe (adresse virtuelle du jeu)",
+          "address": "0x08CE1CF8",
+          "source": "PKMN-NTR",
+          "verified": false
+        },
+        {
+          "what": "boîtes (adresse virtuelle du jeu)",
+          "address": "0x08C861C8",
+          "source": "PKMN-NTR",
+          "verified": false
+        }
       ]
     },
     {
       "game": "ORAS",
       "console": "3ds",
-      "titleIds": ["000400000011C400", "000400000011C500"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
+      "titleIds": [
+        "000400000011C400",
+        "000400000011C500"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
       "battle": null,
       "notes": "Non vérifié (Azahar absent).",
       "reference": [
-        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x08CFB26C", "source": "PKMN-NTR", "verified": false },
-        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x08C9E134", "source": "PKMN-NTR", "verified": false }
+        {
+          "what": "équipe (adresse virtuelle du jeu)",
+          "address": "0x08CFB26C",
+          "source": "PKMN-NTR",
+          "verified": false
+        },
+        {
+          "what": "boîtes (adresse virtuelle du jeu)",
+          "address": "0x08C9E134",
+          "source": "PKMN-NTR",
+          "verified": false
+        }
       ]
     },
     {
       "game": "SM",
       "console": "3ds",
-      "titleIds": ["0004000000164800", "0004000000175E00"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
+      "titleIds": [
+        "0004000000164800",
+        "0004000000175E00"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
       "battle": null,
       "notes": "Non vérifié (Azahar absent).",
       "reference": [
-        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x34195E10", "source": "PKMN-NTR", "verified": false },
-        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x330D9838", "source": "PKMN-NTR", "verified": false }
+        {
+          "what": "équipe (adresse virtuelle du jeu)",
+          "address": "0x34195E10",
+          "source": "PKMN-NTR",
+          "verified": false
+        },
+        {
+          "what": "boîtes (adresse virtuelle du jeu)",
+          "address": "0x330D9838",
+          "source": "PKMN-NTR",
+          "verified": false
+        }
       ]
     },
     {
       "game": "USUM",
       "console": "3ds",
-      "titleIds": ["00040000001B5000", "00040000001B5100"],
-      "party": { "method": "signature", "verified": [] },
-      "saveBlock": { "verified": [] },
+      "titleIds": [
+        "00040000001B5000",
+        "00040000001B5100"
+      ],
+      "party": {
+        "method": "signature",
+        "verified": []
+      },
+      "saveBlock": {
+        "verified": []
+      },
       "battle": null,
       "notes": "Non vérifié (Azahar absent).",
       "reference": [
-        { "what": "équipe (adresse virtuelle du jeu)", "address": "0x33F7FA44", "source": "PKMN-NTR", "verified": false },
-        { "what": "boîtes (adresse virtuelle du jeu)", "address": "0x33015AB0", "source": "PKMN-NTR", "verified": false }
+        {
+          "what": "équipe (adresse virtuelle du jeu)",
+          "address": "0x33F7FA44",
+          "source": "PKMN-NTR",
+          "verified": false
+        },
+        {
+          "what": "boîtes (adresse virtuelle du jeu)",
+          "address": "0x33015AB0",
+          "source": "PKMN-NTR",
+          "verified": false
+        }
       ]
     }
   ]

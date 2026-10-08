@@ -189,9 +189,24 @@ fn game_name(v: SaveVersion) -> String {
     format!("{:?}", game_of(v))
 }
 
+/// Code jeu, adresse DS et premiers octets de l'overlay de combat.
+type BattleCode = (String, u32, Vec<u8>);
+
+/// Début de l'overlay de combat d'une ROM, lu une fois par ROM (la ROM fait plusieurs centaines de Mo).
+fn battle_code(rom: &Path, overlay: u32) -> Option<BattleCode> {
+    static CACHE: Mutex<Vec<(PathBuf, u32, Option<BattleCode>)>> = Mutex::new(Vec::new());
+    let mut cache = CACHE.lock().ok()?;
+    if let Some((_, _, v)) = cache.iter().find(|(p, o, _)| p == rom && *o == overlay) {
+        return v.clone();
+    }
+    let v = maps::battle_code(rom, overlay);
+    cache.push((rom.to_path_buf(), overlay, v.clone()));
+    v
+}
+
 /// Cherche l'émulateur qui fait tourner la partie suivie et s'y attache.
 #[cfg(windows)]
-fn attach(base: &Base, info: &mut LiveInfo) -> Option<Attached> {
+fn attach(base: &Base, info: &mut LiveInfo, rom: Option<&Path>) -> Option<Attached> {
     use kaleido_core::live::reader::Console;
     use kaleido_core::live::{scan, windows::Process};
     let ctr = base.version.generation() >= 6;
@@ -234,6 +249,14 @@ fn attach(base: &Base, info: &mut LiveInfo) -> Option<Attached> {
         reader.set_battle(map.battle_scan());
         if let Some((addr, value)) = map.battle_flag(&id) {
             reader.set_battle_flag(addr, value);
+        }
+        // Overlay de combat lu dans la ROM de la partie, si c'est bien le jeu qui tourne.
+        if let (Some(ovl), Some(rom)) = (map.battle_overlay, rom) {
+            if let Some((code, addr, bytes)) = battle_code(rom, ovl) {
+                if code.eq_ignore_ascii_case(&id) {
+                    reader.set_battle_code(addr, bytes);
+                }
+            }
         }
         let _ = reader.tick(&proc);
         reader.prime_battle(&proc);
@@ -320,7 +343,8 @@ fn run(app: AppHandle, save: PathBuf, stop: Arc<AtomicBool>) {
                 if last_probe.is_none_or(|t| t.elapsed() >= PROBE) {
                     last_probe = Some(Instant::now());
                     let mut probe = LiveInfo::new("offline", true);
-                    attached = attach(b, &mut probe);
+                    let rom = crate::companion::target_rom(&app);
+                    attached = attach(b, &mut probe, rom.as_deref());
                     info = attached.as_ref().map(|a| a.info.clone()).unwrap_or(probe);
                     prev = None;
                 }

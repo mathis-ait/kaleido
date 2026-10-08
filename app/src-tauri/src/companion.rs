@@ -436,6 +436,11 @@ fn shiny_threshold(rom: Option<&Path>) -> Option<u32> {
     *map.entry(rom.to_path_buf()).or_insert_with(|| kaleido_core::data::shiny::rom_threshold(rom).map(u32::from))
 }
 
+/// ROM de la partie suivie (lecture en direct : code de l'overlay de combat).
+pub(crate) fn target_rom(app: &AppHandle) -> Option<PathBuf> {
+    current(app).and_then(|t| rom_of(&t))
+}
+
 /// ROM de la partie : celle lancée depuis la bibliothèque, sinon celle liée au Nuzlocke.
 fn rom_of(t: &Target) -> Option<PathBuf> {
     t.rom.clone().filter(|p| p.exists()).or_else(|| nuzlocke::load_state(&t.path).rom_path.map(PathBuf::from))

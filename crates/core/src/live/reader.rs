@@ -165,6 +165,8 @@ pub struct LiveReader {
     fight: Option<Fight>,
     /// Indicateur « en combat » du jeu (adresse hôte, valeur en combat), quand il est connu.
     flag: Option<(u64, u32)>,
+    /// Début du code de l'overlay de combat (adresse hôte, octets attendus).
+    code: Option<(u64, Vec<u8>)>,
     /// Ticks consécutifs sans équipe valide.
     misses: u32,
     /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
@@ -190,6 +192,7 @@ impl LiveReader {
             ours_at: None,
             fight: None,
             flag: None,
+            code: None,
             misses: 0,
             battle: true,
         }
@@ -200,6 +203,14 @@ impl LiveReader {
     pub fn set_battle_flag(&mut self, ds_address: u32, value: u32) {
         if let Console::Ds(ram) = &self.console {
             self.flag = Some((ram.host(ds_address), value));
+        }
+    }
+
+    /// Code de l'overlay de combat (adresse DS, premiers octets lus dans la ROM) : prioritaire sur
+    /// l'indicateur, car il ne dépend que de la ROM.
+    pub fn set_battle_code(&mut self, ds_address: u32, bytes: Vec<u8>) {
+        if let Console::Ds(ram) = &self.console {
+            self.code = Some((ram.host(ds_address), bytes));
         }
     }
 
@@ -369,7 +380,10 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let in_battle = self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v));
+        let in_battle = match &self.code {
+            Some((at, bytes)) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
+            None => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
+        };
         let battle = if !self.battle || !matches!(self.console, Console::Ds(_)) {
             None
         } else if in_battle == Some(false) {
@@ -379,7 +393,7 @@ impl LiveReader {
             }
             None
         } else {
-            self.scan_battle(src, &party.mons, map, tick % BATTLE_SCAN == 0 || in_battle == Some(true))
+            self.scan_battle(src, &party.mons, map, tick.is_multiple_of(BATTLE_SCAN) || in_battle == Some(true))
         };
         // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
         let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
@@ -440,7 +454,7 @@ impl LiveReader {
         let new = match &mut self.fight {
             Some(f) if f.keys == keys => {
                 // Sans indicateur du jeu : fin devinée (équipe réécrite, autre carte).
-                if !f.over && self.flag.is_none() && (f.map != map || f.save_raw != save_raw) {
+                if !f.over && self.flag.is_none() && self.code.is_none() && (f.map != map || f.save_raw != save_raw) {
                     f.over = true;
                 }
                 if f.over {

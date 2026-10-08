@@ -46,6 +46,9 @@ pub struct GameMap {
     pub battle: Option<Method>,
     #[serde(default)]
     pub battle_flags: Vec<BattleFlag>,
+    /// Overlay ARM9 du moteur de combat : présent en RAM seulement pendant un combat.
+    #[serde(default)]
+    pub battle_overlay: Option<u32>,
     #[serde(default)]
     pub notes: String,
 }
@@ -76,6 +79,16 @@ impl GameMap {
     pub fn battle_scan(&self) -> bool {
         self.battle.as_ref().is_some_and(|b| b.method == "partyHeader")
     }
+}
+
+/// Début du code de l'overlay de combat lu dans la ROM : (adresse DS, octets). En RAM à cette
+/// adresse pendant un combat seulement ; ailleurs, la carte ou un menu l'ont remplacé.
+pub fn battle_code(rom: &std::path::Path, overlay: u32) -> Option<(String, u32, Vec<u8>)> {
+    let rom = kaleido_formats::nds::NdsRom::open(rom).ok()?;
+    let o = rom.overlays().iter().find(|o| o.id == overlay)?.clone();
+    let code = rom.overlay(overlay).ok()?;
+    let n = code.len().min(256);
+    (n >= 64).then(|| (rom.header().game_code.clone(), o.ram_address, code[..n].to_vec()))
 }
 
 /// Carte d'un jeu DS d'après son code complet (`IPGF`).

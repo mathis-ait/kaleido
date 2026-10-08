@@ -214,6 +214,14 @@ fn main() {
                     if let Some((addr, value)) = flag {
                         r.set_battle_flag(addr, value);
                     }
+                    // KALEIDO_ROM=<rom.nds> : détection par l'overlay de combat (comme l'app).
+                    if let Ok(rom) = std::env::var("KALEIDO_ROM") {
+                        let ovl = kaleido_core::live::maps::for_ds_code(&ram.game_code).and_then(|m| m.battle_overlay);
+                        if let Some((_, addr, bytes)) = ovl.and_then(|o| kaleido_core::live::maps::battle_code(std::path::Path::new(&rom), o)) {
+                            r.set_battle_code(addr, bytes);
+                            println!("overlay de combat {ovl:?} @ {addr:08x}");
+                        }
+                    }
                     r
                 });
                 if i == 0 && arg(3) == "prime" {
