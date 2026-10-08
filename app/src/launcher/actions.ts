@@ -15,6 +15,7 @@ export const platformOf = (d: Detection): PlayPlatform =>
 /** Jaquette (boîte française en priorité, icône officielle pour la Switch ; voir library.rs). */
 export function coverUrl(d: Detection) {
   if (d.platform === "switch") return convertFileSrc(`nx-${titleIdOf(d)}.png`, "cover");
+  if (d.romhack) return convertFileSrc(`hack-${d.romhack}.png`, "cover");
   if (d.game) return convertFileSrc(`${d.game.id}.png`, "cover");
   // Autre jeu DS ou 3DS : boîte GameTDB d'après son code.
   const code = romCodeOf(d);
@@ -63,7 +64,8 @@ export async function launchGame(d: Detection): Promise<string | null> {
 
 export const openSaveOf = (d: Detection) => openGameSave(playOptions(d));
 
-export const canRandomize = (d: Detection) => !isKaleidoRom(d) && RANDOMIZABLE.includes(d.game?.id ?? "");
+// Un romhack (hg-engine…) n'a plus la structure du jeu d'origine : pas de randomizer.
+export const canRandomize = (d: Detection) => !isKaleidoRom(d) && !d.romhack && RANDOMIZABLE.includes(d.game?.id ?? "");
 
 export function randomize(d: Detection) {
   // Le Randomizer choisit parmi les fichiers ouverts : un jeu de la bibliothèque y est ajouté.

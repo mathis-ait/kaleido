@@ -10,6 +10,8 @@ import SearchField from "../components/SearchField.vue";
 import Segmented from "../components/Segmented.vue";
 import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
+import RomhacksDialog from "../play/RomhacksDialog.vue";
+import { romhacksDialog } from "../play/romhacks";
 import { modsDialog } from "../play/mods";
 import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { nav } from "../nav";
@@ -89,6 +91,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
         <button class="btn btn-primary" @click="pickFolder"><Icon name="folder" :size="16" /> Ajouter un dossier</button>
         <button class="btn" @click="pickFiles"><Icon name="plus" :size="16" /> Ajouter des jeux</button>
         <button class="btn" title="Trouver les jeux et les émulateurs rangés n'importe où sur le PC" @click="discovering = true"><Icon name="search" :size="16" /> Rechercher sur ce PC</button>
+        <button class="btn" title="Installer un romhack en un clic (patch officiel, version française)" @click="romhacksDialog.open = true"><Icon name="wand" :size="16" /> Romhacks</button>
         <button class="btn" :disabled="games.scanning" title="Relire les dossiers" @click="rescan"><Icon name="refresh" :size="16" /></button>
         <button class="btn" :title="audio.music ? 'Couper la musique au survol' : 'Musique au survol'" :aria-pressed="audio.music" @click="audio.music = !audio.music">{{ audio.music ? "Musique activée" : "Musique coupée" }}</button>
         <button v-if="allGames.length" class="btn btn-primary" @click="libraryUi.mode = 'launcher'"><Icon name="play" :size="15" /> Mode lanceur</button>
@@ -171,6 +174,7 @@ const percent = (p: { done: number; total: number }) => (p.total ? Math.min(100,
   </section>
   <ModsDialog v-if="modsDialog.game" :key="modsDialog.game.path" />
   <DiscoverDialog v-if="discovering" @close="discovering = false" />
+  <RomhacksDialog v-if="romhacksDialog.open" @close="romhacksDialog.open = false" />
 </template>
 
 <style scoped>
