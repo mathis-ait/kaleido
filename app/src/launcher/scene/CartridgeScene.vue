@@ -371,6 +371,8 @@ function labelInput(item: Item) {
     custom: item.look.customLabel,
     photo: photo ? convertFileSrc(`${photo}.png`, "cover") : null,
     photoCrop: PHOTO_CROP[item.look.support.id] ?? null,
+    // Scan ScreenScraper : ROM seule (pas un dossier 3DS ni un jeu Switch, trop long à identifier).
+    rom: d.kind !== "ctr_dump" && d.platform && d.platform !== "switch" ? { path: d.path, platform: d.platform === "gb" && d.generation === 2 ? "gbc" : d.platform } : null,
     size: item.real?.labelSize,
   };
 }

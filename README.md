@@ -177,10 +177,22 @@ npm run tauri dev      # application en mode développement
 npm run tauri build    # installateur Windows (target/release/bundle)
 ```
 
+Étiquettes réelles des cartouches (mode Cartouche du lanceur) : l'installateur officiel est compilé avec les
+identifiants développeur ScreenScraper de Kaleido, pour que tout fonctionne sans configuration. Ils ne sont
+pas dans le dépôt : à fournir au moment de la compilation.
+
+```bash
+SCREENSCRAPER_DEV_ID=… SCREENSCRAPER_DEV_PASSWORD=… npm run tauri build
+```
+
+Sans eux, les étiquettes viennent de GameTDB quand il a la photo de la carte, sinon une étiquette neutre est
+affichée ; on peut aussi saisir des identifiants dans Réglages, Étiquettes des cartouches.
+
 Tests et vérifications :
 
 ```bash
 cargo test --workspace
+cd app && npm test     # tests de l'interface (vitest)
 cargo clippy --workspace --all-targets
 cargo fmt --all --check
 cd app && npx vue-tsc --noEmit

@@ -33,6 +33,7 @@ mod nxmusic;
 mod overlay;
 mod play;
 mod saves;
+mod screenscraper;
 mod showdown;
 mod sprites;
 mod switch;
@@ -470,6 +471,9 @@ fn main() {
             library::library_set_config,
             labels::label_cache,
             labels::label_custom,
+            screenscraper::label_scan,
+            screenscraper::screenscraper_status,
+            screenscraper::screenscraper_save,
             library::library_scan,
             library::emulator_download_info,
             library::emulator_install,

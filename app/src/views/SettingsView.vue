@@ -6,6 +6,7 @@ import Sprite from "../components/Sprite.vue";
 import Toggle from "../components/Toggle.vue";
 import EmulatorSettings from "../play/EmulatorSettings.vue";
 import OverlaySettings from "../companion/OverlaySettings.vue";
+import ScreenScraperSettings from "../launcher/ScreenScraperSettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -151,6 +152,9 @@ onMounted(() => {
     <h2>Overlay de stream</h2>
     <OverlaySettings />
 
+    <h2>Étiquettes des cartouches</h2>
+    <ScreenScraperSettings />
+
     <h2>Mises à jour</h2>
     <div class="update panel">
       <div class="update-row">
@@ -182,6 +186,10 @@ onMounted(() => {
         <dd>Dabomstew, Ajarmar et contributeurs, GPLv3 : emplacements des données des ROM (fichiers d'offsets Gen 1 à 7)</dd>
         <dt>PokeAPI</dt>
         <dd>BSD-3 : puissance, précision et catégorie des attaques</dd>
+        <dt>Modèles 3D des cartouches</dt>
+        <dd>CC-BY 4.0, Sketchfab : « DS game card » par maney, « 3DS Game Cartridge » par JodieWebster, « Pokemon Cartridge (Gameboy) » par thegraphicsgeek, « Nintendo Switch game Cartridge v2 » par maxns1980</dd>
+        <dt>ScreenScraper et GameTDB</dt>
+        <dd>Scans et photos des étiquettes de cartouches</dd>
       </dl>
       <p>
         <strong>Compagnon en direct.</strong> Pour suivre ta partie à la seconde (PV, rencontres, K.O.), le compagnon lit la

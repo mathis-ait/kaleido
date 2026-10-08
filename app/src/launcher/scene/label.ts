@@ -28,6 +28,8 @@ export interface LabelInput {
   /** Photo de la vraie carte (`cover://`) et position de l'étiquette dans la photo : elle prime sur l'étiquette neutre. */
   photo: string | null;
   photoCrop: { x: number; y: number; w: number; h: number } | null;
+  /** ROM du jeu, pour demander le scan de son étiquette à ScreenScraper (`label_scan`). */
+  rom: { path: string; platform: string } | null;
   /** Taille de l'étiquette en mm, quand le modèle 3D la donne (sinon la zone du support). */
   size?: [number, number];
 }
@@ -264,6 +266,35 @@ async function photoLabel(input: LabelInput): Promise<HTMLCanvasElement | null> 
   return canvas;
 }
 
+/**
+ * Scan de la vraie étiquette sur ScreenScraper (voir screenscraper.rs) : la texture de
+ * l'étiquette prise entière, ou la photo du support recadrée sur l'étiquette.
+ */
+async function scanLabel(input: LabelInput): Promise<HTMLCanvasElement | null> {
+  if (!input.rom) return null;
+  const bytes = await invoke<ArrayBuffer>("label_scan", input.rom).catch(() => null);
+  if (!bytes || bytes.byteLength < 2) return null;
+  const kind = new Uint8Array(bytes)[0];
+  const image = await createImageBitmap(new Blob([bytes.slice(1)])).catch(() => null);
+  if (!image) return null;
+  const [w, h] = labelSize(input.support, input.size);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d", { willReadFrequently: true })!;
+  const c = kind === 1 && input.photoCrop ? input.photoCrop : { x: 0, y: 0, w: 1, h: 1 };
+  g.save();
+  g.beginPath();
+  g.roundRect(0, 0, w, h, w * 0.025);
+  g.clip();
+  g.drawImage(image, image.width * c.x, image.height * c.y, image.width * c.w, image.height * c.h, 0, 0, w, h);
+  g.restore();
+  image.close();
+  if (input.randomized) drawSticker(g, w, h, input, cssVar("--font-display", "Segoe UI, sans-serif"));
+  if (input.wear === "jouee") wearOut(g, w, h, random(`${input.key}:${input.wear}`));
+  return canvas;
+}
+
 async function source(input: LabelInput): Promise<HTMLCanvasElement> {
   if (input.custom) {
     const blob = await readCache(input.key);
@@ -272,6 +303,8 @@ async function source(input: LabelInput): Promise<HTMLCanvasElement> {
       if (bitmap) return bitmap;
     }
   }
+  const scan = await scanLabel(input);
+  if (scan) return scan;
   const suffix = `${LABEL_VERSION}-${input.wear}${input.randomized ? "-k" : ""}${input.size ? "-r" : ""}`;
   if (input.photo) {
     const photoKey = `${input.key}-p${suffix}`;
