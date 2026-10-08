@@ -146,11 +146,18 @@ drapeau `interp` posé sur le chemin 0x10E3B8 (image sans update), lu par les ho
 
 - Ghidra 12.1.4 headless, `code.bin` chargé brut à 0x00100000 (`ARM:LE:32:v6`), `.bss` ajouté par
   `re/ghidra/CtrLayout.java` ; dumps par `re/ghidra/Dump.java` ; symboles RTTI importés avec
-  `ImportSymbolsScript`. Analyse automatique : 4 min.
-- Le stub GDB d'Azahar 2126.1.2 **n'honore qu'un point d'arrêt à la fois** et un point d'arrêt posé
-  n'importe où dans une fonction se déclenche à chaque passage dans la fonction : inutilisable pour
-  compter des chemins. D'où les compteurs insérés dans le code et la commande `watch` de
-  `tools/azahar_gdb.py` (lecture mémoire, pause par 0x03, relecture).
+  `ImportSymbolsScript`. Analyse automatique : 4 min. **Correction phase 1** : le `.bss` commence à
+  0x0062F9F4 (juste après `.data`, sans alignement), pas à 0x00630000 ; sa marge libre est
+  0x006AE620–0x006AF000.
+- Stub GDB d'Azahar 2126.1.2 (**corrigé en phase 1**) : le pas à pas n'existe pas (`s` → `E5F`) et
+  reprendre depuis un point d'arrêt le redéclenche aussitôt sans avancer ; les comptages de la
+  phase 0 par points d'arrêt étaient donc faux (bornés par l'aller-retour GDB), seuls les compteurs
+  insérés dans le code étaient fiables. Méthode correcte (`tools/gdbtrace.py`) : point d'arrêt à
+  l'**entrée** d'une fonction, puis, pour enjamber l'appel, point d'arrêt sur son adresse de retour.
+  Paquets jusqu'à 9 800 octets (`PacketSize`) : lectures par blocs de 4 Ko.
+- Azahar ne lit la manette que si sa fenêtre a le focus, même avec
+  `SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS`. Les essais automatisés injectent donc les boutons dans le
+  jeu (`hook_pad`, builds de test), sans focus et à l'image près.
 - `qt-config.ini` : une clé suivie de `clé\default=true` est ignorée par Azahar ; il faut écrire
   `use_gdbstub\default=false` **et** `use_gdbstub=true`, Azahar fermé (il réécrit le fichier en
   quittant).

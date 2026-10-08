@@ -12,7 +12,7 @@ sections:
   text:   { addr: 0x00100000, size: 0x479604 }
   rodata: { addr: 0x0057A000, size: 0x071A14 }
   data:   { addr: 0x005EC000, size: 0x0439F4 }
-  bss:    { addr: 0x00630000, size: 0x07EC2C }   # page mappée jusqu'à 0x006AF000 ; 0x006AEC2C.. libre
+  bss:    { addr: 0x0062F9F4, size: 0x07EC2C }   # suit .data sans alignement ; marge libre 0x006AE620-0x006AF000
   stack:  0x40000
 
 # Boucle principale (vérifiée par compteurs en jeu, Azahar, écran titre).
@@ -27,12 +27,28 @@ main_loop:
   draw_end: 0x0010E620            # svc 0x28 ; seuils 0x411A (16 666 µs) / 0x8235 (33 333 µs) ; skip = [gfx_ctx+0x1FE]
   dead_code_cave: [0x0010E398, 0x0010E3B4]   # 8 mots ré-écrivables sur le chemin update (utilisés par les compteurs)
 
-# Chemin de rendu (voir docs/rosa-render-map.md) — à confirmer en phase 1.
+# Chemin de rendu (voir docs/rosa-render-map.md et docs/runtime.md) — vérifié en jeu en phase 1.
 render:
   engine: "NintendoWare nw::gfx (NW4C) + gfl::grp::g3d (H3D) ; pas gfl2::renderingengine"
-  world_matrices: "calculées dans update() (nw::gfx::SceneUpdater / WorldMatrixUpdater, gfl::grp::g3d::Scene::Calculate) ; lues par draw()"
-  interception: "à l'envoi des uniformes (draw), par clé = adresse du nœud / de l'os"
-  hooks: {}            # à remplir en phase 1 : set_view_matrix, set_model_matrix, upload_bones
+  world_matrices: "calculées dans update(), stockées dans les objets, lues par draw()"
+  render_queue: 0x0054DD58          # parcours de la file NW4C : maillages nw::gfx et commandes H3D
+  hooks:                            # « b »/« bl » vers le runtime ; octets d'origine vérifiés par build.py
+    gate:    { addr: 0x0010E530, orig: "0d00d4e5" }   # + 0x0010E534 cmp r0,#0, 0x0010E538 nop
+    end:     { addr: 0x0010E61C, orig: "00f020e3" }
+    camera:  { addr: 0x00375EA8, orig: "ff4f2de9", arg: "[sp+0xC]", matrices: [0x148, 0x178] }
+    h3d:     { addr: 0x0039B338, orig: "f84f2de9", arg: r0, bones: { count: 0x40, array: 0x4C, stride: 0x30 } }
+    nwmesh:  { addr: 0x002EC354, orig: "f0412de9", arg: r2, matrices: [0x8C] }
+    test_pad: { addr: 0x0036FB34, orig: "981084e2", note: "builds de test : mot boutons en [r4+0x78]" }
+  thresholds: { translation: 48.0, rotation: 0.7 }
+  runtime:
+    code: { addr: 0x00579610, max: 0x9F0 }      # marge de fin de .text
+    state: 0x006AE640                           # marge de fin de .bss
+    table: { addr: 0x0A000000, size: 0x40000 }  # svcControlMemory au premier appel
+
+# Pour les essais (builds de test uniquement)
+test:
+  rng_mt19937: 0x08C55E64          # instance gfl MT (index + 624 mots), avancée à chaque VBlank par 0x0010676C
+  camera_object: 0x14C486B8        # nw::gfx::Camera du terrain (Route 103), vue en +0x148
 
 prototype:
-  draw_every_frame: { 0x0010E53C: "00f020e3" }   # mesuré : update 29,6/s inchangé, draw 59,2/s
+  draw_every_frame: { 0x0010E53C: "00f020e3" }   # phase 0 : update 29,6/s inchangé, draw 59,2/s

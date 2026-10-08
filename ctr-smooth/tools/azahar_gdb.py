@@ -56,7 +56,7 @@ class Rsp:
     def read(self, addr, n):
         out = b''
         while n:
-            k = min(n, 0x400)
+            k = min(n, 0x1000)
             r = self.cmd('m%x,%x' % (addr, k))
             if r.startswith('E') or not r:
                 raise RuntimeError('lecture %#x : %r' % (addr, r))
