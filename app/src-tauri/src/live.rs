@@ -286,7 +286,8 @@ fn attach(base: &Base, info: &mut LiveInfo, rom: Option<&Path>) -> Option<Attach
             status: "ingame",
             enabled: true,
             emulator: Some(name.to_string()),
-            verified: map.party_verified(&id),
+            // 3DS : le Title ID n'est pas lu en mémoire ; vérifié si une version du jeu l'a été.
+            verified: if ctr { !map.party.verified.is_empty() } else { map.party_verified(&id) },
             game: Some(id),
             detail: None,
         };

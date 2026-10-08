@@ -223,9 +223,10 @@ struct CtrBattle {
     active: bool,
 }
 
-/// 3DS : recherche des Pokémon en combat toutes les secondes au début du combat, puis toutes les 5 s.
+/// 3DS : recherche des Pokémon en combat toutes les secondes au début du combat, puis toutes les 15 s
+/// (une recherche dans toute la FCRAM prend une demi-seconde).
 const CTR_FIGHT_SCAN: u64 = 5;
-const CTR_FIGHT_RESCAN: u64 = 25;
+const CTR_FIGHT_RESCAN: u64 = 75;
 /// Marge autour des Pokémon en combat vus la dernière fois : la recherche suivante commence là.
 const CTR_WINDOW: u64 = 4 << 20;
 
