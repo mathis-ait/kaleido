@@ -6,24 +6,25 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Backdrop from "./Backdrop.vue";
 import TitleScene from "./TitleScene.vue";
-import PadHints from "./PadHints.vue";
 import Icon from "../components/Icon.vue";
+import ConsoleLogo from "../components/ConsoleLogo.vue";
+import ConsoleTabs from "../components/ConsoleTabs.vue";
+import { SHELVES, consoleOf, generationLabel, type ShelfFilter } from "../consoles";
 import { openRom } from "../editor";
 import { UPDATE_LABEL, games as libraryState, hideGame, libraryUi, setCartridgeLook } from "../games";
-import { cartridgeBlocker, cartridgeMode, presentation } from "./presentation";
+import { cartridgeBlocker, cartridgeMode, launcherScale, measureLauncher, presentation } from "./presentation";
 import { FINISHES, WEARS, cartridgeKey, resolveLook, type StoredLook } from "./scene/models";
-import { glyphs, layoutOf, type HintAction } from "./scene/hints";
+import type { KeyAction } from "./scene/hints";
 import { removeItem } from "../library";
-import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
+import { RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
 import NewAdventure from "./NewAdventure.vue";
 import { adventure, closeAdventure, openAdventure, writeAdventure } from "./adventure";
 import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
 import { canRandomize, coverUrl, isPokemonGame, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
-import { audio, duckMusic, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
+import { audio, duckMusic, prefetchMusic, previewMusic, stopMusic } from "./audio";
 import { dominantColor } from "./color";
-import { useGamepad, type PadAction } from "./gamepad";
 
 // three.js et la scène : chunk séparé, chargé seulement en mode Cartouche.
 const CartridgeScene = defineAsyncComponent(() => import("./scene/CartridgeScene.vue"));
@@ -39,16 +40,9 @@ try {
 
 // --- Onglets
 
-type Tab = "all" | "gb" | "gba" | "nds" | "3ds" | "switch";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "all", label: "Tous" },
-  { id: "gb", label: "Game Boy" },
-  { id: "gba", label: "Game Boy Advance" },
-  { id: "nds", label: "Nintendo DS" },
-  { id: "3ds", label: "Nintendo 3DS" },
-  { id: "switch", label: "Nintendo Switch" },
-];
-const tab = ref<Tab>("all");
+/** Onglets : « Tous » puis les consoles qui ont au moins un jeu. */
+const tabs = computed<ShelfFilter[]>(() => ["all", ...SHELVES.filter((p) => props.games.some((g) => g.platform === p))]);
+const tab = ref<ShelfFilter>("all");
 const list = computed(() => props.games.filter((g) => tab.value === "all" || g.platform === tab.value));
 
 // --- Sélection
@@ -64,17 +58,14 @@ watch(list, (l) => {
 function move(delta: number) {
   const next = Math.min(Math.max(index.value + delta, 0), list.value.length - 1);
   if (next === index.value) {
-    sfx("edge");
     return;
   }
   index.value = next;
-  sfx("move");
 }
 
 function switchTab(delta: number) {
-  const i = (TABS.findIndex((t) => t.id === tab.value) + delta + TABS.length) % TABS.length;
-  tab.value = TABS[i].id;
-  sfx("back");
+  const t = tabs.value;
+  tab.value = t[(Math.max(0, t.indexOf(tab.value)) + delta + t.length) % t.length];
 }
 
 // Couleur du jeu, musique et préchargement des voisins.
@@ -129,7 +120,6 @@ function clickCover(i: number) {
   if (i === index.value) play();
   else {
     index.value = i;
-    sfx("move");
   }
 }
 
@@ -249,7 +239,6 @@ async function play() {
   if (!g || launching.value || installing.value || inserting.value) return;
   // Mode Cartouche : la cartouche s'insère dans la console (si l'émulateur est prêt).
   if (cartridgeMode.value && scene.value && emulator.value && insertAndPlay(g)) return;
-  sfx("select");
   // Sans l'oublier : la musique reprend quand on ferme l'émulateur et revient dans Kaleido.
   stopMusic(false);
   launching.value = { cover: coverUrl(g), title: g.title, status: "Lancement…" };
@@ -320,7 +309,6 @@ function insertAndPlay(g: Detection): boolean {
   });
   if (!started) return false;
   inserting.value = true;
-  sfx("select");
   duckMusic(true);
   return true;
 }
@@ -356,14 +344,12 @@ const adventureView = ref<InstanceType<typeof NewAdventure> | null>(null);
 function startAdventure() {
   const g = game.value;
   if (!g || !canRandomize(g)) return;
-  sfx("select");
   void openAdventure(g);
 }
 
 async function playAdventure() {
   const g = adventure.game;
   if (!g) return;
-  sfx("select");
   stopMusic(false);
   launching.value = { cover: coverUrl(g), title: g.game?.name ?? g.title, status: "Écriture de la partie…" };
   closeAdventure();
@@ -413,7 +399,6 @@ function openMenu() {
   menuIndex.value = 0;
   sheetMode.value = "menu";
   menuOpen.value = true;
-  sfx("select");
 }
 
 function runMenu(i: number) {
@@ -474,7 +459,6 @@ function openInspect(fromMenu = false) {
   inspectIndex.value = 0;
   sheetMode.value = "inspect";
   menuOpen.value = true;
-  if (!fromMenu) sfx("select");
 }
 
 function closeInspect() {
@@ -518,7 +502,6 @@ function cycleLook(delta: number) {
   if (row.id === "label") return;
   const n = row.options.length;
   void chooseLook(row, row.options[(optionIndex(row) + delta + n) % n].id);
-  sfx("move");
 }
 
 // --- Plein écran
@@ -528,14 +511,14 @@ async function setImmersive(on: boolean) {
   await getCurrentWindow().setFullscreen(on).catch(() => undefined);
 }
 
-// --- Clavier et manette
+// --- Clavier
 
-function action(a: PadAction) {
-  // La fenêtre « Mods et réglages » garde le clavier et la manette.
+function action(a: KeyAction) {
+  // La fenêtre « Mods et réglages » garde le clavier.
   if (modsDialog.game) return;
   // Pendant l'insertion, seul Retour compte : il remet la cartouche en place.
   if (inserting.value) {
-    if (a === "back" && scene.value?.cancelInsert()) sfx("back");
+    if (a === "back") scene.value?.cancelInsert();
     return;
   }
   if (launching.value) return;
@@ -548,14 +531,12 @@ function action(a: PadAction) {
     const n = inspectRows.value.length;
     if (a === "up" || a === "down") {
       inspectIndex.value = (inspectIndex.value + (a === "up" ? -1 : 1) + n) % n;
-      sfx("move");
     } else if (a === "left" || a === "right") cycleLook(a === "left" ? -1 : 1);
     else if (a === "accept") {
       const row = inspectRows.value[inspectIndex.value];
       if (row?.id === "label") void chooseLook(row, stored.value.label === "custom" ? undefined : "custom");
       else cycleLook(1);
     } else if (a === "back" || a === "inspect" || a === "menu") {
-      sfx("back");
       closeInspect();
     }
     return;
@@ -565,8 +546,6 @@ function action(a: PadAction) {
     else if (a === "down") menuIndex.value = (menuIndex.value + 1) % menu.value.length;
     else if (a === "accept") runMenu(menuIndex.value);
     else if (a === "back" || a === "menu") menuOpen.value = false;
-    if (a === "up" || a === "down") sfx("move");
-    if (a === "back") sfx("back");
     return;
   }
   if (a === "left") move(-1);
@@ -578,41 +557,14 @@ function action(a: PadAction) {
   else if (a === "prevTab") switchTab(-1);
   else if (a === "nextTab") switchTab(1);
   else if (a === "back" && libraryUi.immersive) {
-    sfx("back");
     setImmersive(false);
   }
 }
 
-const { connected: padConnected, id: padId, stick } = useGamepad(action);
 
-/** Aides en bas d'écran (cliquables à la souris). */
-const hintItems = computed(() => {
-  const g = game.value;
-  const items: { action: HintAction; label: string; run?: () => void }[] = [{ action: "move", label: "Choisir" }];
-  items.push({ action: "accept", label: "Jouer", run: play });
-  if (g && cartridgeMode.value) items.push({ action: "inspect", label: "Inspecter", run: () => openInspect() });
-  if (g && canRandomize(g)) items.push({ action: "adventure", label: "Nouvelle aventure", run: startAdventure });
-  items.push({ action: "tabs", label: "Plateformes", run: () => switchTab(1) });
-  items.push({ action: "menu", label: "Plus", run: openMenu });
-  if (libraryUi.immersive) items.push({ action: "back", label: "Quitter le plein écran", run: () => setImmersive(false) });
-  return items;
-});
 
-const sheetHints = computed<{ action: HintAction; label: string }[]>(() =>
-  sheetMode.value === "inspect"
-    ? [
-        { action: "move", label: "Changer" },
-        { action: "back", label: "Retour" },
-      ]
-    : [
-        { action: "accept", label: "Valider" },
-        { action: "back", label: "Retour" },
-      ],
-);
 
-const tabGlyphs = computed(() => glyphs("tabs", padConnected.value, layoutOf(padId.value)));
-
-const KEYS: Record<string, PadAction> = {
+const KEYS: Record<string, KeyAction> = {
   ArrowLeft: "left",
   ArrowRight: "right",
   ArrowUp: "up",
@@ -636,7 +588,6 @@ function onKey(e: KeyboardEvent) {
   if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
   if (e.key === "Home" || e.key === "End") {
     index.value = e.key === "Home" ? 0 : list.value.length - 1;
-    sfx("move");
     e.preventDefault();
     return;
   }
@@ -651,13 +602,18 @@ function onKey(e: KeyboardEvent) {
 const now = ref(new Date());
 let clock: number | undefined;
 
+const rootEl = ref<HTMLElement | null>(null);
+const resize = new ResizeObserver(([e]) => measureLauncher(e.contentRect.width, e.contentRect.height));
+
 onMounted(() => {
+  if (rootEl.value) resize.observe(rootEl.value);
   if (!emus.loaded) loadEmulators();
   window.addEventListener("keydown", onKey);
   clock = window.setInterval(() => (now.value = new Date()), 15000);
 });
 
 onUnmounted(() => {
+  resize.disconnect();
   clearInterval(glide);
   window.removeEventListener("keydown", onKey);
   clearInterval(clock);
@@ -671,18 +627,33 @@ const date = computed(() => now.value.toLocaleDateString("fr-FR", { weekday: "lo
 const meta = computed(() => {
   const g = game.value;
   if (!g) return [];
-  const parts = [PLATFORM_LABEL[platformOf(g)]];
-  if (g.generation) parts.push(`${g.generation}ᵉ génération`);
+  const parts: string[] = [];
+  if (g.generation) parts.push(generationLabel(g.generation));
   if (g.language) parts.push(g.language.replace("Multilingue (français inclus)", "Multilingue"));
   // Jeu Switch : mise à jour trouvée à côté, seulement si sa version est connue.
   const update = g.details.find((d) => d.label === UPDATE_LABEL)?.value;
   if (update && /^\d/.test(update)) parts.push(`${UPDATE_LABEL} ${update}`);
   return parts;
 });
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Chiffres du jeu sous son titre, seulement ceux qu'on connaît. */
+const stats = computed(() => {
+  const g = game.value;
+  if (!g) return [];
+  const out: { label: string; value: string; title?: string }[] = [];
+  if (time.value) out.push({ label: "Temps de jeu", value: formatDuration(time.value.seconds), title: `Temps de jeu ${time.value.source}` });
+  if (lastPlayed[g.path]) out.push({ label: "Dernière partie", value: capitalize(timeAgo(lastPlayed[g.path])) });
+  if (!out.length && status.value && !status.value.saveExists) out.push({ label: "Partie", value: "Pas encore commencée" });
+  if (status.value?.trainer) out.push({ label: "Dresseur", value: status.value.trainer });
+  if (emulator.value) out.push({ label: "Émulateur", value: emulator.value.name });
+  return out;
+});
 </script>
 
 <template>
-  <section class="launcher" :class="{ cartridges: cartridgeMode }" :style="{ '--tint': color }" @wheel.passive="onWheel">
+  <section ref="rootEl" class="launcher" :class="{ cartridges: cartridgeMode }" :style="{ '--tint': color, '--ui': launcherScale.ui, '--stage': launcherScale.stage }" @wheel.passive="onWheel">
     <Backdrop :image="game ? coverUrl(game) : null" :color="color" />
     <TitleScene :game="game ?? null" />
     <CartridgeScene
@@ -693,7 +664,6 @@ const meta = computed(() => {
       :drag-shift="dragShift"
       :dragging="dragging"
       :tilt="tilt"
-      :stick="stick"
       :looks="looks"
       :tint="color"
       :stage="stageEl"
@@ -703,11 +673,8 @@ const meta = computed(() => {
     />
 
     <header class="topbar">
-      <nav class="tabs">
-        <span class="key" title="Q ou L">{{ tabGlyphs[0].text }}</span>
-        <button v-for="t in TABS" :key="t.id" :class="{ active: tab === t.id }" @click="tab = t.id">{{ t.label }}</button>
-        <span class="key" title="E ou R">{{ tabGlyphs[1].text }}</span>
-      </nav>
+      <ConsoleTabs v-model="tab" class="tabs" :games="games" :size="13">
+      </ConsoleTabs>
       <div class="status">
         <div class="present" role="group" aria-label="Présentation du lanceur">
           <button :class="{ on: !cartridgeMode }" :aria-pressed="!cartridgeMode" @click="choosePresentation('covers')">Jaquettes</button>
@@ -720,15 +687,18 @@ const meta = computed(() => {
             Cartouches
           </button>
         </div>
-        <button class="round" :class="{ off: !audio.music }" :title="audio.music ? 'Couper la musique' : 'Activer la musique'" @click="audio.music = !audio.music">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18V5l12-2v13" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="16" r="3" />
-            <path v-if="!audio.music" d="M3 3l18 18" />
-          </svg>
-        </button>
-        <input v-if="audio.music" v-model.number="audio.volume" class="volume" type="range" min="0" max="0.5" step="0.01" :title="`Volume : ${Math.round(audio.volume * 100)} %`" aria-label="Volume de la musique" />
+        <!-- Le volume se déplie au survol du bouton de musique. -->
+        <div class="music">
+          <button class="round" :class="{ off: !audio.music }" :title="audio.music ? 'Couper la musique' : 'Activer la musique'" @click="audio.music = !audio.music">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
+              <path v-if="!audio.music" d="M3 3l18 18" />
+            </svg>
+          </button>
+          <input v-if="audio.music" v-model.number="audio.volume" class="volume" type="range" min="0" max="0.5" step="0.01" :title="`Volume : ${Math.round(audio.volume * 100)} %`" aria-label="Volume de la musique" />
+        </div>
         <button class="round" title="Affichage en grille" @click="libraryUi.mode = 'grid'"><Icon name="grid" :size="15" /></button>
         <button class="round" :title="libraryUi.immersive ? 'Quitter le plein écran (Échap)' : 'Plein écran'" @click="setImmersive(!libraryUi.immersive)">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -744,22 +714,24 @@ const meta = computed(() => {
       <Transition name="hero" mode="out-in">
         <div :key="game.path" class="hero-inner">
           <p class="meta">
+            <ConsoleLogo :id="consoleOf(game)" :size="17" class="meta-logo" />
             <span v-for="m in meta" :key="m">{{ m }}</span>
           </p>
           <h1>{{ game.title }}</h1>
-          <p class="sub">
+          <p v-if="isKaleidoRom(game) || game.kind === 'ctr_dump'" class="sub">
             <span v-if="isKaleidoRom(game)" class="tag">Randomisée<template v-if="game.kaleido"> · seed {{ game.kaleido.seed }}</template></span>
             <span v-if="game.kind === 'ctr_dump'">Mod joué par-dessus le jeu d'origine</span>
-            <span v-if="status?.trainer">Dresseur {{ status.trainer }}</span>
-            <span v-if="time" :title="`Temps de jeu ${time.source}`">{{ formatDuration(time.seconds) }} de jeu</span>
-            <span v-if="lastPlayed[game.path]">Dernière partie {{ timeAgo(lastPlayed[game.path]) }}</span>
-            <span v-if="status && !status.saveExists && !lastPlayed[game.path]" class="dim">Pas encore de partie</span>
           </p>
+          <dl v-if="stats.length" class="stats">
+            <div v-for="s in stats" :key="s.label" :title="s.title">
+              <dt>{{ s.label }}</dt>
+              <dd>{{ s.value }}</dd>
+            </div>
+          </dl>
           <div class="cta">
             <button class="play" :disabled="!!installing" @click="play">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M7 4l13 8-13 8z" /></svg>
               <span>{{ playLabel }}</span>
-              <span class="key light">{{ padConnected ? "A" : "Entrée" }}</span>
             </button>
             <button v-if="canRandomize(game)" class="ghost" @click="startAdventure"><Icon name="dice" :size="16" /> Nouvelle aventure</button>
             <button v-if="status?.saveExists && isPokemonGame(game)" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
@@ -814,11 +786,6 @@ const meta = computed(() => {
       <p class="counter">{{ index + 1 }} / {{ list.length }}</p>
     </div>
 
-    <footer class="hints">
-      <PadHints :items="hintItems" :pad="padConnected" :pad-id="padId">
-        <span v-if="padConnected" class="pad"><Icon name="check" :size="13" /> Manette connectée</span>
-      </PadHints>
-    </footer>
 
     <Transition name="sheet">
       <div v-if="menuOpen && game" class="menu-layer" @click.self="menuOpen = false">
@@ -826,7 +793,7 @@ const meta = computed(() => {
           <div class="sheet-head">
             <img v-if="coverUrl(game)" :src="coverUrl(game)!" alt="" />
             <div>
-              <p>{{ PLATFORM_LABEL[platformOf(game)] }}</p>
+              <ConsoleLogo :id="consoleOf(game)" :size="12" class="sheet-logo" />
               <h3>{{ game.title }}</h3>
             </div>
           </div>
@@ -857,9 +824,6 @@ const meta = computed(() => {
             </div>
             <button v-if="inspectFromMenu" class="inspect-back" @click="closeInspect"><Icon name="chevron-left" :size="15" /> Toutes les actions</button>
           </div>
-          <footer>
-            <PadHints :items="sheetHints" :pad="padConnected" :pad-id="padId" />
-          </footer>
         </aside>
       </div>
     </Transition>
@@ -869,7 +833,6 @@ const meta = computed(() => {
         v-if="adventure.open"
         ref="adventureView"
         :cover="adventure.game ? coverUrl(adventure.game) : null"
-        :pad-connected="padConnected"
         @play="playAdventure"
       />
     </Transition>
@@ -891,7 +854,7 @@ const meta = computed(() => {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   overflow: hidden;
   color: #fff;
   font-family: var(--font);
@@ -958,33 +921,29 @@ const meta = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 22px 34px 0;
+  padding: 22px 28px 0;
 }
 
+/* Onglets de consoles : verre sombre, sélection en pastille blanche. */
 .tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  --tabs-bg: rgba(10, 12, 28, 0.55);
+  --tabs-border: rgba(255, 255, 255, 0.08);
+  --tabs-fg: rgba(255, 255, 255, 0.6);
+  --tabs-fg-hover: #fff;
+  --tabs-on-bg: rgba(255, 255, 255, 0.96);
+  --tabs-on-fg: #0b0d18;
+  min-width: 0;
+  backdrop-filter: blur(14px);
 }
 
-.tabs button {
-  padding: 7px 16px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 14px;
-  font-weight: 600;
-  transition: background 0.2s, color 0.2s;
+.tabs .key {
+  margin: 0 4px;
 }
 
-.tabs button:hover:not(.active) {
-  color: #fff;
-}
-
-.tabs button.active {
-  background: rgba(255, 255, 255, 0.95);
-  color: #0b0d18;
+@media (max-width: 1500px) {
+  .tabs {
+    --tabs-pad: 12px;
+  }
 }
 
 .key {
@@ -1036,9 +995,34 @@ const meta = computed(() => {
   color: rgba(255, 255, 255, 0.45);
 }
 
+.music {
+  display: flex;
+  align-items: center;
+}
+
+/* Volume replié : il se déplie au survol ou au focus du bouton de musique. */
 .volume {
-  width: 80px;
-  accent-color: var(--tint);
+  width: 0;
+  margin: 0;
+  opacity: 0;
+  accent-color: #fff;
+  transition:
+    width 0.25s ease,
+    opacity 0.2s ease,
+    margin 0.25s ease;
+}
+
+.music:hover .volume,
+.music:focus-within .volume {
+  width: 84px;
+  margin: 0 6px 0 2px;
+  opacity: 1;
+}
+
+@media (max-width: 1360px) {
+  .clock {
+    display: none;
+  }
 }
 
 .clock {
@@ -1065,6 +1049,7 @@ const meta = computed(() => {
 
 .meta {
   display: flex;
+  align-items: center;
   gap: 14px;
   margin: 0 0 10px;
   color: rgba(255, 255, 255, 0.72);
@@ -1075,15 +1060,58 @@ const meta = computed(() => {
 }
 
 .meta span + span::before {
-  content: "•";
-  margin-right: 14px;
-  color: var(--tint);
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 14px 2px 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  vertical-align: middle;
+}
+
+.meta-logo {
+  color: #fff;
+}
+
+/* Chiffres du jeu : libellé en capitales au-dessus, valeur en grand, filets fins entre eux. */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 0;
+  margin: 22px 0 0;
+}
+
+.stats > div {
+  padding: 0 28px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.stats > div:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.stats dt {
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(36px, 5.2vw, 68px);
+  font-size: 60px;
   font-weight: 800;
   line-height: 1.02;
   letter-spacing: -0.02em;
@@ -1385,23 +1413,6 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Aide */
-
-.hints {
-  display: flex;
-  justify-content: center;
-  gap: 26px;
-  padding: 12px 24px 20px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
-}
-
-.pad {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--tint);
-}
 
 /* --- Menu et lancement */
 
@@ -1447,13 +1458,10 @@ h1 {
   border-radius: 8px;
 }
 
-.sheet-head p {
-  margin: 0 0 4px;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.sheet-logo {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .sheet-head h3 {
@@ -1500,16 +1508,6 @@ h1 {
   color: #2a0b0b;
 }
 
-.sheet footer {
-  padding: 18px 6px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 12px;
-}
-
-.sheet footer :deep(.pad-hints) {
-  justify-content: flex-start;
-}
 
 /* --- Inspecter */
 
@@ -1666,13 +1664,13 @@ h1 {
   opacity: 0;
 }
 
-@media (max-height: 820px) {
-  .stage {
-    zoom: 0.78;
-  }
+/* La barre du haut, la fiche du jeu et le carrousel suivent la taille de la fenêtre (voir measureLauncher). */
+.topbar,
+.hero {
+  zoom: var(--ui);
+}
 
-  h1 {
-    font-size: clamp(30px, 4.4vw, 54px);
-  }
+.stage {
+  zoom: var(--stage);
 }
 </style>

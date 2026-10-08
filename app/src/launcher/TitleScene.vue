@@ -195,9 +195,9 @@ const spriteStyle = computed(() => {
 <style scoped>
 .title-scene {
   position: absolute;
-  top: 84px;
+  top: calc(84px * var(--ui, 1));
   right: 4%;
-  bottom: 440px;
+  bottom: calc(440px * var(--stage, 1));
   left: 46%;
   z-index: 0;
   display: flex;

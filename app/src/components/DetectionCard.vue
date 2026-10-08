@@ -131,7 +131,7 @@ function formatSize(bytes: number): string {
   transition: opacity 0.15s, background-color 0.15s, color 0.15s;
 }
 
-/* Visible au survol de la carte, mais aussi au clavier et à la manette. */
+/* Visible au survol de la carte, mais aussi au clavier. */
 .card:hover .remove,
 .card:focus-within .remove {
   opacity: 1;

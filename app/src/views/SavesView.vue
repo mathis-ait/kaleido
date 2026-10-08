@@ -74,7 +74,7 @@ function onKey(e: KeyboardEvent) {
   const inField = typing(e);
   // Raccourcis de la page affichée d'abord (ceux à une touche sont ignorés pendant la saisie).
   const action = shell.actions.find((a) => a.key === k && !a.disabled);
-  // Entrée / Espace sur un bouton choisi au clavier ou à la manette : c'est ce bouton qui s'active.
+  // Entrée / Espace sur un bouton choisi au clavier : c'est ce bouton qui s'active.
   const onControl = (k === "Enter" || k === " ") && isKeyboardFocused(e.target);
   if (action && !onControl && (!inField || k.startsWith("Ctrl+"))) {
     e.preventDefault();

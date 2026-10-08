@@ -1,6 +1,5 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import { initGamepadNav } from "./gamepadNav";
 import { initTheme } from "./theme";
 import { initUpdates, updates } from "./updates";
 import "./styles/main.css";
@@ -27,7 +26,6 @@ if (isCompanion) {
 if (!isCompanion) {
   setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
   initUpdates();
-  initGamepadNav();
   void import("./companion/bridge").then((m) => m.initCompanionBridge());
 }
 

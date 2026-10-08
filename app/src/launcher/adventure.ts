@@ -32,7 +32,7 @@ export const adventure = reactive({
   step: "preset" as "preset" | "preview",
   game: null as Detection | null,
   presets: [] as AdventurePreset[],
-  /** Carte en surbrillance (clavier, manette). */
+  /** Carte en surbrillance (clavier). */
   index: 0,
   preset: null as AdventurePreset | null,
   settings: null as RandomizerSettings | null,

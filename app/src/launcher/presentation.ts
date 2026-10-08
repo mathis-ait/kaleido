@@ -64,3 +64,16 @@ export const cartridgeBlocker = computed(() => {
 });
 
 export const cartridgeMode = computed(() => presentation.wanted === "cartridges" && !cartridgeBlocker.value);
+
+/**
+ * Échelle du lanceur selon la taille de la fenêtre : `ui` pour la barre du haut et la fiche
+ * du jeu, `stage` pour le carrousel (jaquettes et cartouches 3D, qui lisent la même valeur).
+ */
+export const launcherScale = reactive({ ui: 1, stage: 1 });
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+export function measureLauncher(width: number, height: number) {
+  launcherScale.ui = clamp(Math.min(width / 1350, height / 900), 0.9, 1.5);
+  launcherScale.stage = clamp(height / 1000, 0.75, 1.45);
+}

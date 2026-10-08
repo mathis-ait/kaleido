@@ -198,35 +198,6 @@ export const prefetchMusic = (d: Detection | undefined) => {
   if (hasMusic(d) && audio.music) void load(d);
 };
 
-// --- Bruitages
-
-type Sfx = "move" | "select" | "back" | "edge";
-
-const TONES: Record<Sfx, { f: number[]; d: number; type: OscillatorType; v: number }> = {
-  move: { f: [1320], d: 0.045, type: "triangle", v: 0.05 },
-  edge: { f: [330], d: 0.06, type: "square", v: 0.025 },
-  select: { f: [880, 1320, 1760], d: 0.07, type: "triangle", v: 0.07 },
-  back: { f: [990, 660], d: 0.06, type: "triangle", v: 0.05 },
-};
-
-export function sfx(kind: Sfx) {
-  if (!audio.sfx) return;
-  const c = context();
-  const t = TONES[kind];
-  t.f.forEach((f, i) => {
-    const start = c.currentTime + i * t.d * 0.8;
-    const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.type = t.type;
-    osc.frequency.value = f;
-    gain.gain.setValueAtTime(t.v, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + t.d);
-    osc.connect(gain).connect(c.destination);
-    osc.start(start);
-    osc.stop(start + t.d + 0.02);
-  });
-}
-
 // --- Mode Cartouche
 
 /** Baisse la musique pendant l'insertion d'une cartouche (true), ou la remet (false). */
