@@ -1,0 +1,11 @@
+Model Information:
+* title:	3DS Game Cartridge
+* source:	https://sketchfab.com/3d-models/3ds-game-cartridge-950a6bf7c4094a84af0d7409d0e76c16
+* author:	JodieWebster (https://sketchfab.com/JodieWebster)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "3DS Game Cartridge" (https://sketchfab.com/3d-models/3ds-game-cartridge-950a6bf7c4094a84af0d7409d0e76c16) by JodieWebster (https://sketchfab.com/JodieWebster) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

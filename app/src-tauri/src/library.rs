@@ -165,6 +165,25 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
     })
 }
 
+/// Photo de face d'une vraie carte DS ou 3DS sur GameTDB, étiquette comprise, d'après le
+/// code de la ROM (`photo-ds-CPUF`) : d'abord la région de la ROM (la française pour une carte
+/// 3DS « toutes régions »), puis les versions américaine et européenne, en anglais. Jamais une
+/// autre langue : sans photo, le lanceur compose l'étiquette depuis la jaquette française.
+fn cart_urls(key: &str) -> Option<Vec<String>> {
+    let rest = key.strip_prefix("photo-")?;
+    let (platform, code) = rest.split_once('-')?;
+    if !matches!(platform, "ds" | "3ds") || code.len() != 4 || !code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+        return None;
+    }
+    let base = &code[..3];
+    const REGIONS: [(char, &str); 11] = [('F', "FR"), ('E', "US"), ('O', "US"), ('P', "EN"), ('X', "EN"), ('D', "DE"), ('S', "ES"), ('I', "IT"), ('H', "NL"), ('J', "JA"), ('K', "KO")];
+    let own = code.chars().last()?;
+    let own = if REGIONS.iter().any(|(c, _)| *c == own) { own } else { 'F' };
+    let mut tries: Vec<(char, &str)> = REGIONS.iter().copied().filter(|(c, _)| *c == own).collect();
+    tries.extend(REGIONS.iter().copied().filter(|(c, r)| *c != own && matches!(*r, "US" | "EN")));
+    Some(tries.into_iter().map(|(suffix, region)| format!("{GAMETDB_URL}/{platform}/cart/{region}/{base}{suffix}.png")).collect())
+}
+
 fn libretro_url(repo: &str, name: &str) -> String {
     // Les noms No-Intro ne contiennent que des lettres, chiffres, espaces, virgules et parenthèses.
     let encoded = name.replace(' ', "%20").replace(',', "%2C").replace('(', "%28").replace(')', "%29");
@@ -176,6 +195,10 @@ fn libretro_url(repo: &str, name: &str) -> String {
 /// définition (768×680), libretro, GameTDB en taille moyenne (400×352), puis la
 /// boîte européenne.
 pub fn cover_urls(game: &str) -> Vec<String> {
+    // Étiquette réelle d'une carte (mode Cartouche du lanceur) : `photo-<plateforme>-<code>`.
+    if let Some(urls) = cart_urls(game) {
+        return urls;
+    }
     // Jeu Switch (`nx-<title ID>`) : icône officielle.
     if let Some(tid) = switch_cover_id(game) {
         return vec![format!("https://api.nlib.cc/nx/{tid}/icon/512/512")];
@@ -248,7 +271,7 @@ pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) 
     let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png");
     // Ancien format `<jeu>-en` : la boîte française est désormais toujours servie.
     let game = key.strip_suffix("-en").unwrap_or(key).to_string();
-    let valid = switch_cover_id(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+    let valid = switch_cover_id(&game).is_some() || cart_urls(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &game)) } else { Err("nom invalide".into()) };
     match result {
         Ok(data) => Response::builder()
@@ -644,6 +667,12 @@ mod tests {
             ]
         );
         assert!(cover_urls("pokemon_stadium").is_empty());
+        let ds = cover_urls("photo-ds-CPUF");
+        assert_eq!(ds[0], "https://art.gametdb.com/ds/cart/FR/CPUF.png");
+        assert_eq!(ds[1], "https://art.gametdb.com/ds/cart/US/CPUE.png");
+        assert_eq!(cover_urls("photo-3ds-ECRA")[0], "https://art.gametdb.com/3ds/cart/FR/ECRF.png");
+        assert!(!cover_urls("photo-ds-IRAF").iter().any(|u| u.contains("/ES/") || u.contains("/JA/")));
+        assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-BPEF").is_empty());
         assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
         assert!(switch_cover_id("nx-0100").is_none());
     }

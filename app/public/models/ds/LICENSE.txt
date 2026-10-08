@@ -1,0 +1,11 @@
+Model Information:
+* title:	DS game card
+* source:	https://sketchfab.com/3d-models/ds-game-card-822e8ff1a12946048a8fa9dbadf3379d
+* author:	maney (https://sketchfab.com/maney)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "DS game card" (https://sketchfab.com/3d-models/ds-game-card-822e8ff1a12946048a8fa9dbadf3379d) by maney (https://sketchfab.com/maney) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

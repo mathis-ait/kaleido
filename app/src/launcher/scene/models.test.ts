@@ -5,7 +5,7 @@ import ctr from "./outlines/3ds.svg?raw";
 import gba from "./outlines/gba.svg?raw";
 import gb from "./outlines/gb.svg?raw";
 import nx from "./outlines/switch.svg?raw";
-import { GAME_LOOKS, SUPPORTS, cartridgeCode, cartridgeKey, resolveLook, supportOf, type Support } from "./models";
+import { GAME_LOOKS, SUPPORTS, cartPhotoKey, cartridgeCode, cartridgeKey, resolveLook, supportOf, type Support } from "./models";
 
 const PLATFORM_OF: Record<string, "gb" | "gba" | "nds" | "3ds"> = {};
 for (const id of ["red", "blue", "yellow", "gold", "silver", "crystal"]) PLATFORM_OF[id] = "gb";
@@ -64,6 +64,7 @@ describe("models", () => {
     });
     expect(cartridgeCode(d("nds", [["Code jeu", "CPUF"]]))).toBe("NTR-CPUF-FRA");
     expect(cartridgeCode(d("gba", [["Code jeu", "BPEE"]]))).toBe("AGB-BPEE-USA");
+    expect(cartridgeCode(d("nds", [["Code jeu", "IRAF"]]))).toBe("TWL-IRAF-FRA");
     expect(cartridgeCode(d("3ds", [["Code produit", "CTR-P-EKJF"]]))).toBe("CTR-P-EKJF");
     expect(cartridgeCode(d("gb", [], "crystal"))).toBe("CGB");
   });
@@ -72,5 +73,14 @@ describe("models", () => {
     expect(cartridgeKey({ fingerprint: "ab:cd/ef", details: [], path: "x" })).toBe("abcdef");
     expect(cartridgeKey({ fingerprint: null, details: [{ label: "Title ID", value: "0x01001F5010DFA000" }], path: "x" })).toBe("tid-01001F5010DFA000");
     expect(cartridgeKey({ fingerprint: null, details: [], path: "C:\a.nds" })).toMatch(/^path-[0-9a-f]{8}$/);
+  });
+});
+
+describe("photo de la vraie carte", () => {
+  it("clé d'après le code de l'en-tête", () => {
+    expect(cartPhotoKey({ platform: "nds", details: [{ label: "Code jeu", value: "CPUF" }] })).toBe("photo-ds-CPUF");
+    expect(cartPhotoKey({ platform: "3ds", details: [{ label: "Code produit", value: "CTR-P-ECRA" }] })).toBe("photo-3ds-ECRA");
+    expect(cartPhotoKey({ platform: "gba", details: [{ label: "Code jeu", value: "BPEF" }] })).toBeNull();
+    expect(cartPhotoKey({ platform: "nds", details: [] })).toBeNull();
   });
 });

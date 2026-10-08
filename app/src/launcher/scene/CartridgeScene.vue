@@ -43,9 +43,11 @@ import { isKaleidoRom } from "../../types";
 import { currentTheme } from "../../theme";
 import { audio, insertClick } from "../audio";
 import { coverUrl } from "../actions";
-import { cartridgeCode, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
+import { PHOTO_CROP, cartPhotoKey, cartridgeCode, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
 import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
+import { REAL_MODELS, disposeTemplates, instantiate, realTemplate, type RealTemplate } from "./realModels";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { INITIAL, startInsertion, type InsertState, type Insertion } from "./insert";
 
 const props = defineProps<{
@@ -131,10 +133,17 @@ interface Item {
   look: Look;
   group: Group;
   body: Group;
-  shellMat: MeshPhysicalMaterial;
+  /** Matériaux de la coque (recoloriés, translucides) ; un seul pour un modèle procédural. */
+  shells: MeshStandardMaterial[];
+  /** Autres pièces (carte électronique, contacts) : jamais translucides. */
+  others: MeshStandardMaterial[];
   labelMat: MeshStandardMaterial;
   labelMesh: Mesh;
   labelSig: string;
+  /** Modèle réel (Sketchfab) ou procédural (`geometry.ts`). */
+  real: RealTemplate | null;
+  /** Modèle réel pas encore chargé : la cartouche reste invisible. */
+  ready: boolean;
   from: Pose;
   to: Pose;
   cur: Pose;
@@ -260,27 +269,99 @@ function lookSig(look: Look) {
   return `${look.support.id}|${look.shell.id}|${look.finish}|${look.wear}|${look.customLabel}`;
 }
 
+const WHITE = new Color(1, 1, 1);
+
+/** Textures de coque recoloriées, par modèle et couleur (partagées entre cartouches). */
+const recolors = new Map<string, CanvasTexture>();
+
+/**
+ * Coque d'un modèle réel dans une autre couleur : la luminosité de la photo (rayures,
+ * ombres, grain) est gardée, la teinte remplacée ; l'étiquette et la carte électronique
+ * ne sont pas touchées.
+ */
+function recolored(t: RealTemplate, source: Texture, color: string): CanvasTexture | null {
+  const key = `${t.spec.url}|${color}`;
+  let tex = recolors.get(key);
+  if (tex) return tex;
+  const image = source.image as CanvasImageSource & { width: number; height: number };
+  if (!image?.width) return null;
+  const size = Math.min(1024, image.width);
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(image, 0, 0, size, size);
+  const data = g.getImageData(0, 0, size, size);
+  const px = data.data;
+  const [r, gg, b] = new Color(color).convertLinearToSRGB().toArray().map((v) => v * 255);
+  const { tl, tr, bl } = t.spec.label;
+  const lu0 = Math.min(tl[0], tr[0], bl[0]);
+  const lu1 = Math.max(tl[0], tr[0], bl[0]);
+  const lv0 = Math.min(tl[1], tr[1], bl[1]);
+  const lv1 = Math.max(tl[1], tr[1], bl[1]);
+  const board = t.spec.board;
+  const skip = (u: number, v: number) => (u >= lu0 && u <= lu1 && v >= lv0 && v <= lv1) || (!!board && u >= board.u0 && u <= board.u1 && v >= board.v0 && v <= board.v1);
+  // Luminosité de référence du plastique : médiane des pixels de coque.
+  const lums: number[] = [];
+  for (let p = 0; p < size * size; p += 97) {
+    if (!skip((p % size) / size, Math.floor(p / size) / size)) lums.push(px[p * 4] + px[p * 4 + 1] + px[p * 4 + 2]);
+  }
+  lums.sort((x, y) => x - y);
+  const ref = Math.max(1, lums[lums.length >> 1] ?? 1);
+  for (let p = 0; p < size * size; p++) {
+    if (skip((p % size) / size, Math.floor(p / size) / size)) continue;
+    const i = p * 4;
+    const k = Math.min(1.8, (px[i] + px[i + 1] + px[i + 2]) / ref);
+    px[i] = Math.min(255, r * k);
+    px[i + 1] = Math.min(255, gg * k);
+    px[i + 2] = Math.min(255, b * k);
+  }
+  g.putImageData(data, 0, 0);
+  tex = new CanvasTexture(c);
+  tex.flipY = source.flipY;
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 4;
+  recolors.set(key, tex);
+  return tex;
+}
+
 function applyMaterial(item: Item, center: boolean) {
-  const { look, shellMat } = item;
+  const { look } = item;
   const translucent = look.finish === "translucide";
   const worn = look.wear === "jouee" ? 0.15 : 0;
   const metal = look.shell.id === "argent" || look.shell.id === "or";
-  shellMat.roughness = (look.finish === "brillant" ? 0.22 : translucent ? 0.28 : 0.46) + worn;
-  shellMat.metalness = metal ? 0.35 : 0;
-  shellMat.clearcoat = look.finish === "brillant" ? 0.5 : 0;
-  shellMat.clearcoatRoughness = 0.2 + worn;
-  // Translucide : vraie transparence plutôt que `transmission`, qui ne verrait que la scène
-  // three.js (vide) et pas le fond du lanceur, dessiné dans le DOM sous le canvas. Plus
-  // léger aussi : aucune passe de rendu supplémentaire, même pour les voisines.
-  shellMat.userData.alpha = translucent ? (center ? 0.62 : 0.75) : 1;
-  shellMat.clearcoat = translucent ? 0.6 : shellMat.clearcoat;
-  shellMat.userData.base = new Color(look.shell.color);
+  for (const m of item.shells) {
+    if (item.real) {
+      // Modèle réel : sa texture photographiée, recoloriée si une autre coque est choisie.
+      const native = look.shell.id === item.real.spec.nativeShell;
+      const original = (m.userData.map as Texture | null) ?? null;
+      const map = native || !original ? original : (recolored(item.real, original, look.shell.color) ?? original);
+      if (m.map !== map) {
+        m.map = map;
+        m.needsUpdate = true;
+      }
+      m.userData.base = native || !original ? (m.userData.color as Color) : WHITE;
+    } else {
+      m.roughness = (look.finish === "brillant" ? 0.22 : translucent ? 0.28 : 0.46) + worn;
+      m.metalness = metal ? 0.35 : 0;
+      m.userData.base = new Color(look.shell.color);
+    }
+    if (m instanceof MeshPhysicalMaterial) {
+      m.clearcoat = translucent ? 0.6 : look.finish === "brillant" ? 0.5 : 0;
+      m.clearcoatRoughness = 0.2 + worn;
+    }
+    // Translucide : vraie transparence plutôt que `transmission`, qui ne verrait que la scène
+    // three.js (vide) et pas le fond du lanceur, dessiné dans le DOM sous le canvas. Plus
+    // léger aussi : aucune passe de rendu supplémentaire, même pour les voisines.
+    m.userData.alpha = translucent ? (center ? 0.6 : 0.72) : 1;
+  }
+  for (const m of item.others) m.userData.base = (m.userData.color as Color | undefined) ?? WHITE;
 }
 
 function labelInput(item: Item) {
   const d = item.game;
   const seedDetail = d.details.find((x) => x.label === "Seed")?.value;
   const platform = d.platform === "gb" && d.game?.id === "crystal" ? "Game Boy Color" : { gb: "Game Boy", gba: "Game Boy Advance", nds: "Nintendo DS", "3ds": "Nintendo 3DS", switch: "Nintendo Switch" }[d.platform ?? "nds"];
+  const photo = item.real ? cartPhotoKey(d) : null;
   return {
     key: item.key,
     title: d.game?.name ?? d.title,
@@ -293,6 +374,9 @@ function labelInput(item: Item) {
     seed: d.kaleido?.seed ?? (seedDetail ? Number(seedDetail) : null),
     randomized: isKaleidoRom(d),
     custom: item.look.customLabel,
+    photo: photo ? convertFileSrc(`${photo}.png`, "cover") : null,
+    photoCrop: PHOTO_CROP[item.look.support.id] ?? null,
+    size: item.real?.labelSize,
   };
 }
 
@@ -305,24 +389,73 @@ function loadLabel(item: Item) {
       item.labelMat.map?.dispose();
       item.labelMat.map = texture;
       item.labelMat.needsUpdate = true;
+      item.labelMesh.material = item.labelMat;
       invalidate();
     })
     .catch(() => undefined);
 }
 
+/**
+ * Étiquette en cours de chargement : papier vierge balayé par un reflet lent (la texture
+ * défile), partagée par toutes les cartouches en attente.
+ */
+let loading: { mat: MeshStandardMaterial; tex: CanvasTexture } | null = null;
+function loadingMaterial() {
+  if (loading) return loading.mat;
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 8;
+  const g = c.getContext("2d")!;
+  const sheen = g.createLinearGradient(0, 0, 512, 0);
+  sheen.addColorStop(0, "#e2e1dc");
+  sheen.addColorStop(0.42, "#e2e1dc");
+  sheen.addColorStop(0.5, "#f7f6f2");
+  sheen.addColorStop(0.58, "#e2e1dc");
+  sheen.addColorStop(1, "#e2e1dc");
+  g.fillStyle = sheen;
+  g.fillRect(0, 0, 512, 8);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.wrapS = RepeatWrapping;
+  tex.repeat.set(0.7, 1);
+  tex.center.set(0.5, 0.5);
+  tex.rotation = -0.5;
+  const mat = new MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0 });
+  loading = { mat, tex };
+  return mat;
+}
+
+/** Étiquette imprimée : papier couché, un peu satiné ; coins arrondis par transparence. */
+const newLabelMaterial = () => new MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, alphaTest: 0.5 });
+
+/** Modèle procédural (cartouche GB, ou repli si un modèle réel ne charge pas). */
+function buildProcedural(item: Item) {
+  const geo = supportGeometry(item.look.support.id);
+  const k = pxPerMm(geo.size);
+  const shellMat = new MeshPhysicalMaterial({ color: item.look.shell.color, bumpMap: grain, bumpScale: 0.12 });
+  item.labelMesh = new Mesh(geo.label, item.labelMat.map ? item.labelMat : loadingMaterial());
+  item.body.add(new Mesh(geo.shell, shellMat), item.labelMesh);
+  item.body.scale.setScalar(k);
+  item.shells = [shellMat];
+  item.sizePx = [geo.size[0] * k, geo.size[1] * k];
+}
+
+function buildReal(item: Item, t: RealTemplate) {
+  const k = pxPerMm(t.size);
+  const inst = instantiate(t);
+  item.labelMesh = new Mesh(t.label, item.labelMat.map ? item.labelMat : loadingMaterial());
+  item.body.add(inst.root, item.labelMesh);
+  item.body.scale.setScalar(k);
+  item.shells = inst.shells;
+  item.others = inst.others;
+  item.real = t;
+  item.sizePx = [t.size[0] * k, t.size[1] * k];
+}
+
 function createItem(game: Detection, i: number): Item {
   const key = cartridgeKey(game);
   const look = resolveLook(game, props.looks[key]);
-  const geo = supportGeometry(look.support.id);
-  const k = pxPerMm(geo.size);
-  const shellMat = new MeshPhysicalMaterial({ color: look.shell.color, bumpMap: grain, bumpScale: 0.12 });
-  // Étiquette imprimée : papier couché, un peu satiné.
-  const labelMat = new MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.48, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.4 });
   const body = new Group();
-  const shell = new Mesh(geo.shell, shellMat);
-  const label = new Mesh(geo.label, labelMat);
-  body.add(shell, label);
-  body.scale.setScalar(k);
   const group = new Group();
   group.add(body);
   root.add(group);
@@ -333,25 +466,38 @@ function createItem(game: Detection, i: number): Item {
     look,
     group,
     body,
-    shellMat,
-    labelMat,
-    labelMesh: label,
+    shells: [],
+    others: [],
+    labelMat: newLabelMaterial(),
+    labelMesh: new Mesh(),
     labelSig: "",
+    real: null,
+    ready: false,
     from: pose,
     to: pose,
     cur: { ...pose },
     t0: 0,
     dur: 0,
-    sizePx: [geo.size[0] * k, geo.size[1] * k],
+    sizePx: [0, 0],
   };
-  applyMaterial(item, i === props.index);
-  loadLabel(item);
+  const finish = (t: RealTemplate | null) => {
+    if (items.get(game.path) !== item) return;
+    if (t) buildReal(item, t);
+    else buildProcedural(item);
+    item.ready = true;
+    applyMaterial(item, props.games[props.index]?.path === game.path);
+    loadLabel(item);
+    invalidate();
+  };
+  if (REAL_MODELS[look.support.id]) void realTemplate(look.support.id).then(finish);
+  else queueMicrotask(() => finish(null));
   return item;
 }
 
 function disposeItem(item: Item) {
   root.remove(item.group);
-  item.shellMat.dispose();
+  // Géométries et textures des modèles réels : partagées, gardées ; seuls les matériaux sont propres.
+  for (const m of [...item.shells, ...item.others]) m.dispose();
   item.labelMat.map?.dispose();
   item.labelMat.dispose();
 }
@@ -518,6 +664,7 @@ function step(now: number): boolean {
   const sway = swaying() ? Math.sin((now / 6000) * Math.PI * 2) * 2 : 0;
   const deg = Math.PI / 180;
 
+  let waiting = false;
   for (const item of items.values()) {
     const p = item.dur ? Math.min(1, (now - item.t0) / item.dur) : 1;
     if (p < 1) busy = true;
@@ -556,9 +703,9 @@ function step(now: number): boolean {
     item.group.rotation.set(0, cur.rot * deg, 0);
     item.group.scale.setScalar(scale);
     item.body.rotation.set(rotX, rotY, 0);
-    item.group.visible = opacity > 0.01;
+    item.group.visible = item.ready && opacity > 0.01;
     const transparent = opacity < 0.999;
-    for (const m of [item.shellMat, item.labelMat]) {
+    for (const m of [...item.shells, ...item.others, item.labelMat]) {
       const alpha = opacity * ((m.userData.alpha as number | undefined) ?? 1);
       const blend = transparent || alpha < 0.999;
       if (m.transparent !== blend) {
@@ -568,11 +715,18 @@ function step(now: number): boolean {
       m.opacity = alpha;
       m.clippingPlanes = inserting ? [clip] : null;
     }
-    const base = item.shellMat.userData.base as Color | undefined;
-    if (base) item.shellMat.color.copy(base).multiplyScalar(cur.dim);
+    for (const m of [...item.shells, ...item.others]) {
+      const base = m.userData.base as Color | undefined;
+      if (base) m.color.copy(base).multiplyScalar(cur.dim);
+    }
     item.labelMat.color.setScalar(cur.dim);
-    // Étiquette affichée une fois composée (pas de rectangle blanc en attendant).
-    item.labelMesh.visible = !!item.labelMat.map;
+    if (item.ready && !item.labelMat.map && opacity > 0.01) waiting = true;
+  }
+
+  // Reflet des étiquettes en attente : il défile tant qu'une étiquette charge.
+  if (waiting && loading) {
+    loading.tex.offset.x = -((now / 1600) % 1);
+    busy = true;
   }
 
   if (slot) {
@@ -698,7 +852,13 @@ onUnmounted(() => {
     slot = null;
   }
   disposeGeometries();
+  disposeTemplates();
+  for (const t of recolors.values()) t.dispose();
+  recolors.clear();
   grain?.dispose();
+  loading?.tex.dispose();
+  loading?.mat.dispose();
+  loading = null;
   grain = null;
   envTexture?.dispose();
   renderer?.dispose();

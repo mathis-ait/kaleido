@@ -11,3 +11,4 @@ node_modules/
 *.cxi
 *.sav
 *.dsv
+tools/cartridges/sources/

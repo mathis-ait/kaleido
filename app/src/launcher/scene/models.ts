@@ -41,7 +41,7 @@ export interface SupportModel {
   click: { f: number[]; d: number; type: OscillatorType; noise: number };
 }
 
-const GREY_DS: Shell = { id: "gris", label: "Gris", color: "#c4c7ce" };
+const GREY_DS: Shell = { id: "gris", label: "Gris", color: "#3d3e44" };
 const BLACK: Shell = { id: "noir", label: "Noir", color: "#26272c" };
 const WHITE: Shell = { id: "blanc", label: "Blanc", color: "#e9ebef" };
 
@@ -63,8 +63,8 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     label: "Carte 3DS",
     size: [35, 33, 3.8],
     labelZone: { x: 2, y: 7, w: 29, h: 23.5 },
-    shells: [{ id: "gris-fonce", label: "Gris foncé", color: "#55585f" }, BLACK, WHITE],
-    defaultShell: "gris-fonce",
+    shells: [{ id: "gris-clair", label: "Gris clair", color: "#d4d5d8" }, BLACK, { id: "gris-fonce", label: "Gris foncé", color: "#55585f" }],
+    defaultShell: "gris-clair",
     slot: "3ds-back",
     // Boîte 3DS : bandeau « Nintendo 3DS » à droite.
     coverCrop: { x: 0, y: 0.08, w: 0.86, h: 0.45 },
@@ -77,6 +77,7 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     labelZone: { x: 6, y: 5, w: 46, h: 21 },
     shells: [
       { id: "gris", label: "Gris", color: "#8e9097" },
+      { id: "noir", label: "Noir", color: "#2a2b2f" },
       { id: "vert", label: "Vert", color: "#2f9a5a" },
       { id: "rouge", label: "Rouge", color: "#c8343a" },
       { id: "bleu", label: "Bleu", color: "#2f5fbf" },
@@ -85,7 +86,7 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     ],
     defaultShell: "gris",
     slot: "gba-top",
-    coverCrop: { x: 0.14, y: 0.08, w: 0.86, h: 0.45 },
+    coverCrop: { x: 0.2, y: 0.08, w: 0.8, h: 0.45 },
     click: { f: [900, 520], d: 0.05, type: "triangle", noise: 0.6 },
   },
   gb: {
@@ -231,8 +232,28 @@ export function cartridgeCode(d: Pick<Detection, "platform" | "details" | "game"
   const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() || null;
   if (d.platform === "3ds") return detail("Code produit");
   const code = detail("Code jeu");
-  const prefix = d.platform === "nds" ? "NTR" : d.platform === "gba" ? "AGB" : d.platform === "gb" ? (d.game?.id === "crystal" ? "CGB" : "DMG") : null;
+  // Noire, Blanche, Noire 2 et Blanche 2 sont des cartes DSi (TWL), comme l'indique leur étiquette.
+  const prefix = d.platform === "nds" ? (code?.startsWith("IR") ? "TWL" : "NTR") : d.platform === "gba" ? "AGB" : d.platform === "gb" ? (d.game?.id === "crystal" ? "CGB" : "DMG") : null;
   if (!prefix || !code) return prefix && d.platform === "gb" ? prefix : null;
   const region = code.length === 4 ? REGIONS[code[3]] : undefined;
   return region ? `${prefix}-${code}-${region}` : `${prefix}-${code}`;
 }
+
+/**
+ * Photo de la vraie carte (GameTDB, servie par `cover://` : voir `cart_urls` dans library.rs),
+ * d'après le code de l'en-tête : `photo-ds-CPUF`, `photo-3ds-ECRA`. GameTDB n'a ni GBA, ni GB, ni Switch.
+ */
+export function cartPhotoKey(d: Pick<Detection, "platform" | "details">): string | null {
+  const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
+  let code = "";
+  if (d.platform === "nds") code = detail("Code jeu");
+  else if (d.platform === "3ds") code = detail("Code produit").split("-").pop() ?? "";
+  if (!/^[A-Z0-9]{4}$/.test(code)) return null;
+  return `photo-${d.platform === "nds" ? "ds" : "3ds"}-${code}`;
+}
+
+/** Étiquette dans la photo GameTDB d'une carte (fractions de l'image), sans le plastique autour. */
+export const PHOTO_CROP: Partial<Record<Support, { x: number; y: number; w: number; h: number }>> = {
+  ds: { x: 0.1, y: 0.06, w: 0.8, h: 0.815 },
+  "3ds": { x: 0.097, y: 0.093, w: 0.747, h: 0.812 },
+};
