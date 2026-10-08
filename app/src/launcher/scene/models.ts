@@ -228,10 +228,14 @@ export function cartridgeCode(d: Pick<Detection, "platform" | "details" | "game"
 
 /**
  * Photo de la vraie cartouche, servie par `cover://` (voir `cart_urls` dans library.rs) :
- * `photo-<plateforme>-<jeu>[-<code de la ROM>]`, d'après LaunchBox et GameTDB. Pas de
- * photo de carte Switch.
+ * `photo-<plateforme>-<jeu>[-<code de la ROM>]`, d'après LaunchBox et GameTDB ; carte Switch
+ * par title ID (`photo-switch-nx_<title id>`).
  */
 export function cartPhotoKey(d: Pick<Detection, "platform" | "details" | "game">): string | null {
+  if (d.platform === "switch") {
+    const tid = d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toLowerCase();
+    return tid && /^[0-9a-f]{16}$/.test(tid) ? `photo-switch-nx_${tid}` : null;
+  }
   const platforms: Record<string, string> = { nds: "ds", "3ds": "3ds", gba: "gba", gb: "gb" };
   const platform = platforms[d.platform ?? ""];
   if (!platform || !d.game) return null;

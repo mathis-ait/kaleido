@@ -83,5 +83,6 @@ describe("photo de la vraie carte", () => {
     expect(cartPhotoKey({ platform: "3ds", game: game("omega_ruby", "3ds"), details: [{ label: "Code produit", value: "CTR-P-ECRA" }] })).toBe("photo-3ds-omega_ruby-ECRA");
     expect(cartPhotoKey({ platform: "gb", game: game("red", "gb"), details: [] })).toBe("photo-gb-red");
     expect(cartPhotoKey({ platform: "switch", game: null, details: [] })).toBeNull();
+    expect(cartPhotoKey({ platform: "switch", game: null, details: [{ label: "Title ID", value: "0100ABF008968000" }] })).toBe("photo-switch-nx_0100abf008968000");
   });
 });

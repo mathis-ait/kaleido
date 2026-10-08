@@ -22,7 +22,7 @@ export const LABEL_IN_CART: Record<Support, Rect> = {
   "3ds": { x: 0.09, y: 0.084, w: 0.76, h: 0.834 },
   gba: { x: 0.133, y: 0.223, w: 0.732, h: 0.653 },
   gb: { x: 0.131, y: 0.29, w: 0.738, h: 0.575 },
-  switch: { x: 0.07, y: 0.05, w: 0.86, h: 0.8 },
+  switch: { x: 0.073, y: 0.084, w: 0.854, h: 0.78 },
 };
 
 /**

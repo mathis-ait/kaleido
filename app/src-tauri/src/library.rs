@@ -167,7 +167,7 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
 
 /// Photos de face de vraies cartouches sur LaunchBox, relevées une fois pour les jeux pris en
 /// charge (`cart_photos.json` : jeu → `fr|en <fichier>`, régions européennes puis américaines,
-/// jamais une autre langue). Images publiques, sans clé.
+/// jamais une autre langue ; jeux Switch par title ID, `nx_<title id>`). Images publiques, sans clé.
 const CART_PHOTOS: &str = include_str!("cart_photos.json");
 const LAUNCHBOX_IMAGES: &str = "https://images.launchbox-app.com";
 
@@ -193,7 +193,7 @@ fn cart_urls(key: &str) -> Option<Vec<String>> {
     let platform = parts.next()?;
     let game = parts.next()?;
     let code = parts.next();
-    if parts.next().is_some() || !matches!(platform, "ds" | "3ds" | "gba" | "gb") || game.is_empty() || !game.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') {
+    if parts.next().is_some() || !matches!(platform, "ds" | "3ds" | "gba" | "gb" | "switch") || game.is_empty() || !game.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') {
         return None;
     }
     if code.is_some_and(|c| c.len() != 4 || !c.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())) {
@@ -710,6 +710,8 @@ mod tests {
         assert!(cover_urls("photo-gba-emerald-BPEF").iter().all(|u| u.contains("launchbox")));
         assert!(!cover_urls("photo-gb-red").is_empty());
         assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-inconnu").is_empty() && cover_urls("photo-switch-arceus").is_empty());
+        // Carte Switch : par title ID (Épée).
+        assert!(cover_urls("photo-switch-nx_0100abf008968000")[0].contains("launchbox"));
         assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
         assert!(switch_cover_id("nx-0100").is_none());
     }
