@@ -63,7 +63,9 @@ async function load() {
   error.value = null;
   try {
     if (!emus.loaded) await loadEmulators();
-    const [v, p] = await Promise.all([listMods(target.value), tunePlan(target.value).catch(() => null)]);
+    // Pas encore de réglages optimaux pour mGBA (Game Boy, Game Boy Advance).
+    const tune = target.value.platform === "gba" ? Promise.resolve(null) : tunePlan(target.value).catch(() => null);
+    const [v, p] = await Promise.all([listMods(target.value), tune]);
     view.value = v;
     plan.value = p;
     await loadCheats();
@@ -251,7 +253,7 @@ const emulatorBusy = computed(() => !!installs[emulatorId.value]);
 
         <template v-else>
           <!-- Réglages optimaux -->
-          <section class="block tune">
+          <section v-if="plan || emulatorMissing" class="block tune">
             <div class="block-head">
               <h3><Icon name="sliders" :size="17" /> Réglages optimaux {{ plan ? (/^[AEIOUaeiou]/.test(plan.emulator) ? "d'" : "de ") + plan.emulator : "de l'émulateur" }}</h3>
               <Tip term="play.optimalSettings" />

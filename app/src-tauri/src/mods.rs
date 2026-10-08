@@ -1445,8 +1445,17 @@ fn view_for(app: &AppHandle, target: &ModTarget) -> Result<ModsView, String> {
         "switch" => Ok(switch_view(app, base_title_id(parse_tid(target.title_id.as_deref())?))),
         "3ds" => Ok(ctr_view(app, parse_tid(target.title_id.as_deref())?)),
         "nds" => Ok(nds_view(app, Path::new(target.rom.as_deref().ok_or("ROM inconnue")?))),
+        "gba" => Ok(gba_view(app)),
         _ => Err("console inconnue".into()),
     }
+}
+
+/// Game Boy et Game Boy Advance (mGBA) : pas encore de mods ni de codes proposés.
+fn gba_view(app: &AppHandle) -> ModsView {
+    let r = resolve(EmulatorId::Mgba, app);
+    let mut view = ModsView { emulator: Some("mGBA"), emulator_found: r.exe.is_some(), ..Default::default() };
+    view.notes.push("Pas encore de mods ni de codes de triche proposés pour les jeux Game Boy et Game Boy Advance. mGBA garde ses propres codes (menu Outils, Codes de triche).".into());
+    view
 }
 
 /// Mods proposés pour un jeu, avec leur état.
