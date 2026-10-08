@@ -60,7 +60,11 @@ async function save() {
       <p v-if="status?.builtIn" class="state ok">Activé : Kaleido est fourni avec son accès à ScreenScraper, rien à configurer.</p>
       <template v-else>
         <p class="state" :class="{ ok: status?.dev }">
-          {{ status?.dev ? "Activé avec les identifiants développeur saisis ci-dessous." : "Cette version de Kaleido n'a pas d'accès développeur ScreenScraper." }}
+          {{ status?.dev ? "Activé avec les identifiants développeur saisis ci-dessous." : "Inactif : cette version de Kaleido n'a pas d'identifiants développeur ScreenScraper." }}
+        </p>
+        <p v-if="!status?.dev" class="dim small">
+          ScreenScraper refuse toute demande sans identifiants développeur, même avec un compte. Ils sont propres au logiciel et
+          s'obtiennent sur demande sur le forum de ScreenScraper ; ils ne se créent pas sur le site.
         </p>
         <div class="row">
           <label>
