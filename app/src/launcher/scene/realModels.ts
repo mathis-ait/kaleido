@@ -38,6 +38,8 @@ interface RealModelSpec {
   board?: { u0: number; v0: number; u1: number; v1: number };
   /** Nœuds à masquer. */
   hide?: string[];
+  /** Matériaux qui gardent leur aspect (contacts, puce, face de l'étiquette) : jamais recoloriés ni translucides. */
+  fixed?: string[];
   /** Coque d'origine : sa couleur n'est pas retouchée (la texture photographiée est gardée). */
   nativeShell: string;
 }
@@ -52,6 +54,7 @@ export const REAL_MODELS: Partial<Record<Support, RealModelSpec>> = {
     url: "models/3ds/scene.gltf",
     label: { tl: [0.4395, 0.93], tr: [0.8281, 0.93], bl: [0.4395, 0.5137] },
     labelMaterial: "lambert2",
+    fixed: ["lambert3"],
     nativeShell: "gris-clair",
   },
   gba: {
@@ -66,6 +69,7 @@ export const REAL_MODELS: Partial<Record<Support, RealModelSpec>> = {
     labelMaterial: "Material.001",
     // Plan blanc de la mise en scène Sketchfab, pas une pièce de la carte.
     hide: ["Plane_2"],
+    fixed: ["Material.001", "Material.003", "metal", "material_0"],
     nativeShell: "noir",
   },
 };
@@ -200,7 +204,7 @@ async function build(support: Support, spec: RealModelSpec): Promise<RealTemplat
 
   // Pièces internes à part (opaques), avant le calcul de la boîte.
   if (spec.board) for (const m of meshes) splitBoard(m, spec.board);
-  for (const m of meshes) m.userData.part ??= labelMeshes.includes(m) && spec.labelMaterial ? "labelBase" : "shell";
+  for (const m of meshes) m.userData.part ??= spec.fixed?.includes((m.material as MeshStandardMaterial).name) ? "fixed" : "shell";
   fix.updateMatrixWorld(true);
 
   const box = new Box3().setFromObject(fix);

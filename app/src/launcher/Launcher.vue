@@ -460,7 +460,7 @@ const inspectRows = computed<InspectRow[]>(() => {
       id: "label",
       label: "Étiquette",
       options: [
-        { id: undefined, label: "Générée" },
+        { id: undefined, label: "Automatique" },
         { id: "custom", label: stored.value.label === "custom" ? "Image personnelle" : "Choisir une image…" },
       ],
     },

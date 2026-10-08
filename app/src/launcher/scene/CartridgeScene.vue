@@ -338,7 +338,8 @@ function applyMaterial(item: Item, center: boolean) {
         m.map = map;
         m.needsUpdate = true;
       }
-      m.userData.base = native || !original ? (m.userData.color as Color) : WHITE;
+      // Pièce sans texture (corps de la carte Switch) : la couleur choisie remplace la sienne.
+      m.userData.base = native ? (m.userData.color as Color) : original ? WHITE : new Color(look.shell.color);
     } else {
       m.roughness = (look.finish === "brillant" ? 0.22 : translucent ? 0.28 : 0.46) + worn;
       m.metalness = metal ? 0.35 : 0;

@@ -22,7 +22,7 @@ powershell -File tools/cartridges/textures.ps1
 node tools/cartridges/gltf.mjs
 ```
 
-`textures.ps1` réduit les textures (JPEG 2048 / 1024 px), remplace les étiquettes d'origine
+`textures.ps1` réduit les textures (JPEG 1024 px au plus), remplace les étiquettes d'origine
 par du papier vierge (l'étiquette du jeu est posée par-dessus, voir `realModels.ts`) et efface
 l'inscription « GAME BOY ADVANCE SP » de la cartouche GBA. `gltf.mjs` réécrit les glTF pour
 ces textures et ne garde qu'une des cinq cartes de la planche Switch.
