@@ -15,6 +15,8 @@ const view = computed(() => saveState.view!);
 const lead = computed(() => saveState.selected ?? view.value.party[0] ?? null);
 const stored = computed(() => view.value.boxFill.reduce((a, b) => a + b, 0));
 const boxPreview = computed(() => saveState.slots.filter((s) => !!s).slice(0, 6));
+/** Six cases toujours affichées, comme une rangée de boîte : les vides restent en creux. */
+const boxCells = computed(() => Array.from({ length: 6 }, (_, i) => boxPreview.value[i] ?? null));
 const t = computed(() => view.value.trainer);
 
 interface Tile {
@@ -165,6 +167,113 @@ function activate(i = focus.value) {
   if (!tile.soon) tile.go?.();
 }
 
+/*
+ * Glisser la bande à la souris (le tactile défile nativement), avec un peu d'élan au lâcher.
+ * Au-delà de 6 px, le geste devient un glissement et le clic sur la tuile est annulé.
+ */
+const dragging = ref(false);
+let drag: { x: number; left: number; moved: boolean; lastX: number; lastT: number; v: number } | null = null;
+
+function onPointerDown(e: PointerEvent) {
+  if (e.pointerType !== "mouse" || e.button !== 0 || !strip.value) return;
+  drag = { x: e.clientX, left: strip.value.scrollLeft, moved: false, lastX: e.clientX, lastT: e.timeStamp, v: 0 };
+}
+
+function onPointerMove(e: PointerEvent) {
+  const s = strip.value;
+  if (!drag || !s) return;
+  const dx = e.clientX - drag.x;
+  if (!drag.moved) {
+    if (Math.abs(dx) < 6) return;
+    drag.moved = true;
+    dragging.value = true;
+    s.setPointerCapture(e.pointerId);
+  }
+  s.scrollLeft = drag.left - dx;
+  const dt = e.timeStamp - drag.lastT;
+  if (dt > 0) drag.v = (e.clientX - drag.lastX) / dt;
+  drag.lastX = e.clientX;
+  drag.lastT = e.timeStamp;
+}
+
+function onPointerUp(e: PointerEvent) {
+  const s = strip.value;
+  if (!drag || !s) return;
+  if (drag.moved) {
+    s.releasePointerCapture?.(e.pointerId);
+    // Élan : vitesse du dernier mouvement (px/ms) prolongée ; l'aimantation choisit ensuite la tuile.
+    const fling = Math.max(-900, Math.min(900, -drag.v * 280));
+    dragging.value = false;
+    s.scrollBy({ left: fling, behavior: "smooth" });
+  }
+  drag = null;
+}
+
+// Un glissement ne doit pas ouvrir la tuile sur laquelle il s'est terminé.
+function onClickCapture(e: MouseEvent) {
+  if (!suppressClick) return;
+  suppressClick = false;
+  e.stopPropagation();
+  e.preventDefault();
+}
+let suppressClick = false;
+function onPointerUpCapture() {
+  suppressClick = !!drag?.moved;
+}
+
+// Molette verticale → défilement horizontal de la bande.
+function onWheel(e: WheelEvent) {
+  const s = strip.value;
+  if (!s || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  s.scrollBy({ left: e.deltaY * (e.deltaMode === 1 ? 40 : 1.2), behavior: "smooth" });
+}
+
+/*
+ * Fin de défilement (souris, molette, tactile) : si la tuile choisie est sortie de l'écran,
+ * la sélection passe sur la tuile entièrement visible la plus proche, pour qu'Entrée et
+ * les flèches repartent de ce qu'on voit.
+ */
+let scrollEnd = 0;
+/** Tuiles cachées de chaque côté : les flèches n'apparaissent que s'il reste quelque chose à voir. */
+const edges = ref({ start: false, end: false });
+function updateEdges() {
+  const s = strip.value;
+  if (!s) return;
+  edges.value = { start: s.scrollLeft > 4, end: s.scrollLeft + s.clientWidth < s.scrollWidth - 4 };
+}
+
+// Flèches : une page de tuiles à la fois, la sélection suit à la fin du défilement.
+function page(dir: number) {
+  const s = strip.value;
+  if (s) s.scrollBy({ left: dir * s.clientWidth * 0.8, behavior: "smooth" });
+}
+
+function onScroll() {
+  updateEdges();
+  clearTimeout(scrollEnd);
+  scrollEnd = window.setTimeout(syncFocusToView, 140);
+}
+
+function syncFocusToView() {
+  const s = strip.value;
+  if (!s || dragging.value) return;
+  const view = s.getBoundingClientRect();
+  const visible = (el: HTMLElement) => {
+    const b = el.getBoundingClientRect();
+    return b.left >= view.left + 8 && b.right <= view.right - 8;
+  };
+  const els = [...s.querySelectorAll<HTMLElement>(".tile")];
+  if (!els[focus.value] || visible(els[focus.value])) return;
+  const shown = els.map((el, i) => (visible(el) ? i : -1)).filter((i) => i >= 0);
+  if (!shown.length) return;
+  focus.value = shown.reduce((best, i) => (Math.abs(i - focus.value) < Math.abs(best - focus.value) ? i : best));
+}
+
+function hoverTile(i: number) {
+  if (!dragging.value) focus.value = i;
+}
+
 function onKey(e: KeyboardEvent) {
   if ((e.target as HTMLElement)?.tagName === "INPUT") return;
   if (e.key === "ArrowRight") move(1);
@@ -173,11 +282,18 @@ function onKey(e: KeyboardEvent) {
   e.preventDefault();
 }
 
+let resize: ResizeObserver | undefined;
 onMounted(() => {
   window.addEventListener("keydown", onKey);
+  resize = new ResizeObserver(updateEdges);
+  if (strip.value) resize.observe(strip.value);
   loadBankInfo();
 });
-onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKey);
+  clearTimeout(scrollEnd);
+  resize?.disconnect();
+});
 
 useShell(() => ({
   hint: focused.value.band,
@@ -238,8 +354,21 @@ const dock: { icon: string; label: string; run: () => void }[] = [
 
     <!-- Tuiles -->
     <div class="strip-wrap">
-      <button v-if="focus > 0" class="arrow left" aria-label="Précédent" @click="move(-1)"><Icon name="chevron-left" /></button>
-      <div ref="strip" class="strip">
+      <button v-if="edges.start" class="arrow left" aria-label="Tuiles précédentes" @click="page(-1)"><Icon name="chevron-left" /></button>
+      <div
+        ref="strip"
+        class="strip"
+        :class="{ dragging }"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup.capture="onPointerUpCapture"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @click.capture="onClickCapture"
+        @wheel="onWheel"
+        @scroll.passive="onScroll"
+        @dragstart.prevent
+      >
         <button
           v-for="(tile, i) in tiles"
           :key="tile.id"
@@ -247,7 +376,7 @@ const dock: { icon: string; label: string; run: () => void }[] = [
           class="tile"
           :class="{ focus: i === focus, soon: tile.soon, [`t-${tile.id}`]: true }"
           :style="{ background: tile.gradient }"
-          @mouseenter="focus = i"
+          @mouseenter="hoverTile(i)"
           @focus="focus = i"
           @click="activate(i)"
         >
@@ -256,7 +385,9 @@ const dock: { icon: string; label: string; run: () => void }[] = [
               <Sprite :id="lead.species" :shiny="lead.shiny" :form="lead.form" :gender="lead.gender" variant="model" :size="150" />
             </template>
             <div v-else-if="tile.id === 'boxes'" class="mini">
-              <span v-for="p in boxPreview" :key="JSON.stringify(p!.slot)"><Sprite :id="p!.species" :shiny="p!.shiny" :size="52" /></span>
+              <span v-for="(p, i) in boxCells" :key="p ? JSON.stringify(p.slot) : `empty-${i}`" :class="{ empty: !p }">
+                <Sprite v-if="p" :id="p.species" :shiny="p.shiny" :size="56" />
+              </span>
             </div>
             <Icon v-else :name="tile.icon ?? 'info'" :size="64" />
           </div>
@@ -267,7 +398,7 @@ const dock: { icon: string; label: string; run: () => void }[] = [
           <span v-if="tile.soon" class="soon-chip">Bientôt</span>
         </button>
       </div>
-      <button v-if="focus < tiles.length - 1" class="arrow right" aria-label="Suivant" @click="move(1)"><Icon name="chevron-right" /></button>
+      <button v-if="edges.end" class="arrow right" aria-label="Tuiles suivantes" @click="page(1)"><Icon name="chevron-right" /></button>
     </div>
 
     <!-- Dock d'actions rapides -->
@@ -387,8 +518,26 @@ const dock: { icon: string; label: string; run: () => void }[] = [
   width: 100%;
   padding: 30px 48px;
   overflow-x: auto;
-  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 48px;
   scrollbar-width: none;
+  cursor: grab;
+  /* Les tuiles qui sortent de la bande s'estompent au lieu d'être coupées net. */
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Pendant le glissement : la bande suit la souris, sans aimantation ni effet de survol. */
+.strip.dragging {
+  scroll-snap-type: none;
+  cursor: grabbing;
+}
+
+.strip.dragging .tile {
+  pointer-events: none;
 }
 
 .tile {
@@ -404,7 +553,15 @@ const dock: { icon: string; label: string; run: () => void }[] = [
   color: #fff;
   text-align: left;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  scroll-snap-align: start;
+  cursor: inherit;
+  user-select: none;
   transition: transform 0.18s, filter 0.18s;
+}
+
+.tile :deep(img) {
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 /* Tuile choisie : un seul contour net (couleur du texte), comme sur console.
@@ -438,14 +595,21 @@ const dock: { icon: string; label: string; run: () => void }[] = [
 
 .mini {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px 10px;
+  grid-template-columns: repeat(3, 64px);
+  gap: 8px;
 }
 
 .mini span {
   display: grid;
   place-items: center;
-  border-bottom: 3px solid rgba(255, 255, 255, 0.5);
+  height: 64px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.mini span.empty {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .label strong {

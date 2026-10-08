@@ -13,12 +13,19 @@ const hasMusic = (d: Detection | null | undefined): d is Detection => !!d && (!!
  */
 
 const PREFS_KEY = "kaleido.launcher.audio";
+/** Volume par défaut de la musique : discret, la musique accompagne sans couvrir le reste. */
+const DEFAULT_VOLUME = 0.05;
+/** Version des préférences : la 2 ramène à 5 % les volumes enregistrés avec l'ancien défaut (60 %). */
+const PREFS_VERSION = 2;
 
 function readPrefs() {
+  const defaults = { music: true, sfx: true, volume: DEFAULT_VOLUME };
   try {
-    return { music: true, sfx: true, volume: 0.6, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") };
+    const stored = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
+    if ((stored.v ?? 1) < PREFS_VERSION) delete stored.volume;
+    return { ...defaults, ...stored };
   } catch {
-    return { music: true, sfx: true, volume: 0.6 };
+    return defaults;
   }
 }
 
@@ -55,7 +62,7 @@ watch(
   () => [audio.music, audio.sfx, audio.volume],
   () => {
     try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ music: audio.music, sfx: audio.sfx, volume: audio.volume }));
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ v: PREFS_VERSION, music: audio.music, sfx: audio.sfx, volume: audio.volume }));
     } catch {
       /* stockage indisponible */
     }

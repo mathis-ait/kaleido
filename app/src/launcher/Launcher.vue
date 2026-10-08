@@ -450,7 +450,7 @@ const meta = computed(() => {
             <path v-if="!audio.music" d="M3 3l18 18" />
           </svg>
         </button>
-        <input v-if="audio.music" v-model.number="audio.volume" class="volume" type="range" min="0" max="1" step="0.05" title="Volume" />
+        <input v-if="audio.music" v-model.number="audio.volume" class="volume" type="range" min="0" max="0.5" step="0.01" :title="`Volume : ${Math.round(audio.volume * 100)} %`" aria-label="Volume de la musique" />
         <button class="round" title="Affichage en grille" @click="libraryUi.mode = 'grid'"><Icon name="grid" :size="15" /></button>
         <button class="round" :title="libraryUi.immersive ? 'Quitter le plein écran (Échap)' : 'Plein écran'" @click="setImmersive(!libraryUi.immersive)">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
