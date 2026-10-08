@@ -42,6 +42,7 @@ import type { Detection } from "../../types";
 import { isKaleidoRom } from "../../types";
 import { currentTheme } from "../../theme";
 import { audio, insertClick } from "../audio";
+import { coverUrl } from "../actions";
 import { cartPhotoKey, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
 import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
@@ -447,6 +448,7 @@ function labelInput(item: Item) {
     randomized: isKaleidoRom(d),
     custom: item.look.customLabel,
     game: d.game?.id ?? null,
+    cover: d.platform === "switch" ? coverUrl(d) : null,
     photo: photo ? convertFileSrc(`${photo}.png`, "cover") : null,
     size: item.real?.labelSize,
   };

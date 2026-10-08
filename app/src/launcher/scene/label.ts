@@ -28,6 +28,8 @@ export interface LabelInput {
   custom: boolean;
   /** Jeu (identifiant de games.rs), pour les proportions propres à certaines photos. */
   game: string | null;
+  /** Illustration officielle du jeu (`cover://`), pour l'étiquette Switch reconstituée. */
+  cover: string | null;
   /** Photo de la vraie cartouche (`cover://`) : elle prime sur l'étiquette neutre. */
   photo: string | null;
   /** Taille de l'étiquette en mm, quand le modèle 3D la donne (sinon la zone du support). */
@@ -180,6 +182,70 @@ function splitTitle(g: CanvasRenderingContext2D, title: string, maxWidth: number
  * Étiquette neutre, sans photo de la vraie étiquette : papier uni et titre du
  * jeu imprimé au centre. Pas de fausse étiquette reconstituée depuis la jaquette.
  */
+/**
+ * Carte Switch sans photo : étiquette reconstituée au gabarit des vraies (bandeau rouge
+ * « NINTENDO SWITCH », illustration officielle du jeu, bandeau sombre avec le titre).
+ * Null sans illustration : l'étiquette neutre prend le relais.
+ */
+async function switchLabel(input: LabelInput): Promise<HTMLCanvasElement | null> {
+  if (input.support.id !== "switch" || !input.cover) return null;
+  const art = await loadImage(input.cover);
+  if (!art) return null;
+  const [w, h] = labelSize(input.support, input.size);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d", { willReadFrequently: true })!;
+  const font = cssVar("--font-display", "Segoe UI, sans-serif");
+  await document.fonts?.ready;
+  const head = Math.round(h * 0.15);
+  const foot = Math.round(h * 0.1);
+
+  g.save();
+  g.beginPath();
+  g.roundRect(0, 0, w, h, w * 0.03);
+  g.clip();
+  // Illustration : l'icône officielle (carrée), recadrée pour remplir la zone.
+  const areaH = h - head - foot;
+  const scale = Math.max(w / art.naturalWidth, areaH / art.naturalHeight);
+  const sw = w / scale;
+  const sh = areaH / scale;
+  g.drawImage(art, (art.naturalWidth - sw) / 2, (art.naturalHeight - sh) / 2, sw, sh, 0, head, w, areaH);
+  // Bandeau rouge du haut.
+  g.fillStyle = "#e60012";
+  g.fillRect(0, 0, w, head);
+  g.fillStyle = "#fff";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = `500 ${Math.round(head * 0.24)}px ${font}`;
+  g.fillText("N I N T E N D O", w / 2, head * 0.32);
+  g.font = `800 ${Math.round(head * 0.4)}px ${font}`;
+  g.fillText("SWITCH", w / 2, head * 0.68);
+  // Bandeau du bas : le titre, comme le code imprimé des vraies cartes.
+  g.fillStyle = "#1b1c20";
+  g.fillRect(0, h - foot, w, foot);
+  g.fillStyle = "#f2f2f2";
+  const size = fitText(g, input.title, w * 0.9, Math.round(foot * 0.46), 700, font);
+  g.font = `700 ${size}px ${font}`;
+  g.fillText(input.title, w / 2, h - foot / 2 + 1, w * 0.9);
+  g.textAlign = "start";
+  g.restore();
+
+  if (input.randomized) drawSticker(g, w, h, input, font);
+  if (input.wear === "jouee") wearOut(g, w, h, random(`${input.key}:${input.wear}`));
+  return canvas;
+}
+
+function fitText(g: CanvasRenderingContext2D, text: string, maxWidth: number, size: number, weight: number, family: string) {
+  let s = size;
+  g.font = `${weight} ${s}px ${family}`;
+  while (s > 10 && g.measureText(text).width > maxWidth) {
+    s -= 1;
+    g.font = `${weight} ${s}px ${family}`;
+  }
+  return s;
+}
+
 async function neutralLabel(input: LabelInput): Promise<HTMLCanvasElement> {
   const [w, h] = labelSize(input.support, input.size);
   const canvas = document.createElement("canvas");
@@ -294,13 +360,13 @@ async function source(input: LabelInput): Promise<HTMLCanvasElement> {
     }
   }
   const t = performance.now();
-  const canvas = await neutralLabel(input);
+  const canvas = (await switchLabel(input)) ?? (await neutralLabel(input));
   lastComposeMs = performance.now() - t;
   return canvas;
 }
 
 function memoryKey(input: LabelInput) {
-  return `${input.key}|${input.wear}|${input.custom ? "c" : "g"}|${input.randomized ? "k" : ""}|${input.photo ? "p" : ""}|${input.size ? "r" : ""}`;
+  return `${input.key}|${input.wear}|${input.custom ? "c" : "g"}|${input.randomized ? "k" : ""}|${input.photo ? "p" : ""}|${input.size ? "r" : ""}|${input.cover ? "a" : ""}`;
 }
 
 /** Oublie l'étiquette d'un jeu (après un changement d'image personnalisée). */
