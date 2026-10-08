@@ -203,16 +203,22 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "IREF"
+        ]
       },
       "saveBlock": {
-        "verified": []
+        "verified": [
+          "IREF"
+        ]
       },
       "battle": {
         "method": "partyHeader",
-        "verified": []
+        "verified": [
+          "IREF"
+        ]
       },
-      "notes": "Overlay de combat 167 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Même organisation que Noir / Blanc supposée. RAM principale trouvée par l'en-tête dans melonDS 1.1 (IREF, écran titre, console DS) ; équipe non vérifiée : la ROM Noire 2 FR du dossier de test n'a pas de sauvegarde.",
+      "notes": "Vérifié dans melonDS 1.1 sur Noire 2 FR (IREF, ROM « DSi Enhanced » lancée en mode DS : RAM de 4 Mio), nouvelle partie : équipe lue (Gruikui N.6), carte lue dans le bloc de sauvegarde en RAM après la première sauvegarde (435, Centre Pokémon de Pavonnay). Combat : overlay 167 présent en RAM seulement pendant le combat contre le rival (Moustillon de Matis lu, combat de dresseur) ; absent hors combat. Combat sauvage non observé (même mécanisme que Noir / Blanc, vérifié). Même organisation que Noir / Blanc (équipe 0x18E08, dresseur 0x19404, carte 0x19580).",
       "battleOverlay": 167
     },
     {
