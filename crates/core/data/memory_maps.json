@@ -212,13 +212,15 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "0004000000055E00"
+        ]
       },
       "saveBlock": {
         "verified": []
       },
       "battle": null,
-      "notes": "Équipe cherchée par constante de chiffrement dans les grandes zones (FCRAM) d'Azahar ; nombre de Pokémon après les 6 emplacements. Non vérifié : Azahar n'est pas installé sur le poste de développement.",
+      "notes": "Équipe de 4 lue en direct dans Azahar 2126.1.2 sur Pokémon Y EU (sauvegarde réelle, copie) : attache ~9 s + 5 s pour le premier relevé. Carte et combat non lus sur 3DS.",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -243,13 +245,15 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "000400000011C400"
+        ]
       },
       "saveBlock": {
         "verified": []
       },
       "battle": null,
-      "notes": "Non vérifié (Azahar absent).",
+      "notes": "Équipe lue en direct dans Azahar 2126.1.2 sur Rubis Oméga EU (sauvegarde réelle, copie) : attache en ~5 s, n° 645 N. 6 15/28 PV. Carte et combat non lus sur 3DS (pas de bloc de sauvegarde en RAM repéré, pas de détection de combat).",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -311,7 +315,7 @@
         "verified": []
       },
       "battle": null,
-      "notes": "Non vérifié (Azahar absent).",
+      "notes": "Non vérifié (Azahar absent). Ultra-Soleil EU lancé dans Azahar : sauvegarde de test au tout début (équipe vide), rien à lire ; la recherche par numéro de dresseur ne trouve pas le bloc sur 3DS.",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
