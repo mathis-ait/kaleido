@@ -54,6 +54,14 @@ fn main() {
             };
             println!("console {console:x?} en {:?}", t.elapsed());
             let mut reader = LiveReader::new(console, hints);
+            // DS : overlay de combat lu dans la ROM (KALEIDO_ROM), comme l'app.
+            if let (Console::Ds(ram), Ok(rom)) = (reader.console().clone(), std::env::var("KALEIDO_ROM")) {
+                let ovl = kaleido_core::live::maps::for_ds_code(&ram.game_code).and_then(|m| m.battle_overlay);
+                if let Some((_, addr, bytes)) = ovl.and_then(|o| kaleido_core::live::maps::battle_code(std::path::Path::new(&rom), o)) {
+                    reader.set_battle_code(addr, bytes);
+                    println!("overlay de combat {ovl:?} lu dans la ROM");
+                }
+            }
             // KALEIDO_ROM=<rom.3ds> KALEIDO_MODULE=DllBattle : détection de combat 3DS (comme l'app).
             if let (Ok(rom), Ok(m)) = (std::env::var("KALEIDO_ROM"), std::env::var("KALEIDO_MODULE")) {
                 if let Some(head) = kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &m) {

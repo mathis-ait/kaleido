@@ -49,16 +49,22 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
       "saveBlock": {
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
       "battle": {
         "method": "partyHeader",
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
-      "notes": "Overlay de combat 16 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280. RAM principale trouvée par l'en-tête dans melonDS 1.1 (CPUE, écran titre) ; équipe non vérifiée en jeu : la ROM Platine Europe du dossier de test n'a pas de sauvegarde.",
+      "notes": "Vérifié dans melonDS 1.1 sur Platinum EU (CPUE), nouvelle partie : équipe lue en direct (Tortipouss), carte lue dans le bloc de sauvegarde en RAM (414, 342, 311 Route 201). Combat : overlay 16 présent en RAM seulement en combat (captures hors combat / combat contre Barry), Étourmi N.3 sauvage lu sur la Route 201, fin du combat vue (fuite). Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280.",
       "reference": [
         {
           "what": "pointeur vers le bloc général (US)",
