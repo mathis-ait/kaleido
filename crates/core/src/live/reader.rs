@@ -163,6 +163,8 @@ pub struct LiveReader {
     /// Copie de combat de notre équipe.
     ours_at: Option<u64>,
     fight: Option<Fight>,
+    /// Indicateur « en combat » du jeu (adresse hôte, valeur en combat), quand il est connu.
+    flag: Option<(u64, u32)>,
     /// Ticks consécutifs sans équipe valide.
     misses: u32,
     /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
@@ -187,8 +189,17 @@ impl LiveReader {
             enemy_at: None,
             ours_at: None,
             fight: None,
+            flag: None,
             misses: 0,
             battle: true,
+        }
+    }
+
+    /// Indicateur « en combat » (adresse DS 0x02xxxxxx, valeur en combat), d'après les cartes mémoire.
+    /// Sans lui, la fin d'un combat n'est vue que si le jeu réécrit l'équipe ou change de carte.
+    pub fn set_battle_flag(&mut self, ds_address: u32, value: u32) {
+        if let Console::Ds(ram) = &self.console {
+            self.flag = Some((ram.host(ds_address), value));
         }
     }
 
@@ -358,7 +369,18 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let battle = if self.battle && matches!(self.console, Console::Ds(_)) { self.scan_battle(src, &party.mons, map, tick % BATTLE_SCAN == 0) } else { None };
+        let in_battle = self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v));
+        let battle = if !self.battle || !matches!(self.console, Console::Ds(_)) {
+            None
+        } else if in_battle == Some(false) {
+            // Le jeu dit « hors combat » : les équipes restées en RAM ne comptent plus.
+            if let Some(f) = &mut self.fight {
+                f.over = true;
+            }
+            None
+        } else {
+            self.scan_battle(src, &party.mons, map, tick % BATTLE_SCAN == 0 || in_battle == Some(true))
+        };
         // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
         let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
         Ok(Some(LiveRead { party, map, badges, battle }))
@@ -417,7 +439,8 @@ impl LiveReader {
         keys.sort_unstable();
         let new = match &mut self.fight {
             Some(f) if f.keys == keys => {
-                if !f.over && (f.map != map || f.save_raw != save_raw) {
+                // Sans indicateur du jeu : fin devinée (équipe réécrite, autre carte).
+                if !f.over && self.flag.is_none() && (f.map != map || f.save_raw != save_raw) {
                     f.over = true;
                 }
                 if f.over {

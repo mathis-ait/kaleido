@@ -208,7 +208,14 @@ fn main() {
             for (i, file) in arg(1).split(',').enumerate() {
                 let src = kaleido_core::live::DumpSource::new().with_zone(0x1000_0000, std::fs::read(file).unwrap());
                 let ram = scan::find_ds_ram(&src).expect("RAM DS introuvable");
-                let reader = reader.get_or_insert_with(|| LiveReader::new(Console::Ds(ram.clone()), save.save.ram_hints()));
+                let flag = kaleido_core::live::maps::for_ds_code(&ram.game_code).and_then(|m| m.battle_flag(&ram.game_code));
+                let reader = reader.get_or_insert_with(|| {
+                    let mut r = LiveReader::new(Console::Ds(ram.clone()), save.save.ram_hints());
+                    if let Some((addr, value)) = flag {
+                        r.set_battle_flag(addr, value);
+                    }
+                    r
+                });
                 if i == 0 && arg(3) == "prime" {
                     let _ = reader.tick(&src);
                     reader.prime_battle(&src);

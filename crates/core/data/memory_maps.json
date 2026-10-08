@@ -41,8 +41,11 @@
       "codes": ["IRBO", "IRBF", "IRBD", "IRBI", "IRBS", "IRBJ", "IRBK", "IRAO", "IRAF", "IRAD", "IRAI", "IRAS", "IRAJ", "IRAK"],
       "party": { "method": "signature", "verified": ["IRAF"] },
       "saveBlock": { "verified": ["IRAF"] },
-      "battle": { "method": "partyHeader", "verified": [] },
-      "notes": "Vérifié dans melonDS 1.1 sur Blanche FR randomisée par Kaleido (IRAF) : équipe de deux Pokémon trouvée en deux copies, dresseur à +0x5FC de l'équipe comme dans le fichier (bloc 0x18E00 / 0x19400), carte lue égale à celle de la sauvegarde (391). Changement de carte et combat non observés ; badges (0x21204 dans le fichier, loin de l'équipe) non vérifiés."
+      "battle": { "method": "partyHeader", "verified": ["IRAF"] },
+      "battleFlags": [
+        { "codes": ["IRAF"], "address": "0x020AA150", "value": 1 }
+      ],
+      "notes": "Indicateur « en combat » 0x020AA150 (u32) : 1 en combat, 0 hors combat, observé sur 10 captures dans 3 sessions melonDS 1.1 (Blanche FR d'origine et randomisée par Kaleido : rencontres, fuite, retour sur la même carte). Vérifié dans melonDS 1.1 sur Blanche FR randomisée par Kaleido (IRAF) : équipe de deux Pokémon trouvée en deux copies, dresseur à +0x5FC de l'équipe comme dans le fichier (bloc 0x18E00 / 0x19400), carte lue égale à celle de la sauvegarde (391). Changement de carte et combat non observés ; badges (0x21204 dans le fichier, loin de l'équipe) non vérifiés."
     },
     {
       "game": "B2W2",

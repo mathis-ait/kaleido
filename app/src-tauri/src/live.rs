@@ -232,6 +232,9 @@ fn attach(base: &Base, info: &mut LiveInfo) -> Option<Attached> {
         };
         let mut reader = LiveReader::new(console, base.hints.clone());
         reader.set_battle(map.battle_scan());
+        if let Some((addr, value)) = map.battle_flag(&id) {
+            reader.set_battle_flag(addr, value);
+        }
         let _ = reader.tick(&proc);
         reader.prime_battle(&proc);
         let info = LiveInfo {
