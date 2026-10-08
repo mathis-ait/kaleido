@@ -218,6 +218,14 @@ fn load_model(cache: &Path, path: &str) -> Result<Vec<u8>, String> {
     Err("pas de modèle pour ce Pokémon".into())
 }
 
+/// Image d'un sprite et son type MIME, pour l'overlay de stream (même cache que `sprite://`).
+/// `name` suit la même syntaxe : `25-shiny.png` (icône) ou `gen5ani/25-1-shiny.gif` (modèle).
+pub fn image(cache: &Path, name: &str) -> Result<(Vec<u8>, &'static str), String> {
+    let data = if name.contains('/') { load_model(cache, name)? } else { load(cache, name)? };
+    let mime = content_type(&data).unwrap_or("application/octet-stream");
+    Ok((data, mime))
+}
+
 /// Gestionnaire du protocole `sprite://`.
 pub fn handle<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     // `convertFileSrc` encode le « / » des modèles (`ani%2F25.gif`).

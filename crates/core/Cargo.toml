@@ -22,3 +22,13 @@ symphonia-codec-aac = "0.5.4"
 
 [dev-dependencies]
 serde_json.workspace = true
+
+# Lecture de la mémoire des émulateurs (compagnon en direct) : lecture seule, aucune écriture.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }

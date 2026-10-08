@@ -27,6 +27,7 @@ import { openShowdown, showdownUi } from "./showdown/api";
 import ShowdownDialog from "./showdown/ShowdownDialog.vue";
 import SmogonSets from "./showdown/SmogonSets.vue";
 import TeamsDialog from "./showdown/TeamsDialog.vue";
+import GroupLegalize from "./tools/GroupLegalize.vue";
 
 const view = computed(() => saveState.view!);
 const boxCount = computed(() => view.value.boxNames.length);
@@ -34,6 +35,17 @@ const partySlots = computed(() => Array.from({ length: 6 }, (_, i) => view.value
 const key = (s: Slot) => JSON.stringify(s);
 const boxSlot = (index: number): Slot => ({ kind: "box", box: saveState.box, index });
 const partySlot = (index: number): Slot => ({ kind: "party", index });
+
+// « Légaliser l'équipe / la boîte » (aperçu groupé).
+const groupOpen = ref(false);
+const group = ref<{ slots: Slot[]; title: string }>({ slots: [], title: "" });
+function legalizeGroup(kind: "party" | "box") {
+  group.value =
+    kind === "party"
+      ? { slots: view.value.party.map((p) => p.slot), title: "Légaliser l'équipe" }
+      : { slots: saveState.slots.flatMap((p, i) => (p ? [boxSlot(i)] : [])), title: `Légaliser ${view.value.boxNames[saveState.box] ?? "la boîte"}` };
+  groupOpen.value = true;
+}
 
 /** Case vide sélectionnée (création / import). */
 const emptySel = ref<Slot | null>(null);
@@ -141,7 +153,7 @@ const emptyTarget = computed(() =>
 );
 
 async function importInto(slot: Slot) {
-  const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk4", "pk5", "pk6", "pk7"] }] });
+  const file = await open({ title: "Importer un Pokémon", filters: [{ name: "Pokémon", extensions: ["pk1", "pk2", "pk3", "pk4", "pk5", "pk6", "pk7"] }] });
   if (typeof file === "string") importPokemon(slot, file);
 }
 
@@ -262,6 +274,9 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
             @click="loadBox(i)"
           />
         </div>
+        <button class="sv-btn" title="Rendre légaux les Pokémon illégaux de cette boîte, avec aperçu" :disabled="!view.boxFill[saveState.box]" @click="legalizeGroup('box')">
+          <Icon name="wand" :size="15" /> Légaliser
+        </button>
         <button class="sv-btn" title="Équipes d'exemple de Smogon, prêtes à importer" @click="showdownUi.teams = true">
           <Icon name="star" :size="15" /> Équipes
         </button>
@@ -295,7 +310,13 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
     <aside class="side">
       <!-- Équipe -->
       <section class="sv-panel party">
-        <h3 class="sv-label">Équipe</h3>
+        <div class="party-head">
+          <h3 class="sv-label">Équipe</h3>
+          <button type="button" class="sv-btn small" :disabled="!view.party.length" @click="legalizeGroup('party')">
+            <Icon name="wand" :size="13" /> Légaliser
+          </button>
+          <Tip term="legalizeTeam" />
+        </div>
         <div class="party-grid">
           <button
             v-for="(p, i) in partySlots"
@@ -392,6 +413,7 @@ const locationText = (s: Slot) => (s.kind === "party" ? `Équipe · place ${s.in
     <ShowdownDialog :target="cursor" />
     <SmogonSets v-if="emptyTarget" :empty="emptyTarget" />
     <TeamsDialog />
+    <GroupLegalize v-model="groupOpen" :slots="group.slots" :title="group.title" />
   </div>
 </template>
 
@@ -554,8 +576,16 @@ h3 {
   font-size: 18px;
 }
 
-.party h3 {
+.party-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   margin-bottom: 10px;
+}
+
+.party-head h3 {
+  flex: 1;
+  margin: 0;
   font-size: var(--fs-xs);
 }
 

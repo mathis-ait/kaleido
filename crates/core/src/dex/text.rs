@@ -25,6 +25,12 @@ text_list!(NATURES, "Natures.txt");
 text_list!(TYPES, "Types.txt");
 text_list!(GAMES, "Games.txt");
 text_list!(FORMS, "Forms.txt");
+text_list!(ITEMS_G1, "ItemsG1.txt");
+text_list!(ITEMS_G2, "ItemsG2.txt");
+text_list!(ITEMS_G3, "ItemsG3.txt");
+
+/// Objet Gen 3 sans équivalent Gen 4+ (objets rares surtout) : `GEN3_ITEM_FLAG | id Gen 3`.
+pub const GEN3_ITEM_FLAG: u16 = 0x8000;
 
 /// Entrée non vide d'une liste ; l'identifiant 0 (« aucun ») est exclu.
 fn lookup(list: &[&'static str], id: usize) -> Option<&'static str> {
@@ -50,7 +56,29 @@ pub fn ability_name(id: u16) -> Option<&'static str> {
 
 /// Nom de l'objet (noms actuels, Gen 5+).
 pub fn item_name(id: u16) -> Option<&'static str> {
+    if id & GEN3_ITEM_FLAG != 0 {
+        return item_name_g3(id & !GEN3_ITEM_FLAG);
+    }
+    // Objet Gen 2 sans équivalent (`save::pk12::GEN2_ITEM_FLAG`).
+    if id & 0x4000 != 0 {
+        return item_name_g2((id & 0xFF) as u8);
+    }
     lookup(&ITEMS, id as usize)
+}
+
+/// Nom d'un objet Gen 3 (identifiant du jeu).
+pub fn item_name_g3(id: u16) -> Option<&'static str> {
+    lookup(&ITEMS_G3, id as usize)
+}
+
+/// Nom d'un objet Gen 2 (identifiant du jeu).
+pub fn item_name_g2(id: u8) -> Option<&'static str> {
+    lookup(&ITEMS_G2, id as usize)
+}
+
+/// Nom d'un objet Gen 1 (identifiant du jeu).
+pub fn item_name_g1(id: u8) -> Option<&'static str> {
+    lookup(&ITEMS_G1, id as usize)
 }
 
 /// Nom de l'objet tel qu'affiché dans le jeu : les Lettres 137-148 ont changé de nom après la Gen 4.
@@ -380,13 +408,23 @@ fn gen7() -> LocationSet {
     set
 }
 
+/// Gen 3 : un seul bloc ; l'identifiant est la section de carte (`mapsec`) du jeu.
+fn gen3() -> LocationSet {
+    LocationSet { banks: vec![(0, bank(include_str!("../../data/pkhex/text/met3_00000.txt")))] }
+}
+
+static LOCATIONS_G3: LazyLock<LocationSet> = LazyLock::new(gen3);
+
 static LOCATIONS: LazyLock<[LocationSet; 4]> = LazyLock::new(|| [gen4(), gen5(), gen6(), gen7()]);
 
 fn location_set(generation: u8) -> Option<&'static LocationSet> {
+    if generation == 3 {
+        return Some(&LOCATIONS_G3);
+    }
     LOCATIONS.get(generation.checked_sub(4)? as usize)
 }
 
-/// Nom du lieu de rencontre `id` pour la génération donnée (4 à 7).
+/// Nom du lieu de rencontre `id` pour la génération donnée (3 à 7).
 pub fn location_name(generation: u8, id: u16) -> Option<&'static str> {
     location_set(generation)?.name(id)
 }
@@ -395,6 +433,10 @@ pub fn location_name(generation: u8, id: u16) -> Option<&'static str> {
 fn location_ids(generation: u8) -> Vec<u16> {
     let mut ids: Vec<u16> = Vec::new();
     match generation {
+        3 => {
+            ids.extend([0, 253, 254, 255]);
+            ids.extend(1..=212);
+        }
         4 => {
             ids.extend([0, 2000, 2002, 3001]);
             ids.extend(0..=234);

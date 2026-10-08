@@ -80,9 +80,12 @@ fn learnsets() {
     assert_eq!(garchomp.last().map(|&(m, l)| (move_name(m), l)), Some((Some("Draco-Charge"), 55)));
     for game in Game::ALL {
         let bulbasaur = levelup(game, 1, 0);
-        assert_eq!(bulbasaur[0], (33, 1), "{game:?}"); // Charge au niveau 1
+        // Gen 1 : les attaques de départ sont dans la fiche, pas dans la liste par niveau.
+        if game.generation() > 1 {
+            assert_eq!(bulbasaur[0], (33, 1), "{game:?}"); // Charge au niveau 1
+            assert!(!egg_moves(game, 1, 0).is_empty(), "{game:?}");
+        }
         assert!(bulbasaur.iter().all(|&(m, l)| m != 0 && m <= max_move(game) && l <= 100), "{game:?}");
-        assert!(!egg_moves(game, 1, 0).is_empty(), "{game:?}");
     }
     assert!(levelup(Game::DP, 0, 0).is_empty());
     // Miaouss d'Alola n'a pas les mêmes capacités Œuf.
@@ -123,8 +126,11 @@ fn locations_by_generation() {
     assert!(gen7.iter().any(|&(_, n)| n.contains("Ekaeka")));
     assert_eq!(location_name(7, 0), None);
     assert_eq!(locations(7)[0], (0, "(Aucun)"));
-    assert!(locations(3).is_empty());
-    for generation in 4..=7 {
+    assert!(locations(2).is_empty());
+    assert_eq!(location_name(3, 16), Some("Route 101"));
+    assert_eq!(location_name(3, 101), Some("Route 1"));
+    assert_eq!(location_name(3, 254), Some("(Échange in-game)"));
+    for generation in 3..=7 {
         let list = locations(generation);
         let mut ids: Vec<u16> = list.iter().map(|&(id, _)| id).collect();
         ids.sort_unstable();

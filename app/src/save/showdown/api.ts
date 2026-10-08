@@ -61,11 +61,23 @@ export interface ShowdownPreview {
 
 export type ImportTarget = { kind: "box"; box: number } | { kind: "slot"; slot: Slot } | { kind: "party" };
 
+import type { LegalityChange, EncounterOption } from "../legality";
+
+/** Ce que la légalisation a fait d'un set importé. */
+export interface ImportLegality {
+  legal: boolean;
+  encounter: EncounterOption | null;
+  adjustments: LegalityChange[];
+  changes: LegalityChange[];
+}
+
 export interface ImportedSet {
   speciesName: string;
   slot: Slot | null;
   warnings: string[];
   error: string | null;
+  /** `null` : importé tel quel. */
+  legality: ImportLegality | null;
 }
 
 export interface ImportReport {
@@ -105,6 +117,8 @@ export const showdownUi = reactive({
   tab: "import" as "import" | "export",
   smogon: false,
   teams: false,
+  /** « Importer tel quel » : sans passer par le légaliseur (désactivé par défaut). */
+  asIs: false,
 });
 
 export function openShowdown(tab: "import" | "export" = "import") {
@@ -144,7 +158,7 @@ export function previewShowdown(text: string) {
 }
 
 export async function importShowdown(text: string, target: ImportTarget) {
-  const report = await invoke<ImportReport>("showdown_import", { text, target });
+  const report = await invoke<ImportReport>("showdown_import", { text, target, asIs: showdownUi.asIs });
   if (report.imported) {
     await afterChange(report.sets.find((s) => s.slot)?.slot ?? null);
     notify(report.imported > 1 ? `${report.imported} Pokémon ajoutés depuis Showdown` : "Pokémon ajouté depuis Showdown");
@@ -160,19 +174,19 @@ export function smogonSets(species: number, form: number, refresh = false) {
   return invoke<SmogonSets>("smogon_sets", { species, form, refresh });
 }
 
-/** Applique un set au Pokémon de l'emplacement ; renvoie les avertissements. */
+/** Applique un set au Pokémon de l'emplacement ; renvoie les avertissements et le bilan de légalisation. */
 export async function applySet(slot: Slot, set: ShowdownSet) {
-  const res = await invoke<{ view: SlotView; warnings: string[] }>("showdown_apply", { slot, set });
+  const res = await invoke<{ view: SlotView; warnings: string[]; legality: ImportLegality | null }>("showdown_apply", { slot, set, asIs: showdownUi.asIs });
   saveState.dirty = true;
   saveState.view = await invoke<SaveView>("save_view");
   if (slot.kind === "box" && slot.box === saveState.box) saveState.slots[slot.index] = res.view;
   saveState.selected = res.view;
-  return res.warnings;
+  return [...res.warnings, ...legalityNotes(res.legality)];
 }
 
 /** Ajoute un set comme nouveau Pokémon. */
 export async function addSet(set: ShowdownSet, target: ImportTarget) {
-  const report = await invoke<ImportReport>("showdown_add_set", { set, target });
+  const report = await invoke<ImportReport>("showdown_add_set", { set, target, asIs: showdownUi.asIs });
   if (report.imported) {
     const slot = report.sets[0]?.slot ?? null;
     const keep = saveState.selected;
@@ -181,4 +195,16 @@ export async function addSet(set: ShowdownSet, target: ImportTarget) {
     if (slot) notify(`${report.sets[0].speciesName} ajouté : ${slotText(slot, saveState.view?.boxNames ?? [])}`);
   }
   return report;
+}
+
+/** « Œuf (Pension) · éclos à « Route 3 » · Platine » : rencontre retenue par le légaliseur. */
+export function encounterText(e: EncounterOption) {
+  return `${e.kindLabel} · ${e.locationName} · ${e.versionName}`;
+}
+
+/** Lignes du rapport de légalisation d'un set, pour une liste de remarques. */
+export function legalityNotes(l: ImportLegality | null): string[] {
+  if (!l) return [];
+  const out = l.encounter ? [`Rencontre : ${encounterText(l.encounter)}`] : [];
+  return [...out, ...l.adjustments.map((a) => a.text)];
 }

@@ -5,6 +5,7 @@ import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
 import Toggle from "../components/Toggle.vue";
 import EmulatorSettings from "../play/EmulatorSettings.vue";
+import OverlaySettings from "../companion/OverlaySettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -37,7 +38,19 @@ async function clearCache() {
   await refresh();
 }
 
-onMounted(refresh);
+// Compagnon en direct : lecture de la mémoire de l'émulateur (activée par défaut).
+const memory = ref(true);
+async function setMemory(on: boolean) {
+  memory.value = on;
+  await invoke("companion_set_memory", { on }).catch(() => undefined);
+}
+
+onMounted(() => {
+  void refresh();
+  invoke<boolean>("companion_memory")
+    .then((on) => (memory.value = on))
+    .catch(() => undefined);
+});
 </script>
 
 <template>
@@ -135,6 +148,9 @@ onMounted(refresh);
     <h2>Émulateurs</h2>
     <EmulatorSettings />
 
+    <h2>Overlay de stream</h2>
+    <OverlaySettings />
+
     <h2>Mises à jour</h2>
     <div class="update panel">
       <div class="update-row">
@@ -154,6 +170,26 @@ onMounted(refresh);
       </div>
       <pre v-if="updates.info?.newer && updates.info.notes" class="notes">{{ updates.info.notes }}</pre>
       <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement. Rien d'autre n'est envoyé." />
+    </div>
+
+    <h2>À propos</h2>
+    <div class="about panel">
+      <p>Kaleido est un logiciel libre (GPLv3). Il reprend des données et du code d'autres projets libres :</p>
+      <dl class="sv-dl">
+        <dt>PKHeX</dt>
+        <dd>kwsch et contributeurs, GPLv3 : noms, fiches, rencontres, formats de sauvegarde</dd>
+        <dt>Universal Pokémon Randomizer ZX</dt>
+        <dd>Dabomstew, Ajarmar et contributeurs, GPLv3 : emplacements des données des ROM (fichiers d'offsets Gen 1 à 7)</dd>
+        <dt>PokeAPI</dt>
+        <dd>BSD-3 : puissance, précision et catégorie des attaques</dd>
+      </dl>
+      <p>
+        <strong>Compagnon en direct.</strong> Pour suivre ta partie à la seconde (PV, rencontres, K.O.), le compagnon lit la
+        mémoire de l'émulateur (melonDS, DeSmuME, Azahar) pendant que tu joues. Cette lecture est strictement en lecture seule :
+        Kaleido n'écrit jamais dans l'émulateur et n'y injecte rien. Certains antivirus signalent pourtant ce type d'accès à un
+        autre programme ; tu peux le couper ici ou dans le compagnon, qui suivra alors seulement ta sauvegarde.
+      </p>
+      <Toggle :model-value="memory" label="Lire la mémoire de l’émulateur" term="companion.memory" @update:model-value="setMemory" />
     </div>
   </section>
 </template>
@@ -176,6 +212,41 @@ h2 {
 .lead {
   color: var(--text-dim);
   font-size: 16px;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.about p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-base);
+}
+
+.about strong {
+  color: var(--text);
+}
+
+/* Crédits : nom à gauche, description lisible à côté (pas de valeur en gras alignée à droite). */
+.about .sv-dl {
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-5);
+  margin: 0;
+}
+
+.about .sv-dl dt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.about .sv-dl dd {
+  color: var(--text-dim);
+  font-weight: 400;
+  text-align: left;
 }
 
 .update {

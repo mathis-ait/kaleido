@@ -218,6 +218,22 @@ pub fn diff(old: &Brief, new: &Brief) -> Vec<GameEvent> {
     out
 }
 
+/// Évènements entre deux lectures de la mémoire de l'émulateur. Seule l'équipe y est relue (les
+/// boîtes restent celles de la dernière sauvegarde) : un Pokémon déposé en boîte y semble
+/// disparu. On ne garde donc que ce que l'équipe montre sûrement (K.O., soin, niveau, évolution,
+/// éclosion, capture qui rejoint l'équipe) ; morts, départs et badges restent l'affaire de la
+/// sauvegarde.
+pub fn diff_memory(old: &Brief, new: &Brief) -> Vec<GameEvent> {
+    diff(old, new)
+        .into_iter()
+        .filter(|e| match e {
+            GameEvent::Caught { mon } => mon.in_party,
+            GameEvent::Fainted { .. } | GameEvent::Revived { .. } | GameEvent::LevelUp { .. } | GameEvent::Evolved { .. } | GameEvent::Hatched { .. } => true,
+            GameEvent::Died { .. } | GameEvent::Gone { .. } | GameEvent::Badge { .. } => false,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "diff_tests.rs"]
 mod tests;

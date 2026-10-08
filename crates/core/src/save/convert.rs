@@ -1,5 +1,6 @@
-//! Transfert d'un Pokémon vers une génération plus récente (PK4 → PK5 → PK6 → PK7),
-//! comme Poké Transfert (DS), Poké Transporteur et la Banque Pokémon (3DS).
+//! Transfert d'un Pokémon vers une génération plus récente (PK3 → PK4 → PK5 → PK6 → PK7),
+//! comme le Parc des Amis (DS), Poké Transfert (DS), Poké Transporteur et la Banque
+//! Pokémon (3DS). PK3 → PK4 : `PK3.ConvertToPK4` de PKHeX.
 //!
 //! Portage de PKHeX (kwsch/PKHeX, GPLv3, <https://github.com/kwsch/PKHeX>) :
 //! `PK4.ConvertToPK5`, `PK5.ConvertToPK6` (+ `GetTransferPID`, `GetTransferMetLocation4`,
@@ -21,6 +22,11 @@ use crate::dex::{self, Game};
 
 // --- Constantes de PKHeX (Locations.cs).
 
+/// « Kanto » / « Johto » (Gen 7) : lieux des Pokémon venus de la Console virtuelle (`Locations.Transfer1/2`).
+pub const TRANSFER1: u16 = 30013;
+pub const TRANSFER2: u16 = 30017;
+/// « Parc des Amis » (Gen 4) : lieu de rencontre des Pokémon venus de la Gen 3 (`Locations.Transfer3`).
+pub const TRANSFER3: u16 = 55;
 /// « Poké Transfert » (Gen 5) : lieu de rencontre des Pokémon venus de la Gen 4.
 pub const TRANSFER4: u16 = 30001;
 /// Celebi événement transféré (Ilex non encore visité).
@@ -109,6 +115,9 @@ pub struct Compatibility {
 /// Jeu dont PKHeX utilise les fiches pour un format (`PKx.PersonalInfo`).
 pub fn data_game(f: PkmFormat) -> Game {
     match f {
+        PkmFormat::Gen1 => Game::Y,
+        PkmFormat::Gen2 => Game::C,
+        PkmFormat::Gen3 => Game::E,
         PkmFormat::Gen4 => Game::HGSS,
         PkmFormat::Gen5 => Game::B2W2,
         PkmFormat::Gen6 => Game::ORAS,
@@ -119,6 +128,9 @@ pub fn data_game(f: PkmFormat) -> Game {
 /// Format des Pokémon d'un jeu.
 pub fn format_of(game: Game) -> PkmFormat {
     match game.generation() {
+        1 => PkmFormat::Gen1,
+        2 => PkmFormat::Gen2,
+        3 => PkmFormat::Gen3,
         4 => PkmFormat::Gen4,
         5 => PkmFormat::Gen5,
         6 => PkmFormat::Gen6,
@@ -128,6 +140,9 @@ pub fn format_of(game: Game) -> PkmFormat {
 
 fn next_format(f: PkmFormat) -> Option<PkmFormat> {
     match f {
+        // Console virtuelle : la Banque Pokémon envoie directement en Gen 7.
+        PkmFormat::Gen1 | PkmFormat::Gen2 => Some(PkmFormat::Gen7),
+        PkmFormat::Gen3 => Some(PkmFormat::Gen4),
         PkmFormat::Gen4 => Some(PkmFormat::Gen5),
         PkmFormat::Gen5 => Some(PkmFormat::Gen6),
         PkmFormat::Gen6 => Some(PkmFormat::Gen7),
@@ -223,6 +238,130 @@ fn species_name_for(species: u16, language: u8, current: &str) -> String {
 }
 
 // =====================================================================================
+// PK1 / PK2 → PK7 (Poké Transporteur, Console virtuelle)
+// =====================================================================================
+
+/// `PK1.ConvertToPK7` / `PK2.ConvertToPK7`. Les valeurs aléatoires (EC, PID, IV) viennent
+/// d'un générateur initialisé avec les données du Pokémon : la même conversion donne le même
+/// résultat. Pays et région de la console ne sont pas renseignés (pas de 3DS de référence).
+pub fn pk12_to_pk7(p: &Pokemon) -> Result<Pokemon, PkmError> {
+    let gen = p.format().generation();
+    let species = p.species();
+    let game7 = data_game(PkmFormat::Gen7);
+    let pi = dex::personal(game7, species, 0).ok_or_else(|| PkmError::Invalid(format!("espèce n°{species} inconnue")))?;
+    let level = stats::level_from_exp(pi.growth_rate, p.exp());
+    let mut seed = (p.exp() << 8) ^ (p.tid() as u32) << 16 ^ (species as u32) ^ (crate::save::pk12::ivs_to_dvs(p.ivs()) as u32) << 4;
+    let mut next = || {
+        seed = seed.wrapping_mul(0x41C6_4E6D).wrapping_add(0x6073);
+        seed
+    };
+    let mut pk = Pokemon::blank(PkmFormat::Gen7);
+    pk.set_encryption_constant(next());
+    pk.set_pid(next() << 16 | (next() >> 16));
+    pk.set_species(species);
+    pk.set_tid(p.tid());
+    pk.set_sid(0);
+    pk.set_exp(stats::exp_for_level(pi.growth_rate, level));
+    pk.set_met_level(level)?;
+    pk.set_nature((p.exp() % 25) as u8)?;
+    pk.set_ball(4);
+    pk.set_met_date(Some(today()));
+    // Version : Rouge (Console virtuelle Gen 1) ; Gen 2 : Cristal si données de capture, sinon Or.
+    let version = if gen == 1 { 35 } else if p.met_level() != 0 || p.met_location() != 0 { 41 } else { 39 };
+    pk.set_version(version);
+    pk.set_moves(p.moves().map(|m| if m == 146 { 0 } else { m })); // Uppercut (Gen 2) non transférable
+    pk.set_pp_ups(p.pp_ups());
+    fix_moves(&mut pk);
+    pk.set_met_location(if gen == 1 { TRANSFER1 } else { TRANSFER2 });
+    pk.set_gender(p.gender());
+    if gen == 2 {
+        pk.set_form(p.form())?;
+    }
+    let lang = match p.language() {
+        1..=8 => p.language(),
+        _ => 3,
+    };
+    pk.set_language(lang);
+    let name = if lang == 3 { dex::species_name(species).map(str::to_string) } else { dex::species_name_lang(species, dex::Lang::En).map(str::to_string) };
+    pk.set_nickname(&name.unwrap_or_default())?;
+    pk.set_is_nicknamed(false);
+    pk.set_ot_name(&p.ot_name())?;
+    pk.set_ot_gender(if gen == 2 { p.ot_gender() } else { Gender::Male });
+    pk.set_friendship(pi.base_friendship);
+    // Talent caché, sauf pour les espèces où le Poké Transporteur ne le donne pas.
+    let no_hidden = matches!(species, 92..=94 | 109 | 110 | 151) || (gen == 2 && matches!(species, 200 | 201 | 251));
+    let slot = if no_hidden || pi.abilities[2] == 0 { 0 } else { 2 };
+    pk.set_ability(pi.abilities[slot])?;
+    pk.set_ability_number(1 << slot)?;
+    // IV : 3 à 31 (5 pour Mew et Celebi), les autres au hasard, dans un ordre mélangé.
+    let special = matches!(species, 151 | 251);
+    let mut ivs: [u8; 6] = std::array::from_fn(|_| (next() >> 27) as u8);
+    for iv in ivs.iter_mut().take(if special { 5 } else { 3 }) {
+        *iv = 31;
+    }
+    for i in (1..6).rev() {
+        let j = (next() >> 16) as usize % (i + 1);
+        ivs.swap(i, j);
+    }
+    pk.set_ivs(ivs)?;
+    // Même statut chromatique qu'à l'origine (`SetTransferPID`).
+    let shiny = p.is_shiny();
+    if shiny != pk.is_shiny() {
+        let pid = pk.pid();
+        let new = if shiny { let low = pid & 0xFFFF; (low ^ p.tid() as u32) << 16 | low } else { pid ^ 0x1000_0000 };
+        pk.set_pid(new);
+    }
+    if special {
+        pk.set_fateful_encounter(true);
+    }
+    let mut pk = edit_raw(&pk, |d| set_trade_memory_ht6(d, seed));
+    heal_pp(game7, &mut pk);
+    pk.refresh_checksum();
+    Ok(pk)
+}
+
+// =====================================================================================
+// PK3 → PK4 (Parc des Amis)
+// =====================================================================================
+
+/// `PK3.ConvertToPK4`. Le PK3 est déjà tenu au format PK4 en mémoire (voir `pk3`) :
+/// espèce, objet, textes, rubans de Hoenn, PID, IV, EV, attaques et origine sont repris
+/// tels quels, puis les règles du Parc des Amis sont appliquées.
+pub fn pk3_to_pk4(pk3: &Pokemon) -> Result<Pokemon, PkmError> {
+    debug_assert_eq!(pk3.format(), PkmFormat::Gen3);
+    let level = current_level(data_game(PkmFormat::Gen3), pk3);
+    let ball = pk3.ball();
+    let mut d = pk3.data()[..PkmFormat::Gen4.party_size()].to_vec();
+    // Section équipe vidée : un Pokémon du Parc des Amis arrive en boîte.
+    d[PkmFormat::Gen4.stored_size()..].fill(0);
+    // Bonheur remis à 70, marquages limités aux 4 premiers symboles.
+    d[0x14] = 70;
+    d[0x16] &= 0b1111;
+    // Plus d'œuf, surnom conservé (bit 31 de l'IV32).
+    let iv32 = rd32(&d, 0x38) & !(1 << 30);
+    d[0x38..0x3C].copy_from_slice(&iv32.to_le_bytes());
+    // Lieux et Ball relus par les accesseurs Gen 4 (champs DP / Platine / HGSS).
+    d[0x44..0x48].fill(0);
+    d[0x7E..0x82].fill(0);
+    d[0x83] = 0;
+    d[0x86] = 0;
+    let mut pk4 = Pokemon::from_decrypted(PkmFormat::Gen4, &d)?;
+    // Objet sans équivalent en Gen 4 : perdu (`ItemConverter.IsItemTransferable34`).
+    if pk4.held_item() & dex::GEN3_ITEM_FLAG != 0 {
+        pk4.set_held_item(0);
+    }
+    pk4.set_ball(if (1..=12).contains(&ball) { ball } else { 4 });
+    pk4.set_met_location(TRANSFER3);
+    pk4.set_met_level(level)?;
+    pk4.set_met_date(Some(today()));
+    if pk4.species() == SHEDINJA {
+        pk4.set_gender(Gender::Genderless);
+    }
+    pk4.refresh_checksum();
+    Ok(pk4)
+}
+
+// =====================================================================================
 // PK4 → PK5 (Poké Transfert)
 // =====================================================================================
 
@@ -253,7 +392,7 @@ pub fn pk4_to_pk5(pk4: &Pokemon) -> Result<Pokemon, PkmError> {
 
     // Données stockées copiées telles quelles (même disposition PK4 / PK5).
     let mut d = vec![0u8; PkmFormat::Gen5.party_size()];
-    d[..PkmFormat::Gen4.stored_size()].copy_from_slice(pk4.stored_data());
+    d[..PkmFormat::Gen4.stored_size()].copy_from_slice(&pk4.stored_data());
     // Bonheur du dresseur d'origine remis à 70.
     d[0x14] = 70;
     // Nature détachée du PID (0x41 = feuille brillante en Gen 4).
@@ -646,6 +785,12 @@ fn changes(from: PkmFormat, to: PkmFormat, p: &Pokemon) -> Vec<String> {
     let mut f = from;
     while f != to {
         match f {
+            PkmFormat::Gen1 | PkmFormat::Gen2 => {
+                out.push("Console virtuelle → Gen 7 (Poké Transporteur) : nouvelles valeurs (IV, PID, nature d'après l'expérience), talent caché, lieu « Kanto » ou « Johto », surnom et objet perdus.".into());
+            }
+            PkmFormat::Gen3 => {
+                out.push("Gen 3 → 4 (Parc des Amis) : lieu de rencontre « Parc des Amis », date de rencontre = aujourd'hui, niveau de rencontre = niveau actuel, bonheur remis à 70 ; un objet sans équivalent en Gen 4 est perdu.".into());
+            }
             PkmFormat::Gen4 => {
                 out.push("Gen 4 → 5 (Poké Transfert) : lieu de rencontre « Poké Transfert », date de rencontre = aujourd'hui, niveau de rencontre = niveau actuel, bonheur remis à 70.".into());
                 if p.moves().iter().any(|m| HMS_DPPT.contains(m) || HMS_HGSS.contains(m)) {
@@ -707,6 +852,8 @@ pub fn convert_chain(p: &Pokemon, to: PkmFormat, ht: Option<&TransferTrainer>) -
     let mut cur = p.clone();
     while cur.format() != to {
         cur = match cur.format() {
+            PkmFormat::Gen1 | PkmFormat::Gen2 => pk12_to_pk7(&cur)?,
+            PkmFormat::Gen3 => pk3_to_pk4(&cur)?,
             PkmFormat::Gen4 => pk4_to_pk5(&cur)?,
             PkmFormat::Gen5 => pk5_to_pk6(&cur, ht)?,
             PkmFormat::Gen6 => pk6_to_pk7(&cur)?,
@@ -740,6 +887,9 @@ pub fn convert_for(p: &Pokemon, game: Game, trainer: Option<&TransferTrainer>, s
 /// Détecte le format d'un fichier Pokémon d'après son extension ou sa taille.
 pub fn format_from_file(ext: Option<&str>, len: usize) -> Option<PkmFormat> {
     let by_ext = match ext.map(str::to_ascii_lowercase).as_deref() {
+        Some("pk1") => Some(PkmFormat::Gen1),
+        Some("pk2") => Some(PkmFormat::Gen2),
+        Some("pk3") => Some(PkmFormat::Gen3),
         Some("pk4") => Some(PkmFormat::Gen4),
         Some("pk5") => Some(PkmFormat::Gen5),
         Some("pk6") => Some(PkmFormat::Gen6),
@@ -747,6 +897,9 @@ pub fn format_from_file(ext: Option<&str>, len: usize) -> Option<PkmFormat> {
         _ => None,
     };
     by_ext.or(match len {
+        69 => Some(PkmFormat::Gen1),
+        73 => Some(PkmFormat::Gen2),
+        80 | 100 => Some(PkmFormat::Gen3),
         136 | 236 => Some(PkmFormat::Gen4),
         220 => Some(PkmFormat::Gen5),
         // 232 / 260 : PK6 ou PK7 ; sans extension on suppose la Gen 7 si la version l'indique.

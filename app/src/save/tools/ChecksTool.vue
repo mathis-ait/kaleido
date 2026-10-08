@@ -7,12 +7,14 @@ import Tip from "../../components/Tip.vue";
 import { editPokemon, loadBox, saveState } from "../../saveStore";
 import type { SlotView } from "../../types";
 import { checksFromReport, type Check } from "../checks";
-import { legalizeAll, type SlotReport } from "../legality";
+import type { SlotReport } from "../legality";
+import GroupLegalize from "./GroupLegalize.vue";
 
 const all = ref<SlotView[] | null>(null);
 const reports = ref<SlotReport[]>([]);
 const onlyProblems = ref(true);
-const working = ref(false);
+/** Aperçu groupé de « Tout rendre légal ». */
+const groupOpen = ref(false);
 
 async function scan() {
   all.value = null;
@@ -47,18 +49,10 @@ async function open(p: SlotView) {
   editPokemon(p);
 }
 
-async function fixAll() {
-  const n = count.value.errors;
-  if (!n || working.value) return;
-  const ok = window.confirm(
-    `Rendre légaux les ${n} Pokémon illégaux ?\n\nKaleido réécrit au besoin leur rencontre, leur Ball, leur talent, leur PID/IV et retire les attaques impossibles. Une seule étape d'annulation : Ctrl+Z remet tout comme avant.`,
-  );
-  if (!ok) return;
-  working.value = true;
-  await legalizeAll(results.value.filter((r) => r.errors).map((r) => r.p.slot));
-  working.value = false;
-  await scan();
+function fixAll() {
+  if (count.value.errors) groupOpen.value = true;
 }
+const illegalSlots = computed(() => results.value.filter((r) => r.errors).map((r) => r.p.slot));
 
 const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.index + 1}` : `${saveState.view!.boxNames[p.slot.box]} · ${p.slot.index + 1}`);
 </script>
@@ -78,10 +72,8 @@ const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.inde
         Seulement les problèmes
       </label>
       <button class="sv-btn" :disabled="!all" @click="scan"><Icon name="refresh" :size="15" /> Relancer</button>
-      <button class="sv-btn solid" :disabled="!count.errors || working" @click="fixAll">
-        <Icon name="wand" :size="15" /> {{ working ? "Correction…" : "Tout rendre légal" }}
-      </button>
-      <Tip term="legalize" />
+      <button class="sv-btn solid" :disabled="!count.errors || groupOpen" @click="fixAll"><Icon name="wand" :size="15" /> Tout rendre légal</button>
+      <Tip term="legalizeTeam" />
     </div>
     <p v-if="!all" class="sv-help">Analyse en cours…</p>
     <p v-else-if="!shown.length" class="sv-help">Aucun problème trouvé.</p>
@@ -100,6 +92,7 @@ const where = (p: SlotView) => (p.slot.kind === "party" ? `Équipe ${p.slot.inde
         <Icon name="chevron-right" />
       </button>
     </div>
+    <GroupLegalize v-model="groupOpen" :slots="illegalSlots" title="Tout rendre légal" @applied="scan" />
   </div>
 </template>
 

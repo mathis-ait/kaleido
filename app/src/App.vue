@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import Sidebar from "./components/Sidebar.vue";
 import DropOverlay from "./components/DropOverlay.vue";
+import PlayGuide from "./play/PlayGuide.vue";
 import HomeView from "./views/HomeView.vue";
 import LibraryView from "./views/LibraryView.vue";
 import EditorView from "./views/EditorView.vue";
@@ -57,6 +58,8 @@ onUnmounted(() => unlisten?.());
       </Transition>
     </main>
     <DropOverlay :visible="dragging" />
+    <!-- Guide « Jouer » : une seule instance, ouvrable depuis n'importe quelle page (bibliothèque, lanceur…). -->
+    <PlayGuide />
   </div>
 </template>
 

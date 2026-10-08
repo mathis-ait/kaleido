@@ -3,7 +3,6 @@ import { computed, onMounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import Icon from "../components/Icon.vue";
-import PlayGuide from "./PlayGuide.vue";
 import PlayTip from "./PlayTip.vue";
 import { emus, loadEmulators, showGuide, updateConfig, type EmulatorId, type EmulatorInfo, type PlayPlatform } from "./play";
 
@@ -14,12 +13,15 @@ const tests = reactive<Partial<Record<EmulatorId, { ok: boolean; text: string }>
 onMounted(loadEmulators);
 
 const groups = computed(() => [
+  { platform: "gba" as PlayPlatform, title: "Game Boy Advance", list: emus.list.filter((e) => e.platform === "gba") },
   { platform: "nds" as PlayPlatform, title: "Nintendo DS", list: emus.list.filter((e) => e.platform === "nds") },
   { platform: "3ds" as PlayPlatform, title: "Nintendo 3DS", list: emus.list.filter((e) => e.platform === "3ds") },
 ]);
 
 const profile = (id: EmulatorId) => emus.config.profiles[id] ?? {};
-const preferred = (p: PlayPlatform) => (p === "nds" ? emus.config.preferredNds : emus.config.preferredCtr);
+const preferred = (p: PlayPlatform) => (p === "nds" ? emus.config.preferredNds : p === "gba" ? emus.config.preferredGba : emus.config.preferredCtr);
+/** DS et GBA : sauvegarde à côté de la ROM ou dans un dossier ; 3DS : dossier utilisateur. */
+const usesSaveDir = (e: EmulatorInfo) => e.platform === "nds" || e.platform === "gba";
 
 async function pickExe(e: EmulatorInfo) {
   const exe = await open({ title: `Exécutable de ${e.name}`, filters: [{ name: "Programme", extensions: ["exe"] }, { name: "Tous les fichiers", extensions: ["*"] }] });
@@ -34,20 +36,21 @@ async function autoDetect(e: EmulatorInfo) {
 }
 
 async function pickDir(e: EmulatorInfo) {
-  const dir = await open({ directory: true, title: e.platform === "nds" ? `Dossier des sauvegardes de ${e.name}` : `Dossier utilisateur de ${e.name} (contient sdmc et load)` });
+  const dir = await open({ directory: true, title: usesSaveDir(e) ? `Dossier des sauvegardes de ${e.name}` : `Dossier utilisateur de ${e.name} (contient sdmc et load)` });
   if (typeof dir !== "string") return;
-  await updateConfig((c) => (c.profiles[e.id] = { ...c.profiles[e.id], ...(e.platform === "nds" ? { saveDir: dir } : { userDir: dir }) }));
+  await updateConfig((c) => (c.profiles[e.id] = { ...c.profiles[e.id], ...(usesSaveDir(e) ? { saveDir: dir } : { userDir: dir }) }));
 }
 
 async function resetDir(e: EmulatorInfo) {
   await updateConfig((c) => (c.profiles[e.id] = { ...c.profiles[e.id], saveDir: null, userDir: null }));
 }
 
-const hasDirOverride = (e: EmulatorInfo) => !!(e.platform === "nds" ? profile(e.id).saveDir : profile(e.id).userDir);
+const hasDirOverride = (e: EmulatorInfo) => !!(usesSaveDir(e) ? profile(e.id).saveDir : profile(e.id).userDir);
 
 async function setPreferred(e: EmulatorInfo) {
   await updateConfig((c) => {
     if (e.platform === "nds") c.preferredNds = e.id;
+    else if (e.platform === "gba") c.preferredGba = e.id;
     else c.preferredCtr = e.id;
   });
 }
@@ -113,12 +116,12 @@ function status(e: EmulatorInfo) {
 
         <div v-if="e.exe || hasDirOverride(e)" class="dir">
           <span class="sv-label">
-            {{ e.platform === "nds" ? "Sauvegardes" : "Dossier utilisateur" }}
-            <PlayTip :term="e.platform === 'nds' ? 'saveDir' : 'userDir'" />
+            {{ usesSaveDir(e) ? "Sauvegardes" : "Dossier utilisateur" }}
+            <PlayTip :term="usesSaveDir(e) ? 'saveDir' : 'userDir'" />
             <PlayTip v-if="e.platform === 'nds'" term="formats" />
           </span>
           <p class="path">
-            <template v-if="e.platform === 'nds' && !e.dataDir">À côté de la ROM (<code>{{ e.id === "desmume" ? "nom.dsv" : "nom.sav" }}</code>)</template>
+            <template v-if="usesSaveDir(e) && !e.dataDir">À côté de la ROM (<code>{{ e.id === "desmume" ? "nom.dsv" : "nom.sav" }}</code>)</template>
             <template v-else>
               <span class="mono">{{ e.dataDir }}</span>
               <span v-if="!e.dataDirExists" class="dim"> — pas encore créé</span>
@@ -152,7 +155,6 @@ function status(e: EmulatorInfo) {
         </div>
       </div>
     </section>
-    <PlayGuide />
   </div>
 </template>
 

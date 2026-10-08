@@ -166,8 +166,9 @@ pub fn chain(generation: u8, species: u16, form: u8, level: u8) -> Vec<Stage> {
             last.level_min = last.level_min.max(need.max(1));
         }
         // Le pré-stade a évolué au plus tard au niveau actuel (avant s'il fallait monter d'un niveau).
+        // Gen 3 et avant : l'attaque du niveau est apprise puis le Pokémon évolue au même niveau.
         let lvlup = links.iter().all(|l| l.needs_level_up());
-        if lvlup && max > 1 {
+        if lvlup && max > 1 && generation >= 4 {
             max -= 1;
         }
         out.push(Stage { species: link.from_species, form: link.from_form, level_max: max, level_min: 1 });

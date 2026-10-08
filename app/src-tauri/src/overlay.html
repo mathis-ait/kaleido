@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaleido · Overlay</title>
+<style>
+/*__THEME_TOKENS__*/
+
+/*
+ * Overlay pour OBS (source navigateur). Fond transparent, cartes en aplat sur la surface
+ * opaque du thème : lisibles sur n'importe quelle image de jeu. Ni dégradé, ni halo.
+ * Tout est dimensionné en multiples de --s (paramètre « scale »).
+ */
+:root { --s: 1; }
+/* Sans schéma de couleurs, le navigateur ne peint pas de fond opaque derrière la page
+   quand elle est dans une iframe (aperçu dans Kaleido) : la transparence reste réelle. */
+html { color-scheme: normal !important; }
+html, body {
+  margin: 0;
+  background: transparent !important;
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+*, *::before, *::after { box-sizing: border-box; }
+.root { display: inline-flex; padding: calc(8px * var(--s)); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(12px * var(--s));
+}
+.dim { color: var(--text-dim); }
+.wait {
+  padding: calc(10px * var(--s)) calc(16px * var(--s));
+  font-size: calc(15px * var(--s));
+  font-weight: 600;
+}
+
+/* Sprites : pixels entiers, posés au bas de leur case. */
+.sprite {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sprite img { image-rendering: pixelated; display: block; }
+.sprite.ko img { filter: grayscale(1); opacity: 0.45; }
+.egg {
+  width: 44%;
+  height: 56%;
+  margin-bottom: 12%;
+  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  background: color-mix(in srgb, var(--text) 82%, transparent);
+}
+.star {
+  position: absolute;
+  top: calc(4px * var(--s));
+  right: calc(4px * var(--s));
+  width: calc(14px * var(--s));
+  height: calc(14px * var(--s));
+  fill: var(--shiny);
+}
+
+/* PV */
+.hp {
+  height: calc(6px * var(--s));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  overflow: hidden;
+}
+.hp i { display: block; height: 100%; background: var(--ok); }
+.hp.warn i { background: var(--warn); }
+.hp.danger i { background: var(--danger); }
+.num { font-size: calc(12px * var(--s)); font-variant-numeric: tabular-nums; }
+
+.chip {
+  display: inline-block;
+  padding: calc(1px * var(--s)) calc(6px * var(--s));
+  border-radius: 999px;
+  font-size: calc(11px * var(--s));
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--warn) 22%, var(--surface));
+  color: var(--warn);
+}
+.chip.ko { background: color-mix(in srgb, var(--danger) 22%, var(--surface)); color: var(--danger); }
+
+/* ---- bar : six cases en ligne ---- */
+.stack { display: flex; flex-direction: column; align-items: flex-start; gap: calc(6px * var(--s)); }
+.place {
+  padding: calc(4px * var(--s)) calc(12px * var(--s));
+  font-size: calc(13px * var(--s));
+  font-weight: 700;
+}
+/* Cases de même hauteur : le nom, les PV et les pastilles tombent sur les mêmes lignes. */
+.bar { display: flex; gap: calc(8px * var(--s)); align-items: stretch; }
+.bar .slot {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--s));
+  width: calc(124px * var(--s));
+  padding: calc(6px * var(--s)) calc(8px * var(--s)) calc(8px * var(--s));
+}
+.bar .sprite { width: 100%; height: calc(88px * var(--s)); }
+.bar .line { display: flex; align-items: center; justify-content: space-between; gap: calc(4px * var(--s)); min-width: 0; }
+.bar .name {
+  overflow: hidden;
+  font-size: calc(13px * var(--s));
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lv { flex-shrink: 0; font-size: calc(12px * var(--s)); font-weight: 600; color: var(--text-dim); }
+.item { overflow: hidden; font-size: calc(11px * var(--s)); color: var(--text-dim); white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---- card : colonne verticale ---- */
+.column { display: flex; flex-direction: column; gap: calc(6px * var(--s)); width: calc(320px * var(--s)); }
+.column .row { display: flex; align-items: center; gap: calc(8px * var(--s)); padding: calc(2px * var(--s)) calc(10px * var(--s)) calc(2px * var(--s)) calc(4px * var(--s)); }
+/* Assez large pour un sprite pixel entier (jusqu'à 96 px à l'échelle 1) sans déborder de la carte. */
+.column .sprite { width: calc(96px * var(--s)); height: calc(76px * var(--s)); }
+.column .who { display: flex; flex: 1; flex-direction: column; gap: calc(4px * var(--s)); min-width: 0; }
+.column .line { display: flex; align-items: baseline; gap: calc(6px * var(--s)); min-width: 0; }
+.column .name { overflow: hidden; font-size: calc(15px * var(--s)); font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---- deaths : compteurs ---- */
+.counters { display: flex; }
+.counters > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: calc(96px * var(--s));
+  padding: calc(8px * var(--s)) calc(16px * var(--s));
+}
+.counters > div + div { border-left: 1px solid var(--border); }
+.counters strong { font-size: calc(30px * var(--s)); font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.counters span { font-size: calc(12px * var(--s)); font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.counters .dead strong { color: var(--danger); }
+
+/* ---- ticker : derniers évènements ---- */
+.ticker {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--s));
+  width: calc(640px * var(--s));
+  padding: calc(8px * var(--s)) calc(14px * var(--s));
+  overflow: hidden;
+}
+.ticker .tag {
+  flex-shrink: 0;
+  padding: calc(2px * var(--s)) calc(8px * var(--s));
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: calc(11px * var(--s));
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ticker .tag.died, .ticker .tag.fainted { background: var(--danger); }
+.ticker .msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(15px * var(--s));
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.ticker .msg.out { opacity: 0; transform: translateY(calc(6px * var(--s))); }
+.ticker .when { flex-shrink: 0; font-size: calc(12px * var(--s)); }
+
+/* ---- next : prochain combat ---- */
+.next { display: flex; flex-direction: column; gap: calc(6px * var(--s)); padding: calc(8px * var(--s)) calc(12px * var(--s)); }
+.next .head { font-size: calc(13px * var(--s)); }
+.next .head strong { font-size: calc(15px * var(--s)); }
+.next ul { display: flex; gap: calc(6px * var(--s)); margin: 0; padding: 0; list-style: none; }
+.next li { display: flex; flex-direction: column; align-items: center; gap: calc(2px * var(--s)); width: calc(96px * var(--s)); }
+.next .sprite { width: 100%; height: calc(80px * var(--s)); }
+.next .counter { max-width: 100%; overflow: hidden; font-size: calc(11px * var(--s)); white-space: nowrap; text-overflow: ellipsis; }
+.next .counter.win { color: var(--ok); }
+.next .counter.lose { color: var(--danger); }
+
+@media (prefers-reduced-motion: reduce) { .ticker .msg { transition: none; } }
+</style>
+</head>
+<body>
+<div id="app" class="root"></div>
+<script>
+"use strict";
+const q = new URLSearchParams(location.search);
+const KEY = q.get("k") || "";
+const LAYOUT = ["bar", "card", "deaths", "ticker", "next"].includes(q.get("layout")) ? q.get("layout") : "bar";
+const THEME = ["nuit", "jour", "graphite"].includes(q.get("theme")) ? q.get("theme") : "nuit";
+const SCALE = Math.min(3, Math.max(0.5, parseFloat(q.get("scale")) || 1));
+const HP = ["bar", "number", "none"].includes(q.get("hp")) ? q.get("hp") : "bar";
+const SHOW = new Set((q.get("show") ?? "status,nickname").split(",").filter(Boolean));
+const STYLE = ["gen5ani", "gen5", "ani", "dex", "home", "icons"].includes(q.get("style")) ? q.get("style") : "gen5ani";
+// Sprites en pixels entiers à partir de 1 : un pixel du jeu = k pixels de l'écran.
+const PIXEL = SCALE >= 1 ? Math.round(SCALE) : SCALE;
+
+document.documentElement.dataset.theme = THEME;
+document.documentElement.style.setProperty("--s", String(SCALE));
+
+const STATUS = { sleep: "Sommeil", poison: "Poison", badPoison: "Poison grave", burn: "Brûlure", freeze: "Gel", paralysis: "Paralysie" };
+const KINDS = { caught: "Capture", hatched: "Éclosion", evolved: "Évolution", levelUp: "Niveau", fainted: "K.O.", revived: "Soin", died: "Mort", gone: "Départ", badge: "Badge" };
+
+const app = document.getElementById("app");
+let state = null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const monName = (m) => (m.isEgg ? "Œuf" : SHOW.has("nickname") && m.nickname ? m.nickname : m.speciesName);
+const tone = (r) => (r > 0.5 ? "" : r > 0.2 ? "warn" : "danger");
+const bits = (b) => (b == null ? null : [...b.toString(2)].filter((c) => c === "1").length);
+
+function spriteUrl(species, form, shiny, female) {
+  const p = new URLSearchParams({ style: STYLE });
+  if (shiny) p.set("shiny", "1");
+  if (female) p.set("female", "1");
+  return `/sprite/${species}/${form || 0}?${p}`;
+}
+
+function sprite(m, ko) {
+  if (m.isEgg) return `<span class="sprite"><span class="egg"></span></span>`;
+  const star = m.shiny
+    ? `<svg class="star" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0l1.9 6.1L16 8l-6.1 1.9L8 16l-1.9-6.1L0 8l6.1-1.9z"/></svg>`
+    : "";
+  const url = spriteUrl(m.species, m.form, m.shiny, m.gender === "female");
+  return `<span class="sprite${ko ? " ko" : ""}"><img alt="" src="${url}" data-pixel>${star}</span>`;
+}
+
+function hpBlock(m) {
+  if (m.isEgg || !m.maxHp || HP === "none") return "";
+  const r = m.hp / m.maxHp;
+  if (HP === "number") return `<span class="num">${m.hp} / ${m.maxHp} PV</span>`;
+  return `<span class="hp ${tone(r)}"><i style="width:${Math.round(r * 100)}%"></i></span>`;
+}
+
+function flag(m) {
+  const ko = !m.isEgg && m.maxHp > 0 && m.hp === 0;
+  if (ko) return `<span class="chip ko">K.O.</span>`;
+  if (SHOW.has("status") && m.status && m.status !== "none") return `<span class="chip">${STATUS[m.status]}</span>`;
+  return "";
+}
+
+function wait(text) {
+  return `<div class="card wait dim">${esc(text)}</div>`;
+}
+
+function renderBar(s) {
+  const route = SHOW.has("route") && state.place ? `<div class="card place">${esc(state.place)}</div>` : "";
+  const slots = s.party
+    .map((m) => {
+      const ko = !m.isEgg && m.maxHp > 0 && m.hp === 0;
+      const item = SHOW.has("item") && m.itemName ? `<span class="item">${esc(m.itemName)}</span>` : "";
+      return `<div class="card slot">${sprite(m, ko)}
+        <span class="line"><span class="name">${esc(monName(m))}</span>${m.isEgg ? "" : `<span class="lv">N. ${m.level}</span>`}</span>
+        ${hpBlock(m)}${item}${flag(m) ? `<span class="line">${flag(m)}</span>` : ""}</div>`;
+    })
+    .join("");
+  return `<div class="stack">${route}<div class="bar">${slots || wait("Équipe vide")}</div></div>`;
+}
+
+function renderCard(s) {
+  const head = SHOW.has("route") && state.place ? `<div class="card place">${esc(state.place)}</div>` : "";
+  const rows = s.party
+    .map((m) => {
+      const ko = !m.isEgg && m.maxHp > 0 && m.hp === 0;
+      const item = SHOW.has("item") && m.itemName ? `<span class="item">${esc(m.itemName)}</span>` : "";
+      const num = HP === "bar" && !m.isEgg && m.maxHp ? `<span class="num dim">${m.hp} / ${m.maxHp}</span>` : "";
+      return `<div class="card row">${sprite(m, ko)}<span class="who">
+        <span class="line"><span class="name">${esc(monName(m))}</span>${m.isEgg ? "" : `<span class="lv">N. ${m.level}</span>`}${flag(m)}</span>
+        ${hpBlock(m)}${num}${item}</span></div>`;
+    })
+    .join("");
+  return `<div class="column">${head}${rows || wait("Équipe vide")}</div>`;
+}
+
+function counts() {
+  const n = state.nuzlocke;
+  const journal = state.journal || [];
+  const of = (k) => journal.filter((e) => e.kind === k).length;
+  return {
+    dead: n ? n.dead : of("died"),
+    caught: n ? n.captures : of("caught"),
+    badges: bits(state.snapshot?.badges),
+  };
+}
+
+function renderDeaths() {
+  const c = counts();
+  const badge = state.snapshot?.generation === 7 ? "Épreuves" : "Badges";
+  return `<div class="card counters">
+    <div class="dead"><strong>${c.dead}</strong><span>Morts</span></div>
+    <div><strong>${c.caught}</strong><span>Captures</span></div>
+    ${c.badges == null ? "" : `<div><strong>${c.badges}</strong><span>${badge}</span></div>`}
+  </div>`;
+}
+
+// Ticker : l'évènement le plus récent s'affiche tout de suite, puis les cinq derniers défilent.
+let tickIndex = 0;
+let tickTimer = 0;
+let lastTop = null;
+
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return "à l'instant";
+  const m = Math.round(s / 60);
+  return m < 60 ? `il y a ${m} min` : `il y a ${Math.round(m / 60)} h`;
+}
+
+function renderTicker() {
+  const list = (state.journal || []).slice(0, 5);
+  if (!list.length) return wait("Aucun évènement pour l'instant");
+  const top = list[0].at + list[0].text;
+  if (top !== lastTop) {
+    lastTop = top;
+    tickIndex = 0;
+  }
+  const e = list[tickIndex % list.length];
+  return `<div class="card ticker"><span class="tag ${esc(e.kind)}">${esc(KINDS[e.kind] || "Partie")}</span>
+    <span class="msg">${esc(e.text)}</span><span class="when dim">${ago(e.at)}</span></div>`;
+}
+
+function cycleTicker() {
+  clearInterval(tickTimer);
+  if (LAYOUT !== "ticker") return;
+  tickTimer = setInterval(() => {
+    const list = (state?.journal || []).slice(0, 5);
+    if (list.length < 2) return;
+    const msg = app.querySelector(".msg");
+    msg?.classList.add("out");
+    setTimeout(() => {
+      tickIndex = (tickIndex + 1) % list.length;
+      render();
+    }, 250);
+  }, 6000);
+}
+
+function renderNext() {
+  const b = state.nextBattle;
+  if (!b) return wait("Prochain combat inconnu");
+  const team = b.team
+    .map((o) => {
+      const c = o.counter;
+      const cls = c ? (c.verdict === "win" ? "win" : c.verdict === "lose" ? "lose" : "") : "";
+      return `<li>${sprite({ species: o.species, form: o.form })}<span class="lv">N. ${o.level}</span>
+        ${c ? `<span class="counter ${cls}" title="Ton meilleur contre"><span class="dim">contre</span> ${esc(c.name)}</span>` : ""}</li>`;
+    })
+    .join("");
+  return `<div class="card next"><span class="head">${esc(b.label)} · <strong>${esc(b.name)}</strong> <span class="dim">${esc(b.town)}</span></span><ul>${team}</ul></div>`;
+}
+
+function render() {
+  if (!state) {
+    app.innerHTML = wait("En attente de partie");
+    return;
+  }
+  const s = state.snapshot;
+  if (!s && LAYOUT !== "deaths" && LAYOUT !== "ticker") {
+    app.innerHTML = wait("En attente de la première sauvegarde");
+    return;
+  }
+  app.innerHTML =
+    LAYOUT === "card" ? renderCard(s) : LAYOUT === "deaths" ? renderDeaths() : LAYOUT === "ticker" ? renderTicker() : LAYOUT === "next" ? renderNext() : renderBar(s);
+  for (const img of app.querySelectorAll("img[data-pixel]")) {
+    const fit = () => {
+      img.style.width = `${img.naturalWidth * PIXEL}px`;
+      img.style.height = `${img.naturalHeight * PIXEL}px`;
+    };
+    if (img.complete && img.naturalWidth) fit();
+    else img.addEventListener("load", fit, { once: true });
+    img.addEventListener("error", () => (img.style.visibility = "hidden"), { once: true });
+  }
+}
+
+function update(next) {
+  state = next;
+  render();
+}
+
+async function boot() {
+  try {
+    const r = await fetch(`/api/state?k=${encodeURIComponent(KEY)}`, { cache: "no-store" });
+    if (r.ok) update(await r.json());
+    else app.innerHTML = wait(r.status === 403 ? "Jeton incorrect : recopie l'URL depuis Kaleido" : "Kaleido ne répond pas");
+  } catch {
+    render();
+  }
+  // EventSource se reconnecte seul (délai « retry » envoyé par Kaleido) : rien à faire après un redémarrage.
+  const es = new EventSource(`/events?k=${encodeURIComponent(KEY)}`);
+  es.onmessage = (e) => {
+    try {
+      update(JSON.parse(e.data));
+    } catch {
+      /* message incomplet : on garde l'affichage précédent */
+    }
+  };
+  cycleTicker();
+  // Ticker : rafraîchit « il y a 2 min ».
+  if (LAYOUT === "ticker") setInterval(() => app.querySelector(".msg.out") || render(), 30000);
+}
+
+render();
+boot();
+</script>
+</body>
+</html>

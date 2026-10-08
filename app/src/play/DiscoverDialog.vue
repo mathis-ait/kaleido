@@ -13,6 +13,7 @@ import { applyState, type EmulatorId, type EmulatorsState } from "./play";
 
 interface FoundFolder {
   path: string;
+  gba?: number;
   nds: number;
   ctr: number;
   switch: number;
@@ -66,6 +67,7 @@ function toggle<T>(set: Set<T>, v: T) {
 
 function counts(f: FoundFolder) {
   const parts: string[] = [];
+  if (f.gba) parts.push(`${f.gba} GB / GBA`);
   if (f.nds) parts.push(`${f.nds} DS`);
   if (f.ctr) parts.push(`${f.ctr} 3DS`);
   if (f.switch) parts.push(`${f.switch} Switch`);

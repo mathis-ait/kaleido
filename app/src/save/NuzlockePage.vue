@@ -102,7 +102,7 @@ async function pickRom(folder = false) {
   const path = await open({
     title: folder ? "Dossier du jeu 3DS extrait" : "Choisir la ROM de la partie",
     directory: folder,
-    filters: folder ? undefined : [{ name: "ROM DS / 3DS", extensions: ["nds", "3ds", "cci", "cxi", "app"] }],
+    filters: folder ? undefined : [{ name: "ROM GBA / DS / 3DS", extensions: ["gba", "nds", "3ds", "cci", "cxi", "app"] }],
   });
   if (typeof path === "string") link(path);
 }

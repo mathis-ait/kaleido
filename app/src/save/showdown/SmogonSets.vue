@@ -7,10 +7,11 @@ import Icon from "../../components/Icon.vue";
 import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
+import Toggle from "../../components/Toggle.vue";
 import { notify, saveState } from "../../saveStore";
 import type { Slot, SlotView } from "../../types";
 import { keyOf } from "../shell";
-import { addSet, applySet, showdownUi, smogonSets, statLine, type SmogonSet, type SmogonSets } from "./api";
+import { addSet, applySet, legalityNotes, showdownUi, smogonSets, statLine, type SmogonSet, type SmogonSets } from "./api";
 
 /**
  * Fenêtre « Sets compétitifs » : sets conseillés par Smogon pour l'espèce du Pokémon,
@@ -107,7 +108,7 @@ async function addNew(s: SmogonSet) {
     if (r?.error) actionError.value = r.error;
     else if (props.empty) {
       close();
-    } else lastWarnings.value = { key: keyOfSet(s), list: r?.warnings ?? [] };
+    } else lastWarnings.value = { key: keyOfSet(s), list: [...(r?.warnings ?? []), ...legalityNotes(r?.legality ?? null)] };
   } catch (e) {
     actionError.value = String(e);
   } finally {
@@ -227,12 +228,14 @@ onBeforeUnmount(() => {
     <template #foot>
       <p class="sv-help">
         Sets <Tip term="showdownSet" /> issus des analyses de Smogon University (données pkmn/smogon).
-        <template v-if="empty">Le Pokémon est créé à ton nom, dans une Poké Ball, avec le set choisi. Ctrl+Z pour annuler.</template>
+        <template v-if="empty">Le Pokémon est créé à ton nom avec le set choisi, puis rendu légal (rencontre, Ball, PID). Ctrl+Z pour annuler.</template>
         <template v-else>
-          « Appliquer » remplace l'objet, le talent, la nature, les EV/IV, les attaques et le niveau ; le dresseur et la rencontre sont gardés. Ctrl+Z
-          pour annuler.
+          « Appliquer » remplace l'objet, le talent, la nature, les EV/IV, les attaques et le niveau ; le dresseur et la rencontre sont gardés si
+          possible. Ctrl+Z pour annuler.
         </template>
       </p>
+      <span class="grow" />
+      <Toggle v-model="showdownUi.asIs" label="Importer tel quel" term="importAsIs" />
     </template>
   </Dialog>
 </template>

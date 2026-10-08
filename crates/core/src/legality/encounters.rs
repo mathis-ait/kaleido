@@ -16,6 +16,18 @@ use crate::dex::Game;
 
 // --- Versions (`GameVersion` de PKHeX).
 
+/// Console virtuelle : Rouge, Vert, Bleu, Jaune, Or, Argent, Cristal.
+pub const RD: u8 = 35;
+pub const BU: u8 = 37;
+pub const YW: u8 = 38;
+pub const GD: u8 = 39;
+pub const SI: u8 = 40;
+pub const CR: u8 = 41;
+pub const SA: u8 = 1;
+pub const RU: u8 = 2;
+pub const EM: u8 = 3;
+pub const FR: u8 = 4;
+pub const LG: u8 = 5;
 pub const HG: u8 = 7;
 pub const SS: u8 = 8;
 pub const D: u8 = 10;
@@ -37,6 +49,13 @@ pub const UM: u8 = 33;
 /// Versions d'un groupe de jeux.
 pub fn game_versions(game: Game) -> &'static [u8] {
     match game {
+        Game::RB => &[RD, BU],
+        Game::Y => &[YW],
+        Game::GS => &[GD, SI],
+        Game::C => &[CR],
+        Game::RS => &[RU, SA],
+        Game::E => &[EM],
+        Game::FRLG => &[FR, LG],
         Game::DP => &[D, P],
         Game::Pt => &[PT],
         Game::HGSS => &[HG, SS],
@@ -52,6 +71,13 @@ pub fn game_versions(game: Game) -> &'static [u8] {
 /// Groupe de jeux d'une version Gen 4 à 7.
 pub fn version_game(version: u8) -> Option<Game> {
     Some(match version {
+        RD | 36 | BU => Game::RB,
+        YW => Game::Y,
+        GD | SI => Game::GS,
+        CR => Game::C,
+        RU | SA => Game::RS,
+        EM => Game::E,
+        FR | LG => Game::FRLG,
         D | P => Game::DP,
         PT => Game::Pt,
         HG | SS => Game::HGSS,
@@ -315,6 +341,9 @@ pub struct Encounter {
     pub language: Option<u8>,
     pub ec: Option<u32>,
     pub title: Option<String>,
+    /// Gen 4 sauvage : numéros d'emplacement (slot) de la zone, pour les tirages des méthodes J et K.
+    #[serde(skip)]
+    pub slots: Vec<u8>,
 }
 
 impl Encounter {
@@ -351,6 +380,7 @@ impl Encounter {
             language: None,
             ec: None,
             title: None,
+            slots: Vec::new(),
         }
     }
 
@@ -462,7 +492,27 @@ const FRIEND_SAFARI: &[u16] = &[
 
 fn read_areas(data: &[u8], version: u8, generation: u8, out: &mut Vec<Encounter>) {
     for area in binlinker32(data) {
-        if generation == 4 {
+        if generation == 3 {
+            // `EncounterArea3` : lieu u8, (inutilisé), type, taux, emplacements de 10 octets
+            // (espèce u16, forme, n° d'emplacement, niveaux min et max, 4 octets de Méthode 1).
+            if area.len() < 4 {
+                continue;
+            }
+            let location = area[0] as u16;
+            let kind = if area[2] >= 6 { EncounterKind::Swarm } else { gen4_kind(area[2]) };
+            for s in area[4..].as_chunks::<10>().0 {
+                let species = u16_at(s, 0);
+                if species == 0 {
+                    continue;
+                }
+                let mut e = Encounter::base(kind, 3, vec![version], species, s[2], s[4], s[5], location);
+                // Parc Safari : Safari Ball.
+                if matches!(location, 57 | 136) {
+                    e.ball = Some(5);
+                }
+                out.push(e);
+            }
+        } else if generation == 4 {
             if area.len() < 6 {
                 continue;
             }
@@ -474,6 +524,7 @@ fn read_areas(data: &[u8], version: u8, generation: u8, out: &mut Vec<Encounter>
                     continue;
                 }
                 let mut e = Encounter::base(kind, 4, vec![version], species, s[2], s[4], s[5], location);
+                e.slots = vec![s[3]];
                 if kind == EncounterKind::BugContest {
                     e.ball = Some(24);
                 } else if kind.is_safari() || location == 52 {
@@ -755,6 +806,12 @@ fn build(game: Game) -> Vec<Encounter> {
         Game::ORAS => &[(pkl!("or"), OR), (pkl!("as"), AS)],
         Game::SM => &[(pkl!("sn"), SN), (pkl!("mn"), MN)],
         Game::USUM => &[(pkl!("us"), US), (pkl!("um"), UM)],
+        // Gen 3 : herbes, surf, cannes, Éclate-Roc (format `EncounterArea3`).
+        Game::RS => &[(pkl!("r"), RU), (pkl!("s"), SA)],
+        Game::E => &[(pkl!("e"), EM)],
+        Game::FRLG => &[(pkl!("fr"), FR), (pkl!("lg"), LG)],
+        // Gen 1 et 2 : pas de table de rencontres embarquée.
+        Game::RB | Game::Y | Game::GS | Game::C => &[],
     };
     for &(data, version) in files {
         read_areas(data, version, generation, &mut out);
@@ -784,6 +841,11 @@ fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
                         out[i].versions.push(*v);
                     }
                 }
+                for s in &e.slots {
+                    if !out[i].slots.contains(s) {
+                        out[i].slots.push(*s);
+                    }
+                }
                 continue;
             }
             index.insert(key, out.len());
@@ -793,7 +855,7 @@ fn merge_versions(list: Vec<Encounter>) -> Vec<Encounter> {
     out
 }
 
-static TABLES: [LazyLock<Vec<Encounter>>; 9] = [
+static TABLES: [LazyLock<Vec<Encounter>>; 16] = [
     LazyLock::new(|| build(Game::DP)),
     LazyLock::new(|| build(Game::Pt)),
     LazyLock::new(|| build(Game::HGSS)),
@@ -803,6 +865,13 @@ static TABLES: [LazyLock<Vec<Encounter>>; 9] = [
     LazyLock::new(|| build(Game::ORAS)),
     LazyLock::new(|| build(Game::SM)),
     LazyLock::new(|| build(Game::USUM)),
+    LazyLock::new(|| build(Game::RS)),
+    LazyLock::new(|| build(Game::E)),
+    LazyLock::new(|| build(Game::FRLG)),
+    LazyLock::new(|| build(Game::RB)),
+    LazyLock::new(|| build(Game::Y)),
+    LazyLock::new(|| build(Game::GS)),
+    LazyLock::new(|| build(Game::C)),
 ];
 
 /// Toutes les rencontres d'un groupe de jeux (sauvages puis fixes, dons, échanges…).

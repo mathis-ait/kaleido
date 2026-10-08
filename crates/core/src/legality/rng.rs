@@ -345,3 +345,408 @@ pub fn generate_pid(rand: &mut Rand, tid: u16, sid: u16, threshold: u32, wish: P
     }
     rand.next_u32()
 }
+
+// --- Gen 4 sauvage : méthodes J (DPPt) et K (HGSS), Poké Radar.
+//
+// D'après `MethodJ.cs`, `MethodK.cs`, `SlotMethodJ.cs`, `SlotMethodK.cs` et
+// `SlotMethodH.cs` de PKHeX. Avant le PID, le jeu tire l'emplacement (slot), parfois le
+// niveau, puis la nature ; il retire ensuite des PID (bas, haut) jusqu'à obtenir cette
+// nature, et enfin les IV. Un talent Synchronisation en tête remplace le tirage de la
+// nature par un test (réussi : nature du meneur) ; les autres talents de tête ajoutent un
+// tirage entre le slot et la nature.
+
+/// Méthode de tirage des rencontres sauvages de la Gen 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Method4 {
+    /// Diamant, Perle, Platine.
+    J,
+    /// HeartGold, SoulSilver.
+    K,
+}
+
+impl Method4 {
+    pub fn of_version(version: u8) -> Self {
+        if matches!(version, 7 | 8) {
+            Method4::K
+        } else {
+            Method4::J
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Method4::J => "méthode J",
+            Method4::K => "méthode K",
+        }
+    }
+
+    fn nature(self, r: u32) -> u32 {
+        match self {
+            Method4::J => r / 0xA3E,
+            Method4::K => r % 25,
+        }
+    }
+
+    fn sync_pass(self, r: u32) -> bool {
+        match self {
+            Method4::J => r >> 15 == 0,
+            Method4::K => r & 1 == 0,
+        }
+    }
+}
+
+/// Type de zone Gen 4 utile aux tirages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Area4 {
+    Grass,
+    Surf,
+    OldRod,
+    GoodRod,
+    SuperRod,
+}
+
+/// Un emplacement de rencontre : numéro de slot et niveaux.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Slot4 {
+    pub area: Area4,
+    pub slot: u8,
+    pub level_min: u8,
+    pub level_max: u8,
+}
+
+fn slot_regular(roll: u32) -> u8 {
+    match roll {
+        0..=19 => 0,
+        20..=39 => 1,
+        40..=49 => 2,
+        50..=59 => 3,
+        60..=69 => 4,
+        70..=79 => 5,
+        80..=84 => 6,
+        85..=89 => 7,
+        90..=93 => 8,
+        94..=97 => 9,
+        98 => 10,
+        99 => 11,
+        _ => u8::MAX,
+    }
+}
+
+fn slot_surf(roll: u32) -> u8 {
+    match roll {
+        0..=59 => 0,
+        60..=89 => 1,
+        90..=94 => 2,
+        95..=98 => 3,
+        99 => 4,
+        _ => u8::MAX,
+    }
+}
+
+/// Slot tiré par `r` (16 bits hauts du générateur).
+fn slot_of(method: Method4, area: Area4, r: u32) -> u8 {
+    match method {
+        Method4::J => {
+            let esv = r / 656;
+            match area {
+                Area4::Grass => slot_regular(esv),
+                Area4::Surf | Area4::OldRod => slot_surf(esv),
+                Area4::GoodRod | Area4::SuperRod => match esv {
+                    0..=39 => 0,
+                    40..=79 => 1,
+                    80..=94 => 2,
+                    95..=98 => 3,
+                    99 => 4,
+                    _ => u8::MAX,
+                },
+            }
+        }
+        Method4::K => {
+            let roll = r % 100;
+            match area {
+                Area4::Grass => slot_regular(roll),
+                Area4::Surf => slot_surf(roll),
+                _ => match roll {
+                    0..=39 => 0,
+                    40..=69 => 1,
+                    70..=84 => 2,
+                    85..=94 => 3,
+                    _ => 4,
+                },
+            }
+        }
+    }
+}
+
+/// Le niveau est-il tiré au hasard (sinon : fixé par le slot) ?
+fn level_rand(area: Area4) -> bool {
+    area != Area4::Grass
+}
+
+fn random_level(s: &Slot4, r: u32) -> u8 {
+    let span = 1 + s.level_max.saturating_sub(s.level_min) as u32;
+    (r % span) as u8 + s.level_min
+}
+
+/// La canne peut-elle ferrer avec ce tirage (`IsFishPossible`) ?
+fn rod_bites(method: Method4, area: Area4, r: u32) -> bool {
+    let rate = match area {
+        Area4::OldRod => 25,
+        Area4::GoodRod => 50,
+        Area4::SuperRod => 75,
+        _ => return true,
+    };
+    match method {
+        Method4::J => r / 656 < rate,
+        // HGSS : le Pokémon qui suit le dresseur peut ajouter 50 (cas le plus favorable).
+        Method4::K => r % 100 < rate + 50,
+    }
+}
+
+/// Toutes les graines de méthode 1 (état juste avant la moitié basse du PID).
+pub fn method1_seeds(pid: u32, iv32: u32) -> Vec<u32> {
+    let (iv1, iv2) = iv_words(iv32);
+    seeds_for(pid & 0xFFFF, pid >> 16)
+        .filter(|&seed| {
+            let a = next(next(next(seed)));
+            let b = next(a);
+            (a >> 16) & 0x7FFF == iv1 && (b >> 16) & 0x7FFF == iv2
+        })
+        .collect()
+}
+
+/// Nombre de paires de PID rejetées possibles avant le PID retenu (`GetReversalWindow`).
+fn reversal_window(seed: u32, nature: u32) -> usize {
+    let mut s = seed;
+    let mut b = s >> 16;
+    let mut count = 0;
+    while count < 10_000 {
+        s = prev(s);
+        let a = s >> 16;
+        if ((b << 16) | a) % 25 == nature {
+            break;
+        }
+        s = prev(s);
+        b = s >> 16;
+        count += 1;
+    }
+    count
+}
+
+/// Tête de l'équipe déduite des tirages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lead4 {
+    /// Aucun talent de tête.
+    None,
+    /// Talent de tête sans effet (Synchronisation ratée, Joli Sourire raté…).
+    Fail,
+    /// Synchronisation réussie (nature du meneur).
+    Synchronize,
+    /// Poké Radar (DPPt, hautes herbes) : tirages libres.
+    Radar,
+}
+
+/// Le slot (et le niveau) se lisent à partir de l'état `before` (appel juste avant le
+/// tirage de la nature ou de la Synchronisation), en sautant `skip` appels.
+fn slot_matches(method: Method4, s: &Slot4, before: u32, skip: usize, met_level: Option<u8>) -> bool {
+    let mut st = before;
+    for _ in 0..skip {
+        st = prev(st);
+    }
+    if level_rand(s.area) {
+        if let Some(l) = met_level {
+            if random_level(s, st >> 16) != l {
+                return false;
+            }
+        }
+        st = prev(st);
+    }
+    slot_of(method, s.area, st >> 16) == s.slot
+}
+
+/// Une rencontre sauvage Gen 4 (méthode J ou K) peut-elle produire ce PID et ces IV ?
+/// `met_level` : niveau de rencontre à retrouver (Pokémon jamais transféré), sinon libre.
+pub fn frame4(method: Method4, slots: &[Slot4], met_level: Option<u8>, pid: u32, iv32: u32) -> Option<Lead4> {
+    let nature = pid % 25;
+    let mut lead: Option<Lead4> = None;
+    let pressure = slots.iter().map(|s| s.level_max).max().unwrap_or(0);
+    for seed in method1_seeds(pid, iv32) {
+        let window = reversal_window(seed, nature);
+        let mut cur = seed;
+        for _ in 0..=window {
+            let p0 = cur >> 16;
+            let before = prev(cur);
+            for s in slots {
+                if method.nature(p0) == nature {
+                    if slot_matches(method, s, before, 0, met_level) {
+                        return Some(Lead4::None);
+                    }
+                    if slot_matches(method, s, before, 1, met_level) {
+                        lead = Some(Lead4::Fail);
+                    }
+                    // Pression / Agitation / Esprit Vital réussis : niveau maximal de l'espèce dans la zone.
+                    let hustle = match method {
+                        Method4::J => (before >> 16) >> 15 == 1,
+                        Method4::K => (before >> 16) & 1 == 1,
+                    };
+                    if lead.is_none() && hustle && met_level == Some(pressure) && slot_matches(method, s, before, 1, None) {
+                        lead = Some(Lead4::Fail);
+                    }
+                }
+                if lead.is_none() && method.sync_pass(p0) && slot_matches(method, s, before, 0, met_level) {
+                    lead = Some(Lead4::Synchronize);
+                }
+            }
+            cur = prev(prev(cur));
+        }
+    }
+    if lead.is_none() && method == Method4::J && slots.iter().any(|s| s.area == Area4::Grass) {
+        lead = Some(Lead4::Radar);
+    }
+    lead
+}
+
+fn wish_ok(pid: u32, tid: u16, sid: u16, wish: &PidWish) -> bool {
+    if let Some(bit) = wish.ability_bit {
+        if pid & 1 != bit {
+            return false;
+        }
+    }
+    if let Some((g, ratio)) = wish.gender {
+        if g < 2 && gender_of(pid, ratio) != g {
+            return false;
+        }
+    }
+    if let Some(s) = wish.shiny {
+        if is_shiny(pid, tid, sid, 8) != s {
+            return false;
+        }
+    }
+    true
+}
+
+/// PID et IV tirés par une rencontre sauvage Gen 4 sans talent de tête, pour un slot et
+/// un niveau donnés, en respectant les souhaits (nature, sexe, talent ; pour un
+/// chromatique, voir [`generate_chain_shiny`] et [`generate_frame4_shiny`]).
+pub fn generate_frame4(rand: &mut Rand, method: Method4, slot: &Slot4, met_level: Option<u8>, tid: u16, sid: u16, wish: PidWish) -> Option<(u32, u32)> {
+    for _ in 0..400_000 {
+        let mut s = rand.next_u32();
+        if matches!(slot.area, Area4::OldRod | Area4::GoodRod | Area4::SuperRod) {
+            s = next(s);
+            if !rod_bites(method, slot.area, s >> 16) {
+                continue;
+            }
+        }
+        s = next(s);
+        if slot_of(method, slot.area, s >> 16) != slot.slot {
+            continue;
+        }
+        if level_rand(slot.area) {
+            s = next(s);
+            if met_level.is_some_and(|l| random_level(slot, s >> 16) != l) {
+                continue;
+            }
+        }
+        s = next(s);
+        let nature = method.nature(s >> 16);
+        if nature >= 25 || wish.nature.is_some_and(|n| n as u32 != nature) {
+            continue;
+        }
+        let mut pid = 0;
+        let mut found = false;
+        for _ in 0..1000 {
+            let a = next(s);
+            let b = next(a);
+            s = b;
+            pid = (b >> 16) << 16 | (a >> 16);
+            if pid % 25 == nature {
+                found = true;
+                break;
+            }
+        }
+        if !found || !wish_ok(pid, tid, sid, &wish) {
+            continue;
+        }
+        let c = next(s);
+        let d = next(c);
+        return Some((pid, ((c >> 16) & 0x7FFF) | (((d >> 16) & 0x7FFF) << 15)));
+    }
+    None
+}
+
+/// Chromatique sauvage hors Poké Radar : PID de méthode 1 chromatique dont les tirages
+/// précédents correspondent au slot (avec ou sans talent de tête).
+pub fn generate_frame4_shiny(rand: &mut Rand, method: Method4, slot: &Slot4, met_level: Option<u8>, tid: u16, sid: u16, wish: PidWish) -> Option<(u32, u32)> {
+    for _ in 0..48 {
+        let (pid, iv32) = generate_method1(rand, tid, sid, wish)?;
+        if frame4(method, std::slice::from_ref(slot), met_level, pid, iv32).is_some_and(|l| l != Lead4::Radar) {
+            return Some((pid, iv32));
+        }
+    }
+    None
+}
+
+/// Chromatique du Poké Radar (DPPt) : PID bâti bit à bit à partir des tirages, puis les IV
+/// (inverse de [`chain_shiny`]).
+pub fn generate_chain_shiny(rand: &mut Rand, tid: u16, sid: u16, wish: PidWish) -> Option<(u32, u32)> {
+    for _ in 0..2_000_000 {
+        let mut s = rand.next_u32();
+        s = next(s);
+        let lower = (s >> 16) & 7;
+        s = next(s);
+        let upper = (s >> 16) & 7;
+        let mut low = lower;
+        for i in 3..=15 {
+            s = next(s);
+            low |= ((s >> 16) & 1) << i;
+        }
+        let high = ((low ^ tid as u32 ^ sid as u32) & 0xFFF8) | upper;
+        let pid = high << 16 | low;
+        if wish.nature.is_some_and(|n| pid % 25 != n as u32) || !wish_ok(pid, tid, sid, &PidWish { shiny: None, ..wish }) {
+            continue;
+        }
+        let a = next(s);
+        let b = next(a);
+        let iv32 = ((a >> 16) & 0x7FFF) | (((b >> 16) & 0x7FFF) << 15);
+        return Some((pid, iv32));
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests4 {
+    use super::*;
+
+    #[test]
+    fn frame4_round_trip() {
+        let mut rand = Rand::new(42);
+        for method in [Method4::J, Method4::K] {
+            for (area, slot, min, max, met) in [
+                (Area4::Grass, 3u8, 7u8, 7u8, None),
+                (Area4::Surf, 1, 20, 40, Some(33)),
+                (Area4::SuperRod, 2, 30, 50, Some(41)),
+            ] {
+                let s = Slot4 { area, slot, level_min: min, level_max: max };
+                let wish = PidWish { nature: Some(17), shiny: Some(false), ability_bit: Some(1), gender: Some((1, 127)) };
+                let (pid, iv32) = generate_frame4(&mut rand, method, &s, met, 1234, 5678, wish).expect("tirage trouvé");
+                assert_eq!(pid % 25, 17);
+                assert_eq!(pid & 1, 1);
+                assert_eq!(frame4(method, &[s], met, pid, iv32), Some(Lead4::None), "{method:?} {area:?}");
+                assert!(method_1_2_4(pid, iv32).is_some_and(|(t, _)| t == PidType::Method1));
+            }
+        }
+        // Un PID de méthode 1 quelconque n'a presque jamais le bon slot sans talent de tête.
+        let s = Slot4 { area: Area4::Surf, slot: 4, level_min: 20, level_max: 40 };
+        let mut none = 0;
+        for _ in 0..40 {
+            let (pid, iv32) = generate_method1(&mut rand, 1, 2, PidWish::default()).unwrap();
+            none += (frame4(Method4::K, &[s], Some(39), pid, iv32) == Some(Lead4::None)) as u32;
+        }
+        assert!(none < 10, "{none}");
+        let wish = PidWish { nature: Some(5), shiny: Some(true), ability_bit: None, gender: None };
+        let (pid, iv32) = generate_chain_shiny(&mut rand, 1234, 5678, wish).unwrap();
+        assert_eq!(pid % 25, 5);
+        assert!(is_shiny(pid, 1234, 5678, 8));
+        assert!(chain_shiny(pid, iv32, 1234, 5678));
+    }
+}

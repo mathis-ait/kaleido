@@ -10,6 +10,7 @@ use super::evolution::{self, Stage};
 use super::learn::{self, LearnQuery};
 use super::rng::{self, PidType};
 use crate::dex::{self, Game, PersonalInfo};
+use crate::save::pkm::PkmDate;
 use crate::save::{exp_for_level, Gender, PkmFormat, Pokemon};
 
 /// Gravité d'un résultat (Valide / Douteux / Illégal dans PKHeX).
@@ -91,7 +92,7 @@ const TAB_TRAINER: &str = "trainer";
 const TAB_EXTRAS: &str = "extras";
 
 #[path = "verify_extras.rs"]
-mod extras;
+pub(crate) mod extras;
 
 /// Liste de résultats avec raccourcis.
 #[derive(Default)]
@@ -190,7 +191,7 @@ fn location_name(generation: u8, loc: u16) -> String {
 }
 
 /// Espèces dont la forme change hors combat (`FormInfo.FormChange` de PKHeX, + saisons).
-fn form_changeable(species: u16) -> bool {
+pub(crate) fn form_changeable(species: u16) -> bool {
     matches!(
         species,
         412 | 676 | 741 | 479 | 386 | 483 | 484 | 487 | 492 | 493 | 641 | 642 | 645 | 646 | 647 | 649 | 720 | 773 | 800 | 585 | 586 | 718 | 351 | 421
@@ -288,7 +289,8 @@ impl<'a> Ctx<'a> {
 
     /// Jeux traversés possibles (de la génération d'origine à celle de la sauvegarde).
     pub fn games(&self) -> Vec<Game> {
-        let from = self.origin_generation().max(4);
+        // Un Pokémon né en Gen 3 a pu apprendre ses attaques dans un jeu Gen 3.
+        let from = if self.origin_generation() == 3 { 3 } else { self.origin_generation().max(4) };
         Game::ALL.iter().copied().filter(|g| g.generation() >= from && g.generation() <= self.format).collect()
     }
 }
@@ -309,7 +311,7 @@ pub(crate) fn context(pk: &Pokemon, game: Game) -> Result<Ctx<'_>, Check> {
         detail: format!("Version n°{version} : ce jeu n'existe pas."),
         tab: Some(TAB_MET),
     })?;
-    let impossible = generation > format || (generation <= 2 && format != 7) || (generation == 3 && format < 4);
+    let impossible = generation > format || (generation <= 2 && format != 7);
     if impossible {
         return Err(Check {
             severity: Severity::Invalid,
@@ -321,12 +323,14 @@ pub(crate) fn context(pk: &Pokemon, game: Game) -> Result<Ctx<'_>, Check> {
     }
     let origin = match generation {
         1 | 2 => Origin::VirtualConsole { generation },
+        // Dans une sauvegarde Gen 3, le Pokémon est vérifié comme dans son jeu d'origine.
+        3 if format == 3 => Origin::Known { generation: 3, game: version_game(version).unwrap_or(game) },
         3 => Origin::Gen3,
         g => Origin::Known { generation: g, game: version_game(version).unwrap_or(game) },
     };
     let level = growth_level(pk, game);
     let chain = evolution::chain(format, pk.species(), pk.form(), level);
-    let met_replaced = (generation <= 4 && format >= 5) || (generation == 3 && format == 4) || generation <= 2;
+    let met_replaced = (generation <= 4 && format >= 5) || (generation == 3 && format == 4) || (generation <= 2 && format != generation);
     let pid = pk.pid();
     let (tid, sid) = (pk.tid(), pk.sid());
     Ok(Ctx {
@@ -764,6 +768,32 @@ fn gen5_hidden_source(ctx: &Ctx) -> bool {
     [Game::BW, Game::B2W2].iter().any(|&g| encounters::encounters(g).iter().any(|e| e.ability.allows_hidden() && species.contains(&e.species)))
 }
 
+/// Zone Gen 4 dont les tirages (méthodes J et K) sont vérifiés.
+pub(crate) fn area4(kind: EncounterKind) -> Option<rng::Area4> {
+    Some(match kind {
+        EncounterKind::Grass => rng::Area4::Grass,
+        EncounterKind::Surf => rng::Area4::Surf,
+        EncounterKind::OldRod => rng::Area4::OldRod,
+        EncounterKind::GoodRod => rng::Area4::GoodRod,
+        EncounterKind::SuperRod => rng::Area4::SuperRod,
+        _ => return None,
+    })
+}
+
+/// Slots de la zone de `e` qui donnent la même espèce dans cette version.
+fn slots4(game: Game, e: &Encounter, version: u8) -> Vec<rng::Slot4> {
+    let Some(area) = area4(e.kind) else { return Vec::new() };
+    let mut out = Vec::new();
+    for x in encounters::encounters(game) {
+        if x.kind == e.kind && x.location == e.location && x.species == e.species && x.form == e.form && x.versions.contains(&version) {
+            for &slot in &x.slots {
+                out.push(rng::Slot4 { area, slot, level_min: x.level_min, level_max: x.level_max });
+            }
+        }
+    }
+    out
+}
+
 fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
     let pk = ctx.pk;
     let origin_gen = ctx.origin_generation();
@@ -780,6 +810,28 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             k if k.is_wild() => matches!(t, PidType::Method1 | PidType::CuteCharm),
             _ => t == PidType::Method1,
         };
+        // Méthodes J / K : les tirages qui précèdent le PID doivent donner le slot (et le niveau).
+        if ok && t == PidType::Method1 && area4(e.kind).is_some() {
+            let game = ctx.origin_game().unwrap_or(ctx.game);
+            let slots = slots4(game, e, ctx.version);
+            if !slots.is_empty() {
+                let method = rng::Method4::of_version(ctx.version);
+                let met = (ctx.format == 4 && pk.met_level() > 1).then(|| pk.met_level());
+                if rng::frame4(method, &slots, met, pid, iv32(pk)).is_none() {
+                    out.bad(
+                        "pidiv-frame",
+                        "Tirage impossible pour cette rencontre",
+                        format!(
+                            "En {} ({}), le jeu tire l'emplacement de la rencontre{}, puis la nature, avant le PID : aucune suite de tirages ne mène à ce PID depuis cet emplacement.",
+                            version_name(ctx.version),
+                            method.label(),
+                            if e.kind == EncounterKind::Grass { "" } else { " et le niveau" }
+                        ),
+                        TAB_STATS,
+                    );
+                }
+            }
+        }
         if !ok {
             out.bad(
                 "pidiv",
@@ -817,6 +869,13 @@ fn check_pidiv(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
             );
         }
     }
+}
+
+/// Les attaques à réapprendre actuelles conviennent-elles à la rencontre ?
+pub(crate) fn relearn_valid(ctx: &Ctx, e: &Encounter) -> bool {
+    let mut lines = Lines::default();
+    check_relearn(ctx, e, &mut lines);
+    lines.errors() == 0
 }
 
 fn check_relearn(ctx: &Ctx, e: &Encounter, out: &mut Lines) {
@@ -890,6 +949,14 @@ pub(crate) fn learn_sources(ctx: &Ctx, e: Option<&Encounter>, mv: u16) -> Option
     if ctx.format >= 6 && relearn_moves(ctx.pk).contains(&mv) {
         return Some(learn::LearnMethod::Special);
     }
+    // Munja (Gen 3) : reçoit les attaques que Ninjask apprend au niveau de l'évolution de Ningale
+    // (20 au plus tôt, au plus le niveau actuel de Munja, qui garde l'expérience de Ningale).
+    if ctx.pk.species() == 292 && ctx.origin_generation() == 3 {
+        let lvl = ctx.level;
+        if ctx.games().into_iter().any(|g| dex::levelup(g, 291, 0).iter().any(|&(m, l)| m == mv && (20..=lvl).contains(&l))) {
+            return Some(learn::LearnMethod::Special);
+        }
+    }
     for game in ctx.games() {
         for st in &ctx.chain {
             if st.species > dex::max_species(game) {
@@ -944,7 +1011,20 @@ fn check_moves(ctx: &Ctx, e: Option<&Encounter>, unverifiable: bool, out: &mut L
             out.bad("move-unknown", "Attaque inconnue", format!("L'attaque n°{m} n'existe pas dans ce jeu."), TAB_MOVES);
             continue;
         }
-        if learn_sources(ctx, e, m).is_none() {
+        let source = learn_sources(ctx, e, m);
+        // Capacité Œuf : il faut un parent (chaîne de reproduction) qui la connaisse.
+        if let (Some(learn::LearnMethod::Egg), Some(e)) = (source, e) {
+            let game = ctx.origin_game().unwrap_or(ctx.game);
+            if learn::egg_moves(game, e.species, e.form).contains(&m) && learn::egg_move_parent(game, e.species, e.form, m).is_none() {
+                out.fishy(
+                    "egg-move-chain",
+                    format!("{} : aucun parent connu", move_name(m)),
+                    "Aucun Pokémon d'un groupe Œuf commun ne peut connaître cette capacité Œuf dans les jeux des Gen 4 à 7 : elle a pu venir de la Gen 3 ou d'un événement, impossible de le confirmer.",
+                    TAB_MOVES,
+                );
+            }
+        }
+        if source.is_none() {
             let name = move_name(m);
             if unverifiable {
                 out.fishy(
@@ -1293,7 +1373,9 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
 
     // Objet tenu.
     let item = pk.held_item();
-    if item != 0 && (item > dex::max_item(game) || dex::item_name_in(game, item).is_none()) {
+    // Gen 3 : identifiant exposé (Gen 4+, ou drapeau Gen 3) ramené à celui du jeu.
+    let raw_item = if pk.format() == crate::save::PkmFormat::Gen3 { crate::save::pk3::item_raw(item) } else { item };
+    if item != 0 && (raw_item > dex::max_item(game) || dex::item_name_in(game, item).is_none()) {
         out.bad("item", "Objet inconnu", format!("L'objet n°{item} n'existe pas dans ce jeu."), TAB_OVERVIEW);
     }
 
@@ -1318,6 +1400,54 @@ fn check_general(ctx: &Ctx, out: &mut Lines) {
     if !pk.is_egg() && pk.met_date().is_none() && ctx.origin_generation() >= 4 {
         out.fishy("met-date", "Date de rencontre absente", "Les Pokémon capturés ont normalement une date.", TAB_MET);
     }
+    // Dates hors de la fenêtre de sortie du jeu.
+    let key = |d: PkmDate| (d.year, d.month, d.day);
+    if let (Some(met), Some(first)) = (pk.met_date(), earliest_met_date(pk)) {
+        if key(met) < key(first) {
+            out.fishy(
+                "met-date-early",
+                "Date de rencontre trop ancienne",
+                format!("Rencontre le {:02}/{:02}/{}, avant la sortie du jeu ({:02}/{:02}/{}).", met.day, met.month, met.year, first.day, first.month, first.year),
+                TAB_MET,
+            );
+        }
+        if let Some(egg) = pk.egg_date().filter(|_| pk.egg_location() != 0) {
+            if key(egg) > key(met) {
+                out.fishy("egg-date-late", "Œuf reçu après l'éclosion", "La date de l'œuf est postérieure à la date d'éclosion.", TAB_MET);
+            }
+        }
+    }
+}
+
+/// Sortie japonaise d'une version (`GameVersion` de PKHeX).
+pub(crate) fn release_date(version: u8) -> Option<PkmDate> {
+    let (year, month, day) = match version {
+        encounters::D | encounters::P => (2006, 9, 28),
+        encounters::PT => (2008, 9, 13),
+        encounters::HG | encounters::SS => (2009, 9, 12),
+        encounters::B | encounters::W => (2010, 9, 18),
+        encounters::B2 | encounters::W2 => (2012, 6, 23),
+        encounters::X | encounters::Y => (2013, 10, 12),
+        encounters::AS | encounters::OR => (2014, 11, 21),
+        encounters::SN | encounters::MN => (2016, 11, 18),
+        encounters::US | encounters::UM => (2017, 11, 17),
+        _ => return None,
+    };
+    Some(PkmDate { year, month, day })
+}
+
+/// Première date de rencontre possible : sortie du jeu d'origine, ou du premier jeu qui
+/// reçoit les transferts (Transfert Pokémon, Poké Transfert, Banque Pokémon).
+pub(crate) fn earliest_met_date(pk: &Pokemon) -> Option<PkmDate> {
+    let transfer = matches!(pk.met_location(), 30001 | 30002) && pk.format().generation() >= 5;
+    if transfer {
+        return Some(match pk.format().generation() {
+            5 => PkmDate { year: 2010, month: 9, day: 18 },
+            6 => PkmDate { year: 2013, month: 12, day: 25 },
+            _ => PkmDate { year: 2017, month: 1, day: 24 },
+        });
+    }
+    release_date(pk.version())
 }
 
 fn summarize(game_gen: u8, e: &Encounter) -> EncounterSummary {
@@ -1407,6 +1537,17 @@ pub fn analyze(pk: &Pokemon, game: Game) -> Report {
                             location_name(generation, pk.met_location()),
                             pk.met_level()
                         ),
+                        TAB_MET,
+                    );
+                    check_moves(&ctx, None, true, &mut out);
+                }
+                // Gen 3 : seules les rencontres sauvages sont connues (pas encore les Pokémon
+                // fixes, dons, échanges ni œufs des tables de PKHeX).
+                _ if generation == 3 => {
+                    out.fishy(
+                        "encounter-gen3",
+                        "Rencontre non vérifiable",
+                        "Ce Pokémon ne vient pas d'une rencontre sauvage connue : Kaleido ne connaît pas encore les Pokémon fixes, dons, échanges et œufs de la Gen 3.",
                         TAB_MET,
                     );
                     check_moves(&ctx, None, true, &mut out);

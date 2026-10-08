@@ -7,10 +7,12 @@ import Icon from "../../components/Icon.vue";
 import Segmented from "../../components/Segmented.vue";
 import Sprite from "../../components/Sprite.vue";
 import Tip from "../../components/Tip.vue";
+import Toggle from "../../components/Toggle.vue";
 import { goTo, notify, saveState } from "../../saveStore";
 import type { Slot } from "../../types";
 import { keyOf, typing } from "../shell";
 import {
+  encounterText,
   exportShowdown,
   importShowdown,
   openShowdown,
@@ -99,6 +101,8 @@ watch(text, (t) => {
 
 const valid = computed(() => preview.value?.sets.filter((s) => !s.error) ?? []);
 const warningCount = computed(() => preview.value?.sets.reduce((n, s) => n + s.warnings.length, 0) ?? 0);
+/** Bilan de légalisation du i-ème set après l'import. */
+const legalOf = (i: number) => report.value?.sets[i]?.legality ?? null;
 const langLabel = (l: Lang) => (l === "en" ? "anglais (Showdown)" : "français");
 
 const target = computed<ImportTarget>(() => {
@@ -302,6 +306,7 @@ function showSlot(s: Slot) {
           Un Pokémon par bloc, séparés par une ligne vide. Noms anglais ou français, accents facultatifs. Sans « Level », le niveau est 100 comme sur
           Showdown.
         </p>
+        <Toggle v-model="showdownUi.asIs" label="Importer tel quel" term="importAsIs" />
       </div>
 
       <div class="col preview">
@@ -355,6 +360,17 @@ function showSlot(s: Slot) {
                 <li v-for="m in s.moveNames" :key="m">{{ m }}</li>
               </ul>
             </template>
+            <div v-if="legalOf(i)" class="lg">
+              <div class="sv-row">
+                <span class="sv-chip" :class="legalOf(i)!.legal ? 'ok' : 'warn'">{{ legalOf(i)!.legal ? "Légal" : "Importé tel quel" }}</span>
+                <span v-if="legalOf(i)!.encounter" class="enc">{{ encounterText(legalOf(i)!.encounter!) }} <Tip term="encounter" /></span>
+              </div>
+              <ul v-if="legalOf(i)!.adjustments.length" class="adj">
+                <li v-for="a in legalOf(i)!.adjustments" :key="a.text">{{ a.text }} <Tip :term="a.term" /></li>
+              </ul>
+              <p v-else-if="legalOf(i)!.legal" class="dim ok-line">Set gardé tel quel, rien n'a été ajusté.</p>
+            </div>
+            <span v-else-if="report?.sets[i]?.slot" class="sv-chip dim">Importé tel quel, sans vérification</span>
             <ul v-if="s.warnings.length" class="warns">
               <li v-for="w in s.warnings" :key="w"><Icon name="alert" :size="13" /> {{ w }}</li>
             </ul>
@@ -584,6 +600,32 @@ kbd {
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+}
+
+.lg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-md);
+}
+
+.enc {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+}
+
+.adj {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ok-line {
+  margin: 0;
 }
 
 @media (max-width: 760px) {

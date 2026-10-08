@@ -20,7 +20,11 @@ export const SHOWDOWN_TERMS: Record<string, GlossaryEntry> = {
   },
   showdownSet: {
     title: "Set",
-    text: "Une « fiche » de Pokémon prêt à combattre : espèce, objet tenu, talent, nature, répartition des EV (et parfois des IV), et 4 attaques. Appliquer un set remplace ces champs ; le dresseur d'origine, le lieu de rencontre et le PID sont gardés.",
+    text: "Une « fiche » de Pokémon prêt à combattre : espèce, objet tenu, talent, nature, répartition des EV (et parfois des IV), et 4 attaques. Appliquer un set remplace ces champs ; le dresseur d'origine, le lieu de rencontre et le PID sont gardés quand c'est possible, puis le Pokémon passe par « Rendre légal » (sauf avec « Importer tel quel »).",
+  },
+  importAsIs: {
+    title: "Importer tel quel",
+    text: "Par défaut, chaque Pokémon importé passe par « Rendre légal » : Kaleido choisit une rencontre possible dans ce jeu (capture, œuf…) et ajuste ce qu'il faut (lieu, Ball, PID…), en gardant au mieux le set. Le rapport dit, Pokémon par Pokémon, ce qui a changé. Activé : le set est recopié sans vérification, comme avant (le Pokémon peut être illégal).",
   },
   showdownLang: {
     title: "Langue des noms",

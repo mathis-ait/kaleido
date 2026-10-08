@@ -73,6 +73,9 @@ pub struct LiveMon {
     /// Identifiant stable du Pokémon (PID + constante de chiffrement), pour suivre un même
     /// Pokémon d'une sauvegarde à l'autre.
     pub uid: String,
+    /// Pour un seuil de chromatique propre à la ROM (voir [`LiveSnapshot::set_shiny_threshold`]).
+    #[serde(skip)]
+    pub shiny_xor: Option<u32>,
 }
 
 /// Pokémon d'une boîte (juste ce qu'il faut pour la grille).
@@ -90,6 +93,8 @@ pub struct LiveBoxMon {
     pub met_location: u16,
     pub pid: u32,
     pub uid: String,
+    #[serde(skip)]
+    pub shiny_xor: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,7 +152,81 @@ fn live_mon(game: Game, slot: Slot, p: &Pokemon) -> LiveMon {
         pid: v.summary.pid,
         met_location_name: v.met_location_name,
         uid: uid(p),
+        shiny_xor: p.shiny_xor(),
         species_name: v.species_name,
+    }
+}
+
+impl LiveSnapshot {
+    /// Même instantané avec l'équipe (et, si connues, la carte et les badges) lue dans la mémoire
+    /// de l'émulateur. Boîtes, dresseur et temps de jeu restent ceux de la sauvegarde.
+    /// Chromatiques d'après le seuil de la ROM : un randomizer peut changer le taux (le jeu
+    /// compare alors la même valeur à un autre seuil que 8).
+    pub fn set_shiny_threshold(&mut self, threshold: u32) {
+        for m in &mut self.party {
+            if let Some(x) = m.shiny_xor {
+                m.shiny = x < threshold;
+            }
+        }
+        for m in self.boxes.iter_mut().flat_map(|b| b.mons.iter_mut()) {
+            if let Some(x) = m.shiny_xor {
+                m.shiny = x < threshold;
+            }
+        }
+    }
+
+    pub fn with_memory(&self, party: &[Pokemon], map: Option<u16>, badges: Option<u8>) -> LiveSnapshot {
+        let game = game_of(self.version);
+        LiveSnapshot {
+            party: party.iter().enumerate().map(|(i, p)| live_mon(game, Slot::Party { index: i }, p)).collect(),
+            map: map.unwrap_or(self.map),
+            badges: badges.or(self.badges),
+            ..self.clone()
+        }
+    }
+}
+
+/// Pokémon adverse vu en mémoire pendant un combat.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveFoe {
+    pub species: u16,
+    pub form: u8,
+    pub species_name: String,
+    pub level: u8,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub shiny: bool,
+    pub gender: Gender,
+    pub status: StatusCondition,
+    pub pid: u32,
+    #[serde(skip)]
+    pub shiny_xor: Option<u32>,
+}
+
+impl LiveFoe {
+    pub fn of(p: &Pokemon) -> LiveFoe {
+        let max_hp = p.party_stats().map(|s| s[0]).unwrap_or(0);
+        LiveFoe {
+            species: p.species(),
+            form: p.form(),
+            species_name: dex::species_name(p.species()).map(str::to_string).unwrap_or_else(|| format!("n°{}", p.species())),
+            level: p.party_level().unwrap_or(0),
+            hp: p.current_hp().min(max_hp),
+            max_hp,
+            shiny: p.is_shiny(),
+            gender: p.gender(),
+            status: StatusCondition::from_bits(p.status_condition()),
+            pid: p.pid(),
+            shiny_xor: p.shiny_xor(),
+        }
+    }
+
+    /// Chromatique d'après le seuil de la ROM (taux modifié par le randomizer).
+    pub fn set_shiny_threshold(&mut self, threshold: u32) {
+        if let Some(x) = self.shiny_xor {
+            self.shiny = x < threshold;
+        }
     }
 }
 
@@ -179,6 +258,7 @@ impl SaveSession {
                         met_location: p.met_location(),
                         pid: sum.pid,
                         uid: uid(&p),
+                        shiny_xor: p.shiny_xor(),
                     });
                 }
             }

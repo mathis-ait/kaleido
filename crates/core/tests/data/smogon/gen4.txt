@@ -1,0 +1,521 @@
+=== [gen4ou] Smogon ===
+
+Azelf @ Focus Sash
+Ability: Levitate
+Jolly Nature
+EVs: 160 HP / 96 Atk / 252 Spe
+- Explosion
+- Stealth Rock
+- Taunt
+- Thunder Wave
+
+Dragonite @ Life Orb
+Ability: Inner Focus
+Gender: M
+Adamant Nature
+EVs: 24 HP / 252 Atk / 16 SpD / 216 Spe
+- Dragon Dance
+- Extreme Speed
+- Fire Punch
+- Outrage
+
+Empoleon @ Sea Incense
+Ability: Torrent
+Gender: M
+Adamant Nature
+EVs: 32 HP / 252 Atk / 224 Spe
+- Aqua Jet
+- Drill Peck
+- Swords Dance
+- Waterfall
+
+Gyarados @ Wacan Berry
+Ability: Intimidate
+Gender: M
+Adamant Nature
+EVs: 8 HP / 252 Atk / 40 SpD / 208 Spe
+- Dragon Dance
+- Earthquake
+- Ice Fang
+- Waterfall
+
+Metagross @ Lum Berry
+Ability: Clear Body
+Adamant Nature
+EVs: 56 HP / 252 Atk / 4 SpD / 196 Spe
+- Agility
+- Earthquake
+- Explosion
+- Meteor Mash
+
+Tyranitar @ Lum Berry
+Ability: Sand Stream
+Gender: M
+Jolly Nature
+EVs: 8 HP / 248 Atk / 252 Spe
+- Aqua Tail
+- Crunch
+- Dragon Dance
+- Fire Punch
+
+Zapdos @ Leftovers
+Ability: Pressure
+Bold Nature
+EVs: 248 HP / 216 Def / 44 Spe
+IVs: 2 Atk / 30 Def
+- Hidden Power Ice
+- Roost
+- Thunderbolt
+- Thunder Wave
+
+Celebi @ Leftovers
+Ability: Natural Cure
+Bold Nature
+EVs: 248 HP / 216 Def / 8 SpD / 36 Spe
+IVs: 0 Atk
+- Grass Knot
+- Recover
+- Stealth Rock
+- Thunder Wave
+
+Jirachi @ Leftovers
+Ability: Serene Grace
+Adamant Nature
+EVs: 252 HP / 80 Atk / 176 Spe
+- Fire Punch
+- Iron Head
+- Refresh
+- Thunder Wave
+
+Rhyperior @ Leftovers
+Ability: Solid Rock
+Gender: M
+Adamant Nature
+EVs: 184 HP / 252 Atk / 4 SpD / 68 Spe
+- Earthquake
+- Ice Punch
+- Rock Slide
+- Swords Dance
+
+Starmie @ Leftovers
+Ability: Natural Cure
+Timid Nature
+EVs: 248 HP / 44 Def / 216 Spe
+IVs: 0 Atk
+- Rapid Spin
+- Recover
+- Surf
+- Thunder Wave
+
+Tyranitar @ Choice Band
+Ability: Sand Stream
+Gender: M
+Adamant Nature
+EVs: 160 HP / 252 Atk / 4 SpD / 92 Spe
+- Crunch
+- Pursuit
+- Stone Edge
+- Superpower
+
+Skarmory @ Focus Sash
+Ability: Keen Eye
+Gender: M
+Jolly Nature
+EVs: 252 HP / 4 Atk / 252 Spe
+- Brave Bird
+- Spikes
+- Stealth Rock
+- Taunt
+
+Dragonite @ Choice Band
+Ability: Inner Focus
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 20 Def / 236 Spe
+- Extreme Speed
+- Outrage
+- Sleep Talk
+- Superpower
+
+Heatran @ Choice Scarf
+Ability: Flash Fire
+Gender: M
+Mild Nature
+EVs: 4 Atk / 252 SpA / 252 Spe
+- Dragon Pulse
+- Earth Power
+- Explosion
+- Fire Blast
+
+Rotom-Wash @ Choice Scarf
+Ability: Levitate
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 2 Atk / 30 Def
+- Hidden Power Ice
+- Shadow Ball
+- Thunderbolt
+- Trick
+
+Suicune @ Leftovers
+Ability: Pressure
+Timid Nature
+EVs: 4 HP / 252 SpA / 252 Spe
+IVs: 0 Atk
+- Calm Mind
+- Ice Beam
+- Protect
+- Surf
+
+=== [gen4uu] Smogon ===
+
+Uxie @ Light Clay
+Ability: Levitate
+Impish Nature
+EVs: 252 HP / 252 Def / 4 SpD
+- Light Screen
+- Reflect
+- Stealth Rock
+- U-turn
+
+Aggron @ Passho Berry
+Ability: Rock Head
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 Def / 252 Spe
+- Head Smash
+- Ice Punch
+- Low Kick
+- Rock Polish
+
+Drapion @ Life Orb
+Ability: Sniper
+Gender: M
+Jolly Nature
+EVs: 4 HP / 252 Atk / 252 Spe
+- Aqua Tail
+- Crunch
+- Earthquake
+- Swords Dance
+
+Feraligatr @ Leftovers
+Ability: Torrent
+Gender: M
+Adamant Nature
+EVs: 104 HP / 252 Atk / 152 Spe
+- Dragon Dance
+- Return
+- Substitute
+- Waterfall
+
+Scyther @ Life Orb
+Ability: Technician
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Aerial Ace
+- Brick Break
+- Quick Attack
+- Swords Dance
+
+Ursaring @ Toxic Orb
+Ability: Quick Feet
+Gender: M
+Jolly Nature
+EVs: 4 HP / 252 Atk / 252 Spe
+- Close Combat
+- Crunch
+- Facade
+- Swords Dance
+
+Uxie @ Lum Berry
+Ability: Levitate
+Timid Nature
+EVs: 248 HP / 8 SpD / 252 Spe
+- Imprison
+- Stealth Rock
+- Thunder Wave
+- U-turn
+
+Clefable @ Leftovers
+Ability: Magic Guard
+Gender: M
+Careful Nature
+EVs: 248 HP / 236 SpD / 24 Spe
+- Encore
+- Knock Off
+- Seismic Toss
+- Soft-Boiled
+
+Kabutops @ Choice Scarf
+Ability: Swift Swim
+Gender: M
+Adamant Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Rapid Spin
+- Stone Edge
+- Superpower
+- Waterfall
+
+Moltres @ Life Orb
+Ability: Pressure
+Timid Nature
+EVs: 252 SpA / 4 SpD / 252 Spe
+IVs: 0 Atk
+- Fire Blast
+- Morning Sun
+- Solar Beam
+- Sunny Day
+
+Registeel @ Leftovers
+Ability: Clear Body
+Careful Nature
+EVs: 244 HP / 252 SpD / 12 Spe
+- Iron Head
+- Protect
+- Shadow Claw
+- Toxic
+
+Venusaur @ Black Sludge
+Ability: Overgrow
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Earthquake
+- Power Whip
+- Swords Dance
+- Synthesis
+
+Mesprit @ Leftovers
+Ability: Levitate
+Bold Nature
+EVs: 248 HP / 4 Atk / 136 Def / 16 SpA / 96 SpD / 8 Spe
+- Knock Off
+- Psychic
+- Stealth Rock
+- U-turn
+
+Ambipom @ Silk Scarf
+Ability: Technician
+Gender: M
+Jolly Nature
+EVs: 252 Atk / 4 SpD / 252 Spe
+- Fake Out
+- Low Kick
+- Pursuit
+- Return
+
+Arcanine @ Leftovers
+Ability: Intimidate
+Gender: M
+Careful Nature
+EVs: 252 HP / 228 SpD / 28 Spe
+- Flare Blitz
+- Morning Sun
+- Roar
+- Toxic
+
+Azumarill @ Choice Band
+Ability: Huge Power
+Gender: M
+Adamant Nature
+EVs: 152 HP / 252 Atk / 104 Spe
+- Aqua Jet
+- Return
+- Superpower
+- Waterfall
+
+Sceptile @ Life Orb
+Ability: Overgrow
+Gender: F
+Timid Nature
+EVs: 112 HP / 4 Def / 252 SpA / 140 Spe
+IVs: 2 Atk / 30 Def
+- Focus Blast
+- Hidden Power Ice
+- Leaf Storm
+- Synthesis
+
+=== [gen4lc] Smogon ===
+
+Bronzor @ Oran Berry
+Ability: Levitate
+Level: 5
+Quiet Nature
+EVs: 220 HP / 8 Atk / 248 SpA / 16 Spe
+IVs: 30 Atk / 30 SpA / 30 Spe
+- Earthquake
+- Hidden Power Fire
+- Psychic
+- Stealth Rock
+
+Chinchou @ Choice Scarf
+Ability: Volt Absorb
+Level: 5
+Gender: F
+Timid Nature
+EVs: 52 Def / 232 SpA / 220 Spe
+IVs: 3 Atk / 30 SpA / 30 SpD
+- Hidden Power Ground
+- Hydro Pump
+- Surf
+- Thunderbolt
+
+Duskull @ Oran Berry
+Ability: Levitate
+Level: 5
+Gender: M
+Adamant Nature
+EVs: 196 HP / 196 Atk / 116 Def
+- Frustration
+- Pain Split
+- Shadow Sneak
+- Will-O-Wisp
+
+Gligar @ Oran Berry
+Ability: Hyper Cutter
+Level: 5
+Gender: M
+Jolly Nature
+EVs: 156 Atk / 76 Def / 236 Spe
+- Aqua Tail
+- Earthquake
+- Night Slash
+- Stone Edge
+
+Mantyke @ Damp Rock
+Ability: Swift Swim
+Level: 5
+Gender: F
+Timid Nature
+EVs: 80 HP / 200 SpA / 196 Spe
+IVs: 30 HP / 2 Atk / 30 Def / 30 SpA / 30 SpD
+- Hidden Power Flying
+- Hydro Pump
+- Rain Dance
+- Surf
+
+Munchlax @ Oran Berry
+Ability: Thick Fat
+Level: 5
+Gender: M
+Adamant Nature
+EVs: 236 Atk / 196 Def / 76 Spe
+- Fire Punch
+- Frustration
+- Pursuit
+- Superpower
+
+Wailmer @ Wacan Berry
+Ability: Water Veil
+Level: 5
+Gender: M
+Timid Nature
+EVs: 116 HP / 76 Def / 116 SpA / 76 SpD / 116 Spe
+- Earthquake
+- Hydro Pump
+- Protect
+- Water Spout
+
+Chinchou @ Oran Berry
+Ability: Volt Absorb
+Level: 5
+Gender: F
+Modest Nature
+EVs: 132 Def / 232 SpA / 68 SpD / 64 Spe
+IVs: 2 Atk / 30 SpA / 30 Spe
+- Agility
+- Hidden Power Fire
+- Hydro Pump
+- Thunderbolt
+
+Gastly @ Oran Berry
+Ability: Levitate
+Level: 5
+Gender: F
+Timid Nature
+EVs: 36 HP / 116 Def / 120 SpA / 196 Spe
+IVs: 3 Atk / 30 SpA / 30 SpD
+- Hidden Power Ground
+- Shadow Ball
+- Sludge Bomb
+- Will-O-Wisp
+
+Gligar @ Oran Berry
+Ability: Hyper Cutter
+Level: 5
+Gender: M
+Jolly Nature
+EVs: 156 Atk / 76 Def / 236 Spe
+- Aqua Tail
+- Earthquake
+- Stealth Rock
+- U-turn
+
+Munchlax @ Oran Berry
+Ability: Thick Fat
+Level: 5
+Gender: M
+Impish Nature
+EVs: 76 HP / 236 Atk / 36 Def / 156 SpD
+- Ice Punch
+- Pursuit
+- Return
+- Zen Headbutt
+
+Snover @ Choice Scarf
+Ability: Snow Warning
+Level: 5
+Gender: M
+Naive Nature
+EVs: 104 Atk / 184 SpA / 200 Spe
+IVs: 30 Atk / 30 SpA / 30 Spe
+- Blizzard
+- Energy Ball
+- Hidden Power Fire
+- Ice Shard
+
+Voltorb @ Focus Sash
+Ability: Static
+Level: 5
+Hasty Nature
+EVs: 36 HP / 40 Atk / 236 SpA / 196 Spe
+IVs: 30 Atk / 30 Def
+- Explosion
+- Hidden Power Ice
+- Protect
+- Thunderbolt
+
+Bronzor @ Oran Berry
+Ability: Levitate
+Level: 5
+Relaxed Nature
+EVs: 60 HP / 8 Atk / 152 Def / 84 SpA / 148 SpD / 12 Spe
+IVs: 30 Atk / 30 Def
+- Earthquake
+- Hidden Power Ice
+- Psychic
+- Stealth Rock
+
+Chinchou @ Oran Berry
+Ability: Volt Absorb
+Level: 5
+Gender: F
+Modest Nature
+EVs: 52 Def / 232 SpA / 72 SpD / 140 Spe
+IVs: 3 Atk / 30 SpA / 30 SpD
+- Agility
+- Hidden Power Ground
+- Hydro Pump
+- Thunderbolt
+
+Gligar @ Oran Berry
+Ability: Hyper Cutter
+Level: 5
+Gender: M
+Jolly Nature
+EVs: 236 Atk / 236 Spe
+- Aqua Tail
+- Earthquake
+- Night Slash
+- Swords Dance

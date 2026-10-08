@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import Icon from "../components/Icon.vue";
 import { nav } from "../nav";
-import PlayGuide from "./PlayGuide.vue";
 import PlayTip from "./PlayTip.vue";
 import { available, defaultEmulator, emus, fileName, loadEmulators, openGameSave, play, showGuide, type EmulatorId, type PlayPlatform } from "./play";
 
@@ -104,7 +103,6 @@ async function openSaveOfGame() {
       <button class="btn" @click="openSaveOfGame"><Icon name="save" :size="16" /> Ouvrir la sauvegarde de cette partie</button>
       <p v-if="info" class="dim small">{{ info }}</p>
     </template>
-    <PlayGuide />
   </div>
 </template>
 

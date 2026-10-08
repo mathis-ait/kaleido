@@ -18,10 +18,11 @@ fn words(bytes: &[u8]) -> Vec<u16> {
 pub(super) fn decode(format: PkmFormat, bytes: &[u8]) -> String {
     let w = words(bytes);
     match format {
-        PkmFormat::Gen4 | PkmFormat::Gen5 => {
+        // Gen 3 : textes tenus en mémoire au format Gen 4 (voir `pk3`).
+        PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 | PkmFormat::Gen4 | PkmFormat::Gen5 => {
             // Les tampons jamais écrits sont remplis de zéros : on s'arrête aussi là.
             let end = w.iter().position(|&c| c == 0xFFFF || c == 0).unwrap_or(w.len());
-            if format == PkmFormat::Gen4 {
+            if format != PkmFormat::Gen5 {
                 gen4::decode(&w[..end])
             } else {
                 gen5::decode(&w[..end])
@@ -43,7 +44,7 @@ pub(super) fn decode(format: PkmFormat, bytes: &[u8]) -> String {
 /// complété par des zéros.
 pub(super) fn encode(format: PkmFormat, text: &str, max_chars: usize) -> Result<Vec<u8>, PkmError> {
     let mut codes = match format {
-        PkmFormat::Gen4 => gen4::encode(text)?,
+        PkmFormat::Gen1 | PkmFormat::Gen2 | PkmFormat::Gen3 | PkmFormat::Gen4 => gen4::encode(text)?,
         PkmFormat::Gen5 => gen5::encode(text)?,
         PkmFormat::Gen6 | PkmFormat::Gen7 => {
             let mut out = Vec::with_capacity(text.len() + 1);

@@ -108,6 +108,7 @@ fn route_201_and_first_routes() {
 fn trainer() -> Trainer {
     Trainer {
         name: "Thisma".into(),
+        origin: Some([2, 77, 2]),
         tid: 12345,
         sid: 54321,
         display_id: 12345,
@@ -169,6 +170,10 @@ fn generate_from_database_entries() {
     let mut failures = Vec::new();
     let mut total = 0;
     for game in Game::ALL {
+        // Gen 3 : génération de Pokémon légaux pas encore prise en charge.
+        if game.generation() < 4 {
+            continue;
+        }
         let format = match game.generation() {
             4 => PkmFormat::Gen4,
             5 => PkmFormat::Gen5,
@@ -193,6 +198,9 @@ fn generate_from_database_entries() {
                     ..Default::default()
                 };
                 let out = generate_legal(game, format, &trainer(), &req).unwrap();
+                for c in out.changes.iter().chain(&out.adjustments) {
+                    assert_ne!(c.term, "legalize", "sans terme du glossaire : {}", c.text);
+                }
                 if !out.success {
                     let bad: Vec<String> = out
                         .report
@@ -227,7 +235,39 @@ fn generate_shiny_gen4_keeps_method1() {
     assert_eq!(pk.nature(), 3);
     let pid = pk.pid();
     assert!(((pid >> 16) ^ (pid & 0xFFFF) ^ pk.tid() as u32 ^ pk.sid() as u32) < 8, "chromatique attendu");
-    assert_eq!(super::legalize::pid_type(pk), super::rng::PidType::Method1);
+    // Platine, hautes herbes : chromatique du Poké Radar (PID bâti à partir des IV) ou méthode 1.
+    let radar = super::rng::chain_shiny(pid, super::verify::iv32(pk), pk.tid(), pk.sid());
+    assert!(radar || super::legalize::pid_type(pk) == super::rng::PidType::Method1);
+
+    // HeartGold : pas de Poké Radar, méthode K avec le bon slot.
+    let req = GenerateRequest { species: 16, level: 4, shiny: Some(true), nature: Some(10), ..Default::default() };
+    let out = generate_legal(Game::HGSS, PkmFormat::Gen4, &trainer(), &req).unwrap();
+    assert!(out.success, "{:?}", out.report.checks);
+    assert_eq!(super::legalize::pid_type(&out.pokemon), super::rng::PidType::Method1);
+    assert!(out.pokemon.is_shiny());
+}
+
+/// Les Pokémon sauvages créés en Gen 4 suivent les tirages des méthodes J et K (slot, niveau, nature).
+#[test]
+fn generated_gen4_wild_follow_method_jk() {
+    use super::rng::{frame4, Lead4, Method4};
+    let mut checked = 0;
+    for (game, species, level) in [(Game::Pt, 396u16, 4u8), (Game::DP, 399, 4), (Game::HGSS, 16, 4), (Game::HGSS, 129, 20)] {
+        let req = GenerateRequest { species, level, nature: Some(7), ..Default::default() };
+        let out = generate_legal(game, PkmFormat::Gen4, &trainer(), &req).unwrap();
+        assert!(out.success, "{game:?} n°{species} : {:?}", out.report.checks);
+        let pk = &out.pokemon;
+        let e = super::encounters::encounters(game)
+            .iter()
+            .find(|e| e.location == pk.met_location() && e.species == species && super::verify::area4(e.kind).is_some() && !e.slots.is_empty());
+        let Some(e) = e else { continue };
+        let slots: Vec<_> = e.slots.iter().map(|&slot| super::rng::Slot4 { area: super::verify::area4(e.kind).unwrap(), slot, level_min: e.level_min, level_max: e.level_max }).collect();
+        let lead = frame4(Method4::of_version(pk.version()), &slots, Some(pk.met_level()), pk.pid(), super::verify::iv32(pk));
+        assert_eq!(lead, Some(Lead4::None), "{game:?} n°{species} : {:?}", out.changes);
+        assert!(out.changes.iter().any(|c| c.term == "methodJK"), "{:?}", out.changes);
+        checked += 1;
+    }
+    assert!(checked >= 3, "{checked} vérifiés");
 }
 
 #[test]
@@ -385,14 +425,56 @@ fn debug_dump() {
 fn legal_samples_stay_legal_after_legalize() {
     let mut legal = Vec::new();
     files(&root().join("Legal"), &mut legal);
-    for p in legal.iter().take(30) {
+    // Mesure du PRD : tout le corpus légal reste légal (et intact) après « Rendre légal ».
+    let mut kept = 0;
+    let mut total = 0;
+    for p in &legal {
         let (pk, game) = load(p);
-        if analyze(&pk, game).verdict == Verdict::Illegal {
-            continue;
-        }
+        total += 1;
         let out = legalize(&pk, game, &trainer());
-        assert!(out.changes.is_empty(), "{} modifié : {:?}", p.display(), out.changes);
+        if analyze(&pk, game).verdict != Verdict::Illegal {
+            assert!(out.changes.is_empty(), "{} modifié : {:?}", p.display(), out.changes);
+        }
+        assert_ne!(analyze(&out.pokemon, game).verdict, Verdict::Illegal, "{} encore illégal", p.display());
+        kept += 1;
     }
+    println!("Corpus légal après « Rendre légal » : {kept}/{total} légaux");
+}
+
+/// Mesure du PRD : « Rendre légal » sur une équipe de 6 en moins de 2 s (mode release ;
+/// la limite est relâchée en debug, où le code n'est pas optimisé).
+#[test]
+fn prd_team_of_six_is_fast() {
+    let cases = [
+        (Game::Pt, PkmFormat::Gen4, 396u16, 20u8),
+        (Game::HGSS, PkmFormat::Gen4, 16, 25),
+        (Game::B2W2, PkmFormat::Gen5, 532, 30),
+        (Game::XY, PkmFormat::Gen6, 661, 30),
+        (Game::USUM, PkmFormat::Gen7, 731, 40),
+        (Game::Pt, PkmFormat::Gen4, 443, 40),
+    ];
+    let mut team = Vec::new();
+    for (game, format, species, level) in cases {
+        let req = GenerateRequest { species, level, ..Default::default() };
+        let mut pk = generate_legal(game, format, &trainer(), &req).unwrap().pokemon;
+        pk.set_moves([94, 0, 0, 0]);
+        pk.set_ball(1);
+        pk.set_met_location(1);
+        pk.refresh_checksum();
+        team.push((pk, game));
+    }
+    let start = std::time::Instant::now();
+    let mut legal = 0;
+    for (pk, game) in &team {
+        let out = super::legalize::legalize_with(pk, *game, &trainer(), None, true);
+        legal += out.success as usize;
+        println!("  n°{} : {} modification(s), {} rencontre(s) possibles, {:?}", pk.species(), out.changes.len(), out.options.len(), out.changes.iter().map(|c| c.text.as_str()).collect::<Vec<_>>());
+    }
+    let elapsed = start.elapsed();
+    println!("Équipe de 6 (aperçu complet) : {legal}/6 légaux en {elapsed:?}");
+    let limit = if cfg!(debug_assertions) { 20.0 } else { 2.0 };
+    assert!(elapsed.as_secs_f64() < limit, "{elapsed:?}");
+    assert_eq!(legal, 6);
 }
 
 fn codes(pk: &Pokemon, game: Game) -> Vec<&'static str> {
@@ -441,4 +523,167 @@ fn generated_gen6_has_ot_memory() {
     let out = generate_legal(Game::XY, PkmFormat::Gen6, &trainer(), &req).unwrap();
     assert_ne!(out.pokemon.extras().handler.unwrap().ot_memory.id, 0);
     assert!(!codes(&out.pokemon, Game::XY).contains(&"memory-ot-missing"));
+}
+
+/// Mesure du PRD : part des Pokémon illégaux de PKHeX rendus légaux par « Rendre légal ».
+#[test]
+fn prd_illegal_corpus_legalized() {
+    let mut illegal = Vec::new();
+    files(&root().join("Illegal"), &mut illegal);
+    let mut fixed = 0;
+    let (mut detected, mut detected_fixed) = (0, 0);
+    let mut lines = Vec::new();
+    for p in &illegal {
+        let (pk, game) = load(p);
+        let seen = analyze(&pk, game).verdict == Verdict::Illegal;
+        detected += seen as usize;
+        let out = legalize(&pk, game, &trainer());
+        // Chaque modification a son terme du glossaire (pas le terme générique).
+        for c in &out.changes {
+            assert_ne!(c.term, "legalize", "sans terme : {}", c.text);
+        }
+        if out.success && analyze(&out.pokemon, game).verdict != Verdict::Illegal {
+            fixed += 1;
+            detected_fixed += seen as usize;
+        } else {
+            lines.push(format!("ÉCHEC : {}", summary(p, &out.pokemon, game)));
+        }
+    }
+    println!("{}", lines.join("\n"));
+    println!("Illégaux rendus légaux : {fixed}/{} (dont {detected_fixed}/{detected} parmi ceux que Kaleido détecte)", illegal.len());
+    assert!(fixed * 100 >= illegal.len() * 90, "cible du PRD : 90 % ({fixed}/{})", illegal.len());
+}
+
+/// Gen 5 à 7 : constante de chiffrement et PID du transfert, pays de la console, dates.
+#[test]
+fn gen67_transfer_geo_and_dates() {
+    use crate::save::pkm::ExtrasPatch;
+    use crate::save::PkmDate;
+    // Étourmi de Platine transféré dans Ultra-Soleil : EC = PID d'origine, PID recalculé.
+    let req = GenerateRequest { species: 396, level: 10, encounter_index: None, ..Default::default() };
+    let pt = generate_legal(Game::Pt, PkmFormat::Gen4, &trainer(), &req).unwrap().pokemon;
+    let mut moved = generate_legal(Game::USUM, PkmFormat::Gen7, &trainer(), &GenerateRequest { species: 396, level: 10, ..Default::default() }).unwrap();
+    if moved.pokemon.version() == crate::legality::encounters::PT {
+        let p = &moved.pokemon;
+        assert_eq!(p.pid(), super::rng::transfer_pid(p.encryption_constant(), p.tid(), p.sid()));
+    }
+    let h = moved.pokemon.extras().handler.unwrap();
+    assert_eq!((h.region, h.country, h.console_region), (2, 77, 2), "pays de la console du joueur");
+    assert!(moved.pokemon.met_date().is_some());
+    let _ = pt;
+
+    // Pays incohérent et date avant la sortie du jeu : corrigés sur place.
+    let mut p = moved.pokemon.clone();
+    p.apply_extras(&ExtrasPatch { country: Some(1), console_region: Some(2), ..Default::default() }).unwrap();
+    p.set_met_date(Some(PkmDate { year: 2001, month: 1, day: 1 }));
+    p.refresh_checksum();
+    assert!(codes(&p, Game::USUM).contains(&"geo-console"));
+    assert!(codes(&p, Game::USUM).contains(&"met-date-early"));
+    let out = legalize(&p, Game::USUM, &trainer());
+    assert!(out.success, "{:?}", out.report.checks);
+    let h = out.pokemon.extras().handler.unwrap();
+    assert!(super::verify::extras::console_country_valid(h.console_region, h.country));
+    let d = out.pokemon.met_date().unwrap();
+    assert!(d.year >= 2017, "{d:?}");
+    assert!(out.changes.iter().any(|c| c.term == "country"), "{:?}", out.changes);
+    moved.pokemon = out.pokemon;
+}
+
+/// Set Smogon reposant sur une capacité Œuf : Azumarill Cognobidon (X/Y) reste légal, par l'œuf.
+#[test]
+fn egg_move_sets_are_kept() {
+    let req = GenerateRequest {
+        species: 184,
+        level: 50,
+        nature: Some(3),
+        ability_number: Some(4),
+        moves: Some([187, 453, 583, 276]), // Cognobidon, Aqua-Jet, Câlinerie, Surpuissance
+        ivs: Some([31; 6]),
+        ..Default::default()
+    };
+    let out = generate_legal(Game::XY, PkmFormat::Gen6, &trainer(), &req).unwrap();
+    assert!(out.success, "{:?}", out.report.checks);
+    assert!(out.pokemon.moves().contains(&187), "Cognobidon gardé : {:?}", out.adjustments);
+    assert!(out.pokemon.egg_location() != 0, "obtenu par l'œuf");
+    assert!(out.changes.iter().any(|c| c.term == "eggMoves"), "{:?}", out.changes);
+    assert_eq!(out.pokemon.ivs(), [31; 6]);
+}
+
+/// Mesure du PRD : sets Smogon (corpus figé, `scripts/smogon-corpus.mjs`) importés légaux
+/// du premier coup. « Intacts » : légaux sans aucun écart avec le set.
+#[test]
+fn prd_smogon_corpus() {
+    use crate::dex::Lang;
+    use crate::save::showdown_apply::request_of_set;
+    use crate::showdown::{parse_team, resolve};
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/smogon");
+    let (mut all, mut all_legal, mut all_intact) = (0, 0, 0);
+    for (gen, game, format) in [(4, Game::HGSS, PkmFormat::Gen4), (5, Game::B2W2, PkmFormat::Gen5), (6, Game::ORAS, PkmFormat::Gen6), (7, Game::USUM, PkmFormat::Gen7)] {
+        let Ok(text) = std::fs::read_to_string(dir.join(format!("gen{gen}.txt"))) else { continue };
+        let (mut total, mut legal, mut intact) = (0, 0, 0);
+        let mut notes = Vec::new();
+        for set in parse_team(&text) {
+            let r = resolve(&set, game, Lang::En);
+            if r.error.is_some() {
+                continue;
+            }
+            total += 1;
+            let req = request_of_set(&r);
+            let start = std::time::Instant::now();
+            match generate_legal(game, format, &trainer(), &req) {
+                Ok(out) if out.success => {
+                    legal += 1;
+                    if out.adjustments.iter().all(|a| a.term == "ev") {
+                        intact += 1;
+                    } else {
+                        notes.push(format!("  {} : {:?}", r.species_name, out.adjustments.iter().map(|a| a.text.as_str()).collect::<Vec<_>>()));
+                    }
+                }
+                Ok(out) => notes.push(format!(
+                    "  {} ILLÉGAL : {:?}",
+                    r.species_name,
+                    out.report.checks.iter().filter(|c| c.severity == super::Severity::Invalid).map(|c| c.title.as_str()).collect::<Vec<_>>()
+                )),
+                Err(e) => notes.push(format!("  {} IMPOSSIBLE : {e}", r.species_name)),
+            }
+            assert!(start.elapsed().as_secs_f64() < 5.0, "{} trop lent", r.species_name);
+        }
+        println!("Gen {gen} ({game:?}) : {legal}/{total} légaux, {intact}/{total} intacts\n{}", notes.join("\n"));
+        all += total;
+        all_legal += legal;
+        all_intact += intact;
+    }
+    println!("Corpus Smogon : {all_legal}/{all} légaux du premier coup, {all_intact}/{all} sans écart avec le set");
+    assert!(all >= 150, "corpus Smogon manquant ({all} sets)");
+    assert!(all_legal * 100 >= all * 95, "cible du PRD : 95 % ({all_legal}/{all})");
+}
+
+/// Point de départ du PRD : les mêmes sets Smogon importés « tels quels » (ancien import).
+#[test]
+fn prd_smogon_corpus_as_is_baseline() {
+    use crate::dex::Lang;
+    use crate::save::session::SaveSession;
+    use crate::save::showdown_apply::ImportTarget;
+    use crate::showdown::parse_team;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/smogon");
+    let saves: [(u8, Vec<u8>); 2] = [
+        (4, crate::save::demo_save().unwrap()),
+        (7, std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/pkhex/sm_project_802.main")).unwrap()),
+    ];
+    for (gen, bytes) in saves {
+        let Ok(text) = std::fs::read_to_string(dir.join(format!("gen{gen}.txt"))) else { continue };
+        let (mut total, mut legal) = (0, 0);
+        for set in parse_team(&text) {
+            let mut s = SaveSession::open(&bytes).unwrap();
+            if s.save.trainer().name.is_empty() {
+                s.set_trainer(&crate::save::edit::TrainerPatch { name: Some("Thisma".into()), ..Default::default() }).unwrap();
+            }
+            let game = s.game();
+            let Ok(report) = s.import_sets(std::slice::from_ref(&set), Lang::En, ImportTarget::Box { r#box: 5 }, false) else { continue };
+            let Some(slot) = report.sets[0].slot else { continue };
+            total += 1;
+            legal += (analyze(&s.get(slot).unwrap().unwrap(), game).verdict != Verdict::Illegal) as usize;
+        }
+        println!("Gen {gen}, import tel quel : {legal}/{total} légaux");
+    }
 }

@@ -232,6 +232,18 @@ fn check_handler(ctx: &Ctx, out: &mut Lines) {
             out.bad("handler-data", "Données de soigneur orphelines", "Bonheur, affection ou souvenir du soigneur sans soigneur enregistré.", TAB_TRAINER);
         }
     }
+    // Pays et région de la console d'origine (PKHeX `ConsoleRegionVerifier`, `Locale3DS`).
+    if !console_country_valid(h.console_region, h.country) {
+        out.bad(
+            "geo-console",
+            "Pays de la console incohérent",
+            format!(
+                "Un Pokémon de 3DS garde le pays et la région de la console où il a été obtenu : la région n°{} ne contient pas le pays n°{}.",
+                h.console_region, h.country
+            ),
+            TAB_TRAINER,
+        );
+    }
     // Pays visités : remplis du plus récent au plus ancien, sans trou ; pas de région sans pays.
     let mut gap = false;
     let mut bad = false;
@@ -245,6 +257,19 @@ fn check_handler(ctx: &Ctx, out: &mut Lines) {
     }
     if bad {
         out.bad("geo", "Pays visités incohérents", "Les pays des échanges doivent se suivre sans case vide, et une région demande un pays.", TAB_TRAINER);
+    }
+}
+
+/// Le pays appartient-il à la région de la console (`Locale3DS.IsConsoleRegionCountryValid`) ?
+pub(crate) fn console_country_valid(console_region: u8, country: u8) -> bool {
+    match console_region {
+        0 => country == 1,
+        1 => matches!(country, 8..=52 | 153 | 156 | 168 | 174 | 186),
+        2 => matches!(country, 64..=127 | 169 | 184 | 185),
+        4 => matches!(country, 144 | 160),
+        5 => country == 136,
+        6 => matches!(country, 144 | 128),
+        _ => false,
     }
 }
 

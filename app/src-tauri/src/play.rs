@@ -16,6 +16,10 @@
 //!   `desmume.ini`, section `[PathSettings]`, clé `Battery` (src/path.h, src/path.cpp).
 //!   Un `.dsv` sans pied DeSmuME est lu comme une carte vide (src/mc.cpp,
 //!   `readFooter`) : on ajoute donc le pied quand on y copie un `.sav` brut.
+//! - **mGBA** : la sauvegarde est `<nom de la ROM sans extension>.sav` à côté de la ROM
+//!   (réglage `savegamePath` vide, valeur par défaut de `src/platform/qt/ConfigController.cpp`) ;
+//!   le lancement est `mGBA.exe <rom>`. Rubis, Saphir et Émeraude peuvent y avoir un pied
+//!   d'horloge (RTC) de 16 octets après les 128 Kio, que la lecture des sauvegardes tolère.
 //! - **Azahar / Citra / Lime3DS** : dossier utilisateur `user/` à côté de
 //!   l'exécutable (mode portable) sinon `%APPDATA%\Azahar` (`Citra`, `Lime3DS`)
 //!   (src/common/common_paths.h : `USERDATA_DIR`, `EMU_DATA_DIR`,
@@ -49,11 +53,19 @@ pub enum EmulatorId {
     Citra,
     Lime3ds,
     Eden,
+    Mgba,
 }
 
 impl EmulatorId {
-    pub const ALL: [EmulatorId; 6] =
-        [EmulatorId::Melonds, EmulatorId::Desmume, EmulatorId::Azahar, EmulatorId::Citra, EmulatorId::Lime3ds, EmulatorId::Eden];
+    pub const ALL: [EmulatorId; 7] = [
+        EmulatorId::Melonds,
+        EmulatorId::Desmume,
+        EmulatorId::Azahar,
+        EmulatorId::Citra,
+        EmulatorId::Lime3ds,
+        EmulatorId::Eden,
+        EmulatorId::Mgba,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -63,7 +75,13 @@ impl EmulatorId {
             EmulatorId::Citra => "Citra",
             EmulatorId::Lime3ds => "Lime3DS",
             EmulatorId::Eden => "Eden",
+            EmulatorId::Mgba => "mGBA",
         }
+    }
+
+    /// Émulateur Game Boy Advance (mGBA lit aussi les jeux Game Boy et Game Boy Color).
+    pub fn is_gba(self) -> bool {
+        self == EmulatorId::Mgba
     }
 
     pub fn is_ctr(self) -> bool {
@@ -79,6 +97,8 @@ impl EmulatorId {
             "switch"
         } else if self.is_ctr() {
             "3ds"
+        } else if self.is_gba() {
+            "gba"
         } else {
             "nds"
         }
@@ -94,6 +114,7 @@ impl EmulatorId {
             EmulatorId::Citra => matches!(lower, "citra-qt.exe" | "citra.exe"),
             EmulatorId::Lime3ds => matches!(lower, "lime3ds.exe" | "lime3ds-gui.exe" | "lime3ds-qt.exe"),
             EmulatorId::Eden => lower == "eden.exe",
+            EmulatorId::Mgba => matches!(lower, "mgba.exe" | "mgba-qt.exe"),
         }
     }
 
@@ -106,6 +127,7 @@ impl EmulatorId {
             EmulatorId::Citra => &["Citra"],
             EmulatorId::Lime3ds => &["Lime3DS"],
             EmulatorId::Eden => &["Eden"],
+            EmulatorId::Mgba => &["mGBA"],
         }
     }
 
@@ -340,6 +362,7 @@ pub struct PlayConfig {
     pub search_dirs: Vec<String>,
     pub preferred_nds: Option<EmulatorId>,
     pub preferred_ctr: Option<EmulatorId>,
+    pub preferred_gba: Option<EmulatorId>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -369,11 +392,19 @@ pub struct Resolved {
     pub env: Env,
 }
 
-/// Émulateur utilisé par défaut pour une console : le préféré s'il est trouvé, sinon le premier trouvé.
+/// Émulateur utilisé par défaut pour une console DS (`ctr = false`) ou 3DS : le préféré
+/// s'il est trouvé, sinon le premier trouvé.
 pub fn default_emulator(config: &PlayConfig, env: &Env, ctr: bool) -> Option<Resolved> {
     let preferred = if ctr { config.preferred_ctr } else { config.preferred_nds };
     let found = |id: EmulatorId| Some(resolve(id, config, env)).filter(|r| r.exe.is_some());
-    preferred.filter(|id| id.is_ctr() == ctr).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(|id| id.is_ctr() == ctr && !id.is_switch()).find_map(found))
+    let fits = move |id: &EmulatorId| id.is_ctr() == ctr && !id.is_switch() && !id.is_gba();
+    preferred.filter(fits).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(fits).find_map(found))
+}
+
+/// Émulateur Game Boy Advance par défaut (mGBA).
+pub fn default_gba_emulator(config: &PlayConfig, env: &Env) -> Option<Resolved> {
+    let found = |id: EmulatorId| Some(resolve(id, config, env)).filter(|r| r.exe.is_some());
+    config.preferred_gba.filter(|id| id.is_gba()).and_then(found).or_else(|| EmulatorId::ALL.into_iter().filter(|id| id.is_gba()).find_map(found))
 }
 
 pub fn resolve(id: EmulatorId, config: &PlayConfig, env: &Env) -> Resolved {
@@ -1202,8 +1233,7 @@ pub fn play_install_save(src: PathBuf, dst: PathBuf) -> Result<Option<String>, S
 pub fn play_find_rom(save: PathBuf) -> Option<String> {
     let stem = save.file_stem()?.to_string_lossy().into_owned();
     let dir = save.parent()?;
-    let rom = dir.join(format!("{stem}.nds"));
-    rom.is_file().then(|| rom.display().to_string())
+    ["nds", "gba", "gbc", "gb"].iter().map(|ext| dir.join(format!("{stem}.{ext}"))).find(|rom| rom.is_file()).map(|rom| rom.display().to_string())
 }
 
 #[cfg(test)]

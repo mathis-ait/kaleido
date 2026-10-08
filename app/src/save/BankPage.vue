@@ -257,7 +257,7 @@ async function depositSelected(copy: boolean) {
 
 // ---- Import / export / suppression
 async function importFiles() {
-  const files = await open({ title: "Importer dans la banque", multiple: true, filters: [{ name: "Pokémon", extensions: ["pk4", "pk5", "pk6", "pk7"] }] });
+  const files = await open({ title: "Importer dans la banque", multiple: true, filters: [{ name: "Pokémon", extensions: ["pk1", "pk2", "pk3", "pk4", "pk5", "pk6", "pk7"] }] });
   const list = Array.isArray(files) ? files : typeof files === "string" ? [files] : [];
   if (!list.length) return;
   const target = bankState.selected && !bankState.slots[bankState.selected.index] ? bankState.selected : null;

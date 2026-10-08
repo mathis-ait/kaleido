@@ -7,6 +7,8 @@
 //!
 //! `\n` = retour à la ligne, `\r` = défilement, `\f` = nouvelle boîte de dialogue.
 
+pub mod gen12;
+pub mod gen3;
 pub mod gen4;
 pub mod gen5;
 

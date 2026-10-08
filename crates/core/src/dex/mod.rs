@@ -34,7 +34,7 @@ pub(crate) use personal::personal_raw;
 pub use personal::{egg_moves, levelup, personal, PersonalInfo};
 pub use text::{
     ability_name, ability_names, ball_name, ball_names, characteristic_names, console_region_names, country_names, game_name, game_names,
-    general_locations, ground_tile_names, item_name, item_name_in, item_names, location_name, locations, memory_feelings, memory_intensities,
+    general_locations, ground_tile_names, item_name, item_name_g1, item_name_g2, item_name_g3, item_name_in, item_names, location_name, GEN3_ITEM_FLAG, locations, memory_feelings, memory_intensities,
     memory_texts, move_name, move_names, nature_name, nature_names, region_names, ribbon_name, ribbon_names, species_name, species_names,
     super_training_names, type_name, type_names,
 };
@@ -52,13 +52,42 @@ pub enum Game {
     ORAS,
     SM,
     USUM,
+    // Gen 3, ajoutés après coup : ils gardent les rangs suivants dans les tables par jeu.
+    RS,
+    E,
+    FRLG,
+    // Gen 1 et 2 (Console virtuelle comprise).
+    RB,
+    Y,
+    GS,
+    C,
 }
 
 impl Game {
-    pub const ALL: [Game; 9] = [Game::DP, Game::Pt, Game::HGSS, Game::BW, Game::B2W2, Game::XY, Game::ORAS, Game::SM, Game::USUM];
+    pub const ALL: [Game; 16] = [
+        Game::DP,
+        Game::Pt,
+        Game::HGSS,
+        Game::BW,
+        Game::B2W2,
+        Game::XY,
+        Game::ORAS,
+        Game::SM,
+        Game::USUM,
+        Game::RS,
+        Game::E,
+        Game::FRLG,
+        Game::RB,
+        Game::Y,
+        Game::GS,
+        Game::C,
+    ];
 
     pub fn generation(self) -> u8 {
         match self {
+            Game::RB | Game::Y => 1,
+            Game::GS | Game::C => 2,
+            Game::RS | Game::E | Game::FRLG => 3,
             Game::DP | Game::Pt | Game::HGSS => 4,
             Game::BW | Game::B2W2 => 5,
             Game::XY | Game::ORAS => 6,
@@ -76,6 +105,13 @@ impl From<crate::games::Game> for Game {
     fn from(game: crate::games::Game) -> Self {
         use crate::games::Game as G;
         match game {
+            G::Red | G::Blue => Game::RB,
+            G::Yellow => Game::Y,
+            G::Gold | G::Silver => Game::GS,
+            G::Crystal => Game::C,
+            G::Ruby | G::Sapphire => Game::RS,
+            G::Emerald => Game::E,
+            G::FireRed | G::LeafGreen => Game::FRLG,
             G::Diamond | G::Pearl => Game::DP,
             G::Platinum => Game::Pt,
             G::HeartGold | G::SoulSilver => Game::HGSS,
@@ -92,6 +128,9 @@ impl From<crate::games::Game> for Game {
 /// Plus grand numéro d'espèce présent dans le jeu.
 pub fn max_species(game: Game) -> u16 {
     match game.generation() {
+        1 => 151,
+        2 => 251,
+        3 => 386,
         4 => 493,
         5 => 649,
         6 => 721,
@@ -103,6 +142,9 @@ pub fn max_species(game: Game) -> u16 {
 /// Plus grand identifiant d'attaque.
 pub fn max_move(game: Game) -> u16 {
     match game {
+        Game::RB | Game::Y => 165,
+        Game::GS | Game::C => 251,
+        Game::RS | Game::E | Game::FRLG => 354,
         Game::DP | Game::Pt | Game::HGSS => 467,
         Game::BW | Game::B2W2 => 559,
         Game::XY => 617,
@@ -115,6 +157,11 @@ pub fn max_move(game: Game) -> u16 {
 /// Plus grand identifiant d'objet.
 pub fn max_item(game: Game) -> u16 {
     match game {
+        Game::RB | Game::Y => 255,
+        Game::GS | Game::C => 255,
+        Game::RS => 348,
+        Game::E => 376,
+        Game::FRLG => 374,
         Game::DP => 464,
         Game::Pt => 467,
         Game::HGSS => 536,
@@ -130,6 +177,8 @@ pub fn max_item(game: Game) -> u16 {
 /// Plus grand identifiant de talent.
 pub fn max_ability(game: Game) -> u16 {
     match game {
+        Game::RB | Game::Y | Game::GS | Game::C => 0,
+        Game::RS | Game::E | Game::FRLG => 77,
         Game::DP | Game::Pt | Game::HGSS => 123,
         Game::BW | Game::B2W2 => 164,
         Game::XY => 188,
@@ -142,6 +191,8 @@ pub fn max_ability(game: Game) -> u16 {
 /// Plus grand identifiant de Ball (Compét’Ball en Gen 4, Rêve Ball en Gen 5-6, Ultra Ball en Gen 7).
 pub fn max_ball(game: Game) -> u8 {
     match game.generation() {
+        1 | 2 => 0x04,
+        3 => 0x0C,
         4 => 0x18,
         5 | 6 => 0x19,
         _ => 0x1A,

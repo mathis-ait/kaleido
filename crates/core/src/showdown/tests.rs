@@ -308,7 +308,7 @@ Happiness: 0
 - Hidden Power [Ice]
 - Fake Out
 ";
-    let report = s.import_showdown(text, ImportTarget::Box { r#box: 0 }).unwrap();
+    let report = s.import_showdown(text, ImportTarget::Box { r#box: 0 }, false).unwrap();
     assert_eq!(report.imported, 2, "{report:?}");
     assert_eq!(report.lang, Lang::En);
     // La boîte 0 contient déjà 12 Pokémon, moins 3 passés dans l'équipe.
@@ -360,7 +360,7 @@ Pokeball: Dive Ball
 - Quiver Dance
 - Revelation Dance
 ";
-    let report = s.import_showdown(text, ImportTarget::Box { r#box: 1 }).unwrap();
+    let report = s.import_showdown(text, ImportTarget::Box { r#box: 1 }, false).unwrap();
     assert_eq!(report.imported, 2, "{report:?}");
     let pex = s.get(report.sets[0].slot.unwrap()).unwrap().unwrap();
     assert_eq!(pex.species(), 748);
@@ -403,7 +403,7 @@ fn apply_set_to_existing_pokemon() {
         moves: vec!["Protect".into(), "Substitute".into()],
         ..ShowdownSet::default()
     };
-    let (view, _) = s.apply_showdown_set(slot, &set, Lang::En).unwrap();
+    let (view, _, _) = s.apply_showdown_set(slot, &set, Lang::En, false).unwrap();
     assert_eq!(view.summary.level, 100);
     assert_eq!(view.summary.nature, 15);
     let p = s.get(slot).unwrap().unwrap();
@@ -453,7 +453,7 @@ fn smogon_sets_from_fixture() {
 
     // Appliquer un set Smogon dans une nouvelle case.
     let mut s = sm_save();
-    let report = s.import_sets(std::slice::from_ref(&sd.set), Lang::En, ImportTarget::Box { r#box: 2 }).unwrap();
+    let report = s.import_sets(std::slice::from_ref(&sd.set), Lang::En, ImportTarget::Box { r#box: 2 }, false).unwrap();
     assert_eq!(report.imported, 1);
     let p = s.get(report.sets[0].slot.unwrap()).unwrap().unwrap();
     assert_eq!(p.moves(), [14, 89, 444, 424]);
@@ -466,4 +466,50 @@ fn gender_line() {
     assert_eq!(sets[0].gender, Some('M'));
     assert_eq!(sets[1].gender, Some('F'));
     assert!(sets.iter().all(|s| s.ignored.is_empty()));
+}
+
+/// Import légal par défaut : chaque Pokémon passe par le légaliseur, avec un rapport.
+#[test]
+fn import_is_legal_by_default() {
+    use crate::legality::{analyze, Verdict};
+    let text = "Garchomp (M) @ Life Orb
+Ability: Sand Veil
+Level: 78
+Shiny: Yes
+EVs: 4 HP / 252 Atk / 252 Spe
+Adamant Nature
+- Dragon Claw
+- Earthquake
+- Fire Fang
+- Swords Dance
+
+Sparky (Pikachu) (F) @ Light Ball
+Happiness: 0
+- Volt Tackle
+- Frustration
+- Hidden Power [Ice]
+- Fake Out
+";
+    for (mut s, text) in [(pt_save(), text), (sm_save(), "Toxapex @ Black Sludge\nAbility: Regenerator\nEVs: 252 HP / 252 Def / 4 SpD\nBold Nature\nIVs: 0 Atk\n- Scald\n- Recover\n- Haze\n- Toxic Spikes\n")] {
+        let game = s.game();
+        if s.save.trainer().name.is_empty() {
+            s.set_trainer(&crate::save::edit::TrainerPatch { name: Some("Thisma".into()), ..Default::default() }).unwrap();
+        }
+        let report = s.import_showdown(text, ImportTarget::Box { r#box: 1 }, true).unwrap();
+        for set in &report.sets {
+            let l = set.legality.as_ref().expect("bilan de légalisation");
+            let p = s.get(set.slot.unwrap()).unwrap().unwrap();
+            println!(
+                "{} : légal {} · {:?} · écarts {:?}",
+                set.species_name,
+                l.legal,
+                l.encounter.as_ref().map(|e| format!("{} {}", e.kind_label, e.location_name)),
+                l.adjustments.iter().map(|c| c.text.as_str()).collect::<Vec<_>>()
+            );
+            assert!(l.legal, "{} : {:?}", set.species_name, analyze(&p, game).checks);
+            assert_ne!(analyze(&p, game).verdict, Verdict::Illegal);
+            assert!(l.encounter.is_some());
+            assert_eq!(p.pp_ups()[0], 3);
+        }
+    }
 }

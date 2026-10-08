@@ -99,6 +99,13 @@ fn version_group_order(id: u8) -> u8 {
 /// Ordre du groupe de versions de chaque jeu.
 fn game_order(game: Game) -> u8 {
     version_group_order(match game {
+        Game::RB => 1,
+        Game::Y => 2,
+        Game::GS => 3,
+        Game::C => 4,
+        Game::RS => 5,
+        Game::E => 6,
+        Game::FRLG => 7,
         Game::DP => 8,
         Game::Pt => 9,
         Game::HGSS => 10,
@@ -170,11 +177,17 @@ pub fn move_info_in(game: Game, id: u16) -> Option<MoveInfo> {
         return None;
     }
     let generation = game.generation();
-    let pp = *PP[(generation - 4) as usize].get(id as usize)?;
+    // Les PP de la Gen 3 sont ceux de la Gen 4 pour les 354 premières attaques.
+    let pp = *PP[(generation.max(4) - 4) as usize].get(id as usize)?;
     let types = if generation <= 5 { &TYPES_G5 } else { &TYPES_G6 };
     let type_id = *types.get(id as usize)?;
     let stats = stats_at(id, game_order(game));
-    let category = stats.category.unwrap_or(MoveCategory::Status);
+    let mut category = stats.category.unwrap_or(MoveCategory::Status);
+    // Jusqu'à la Gen 3, la catégorie dépend du type : Feu, Eau, Plante, Électrik, Psy,
+    // Glace, Dragon et Ténèbres (10 à 17) sont spéciaux, les autres physiques.
+    if generation <= 3 && category != MoveCategory::Status {
+        category = if (10..=17).contains(&type_id) { MoveCategory::Special } else { MoveCategory::Physical };
+    }
     Some(MoveInfo { id, type_id, category, pp, power: stats.power, accuracy: stats.accuracy, priority: stats.priority })
 }
 

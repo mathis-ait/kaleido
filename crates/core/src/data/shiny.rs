@@ -70,6 +70,12 @@ pub fn current_threshold(rom: &NdsRom) -> Result<u16, RomError> {
     Ok(arm9[at + THRESHOLD_OFFSET] as u16)
 }
 
+/// Seuil des chromatiques d'un fichier .nds (8 si la ROM n'est pas modifiée).
+pub fn rom_threshold(path: &std::path::Path) -> Option<u16> {
+    let rom = NdsRom::open(path).ok()?;
+    current_threshold(&rom).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
