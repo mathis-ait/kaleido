@@ -391,3 +391,198 @@ fn combat_3ds_vu_par_le_module_charge() {
     src.poke(base + 0x123_4000, &[0xAA; 32]);
     assert_eq!(reader.ctr_in_battle(&src), Some(false));
 }
+
+// --- 3DS : équipe vivante et combat (structures observées sur Rubis Oméga, voir `ctr`).
+
+const FCRAM: u64 = 0x4000_0000;
+/// Adresse hôte = adresse côté jeu + OFF (tas du jeu en 0x08xxxxxx).
+const OFF: u64 = FCRAM + 0x0100_0000 - 0x0800_0000;
+const VTABLE: u32 = 0x005D_E6AC;
+const OUR_EC: u32 = 0x088B_8E2C;
+const FOE_EC: u32 = 0x3AA7_98B5;
+
+fn ctr_hints() -> RamHints {
+    RamHints {
+        format: PkmFormat::Gen6,
+        party: 0,
+        party_count: 0,
+        trainer_name: 0,
+        trainer_name_bytes: Vec::new(),
+        tid: 8247,
+        sid: 25068,
+        tid_offset: 0,
+        map: 0,
+        badges: None,
+        hours: 0,
+        party_keys: vec![OUR_EC],
+    }
+}
+
+fn mon6(ec: u32, species: u16, level: u8, hp: u16, stats: [u16; 6]) -> Pokemon {
+    let mut p = Pokemon::blank(PkmFormat::Gen6);
+    p.set_encryption_constant(ec);
+    p.set_pid(ec ^ 0x5555_0000);
+    p.set_species(species);
+    p.set_tid(8247);
+    p.set_sid(25068);
+    p.set_party_stats(level, stats);
+    p.set_current_hp(hp);
+    p
+}
+
+fn landorus(hp: u16) -> Pokemon {
+    mon6(OUR_EC, 645, 6, hp, [28, 20, 17, 20, 13, 18])
+}
+
+fn vaddr(host: u64) -> u32 {
+    (host - OFF) as u32
+}
+
+/// Objet Pokémon à `obj` : données PK6 à +0x40, section équipe 0x158 plus loin.
+fn put_object(src: &mut DumpSource, obj: u64, mon: Option<&Pokemon>) {
+    let (data, ext) = (obj + 0x40, obj + 0x40 + 0x158);
+    let mut head = Vec::new();
+    for w in [VTABLE, vaddr(data), vaddr(ext), 0] {
+        head.extend_from_slice(&w.to_le_bytes());
+    }
+    src.poke(obj, &head);
+    if let Some(m) = mon {
+        let enc = m.encrypt_party();
+        src.poke(data, &enc[..232]);
+        src.poke(ext, &enc[232..]);
+    }
+}
+
+/// Tableau de l'équipe vivante à `at` : six objets alloués d'avance, `mons` occupés.
+fn put_live_party(src: &mut DumpSource, at: u64, mons: &[Pokemon]) {
+    let objs: Vec<u64> = (0..6).map(|i| at + 0x4C + i * 0x1E4).collect();
+    let mut arr = Vec::new();
+    for o in &objs {
+        arr.extend_from_slice(&vaddr(*o).to_le_bytes());
+    }
+    arr.extend_from_slice(&(mons.len() as u32).to_le_bytes());
+    src.poke(at, &arr);
+    for (i, o) in objs.iter().enumerate() {
+        put_object(src, *o, mons.get(i));
+    }
+}
+
+/// Bloc de combat à `at` pour le Pokémon tenu par l'objet `obj`.
+fn put_param(src: &mut DumpSource, at: u64, obj: u64, p: &Pokemon) {
+    let s = p.party_stats().unwrap();
+    let mut b = vec![0u8; 0x100];
+    b[..4].copy_from_slice(&vaddr(obj).to_le_bytes());
+    b[0x0C..0x0E].copy_from_slice(&p.species().to_le_bytes());
+    b[0x0E..0x10].copy_from_slice(&s[0].to_le_bytes());
+    b[0x10..0x12].copy_from_slice(&p.current_hp().to_le_bytes());
+    b[0x18] = p.party_level().unwrap();
+    b[0xF4..0xF6].copy_from_slice(&p.species().to_le_bytes());
+    for i in 0..5 {
+        b[0xF6 + 2 * i..0xF8 + 2 * i].copy_from_slice(&s[1 + i].to_le_bytes());
+    }
+    src.poke(at, &b);
+}
+
+fn ctr_world() -> DumpSource {
+    let mut src = DumpSource::new().with_zone(FCRAM, vec![0u8; 0x0200_0000]);
+    // Image de la sauvegarde (format équipe) : PV d'il y a longtemps.
+    src.poke(FCRAM + 0x0149_E50C, &landorus(15).encrypt_party());
+    // Équipe vivante : PV actuels.
+    put_live_party(&mut src, FCRAM + 0x0151_8230, &[landorus(9)]);
+    src
+}
+
+#[test]
+fn equipe_3ds_vivante_plutot_que_l_image_de_la_sauvegarde() {
+    let mut src = ctr_world();
+    let mut reader = LiveReader::new(Console::Ctr, ctr_hints());
+    let r = reader.tick(&src).unwrap().expect("équipe lue");
+    assert_eq!((r.party[0].species(), r.party[0].current_hp()), (645, 9));
+    // Le joueur se soigne : l'équipe vivante change, pas l'image de la sauvegarde.
+    put_object(&mut src, FCRAM + 0x0151_8230 + 0x4C, Some(&landorus(28)));
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert_eq!(r.party[0].current_hp(), 28);
+    // Capture : un second Pokémon entre dans l'équipe.
+    let wingull = mon6(FOE_EC, 278, 3, 15, [15, 6, 6, 8, 7, 10]);
+    put_live_party(&mut src, FCRAM + 0x0151_8230, &[landorus(28), wingull]);
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert_eq!(r.party.iter().map(|p| p.species()).collect::<Vec<_>>(), [645, 278]);
+}
+
+#[test]
+fn combat_3ds_adversaire_lu() {
+    let mut src = ctr_world();
+    let head: Vec<u8> = (1..=32).collect();
+    let field: Vec<u8> = (101..=132).collect();
+    let slot = FCRAM + 0x0040_0000;
+    src.poke(slot, &field);
+    let mut reader = LiveReader::new(Console::Ctr, ctr_hints());
+    reader.set_battle_module(head.clone());
+    reader.set_field_module(field.clone());
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert_eq!(r.in_battle, Some(false));
+    assert!(r.battle.is_none());
+
+    // Combat : module de combat chargé, objets et blocs de combat dans un autre tas.
+    let heap = FCRAM + 0x00A1_E000;
+    let wingull = mon6(FOE_EC, 278, 3, 15, [15, 6, 6, 8, 7, 10]);
+    let (our_obj, foe_obj) = (heap + 0x780, heap + 0x1EC8);
+    put_object(&mut src, our_obj, Some(&landorus(9)));
+    put_object(&mut src, foe_obj, Some(&wingull));
+    put_param(&mut src, heap + 0x7234, our_obj, &landorus(9));
+    put_param(&mut src, heap + 0x7478, foe_obj, &wingull);
+    src.poke(slot, &head);
+    let b = reader.tick(&src).unwrap().unwrap().battle.expect("adversaire lu");
+    assert!(b.wild && b.new);
+    let foe = &b.enemies[0];
+    assert_eq!((foe.species(), foe.party_level(), foe.current_hp()), (278, Some(3), 15));
+    assert_eq!(foe.party_stats().unwrap(), [15, 6, 6, 8, 7, 10]);
+    assert_eq!(b.ours[0].current_hp(), 9);
+
+    // L'adversaire perd des PV : relu au tick suivant, même rencontre.
+    let mut hurt = wingull.clone();
+    hurt.set_current_hp(4);
+    put_param(&mut src, heap + 0x7478, foe_obj, &hurt);
+    let b = reader.tick(&src).unwrap().unwrap().battle.unwrap();
+    assert!(!b.new);
+    assert_eq!(b.enemies[0].current_hp(), 4);
+
+    // Fin du combat : module de la carte, plus d'adversaire.
+    src.poke(slot, &field);
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert!(r.battle.is_none());
+    assert_eq!(r.in_battle, Some(false));
+
+    // Nouveau combat, nouvel adversaire : nouvelle rencontre.
+    let other = mon6(0x0102_0304, 263, 2, 12, [12, 5, 5, 4, 5, 7]);
+    put_object(&mut src, foe_obj, Some(&other));
+    put_param(&mut src, heap + 0x7478, foe_obj, &other);
+    src.poke(slot, &head);
+    let mut seen = None;
+    for _ in 0..10 {
+        if let Some(b) = reader.tick(&src).unwrap().unwrap().battle {
+            seen = Some(b);
+            break;
+        }
+    }
+    let b = seen.expect("second combat lu");
+    assert!(b.new);
+    assert_eq!(b.enemies[0].species(), 263);
+}
+
+#[test]
+fn combat_3ds_dresseur() {
+    let mut src = ctr_world();
+    let head: Vec<u8> = (1..=32).collect();
+    src.poke(FCRAM + 0x0040_0000, &head);
+    let mut reader = LiveReader::new(Console::Ctr, ctr_hints());
+    reader.set_battle_module(head);
+    let heap = FCRAM + 0x00A1_E000;
+    let mut foe = mon6(FOE_EC, 263, 4, 18, [18, 8, 7, 6, 7, 9]);
+    foe.set_tid(1);
+    foe.set_sid(2);
+    put_object(&mut src, heap + 0x1EC8, Some(&foe));
+    put_param(&mut src, heap + 0x7478, heap + 0x1EC8, &foe);
+    let b = reader.tick(&src).unwrap().unwrap().battle.expect("adversaire lu");
+    assert!(!b.wild, "Pokémon d'un dresseur");
+}
