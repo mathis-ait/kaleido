@@ -1,4 +1,5 @@
-use super::reader::{read_party_at, Console, LiveReader};
+use super::ctr;
+use super::reader::{Console, LiveReader, read_party_at};
 use super::scan::{self, DS_HEADER_OFFSET, DS_RAM_SIZE};
 use super::*;
 use crate::save::{PkmFormat, Pokemon, RamHints};
@@ -269,7 +270,7 @@ fn ram_dsi_de_16_mio() {
 /// en direct doit annoncer chaque K.O. dès le tick suivant et ne jamais annoncer de mort.
 #[test]
 fn scenario_nuzlocke_rejoue_en_memoire() {
-    use crate::save::diff::{diff_memory, Brief, GameEvent};
+    use crate::save::diff::{Brief, GameEvent, diff_memory};
     use crate::save::session::{PokemonPatch, SaveSession, Slot};
 
     const BASE: u64 = 0x2_0000_0000;
@@ -585,4 +586,37 @@ fn combat_3ds_dresseur() {
     put_param(&mut src, heap + 0x7478, heap + 0x1EC8, &foe);
     let b = reader.tick(&src).unwrap().unwrap().battle.expect("adversaire lu");
     assert!(!b.wild, "Pokémon d'un dresseur");
+}
+
+#[test]
+fn bloc_de_combat_7e_generation() {
+    // Ultra-Soleil : statistiques en +0x1D8 (Manglouton N.3, 16 PV).
+    let mut b = vec![0u8; 0x200];
+    b[..4].copy_from_slice(&0x3002_F960u32.to_le_bytes());
+    b[0x0C..0x0E].copy_from_slice(&734u16.to_le_bytes());
+    b[0x0E..0x10].copy_from_slice(&16u16.to_le_bytes());
+    b[0x10..0x12].copy_from_slice(&11u16.to_le_bytes());
+    b[0x18] = 3;
+    b[0x1D8..0x1DA].copy_from_slice(&734u16.to_le_bytes());
+    for (i, s) in [9u16, 6, 7, 7, 8].into_iter().enumerate() {
+        b[0x1DA + 2 * i..0x1DC + 2 * i].copy_from_slice(&s.to_le_bytes());
+    }
+    let p = ctr::param_at(&ctr::GEN7_PARAM, &b).expect("bloc lu");
+    assert_eq!((p.species, p.hp, p.max_hp, p.level, p.stats), (734, 11, 16, 3, [9, 6, 7, 7, 8]));
+    assert!(ctr::param_at(&ctr::GEN6_PARAM, &b).is_none(), "disposition 6e génération refusée");
+}
+
+#[test]
+fn equipe_3ds_vide_reconnue_a_sa_forme() {
+    // Sauvegarde sans Pokémon : le tableau est trouvé à sa forme, puis le premier Pokémon reçu y apparaît.
+    let mut src = DumpSource::new().with_zone(FCRAM, vec![0u8; 0x0200_0000]);
+    put_live_party(&mut src, FCRAM + 0x0151_8230, &[]);
+    let mut hints = ctr_hints();
+    hints.party_keys.clear();
+    let mut reader = LiveReader::new(Console::Ctr, hints);
+    let r = reader.tick(&src).unwrap().expect("équipe vide lue");
+    assert!(r.party.is_empty());
+    put_live_party(&mut src, FCRAM + 0x0151_8230, &[landorus(22)]);
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert_eq!(r.party.iter().map(|p| p.species()).collect::<Vec<_>>(), [645]);
 }

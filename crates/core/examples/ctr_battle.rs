@@ -7,7 +7,8 @@ fn main() {
     let format = if a.get(1).map(String::as_str) == Some("gen7") { PkmFormat::Gen7 } else { PkmFormat::Gen6 };
     let run = |src: &dyn MemorySource, regions: Vec<kaleido_core::live::Region>| {
         let t = std::time::Instant::now();
-        let found = ctr::scan(src, &regions, format, &ctr::GEN6_PARAM);
+        let layout = if format == PkmFormat::Gen7 { ctr::GEN7_PARAM } else { ctr::GEN6_PARAM };
+        let found = ctr::scan(src, &regions, format, &layout);
         println!("balayage {:?} : {} Pokémon, {} blocs", t.elapsed(), found.mons.len(), found.params.len());
         for (at, m) in &found.mons {
             println!("  pk {at:#x} esp {} ec {:08x}", m.species(), m.encryption_constant());

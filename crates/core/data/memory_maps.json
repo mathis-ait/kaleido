@@ -301,7 +301,7 @@
         "method": "croModule",
         "verified": []
       },
-      "notes": "Non vérifié (Azahar absent). Combat : module « Battle » de la ROM (7e génération), non vérifié en jeu ; module de carte inconnu, l'emplacement est trouvé au premier combat.",
+      "notes": "Non vérifié en jeu (la sauvegarde Lune de test est vide et illisible). Mêmes modules que Ultra-Soleil dans la ROM (Battle, FieldRo) et même moteur : lecture supposée identique à Ultra-Soleil (vérifié).",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -316,7 +316,8 @@
           "verified": false
         }
       ],
-      "battleModule": "Battle"
+      "battleModule": "Battle",
+      "fieldModule": "FieldRo"
     },
     {
       "game": "USUM",
@@ -327,16 +328,20 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "00040000001B5000"
+        ]
       },
       "saveBlock": {
         "verified": []
       },
       "battle": {
         "method": "croModule",
-        "verified": []
+        "verified": [
+          "00040000001B5000"
+        ]
       },
-      "notes": "Non vérifié (Azahar absent). Ultra-Soleil EU lancé dans Azahar : sauvegarde de test au tout début (équipe vide), rien à lire ; la recherche par numéro de dresseur ne trouve pas le bloc sur 3DS. Combat : module « Battle » de la ROM (7e génération), non vérifié en jeu ; module de carte inconnu, l'emplacement est trouvé au premier combat.",
+      "notes": "Vérifié dans Azahar 2126.1.2 sur Ultra-Soleil EU (copie d'une sauvegarde en tout début de partie, sans Pokémon) : tableau d'équipe vide reconnu à sa forme (deux tableaux vides, le premier qui se remplit gagne), Brindibou N.5 vu dès sa remise. Combat : module « Battle » chargé à la place de « FieldRo » (même emplacement, 0x006DD000 dans le journal d'Azahar), vu en jeu sur la Route 1 ; Manglouton N.3 lu, PV 16 → 11 → 6 → 1 → 0 en direct, fin du combat vue. Bloc de combat : espèce +0x0C, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0x1DA (espèce répétée en +0x1D8). Carte non lue.",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -351,7 +356,8 @@
           "verified": false
         }
       ],
-      "battleModule": "Battle"
+      "battleModule": "Battle",
+      "fieldModule": "FieldRo"
     }
   ]
 }

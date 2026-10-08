@@ -184,6 +184,8 @@ pub struct LiveReader {
     /// Lectures ratées de suite de l'équipe vivante.
     live_misses: u32,
     live_searched: Option<u64>,
+    /// Autres tableaux possibles (sauvegarde sans Pokémon).
+    live_alts: Vec<ctr::LiveParty>,
 }
 
 /// 3DS : Pokémon en combat (blocs de combat reliés à leurs données PK6), zone où ils ont été vus
@@ -244,6 +246,7 @@ impl LiveReader {
             live_party: None,
             live_misses: 0,
             live_searched: None,
+            live_alts: Vec::new(),
         }
     }
 
@@ -439,9 +442,6 @@ impl LiveReader {
         // Le bloc de sauvegarde d'abord : c'est la copie choisie tant qu'aucune autre ne bouge.
         copies.sort_by_key(|c| !c.save_block);
         self.copies = copies;
-        if matches!(self.console, Console::Ctr) && self.live_party.is_none() {
-            self.search_live_party(src);
-        }
     }
 
     /// Lecture d'un tick. `Ok(None)` : rien de valide ce tick-ci (équipe pas encore trouvée,
@@ -455,17 +455,14 @@ impl LiveReader {
             Console::Ds(_) => RESEARCH_DS,
             Console::Ctr => RESEARCH_CTR,
         };
-        if self.copies.is_empty() && self.searched_at.is_none_or(|t| self.tick - t >= research) {
-            self.search_party(src);
-        }
-        // 3DS : tableau de l'équipe vivante pas encore trouvé (combat à l'attache, sauvegarde
-        // sans Pokémon…) : nouvel essai de temps en temps.
-        if matches!(self.console, Console::Ctr)
-            && self.live_party.is_none()
-            && !self.copies.is_empty()
-            && self.live_searched.is_none_or(|t| self.tick - t >= RESEARCH_CTR)
-        {
+        // 3DS : l'équipe vivante d'abord ; la copie au format équipe (image de la sauvegarde) ne
+        // sert que si elle reste introuvable. Nouvel essai de temps en temps.
+        let ctr = matches!(self.console, Console::Ctr);
+        if ctr && self.live_party.is_none() && self.live_searched.is_none_or(|t| self.tick - t >= RESEARCH_CTR) {
             self.search_live_party(src);
+        }
+        if (!ctr || self.live_party.is_none()) && self.copies.is_empty() && self.searched_at.is_none_or(|t| self.tick - t >= research) {
+            self.search_party(src);
         }
         let tick = self.tick;
         let party = if self.live_party.is_some() {
@@ -524,7 +521,18 @@ impl LiveReader {
     fn read_live_party(&mut self, src: &dyn MemorySource) -> Option<Vec<Pokemon>> {
         let lp = self.live_party.as_ref()?;
         // Équipe vide alors que la sauvegarde a des Pokémon : tableau abandonné par le jeu.
-        let read = lp.read(src, self.hints.format).filter(|m| !m.is_empty() || self.hints.party_keys.is_empty());
+        let mut read = lp.read(src, self.hints.format).filter(|m| !m.is_empty() || self.hints.party_keys.is_empty());
+        // Sauvegarde sans Pokémon : plusieurs tableaux vides possibles, le premier qui se remplit gagne.
+        if read.as_ref().is_some_and(|m| m.is_empty()) {
+            let format = self.hints.format;
+            if let Some(i) = self.live_alts.iter().position(|a| a.read(src, format).is_some_and(|m| !m.is_empty())) {
+                let alt = self.live_alts.remove(i);
+                read = alt.read(src, format);
+                if let Some(old) = self.live_party.replace(alt) {
+                    self.live_alts.push(old);
+                }
+            }
+        }
         match read {
             Some(mons) => {
                 self.live_misses = 0;
@@ -545,8 +553,11 @@ impl LiveReader {
 
     /// 3DS : tableau de l'équipe vivante, retrouvé depuis un Pokémon de la sauvegarde (données
     /// PK6 au format boîte tenues par un objet dont la section équipe se déchiffre).
+    /// Sans Pokémon dans la sauvegarde (début de partie), les tableaux sont reconnus à leur forme :
+    /// le premier qui se remplit devient l'équipe.
     fn search_live_party(&mut self, src: &dyn MemorySource) {
         self.live_searched = Some(self.tick);
+        self.live_alts.clear();
         let regions = self.fcram_regions(src);
         for (hit, key) in scan::find_u32s(src, &regions, &self.hints.party_keys, 256) {
             let Ok(data) = src.read_vec(hit, 232) else { continue };
@@ -559,6 +570,12 @@ impl LiveReader {
                 self.live_misses = 0;
                 return;
             }
+        }
+        if self.hints.party_keys.is_empty() {
+            let mut found = ctr::find_party_arrays(src, &regions).into_iter();
+            self.live_party = found.next();
+            self.live_alts = found.collect();
+            self.live_misses = 0;
         }
     }
 
@@ -705,7 +722,7 @@ impl LiveReader {
 
     /// Disposition des blocs de combat selon la génération.
     fn ctr_layout(&self) -> ParamLayout {
-        ctr::GEN6_PARAM
+        if self.hints.format == PkmFormat::Gen7 { ctr::GEN7_PARAM } else { ctr::GEN6_PARAM }
     }
 
     /// 3DS, en combat : Pokémon en combat relus à chaque passage ; recherchés dans la FCRAM au début
@@ -780,7 +797,7 @@ impl LiveReader {
     /// sont son propre code), ou toutes les zones candidates.
     fn fcram_regions(&self, src: &dyn MemorySource) -> Vec<Region> {
         let all = scan::ctr_candidate_regions(src);
-        let at = self.live_party.as_ref().map(|l| l.at).or(self.copies.first().map(|c| c.addr));
+        let at = self.copies.first().map(|c| c.addr).or(self.live_party.as_ref().map(|l| l.at));
         match at.and_then(|a| all.iter().find(|r| r.contains(a, 1))) {
             Some(r) => vec![*r],
             None => all,

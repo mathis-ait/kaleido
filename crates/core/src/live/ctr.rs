@@ -32,6 +32,8 @@ pub struct ParamLayout {
 }
 
 pub const GEN6_PARAM: ParamLayout = ParamLayout { species: 0x0C, max_hp: 0x0E, hp: 0x10, level: 0x18, stats: 0xF4 };
+/// 7e génération (observé en Ultra-Soleil) : même début, statistiques plus loin.
+pub const GEN7_PARAM: ParamLayout = ParamLayout { species: 0x0C, max_hp: 0x0E, hp: 0x10, level: 0x18, stats: 0x1D8 };
 
 impl ParamLayout {
     fn len(&self) -> usize {
@@ -68,7 +70,7 @@ pub fn param_at(layout: &ParamLayout, b: &[u8]) -> Option<Param> {
         return None;
     }
     let species = rd16(b, layout.species);
-    // Espèce répétée devant les statistiques en Rubis Oméga, zéro en Y.
+    // Espèce répétée devant les statistiques en Rubis Oméga et Ultra-Soleil, zéro en Y.
     let again = rd16(b, layout.stats);
     if !(1..=MAX_SPECIES).contains(&species) || (again != species && again != 0) {
         return None;
@@ -274,6 +276,10 @@ pub fn read_live_mon(src: &dyn MemorySource, format: PkmFormat, obj: &MonObject)
         return None;
     }
     let ext = src.read_vec(obj.ext, PARTY_EXT).ok()?;
+    // Section équipe lue pendant une écriture : niveau ou PV incohérents.
+    if !plausible_ext(&decrypt_ext(rd32(&data, 0), &ext)) {
+        return None;
+    }
     let mut raw = data;
     raw.extend_from_slice(&ext);
     let p = Pokemon::from_encrypted(format, &raw).ok()?;
@@ -356,6 +362,72 @@ pub fn find_live_party(src: &dyn MemorySource, regions: &[Region], vaddr: u32, o
             if ok {
                 return Some(LiveParty { at, off, vtable });
             }
+        }
+    }
+    None
+}
+
+/// Tableaux d'équipe reconnus à leur seule forme, sans Pokémon connu (sauvegarde sans Pokémon) :
+/// six adresses d'objets également espacées (0x100 à 0x400 octets), le nombre (0 à 6), puis, juste
+/// après, des objets `[table][données][section équipe]` qui suivent le même espacement. Observé en
+/// Ultra-Soleil (début de partie : deux tableaux vides) comme en 6e génération.
+pub fn find_party_arrays(src: &dyn MemorySource, regions: &[Region]) -> Vec<LiveParty> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; CHUNK + OVERLAP];
+    for r in regions {
+        let mut at = r.base & !3;
+        while at < r.end() {
+            let len = ((r.end() - at) as usize).min(CHUNK + OVERLAP) & !3;
+            if len < 28 {
+                break;
+            }
+            let chunk = &mut buf[..len];
+            if src.read(at, chunk).is_ok() {
+                let stop = len.min(CHUNK);
+                let mut i = 0;
+                while i < stop && i + 28 <= len {
+                    if let Some(lp) = party_array_at(src, chunk, i, at) {
+                        out.push(lp);
+                    }
+                    i += 4;
+                }
+            }
+            at += CHUNK as u64;
+        }
+        if !out.is_empty() {
+            break;
+        }
+    }
+    out
+}
+
+fn party_array_at(src: &dyn MemorySource, chunk: &[u8], i: usize, at: u64) -> Option<LiveParty> {
+    let w0 = rd32(chunk, i);
+    if !(0x0800_0000..0x4000_0000).contains(&w0) {
+        return None;
+    }
+    let stride = rd32(chunk, i + 4).wrapping_sub(w0);
+    if !(0x100..=0x400).contains(&stride) || (2..6).any(|k| rd32(chunk, i + 4 * k).wrapping_sub(rd32(chunk, i + 4 * k - 4)) != stride) {
+        return None;
+    }
+    if rd32(chunk, i + 24) > 6 {
+        return None;
+    }
+    let host = at + i as u64;
+    // Premier objet peu après le tableau ; le suivant à `stride` octets, même table, mêmes écarts.
+    let after = src.read_vec(host + 28, 0x200 + stride as usize + 12).ok()?;
+    for d in (0..0x200).step_by(4) {
+        let (vt, x, y) = (rd32(&after, d), rd32(&after, d + 4), rd32(&after, d + 8));
+        let k = x.wrapping_sub(w0);
+        let e = y.wrapping_sub(x);
+        if vt < 0x0010_0000 || !(8..=0x100).contains(&k) || e == 0 || e > 0x400 {
+            continue;
+        }
+        let s = d + stride as usize;
+        if rd32(&after, s) == vt && rd32(&after, s + 4) == x.wrapping_add(stride) && rd32(&after, s + 8) == y.wrapping_add(stride) {
+            let obj_host = host + 28 + d as u64;
+            let off = obj_host.wrapping_sub(w0 as u64);
+            return Some(LiveParty { at: host, off, vtable: vt });
         }
     }
     None
