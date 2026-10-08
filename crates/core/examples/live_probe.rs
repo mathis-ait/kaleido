@@ -8,8 +8,8 @@
 #[cfg(windows)]
 fn main() {
     use kaleido_core::live::reader::{Console, LiveReader};
-    use kaleido_core::live::windows::{Process, processes};
-    use kaleido_core::live::{MemorySource, scan};
+    use kaleido_core::live::windows::{processes, Process};
+    use kaleido_core::live::{scan, MemorySource};
     use kaleido_core::save::session::SaveSession;
     use std::time::{Duration, Instant};
 
@@ -82,7 +82,17 @@ fn main() {
             let mut last = String::new();
             let mut worst = Duration::ZERO;
             let mut ticks = 0;
+            let modified = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+            let mut save_at = modified(arg(2));
             while Instant::now() < end {
+                // Sauvegarde réécrite par le jeu : nouveaux repères (comme l'app).
+                if modified(arg(2)) != save_at {
+                    save_at = modified(arg(2));
+                    if let Ok(s) = std::fs::read(arg(2)).map_err(|_| ()).and_then(|b| SaveSession::open(&b).map_err(|_| ())) {
+                        reader.set_hints(s.save.ram_hints());
+                        println!("sauvegarde relue");
+                    }
+                }
                 let t = Instant::now();
                 let r = reader.tick(&proc);
                 worst = worst.max(t.elapsed());

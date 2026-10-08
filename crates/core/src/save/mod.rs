@@ -734,6 +734,7 @@ impl SaveFile {
             badges: self.badges_offset(),
             hours: t.hours,
             party_keys: party.iter().map(|p| rd_u32(p.data(), 0)).collect(),
+            situation: situation_bytes(self.format(), d, self.layout.map),
         }
     }
 }
@@ -758,6 +759,20 @@ pub struct RamHints {
     /// Premier mot (`u32`) de chaque Pokémon de l'équipe : PID en Gen 4-5, constante de
     /// chiffrement en Gen 6-7. Ce mot n'est pas chiffré : il sert de signature en RAM.
     pub party_keys: Vec<u32>,
+    /// 16 octets du fichier autour de la carte (à partir de `map` arrondi à 4) : carte et position
+    /// du joueur au moment de la sauvegarde. Sur 3DS, la structure vivante est retrouvée en RAM
+    /// par ce contenu (voir [`crate::live::reader`]).
+    pub situation: Vec<u8>,
+}
+
+/// Structure « situation » telle que le jeu la garde en RAM, d'après le fichier : 16 octets à
+/// partir de la carte arrondie à 4. En 7e génération, le fichier intercale 4 octets (`FFFFFFFF`)
+/// entre la carte et la position, absents en RAM (observé en Ultra-Soleil).
+fn situation_bytes(format: PkmFormat, d: &[u8], map: usize) -> Vec<u8> {
+    let at = map & !3;
+    let part = |a: usize, n: usize| d.get(a..a + n).map(<[u8]>::to_vec);
+    let v = if format == PkmFormat::Gen7 { part(at, 4).zip(part(at + 8, 12)).map(|(a, b)| [a, b].concat()) } else { part(at, 16) };
+    v.unwrap_or_default()
 }
 
 /// Résumé lisible d'une sauvegarde, pour le débogage.

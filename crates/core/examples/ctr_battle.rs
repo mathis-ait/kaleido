@@ -1,7 +1,7 @@
 // Pokémon en combat 3DS : ctr_battle <dump.bin | pid> [gen7]
 // Dump : copie brute (ctr_dump) ; pid : FCRAM d'Azahar lue en direct.
 fn main() {
-    use kaleido_core::live::{DumpSource, MemorySource, ctr};
+    use kaleido_core::live::{ctr, DumpSource, MemorySource};
     use kaleido_core::save::PkmFormat;
     let a: Vec<String> = std::env::args().skip(1).collect();
     let format = if a.get(1).map(String::as_str) == Some("gen7") { PkmFormat::Gen7 } else { PkmFormat::Gen6 };

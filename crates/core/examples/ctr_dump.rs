@@ -2,7 +2,7 @@
 // Sans adresse : liste des zones candidates (FCRAM). Avec : copie de l'allocation qui contient l'adresse.
 #[cfg(windows)]
 fn main() {
-    use kaleido_core::live::{MemorySource, scan, windows::Process};
+    use kaleido_core::live::{scan, windows::Process, MemorySource};
     let a: Vec<String> = std::env::args().skip(1).collect();
     let proc = Process::open(a[0].parse().unwrap()).unwrap();
     let regions = if std::env::var_os("ALL").is_some() { proc.regions() } else { scan::ctr_candidate_regions(&proc) };

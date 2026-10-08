@@ -1,5 +1,5 @@
 use super::ctr;
-use super::reader::{Console, LiveReader, read_party_at};
+use super::reader::{read_party_at, Console, LiveReader};
 use super::scan::{self, DS_HEADER_OFFSET, DS_RAM_SIZE};
 use super::*;
 use crate::save::{PkmFormat, Pokemon, RamHints};
@@ -27,6 +27,7 @@ fn ss_hints() -> RamHints {
         badges: Some(0x4007E),
         hours: 0x40086,
         party_keys: vec![0x3205_508B],
+        situation: Vec::new(),
     }
 }
 
@@ -44,6 +45,7 @@ fn w_hints() -> RamHints {
         badges: Some(0x21204),
         hours: 0x19424,
         party_keys: vec![0x02AA_1BED, 0xA0FF_F7BD],
+        situation: Vec::new(),
     }
 }
 
@@ -270,7 +272,7 @@ fn ram_dsi_de_16_mio() {
 /// en direct doit annoncer chaque K.O. dès le tick suivant et ne jamais annoncer de mort.
 #[test]
 fn scenario_nuzlocke_rejoue_en_memoire() {
-    use crate::save::diff::{Brief, GameEvent, diff_memory};
+    use crate::save::diff::{diff_memory, Brief, GameEvent};
     use crate::save::session::{PokemonPatch, SaveSession, Slot};
 
     const BASE: u64 = 0x2_0000_0000;
@@ -416,6 +418,7 @@ fn ctr_hints() -> RamHints {
         badges: None,
         hours: 0,
         party_keys: vec![OUR_EC],
+        situation: Vec::new(),
     }
 }
 
@@ -619,4 +622,27 @@ fn equipe_3ds_vide_reconnue_a_sa_forme() {
     put_live_party(&mut src, FCRAM + 0x0151_8230, &[landorus(22)]);
     let r = reader.tick(&src).unwrap().unwrap();
     assert_eq!(r.party.iter().map(|p| p.species()).collect::<Vec<_>>(), [645]);
+}
+
+#[test]
+fn carte_3ds_lue_dans_la_copie_vivante() {
+    // Structure « situation » : carte, zone, position. Deux copies au moment de la sauvegarde,
+    // l'une figée (ancienne image), l'autre suit le joueur.
+    let mut src = ctr_world();
+    let key: Vec<u8> = [4u16.to_le_bytes(), 5u16.to_le_bytes()].concat().into_iter().chain([0x11; 12]).collect();
+    src.poke(FCRAM + 0x0020_0000, &key);
+    src.poke(FCRAM + 0x0030_0000, &key);
+    let mut hints = ctr_hints();
+    hints.map = 0x1000;
+    hints.situation = key.clone();
+    let mut reader = LiveReader::new(Console::Ctr, hints);
+    let r = reader.tick(&src).unwrap().unwrap();
+    assert_eq!(r.map, None, "rien n'a encore bougé : la carte de la sauvegarde fait foi");
+    // Le joueur entre dans une maison : seule la copie vivante change.
+    let home: Vec<u8> = [22u16.to_le_bytes(), 36u16.to_le_bytes()].concat().into_iter().chain([0x22; 12]).collect();
+    src.poke(FCRAM + 0x0030_0000, &home);
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(22));
+    // Le joueur ressort : toujours la même copie.
+    src.poke(FCRAM + 0x0030_0000, &key);
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(4));
 }

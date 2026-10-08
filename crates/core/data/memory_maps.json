@@ -341,7 +341,7 @@
           "00040000001B5000"
         ]
       },
-      "notes": "Vérifié dans Azahar 2126.1.2 sur Ultra-Soleil EU (copie d'une sauvegarde en tout début de partie, sans Pokémon) : tableau d'équipe vide reconnu à sa forme (deux tableaux vides, le premier qui se remplit gagne), Brindibou N.5 vu dès sa remise. Combat : module « Battle » chargé à la place de « FieldRo » (même emplacement, 0x006DD000 dans le journal d'Azahar), vu en jeu sur la Route 1 ; Manglouton N.3 lu, PV 16 → 11 → 6 → 1 → 0 en direct, fin du combat vue. Bloc de combat : espèce +0x0C, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0x1DA (espèce répétée en +0x1D8). Carte non lue.",
+      "notes": "Vérifié dans Azahar 2126.1.2 sur Ultra-Soleil EU (copie d'une sauvegarde en tout début de partie, sans Pokémon) : tableau d'équipe vide reconnu à sa forme (deux tableaux vides, le premier qui se remplit gagne), Brindibou N.5 vu dès sa remise. Combat : module « Battle » chargé à la place de « FieldRo » (même emplacement, 0x006DD000 dans le journal d'Azahar), vu en jeu sur la Route 1 ; Manglouton N.3 lu, PV 16 → 11 → 6 → 1 → 0 en direct, fin du combat vue. Bloc de combat : espèce +0x0C, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0x1DA (espèce répétée en +0x1D8). Carte lue en direct : structure « situation » (carte u16, zone u16, position) retrouvée en RAM par le contenu du fichier (sans les 4 octets FFFFFFFF qui suivent la carte dans le fichier) au moment d'une sauvegarde ou du chargement ; seule une copie qui change ensuite est crue (des images figées existent). Vu en jeu : 4 (Route 1, devant la maison) → 22 (maison) → 4. Pas de nom de lieu pour la 3DS (zone → lieu non lu dans la ROM).",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",

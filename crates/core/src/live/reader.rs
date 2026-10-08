@@ -186,7 +186,27 @@ pub struct LiveReader {
     live_searched: Option<u64>,
     /// Autres tableaux possibles (sauvegarde sans Pokémon).
     live_alts: Vec<ctr::LiveParty>,
+    /// 3DS : structures « situation » (carte et position) candidates en RAM.
+    place: CtrPlace,
 }
+
+/// 3DS : la carte actuelle. Le jeu garde en RAM la structure « situation » de la sauvegarde
+/// (carte, position) en plusieurs copies vivantes, et d'anciennes images figées. Au moment d'une
+/// sauvegarde (ou au chargement de la partie, tant que le joueur n'a pas bougé) toutes valent le
+/// contenu du fichier : on les retient alors toutes, et seule une copie qui change ensuite est crue.
+#[derive(Debug, Clone, Default)]
+struct CtrPlace {
+    /// Contenu du fichier cherché (la recherche est refaite après chaque sauvegarde).
+    key: Vec<u8>,
+    /// Copies candidates : (adresse, derniers octets lus).
+    cands: Vec<(u64, Vec<u8>)>,
+    /// Copie vivante : la dernière qui a changé.
+    live: Option<u64>,
+    searched: Option<u64>,
+}
+
+/// 3DS : recherche des structures « situation » tant qu'aucune n'est trouvée, tous les N ticks (15 s).
+const CTR_PLACE_SEARCH: u64 = 75;
 
 /// 3DS : Pokémon en combat (blocs de combat reliés à leurs données PK6), zone où ils ont été vus
 /// la dernière fois (le jeu réutilise les mêmes adresses d'un combat à l'autre), prochaine recherche.
@@ -247,6 +267,7 @@ impl LiveReader {
             live_misses: 0,
             live_searched: None,
             live_alts: Vec::new(),
+            place: CtrPlace::default(),
         }
     }
 
@@ -477,7 +498,10 @@ impl LiveReader {
                 None => return Ok(None),
             }
         };
-        let (map, badges) = self.save_block_fields(src);
+        let (map, badges) = match self.console {
+            Console::Ctr => (self.ctr_map(src), None),
+            Console::Ds(_) => self.save_block_fields(src),
+        };
         let in_battle = match (&self.console, &self.code) {
             (Console::Ctr, _) => self.ctr_in_battle(src),
             (_, Some((at, bytes))) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
@@ -632,6 +656,49 @@ impl LiveReader {
         Ok(Some(party))
     }
 
+    /// 3DS : carte actuelle, lue dans la copie vivante de la structure « situation ».
+    fn ctr_map(&mut self, src: &dyn MemorySource) -> Option<u16> {
+        let key = self.hints.situation.clone();
+        if key.len() < 8 || key.iter().all(|&b| b == 0) {
+            return None;
+        }
+        let tick = self.tick;
+        let p = &mut self.place;
+        if p.key != key {
+            // Nouvelle sauvegarde : la RAM vaut le fichier, toutes les copies se retrouvent.
+            *p = CtrPlace { key: key.clone(), ..CtrPlace::default() };
+        }
+        if p.cands.is_empty() && p.searched.is_none_or(|t| tick - t >= CTR_PLACE_SEARCH) {
+            p.searched = Some(tick);
+            let regions = self.fcram_regions(src);
+            let p = &mut self.place;
+            p.cands = scan::find_all(src, &regions, &key, 4, 16).into_iter().map(|a| (a, key.clone())).collect();
+        }
+        let p = &mut self.place;
+        let mut changed = None;
+        for (a, last) in &mut p.cands {
+            let Ok(now) = src.read_vec(*a, key.len()) else { continue };
+            if now != *last {
+                *last = now;
+                changed = Some(*a);
+            }
+        }
+        if changed.is_some() {
+            p.live = changed;
+        }
+        let at = p.live?;
+        let ofs = (self.hints.map & 3) as u64;
+        let b = src.read_vec(at + ofs, 2).ok()?;
+        let map = u16::from_le_bytes([b[0], b[1]]);
+        // Une carte hors limites : la copie a été réutilisée pour autre chose.
+        if map >= 0x400 {
+            p.live = None;
+            p.cands.retain(|(a, _)| *a != at);
+            return None;
+        }
+        Some(map)
+    }
+
     fn save_block_fields(&self, src: &dyn MemorySource) -> (Option<u16>, Option<u8>) {
         let Some(c) = self.copies.iter().find(|c| c.save_block) else { return (None, None) };
         let h = &self.hints;
@@ -722,7 +789,11 @@ impl LiveReader {
 
     /// Disposition des blocs de combat selon la génération.
     fn ctr_layout(&self) -> ParamLayout {
-        if self.hints.format == PkmFormat::Gen7 { ctr::GEN7_PARAM } else { ctr::GEN6_PARAM }
+        if self.hints.format == PkmFormat::Gen7 {
+            ctr::GEN7_PARAM
+        } else {
+            ctr::GEN6_PARAM
+        }
     }
 
     /// 3DS, en combat : Pokémon en combat relus à chaque passage ; recherchés dans la FCRAM au début
