@@ -93,7 +93,9 @@ function poseOf(i: number): Pose {
     rot: k === 0 ? 0 : -sign * 44,
     scale: k === 0 ? 1.16 : 0.9,
     dim: k === 0 ? 1 : Math.max(0.45, 0.85 - abs * 0.08),
-    opacity: abs > 6 ? 0 : 1 - Math.max(0, abs - 2) * 0.18,
+    // Les lointaines restent opaques : un fondu par transparence laissait voir l'intérieur
+    // des coques (circuit, dos de l'étiquette). Le masque du canevas les estompe.
+    opacity: abs > 6 ? 0 : 1,
   };
 }
 
@@ -1016,5 +1018,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  /* Fondu des cartouches lointaines, à partir du centre du carrousel (voir poseOf). */
+  --fade: linear-gradient(
+    to right,
+    transparent calc(50% - 800px),
+    #000 calc(50% - 420px),
+    #000 calc(50% + 420px),
+    transparent calc(50% + 800px)
+  );
+  -webkit-mask-image: var(--fade);
+  mask-image: var(--fade);
 }
 </style>

@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { library } from "./library";
-import { isRom, type Detection } from "./types";
+import { isKaleidoRom, isRom, type Detection } from "./types";
 import type { StoredLook } from "./launcher/scene/models";
 import { applyState, emus, loadEmulators, type EmulatorId, type EmulatorsState } from "./play/play";
 
@@ -69,6 +69,38 @@ function switchDetection(g: SwitchGame): Detection {
 
 /** Title ID d'un jeu (Switch, 3DS), tel que l'affiche la détection. */
 export const titleIdOf = (d: Detection) => d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toUpperCase() ?? null;
+
+/** Jeux de la série dans l'ordre de leur sortie (Japon), versions jumelles côte à côte. */
+const RELEASE_ORDER = [
+  "red", "blue", "yellow", "gold", "silver", "crystal", "ruby", "sapphire", "fire_red", "leaf_green", "emerald",
+  "diamond", "pearl", "platinum", "heart_gold", "soul_silver", "black", "white", "black2", "white2",
+  "x", "y", "omega_ruby", "alpha_sapphire", "sun", "moon", "ultra_sun", "ultra_moon",
+];
+
+/** Jeux Pokémon sur Switch (Title ID de base), dans l'ordre de sortie. */
+const SWITCH_ORDER = [
+  "010003F003A34000", "0100187003A36000", // Let's Go Pikachu / Évoli
+  "0100ABF008968000", "01008DB008C2C000", // Épée / Bouclier
+  "0100000011D90000", "010018E011D92000", // Diamant Étincelant / Perle Scintillante
+  "01001F5010DFA000", // Légendes Arceus
+  "0100A3D008C5C000", "01008F6008C5E000", // Écarlate / Violet
+];
+
+/** Rang de sortie : jeux de la série d'abord, puis les autres jeux Switch. */
+function releaseRank(d: Detection): number {
+  const i = d.game ? RELEASE_ORDER.indexOf(d.game.id) : -1;
+  if (i >= 0) return i;
+  if (d.platform === "switch") {
+    const tid = titleIdOf(d)?.replace(/[0-9A-F]{3}$/, "000");
+    const j = tid ? SWITCH_ORDER.findIndex((t) => t.slice(0, 13) === tid.slice(0, 13)) : -1;
+    return j >= 0 ? RELEASE_ORDER.length + j : 1000;
+  }
+  return (d.generation ?? 10) * 100;
+}
+
+/** Tri par date de sortie, puis titre (les ROMs randomisées suivent leur jeu d'origine). */
+export const byRelease = (a: Detection, b: Detection) =>
+  releaseRank(a) - releaseRank(b) || Number(isKaleidoRom(a)) - Number(isKaleidoRom(b)) || a.title.localeCompare(b.title, "fr");
 
 /** Jeux suivis, plus les ROMs ouvertes pendant la session (sans doublon). */
 export const allGames = computed(() => {

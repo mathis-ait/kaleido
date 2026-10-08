@@ -12,7 +12,7 @@ import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
-import { saveUserPreset } from "../presets";
+import { deleteUserPreset, saveUserPreset, settingsOf, userPresets, type AdventurePreset } from "../presets";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -214,6 +214,7 @@ onMounted(async () => {
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
   takeAdventure();
   presets.value = await invoke<Preset[]>("randomizer_presets").catch(() => []);
+  void loadMyPresets();
   speciesNames.value = (await invoke<{ species: string[] }>("name_lists")).species;
 });
 
@@ -476,14 +477,39 @@ const savingPreset = ref(false);
 const presetName = ref("");
 const presetSaved = ref<string | null>(null);
 
+const presetError = ref<string | null>(null);
+const myPresets = ref<AdventurePreset[]>([]);
+
+async function loadMyPresets() {
+  myPresets.value = await userPresets();
+}
+
 async function savePreset() {
   const name = presetName.value.trim();
   if (!name) return;
-  await saveUserPreset(name, JSON.parse(JSON.stringify(settings)) as RandomizerSettings);
+  presetError.value = null;
+  try {
+    await saveUserPreset(name, JSON.parse(JSON.stringify(settings)) as RandomizerSettings);
+  } catch (e) {
+    presetError.value = `Enregistrement impossible : ${e}`;
+    return;
+  }
   savingPreset.value = false;
   presetSaved.value = name;
   presetName.value = "";
+  await loadMyPresets();
   setTimeout(() => (presetSaved.value = null), 3000);
+}
+
+async function applyMyPreset(p: AdventurePreset) {
+  const full = await settingsOf(p, isCtr.value ? "3ds" : "nds");
+  Object.assign(settings, JSON.parse(JSON.stringify(full)) as RandomizerSettings);
+  customNames.value = ["", "", ""];
+}
+
+async function removeMyPreset(p: AdventurePreset) {
+  await deleteUserPreset(p.id).catch((e) => (presetError.value = String(e)));
+  await loadMyPresets();
 }
 
 // Aperçu des starters, recalculé quand la ROM, la seed ou les réglages changent.
@@ -702,16 +728,26 @@ function levelLabel(p: number) {
                   <strong>{{ p.name }}</strong>
                   <small>{{ p.description }}</small>
                 </button>
+                <div v-for="p in myPresets" :key="p.id" class="preset mine sv-card">
+                  <button type="button" class="apply" @click="applyMyPreset(p)">
+                    <strong>{{ p.name }}</strong>
+                    <small>{{ p.changes.map((c) => c.label).join(" · ") }}</small>
+                  </button>
+                  <button type="button" class="remove" :aria-label="`Supprimer le preset ${p.name}`" title="Supprimer" @click="removeMyPreset(p)">
+                    <Icon name="trash" :size="14" />
+                  </button>
+                </div>
               </div>
               <p class="save-preset">
                 <button type="button" class="sv-btn small" @click="savingPreset = true"><Icon name="save" :size="14" /> Enregistrer comme preset</button>
-                <small v-if="presetSaved" class="dim">« {{ presetSaved }} » ajouté à Nouvelle aventure</small>
+                <small v-if="presetSaved" class="dim">« {{ presetSaved }} » enregistré, ici et dans Nouvelle aventure</small>
                 <Tip term="adventure.adventure" />
               </p>
             </div>
             <Dialog v-model="savingPreset" title="Enregistrer comme preset" icon="save" :width="440">
-              <p class="sv-help">Ces réglages deviennent une carte de plus dans « Nouvelle aventure », depuis la bibliothèque.</p>
+              <p class="sv-help">Ces réglages deviennent une carte de plus dans les préréglages, ici et dans « Nouvelle aventure » depuis la bibliothèque.</p>
               <input v-model="presetName" class="sv-input" placeholder="Nom du preset" aria-label="Nom du preset" autofocus @keydown.enter="savePreset" />
+              <p v-if="presetError" class="sv-help preset-error">{{ presetError }}</p>
               <template #foot>
                 <span class="grow" />
                 <button type="button" class="sv-btn" @click="savingPreset = false">Annuler</button>
@@ -1277,6 +1313,48 @@ h3 {
 .preset small {
   color: var(--text-dim);
   line-height: 1.35;
+}
+
+.preset.mine {
+  position: relative;
+  padding: 0;
+}
+
+.preset.mine .apply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) 36px var(--sp-3) 14px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preset.mine .remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.preset.mine .remove:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.preset-error {
+  color: var(--danger);
 }
 
 .save-preset {

@@ -11,7 +11,7 @@ import Segmented from "../components/Segmented.vue";
 import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
 import { modsDialog } from "../play/mods";
-import { addFiles, addFolder, allGames, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
+import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { nav } from "../nav";
 import { PLATFORM_LABEL, RECOMMENDED, available, locateEmulator, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
 
@@ -29,7 +29,7 @@ const shown = computed(() => {
   return allGames.value
     .filter((g) => filter.value === "all" || g.platform === filter.value)
     .filter((g) => !q || g.title.toLowerCase().includes(q) || g.fileName.toLowerCase().includes(q))
-    .sort((a, b) => (a.generation ?? 10) - (b.generation ?? 10) || a.title.localeCompare(b.title, "fr"));
+    .sort(byRelease);
 });
 
 async function pickFolder() {
@@ -46,10 +46,8 @@ async function pickFiles() {
   if (picked) await addFiles(Array.isArray(picked) ? picked : [picked]);
 }
 
-/** Ordre du lanceur : par génération puis par titre. */
-const sorted = computed(() =>
-  [...allGames.value].sort((a, b) => (a.generation ?? 0) - (b.generation ?? 0) || a.title.localeCompare(b.title, "fr")),
-);
+/** Ordre du lanceur : par date de sortie. */
+const sorted = computed(() => [...allGames.value].sort(byRelease));
 
 const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
