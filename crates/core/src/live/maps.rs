@@ -82,8 +82,9 @@ impl GameMap {
         Some((addr, f.value))
     }
 
+    /// Recherche de l'adversaire activée : équipe adverse en RAM (DS) ou Pokémon en combat (3DS).
     pub fn battle_scan(&self) -> bool {
-        self.battle.as_ref().is_some_and(|b| b.method == "partyHeader")
+        self.battle.as_ref().is_some_and(|b| b.method == "partyHeader" || b.method == "croModule")
     }
 }
 

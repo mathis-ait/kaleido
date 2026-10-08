@@ -6,13 +6,14 @@
 //!   par un petit objet `[table virtuelle][adresse des données]…` placé juste avant ;
 //! - un bloc de combat dont le premier mot est l'adresse (virtuelle, côté jeu) de cet objet, avec
 //!   l'espèce en +0x0C, les PV max en +0x0E, les PV actuels en +0x10, le niveau en +0x18, puis
-//!   de nouveau l'espèce en +0xF4 suivie des cinq autres statistiques (Att, Déf, Att Spé,
-//!   Déf Spé, Vit). Les PV de ce bloc changent en direct pendant le combat.
+//!   les cinq autres statistiques en +0xF6 (Att, Déf, Att Spé, Déf Spé, Vit ; précédées de
+//!   l'espèce en Rubis Oméga, de zéro en Y). Les PV de ce bloc changent en direct pendant le
+//!   combat.
 //!
 //! Le lien entre les deux ne dépend d'aucune adresse fixe : l'objet est à `k` octets avant les
 //! données (k ≤ 0x100) et son second mot vaut `adresse de l'objet + k` dans l'espace du jeu. On
-//! cherche donc les deux familles par leur propre cohérence (somme de contrôle du PK6, espèce
-//! répétée du bloc de combat), puis on les relie.
+//! cherche donc les deux familles par leur propre cohérence (somme de contrôle du PK6, PV, niveau
+//! et statistiques plausibles du bloc de combat), puis on les relie.
 
 use std::collections::HashSet;
 
@@ -67,7 +68,9 @@ pub fn param_at(layout: &ParamLayout, b: &[u8]) -> Option<Param> {
         return None;
     }
     let species = rd16(b, layout.species);
-    if !(1..=MAX_SPECIES).contains(&species) || rd16(b, layout.stats) != species {
+    // Espèce répétée devant les statistiques en Rubis Oméga, zéro en Y.
+    let again = rd16(b, layout.stats);
+    if !(1..=MAX_SPECIES).contains(&species) || (again != species && again != 0) {
         return None;
     }
     let (max_hp, hp, level) = (rd16(b, layout.max_hp), rd16(b, layout.hp), b[layout.level]);

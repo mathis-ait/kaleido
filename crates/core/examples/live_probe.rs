@@ -8,8 +8,8 @@
 #[cfg(windows)]
 fn main() {
     use kaleido_core::live::reader::{Console, LiveReader};
-    use kaleido_core::live::windows::{processes, Process};
-    use kaleido_core::live::{scan, MemorySource};
+    use kaleido_core::live::windows::{Process, processes};
+    use kaleido_core::live::{MemorySource, scan};
     use kaleido_core::save::session::SaveSession;
     use std::time::{Duration, Instant};
 
@@ -46,7 +46,9 @@ fn main() {
             }
             println!("dresseur {} {:?} ; équipe {:08x?}", save.save.trainer().name, hints.trainer_name_bytes.len(), hints.party_keys);
             let t = Instant::now();
-            let console = match scan::find_ds_ram(&proc) {
+            // KALEIDO_CTR=1 : 3DS, sans chercher de RAM DS (lent sur la mémoire d'Azahar).
+            let ds = if std::env::var_os("KALEIDO_CTR").is_some() { None } else { scan::find_ds_ram(&proc) };
+            let console = match ds {
                 Some(r) => Console::Ds(r),
                 None => Console::Ctr,
             };
@@ -57,7 +59,9 @@ fn main() {
                 if let Some(head) = kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &m) {
                     reader.set_battle_module(head);
                     println!("module de combat {m} lu dans la ROM");
-                    if let Some(f) = std::env::var("KALEIDO_FIELD").ok().and_then(|f| kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &f)) {
+                    if let Some(f) =
+                        std::env::var("KALEIDO_FIELD").ok().and_then(|f| kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &f))
+                    {
                         reader.set_field_module(f);
                         println!("module de carte lu dans la ROM");
                     }
@@ -66,10 +70,11 @@ fn main() {
             let t = Instant::now();
             let first = reader.tick(&proc);
             println!(
-                "premier tick en {:?} ({}), copies {:x?}",
+                "premier tick en {:?} ({}), copies {:x?}, équipe vivante {:x?}",
                 t.elapsed(),
                 first.as_ref().map(|r| r.is_some()).unwrap_or(false),
-                reader.party_addresses()
+                reader.party_addresses(),
+                reader.live_party_address()
             );
             reader.prime_battle(&proc);
             let secs: u64 = arg(3).parse().unwrap_or(10);
@@ -113,7 +118,14 @@ fn main() {
                                 .collect();
                             format!(" | combat {} {}{:?}", if b.wild { "sauvage" } else { "dresseur" }, if b.new { "NOUVEAU " } else { "" }, e)
                         });
-                        format!("carte {:?} badges {:?} équipe {:?}{} en combat {:?}", r.map, r.badges, party, battle.unwrap_or_default(), r.in_battle)
+                        format!(
+                            "carte {:?} badges {:?} équipe {:?}{} en combat {:?}",
+                            r.map,
+                            r.badges,
+                            party,
+                            battle.unwrap_or_default(),
+                            r.in_battle
+                        )
                     }
                     Ok(None) => "rien ce tick".into(),
                     Err(e) => format!("erreur : {e}"),

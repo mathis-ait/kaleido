@@ -194,6 +194,8 @@ struct CtrBattle {
     window: Option<Region>,
     next_scan: u64,
     attempts: u32,
+    /// En combat au tick précédent (module de combat chargé).
+    active: bool,
 }
 
 /// 3DS : recherche des Pokémon en combat toutes les secondes au début du combat, puis toutes les 5 s.
@@ -335,6 +337,11 @@ impl LiveReader {
     /// Adresses des copies de l'équipe trouvées (diagnostic).
     pub fn party_addresses(&self) -> Vec<u64> {
         self.copies.iter().map(|c| c.addr).collect()
+    }
+
+    /// 3DS : adresse du tableau de l'équipe vivante, s'il est trouvé (diagnostic).
+    pub fn live_party_address(&self) -> Option<u64> {
+        self.live_party.as_ref().map(|l| l.at)
     }
 
     /// Adresse de la dernière équipe adverse trouvée (diagnostic).
@@ -479,6 +486,16 @@ impl LiveReader {
             (_, Some((at, bytes))) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
             (_, None) => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
         };
+        if matches!(self.console, Console::Ctr) {
+            let now = in_battle == Some(true);
+            // Fin de combat : le tableau trouvé a pu être celui du combat (libéré, nombre remis à
+            // zéro) ; on le cherche de nouveau, la copie du combat n'a plus de Pokémon.
+            if self.ctr.active && !now {
+                self.live_party = None;
+                self.live_searched = None;
+            }
+            self.ctr.active = now;
+        }
         let battle = if !self.battle {
             None
         } else if matches!(self.console, Console::Ctr) {
@@ -506,7 +523,9 @@ impl LiveReader {
     /// relancée), le tableau est oublié et recherché de nouveau avec l'équipe.
     fn read_live_party(&mut self, src: &dyn MemorySource) -> Option<Vec<Pokemon>> {
         let lp = self.live_party.as_ref()?;
-        match lp.read(src, self.hints.format) {
+        // Équipe vide alors que la sauvegarde a des Pokémon : tableau abandonné par le jeu.
+        let read = lp.read(src, self.hints.format).filter(|m| !m.is_empty() || self.hints.party_keys.is_empty());
+        match read {
             Some(mons) => {
                 self.live_misses = 0;
                 Some(mons)
