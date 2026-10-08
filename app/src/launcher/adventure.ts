@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { addPaths, library } from "../library";
 import { nav } from "../nav";
 import { defaultEmulator, planFor, type PlayOptions } from "../play/play";
-import { BUILTIN_PRESETS, deleteUserPreset, presetsFor, settingsOf, userPresets, type AdventurePreset } from "../presets";
+import { BUILTIN_PRESETS, defaultFirst, deleteUserPreset, presetsFor, settingsOf, userPresets, type AdventurePreset } from "../presets";
 import { romExt, type CtrOutcome, type Detection, type Outcome, type RandomizerSettings } from "../types";
 
 /**
@@ -49,7 +49,7 @@ const separator = (p: string) => (p.includes("\\") ? "\\" : "/");
 
 export async function openAdventure(d: Detection) {
   Object.assign(adventure, { open: true, step: "preset", game: d, index: 0, preset: null, settings: null, preview: null, error: null });
-  adventure.presets = presetsFor([...BUILTIN_PRESETS, ...(await userPresets())], d.game?.id);
+  adventure.presets = defaultFirst(presetsFor([...BUILTIN_PRESETS, ...(await userPresets())], d.game?.id));
 }
 
 export function closeAdventure() {

@@ -12,7 +12,7 @@ import Tip from "../components/Tip.vue";
 import Toggle from "../components/Toggle.vue";
 import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
-import { deleteUserPreset, saveUserPreset, settingsOf, userPresets, type AdventurePreset } from "../presets";
+import { deleteUserPreset, saveUserPreset, setDefaultPreset, settingsOf, userPresets, type AdventurePreset } from "../presets";
 import { nav } from "../nav";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -80,7 +80,10 @@ const defaults = (): RandomizerSettings => ({
   },
 });
 const settings = reactive<RandomizerSettings>(defaults());
+/** Retour aux réglages de départ : le preset par défaut s'il y en a un, sinon la randomisation classique. */
 const reset = () => {
+  const d = myPresets.value.find((p) => p.default);
+  if (d) return applyMyPreset(d);
   Object.assign(settings, defaults());
   customNames.value = ["", "", ""];
 };
@@ -194,7 +197,7 @@ const supported = (id?: string) => !!id && RANDOMIZABLE.includes(id);
 // Réglages repris de « Nouvelle aventure » (Personnaliser) : partent des réglages du moteur.
 function takeAdventure() {
   const a = nav.randomizerSettings;
-  if (!a) return;
+  if (!a) return false;
   Object.assign(settings, JSON.parse(JSON.stringify(a.settings)) as RandomizerSettings);
   seed.value = a.seed;
   customNames.value = ["", "", ""];
@@ -212,9 +215,12 @@ watch(
 
 onMounted(async () => {
   romPath.value = nav.randomizerRom ?? roms.value.find((r) => supported(r.game?.id))?.path ?? null;
-  takeAdventure();
+  const fromAdventure = takeAdventure() !== false;
   presets.value = await invoke<Preset[]>("randomizer_presets").catch(() => []);
-  void loadMyPresets();
+  await loadMyPresets();
+  // Réglages de départ : le preset par défaut (sauf si « Nouvelle aventure » en envoie d'autres).
+  const d = myPresets.value.find((p) => p.default);
+  if (d && !fromAdventure) await applyMyPreset(d);
   speciesNames.value = (await invoke<{ species: string[] }>("name_lists")).species;
 });
 
@@ -479,6 +485,7 @@ const presetSaved = ref<string | null>(null);
 
 const presetError = ref<string | null>(null);
 const myPresets = ref<AdventurePreset[]>([]);
+const defaultName = computed(() => myPresets.value.find((p) => p.default)?.name ?? null);
 
 async function loadMyPresets() {
   myPresets.value = await userPresets();
@@ -505,6 +512,11 @@ async function applyMyPreset(p: AdventurePreset) {
   const full = await settingsOf(p, isCtr.value ? "3ds" : "nds");
   Object.assign(settings, JSON.parse(JSON.stringify(full)) as RandomizerSettings);
   customNames.value = ["", "", ""];
+}
+
+async function toggleDefault(p: AdventurePreset) {
+  await setDefaultPreset(p.default ? null : p.id).catch((e) => (presetError.value = String(e)));
+  await loadMyPresets();
 }
 
 async function removeMyPreset(p: AdventurePreset) {
@@ -621,7 +633,7 @@ function levelLabel(p: number) {
         <h1>Randomizer</h1>
         <p class="lead">Une nouvelle aventure à chaque seed. Partage le code pour que tes amis jouent exactement la même.</p>
       </div>
-      <button class="sv-btn" title="Revenir aux réglages par défaut" @click="reset">Réinitialiser</button>
+      <button class="sv-btn" :title="defaultName ? `Revenir à « ${defaultName} »` : 'Revenir à la randomisation classique'" @click="reset">Réinitialiser</button>
     </header>
 
     <!-- Choix de la ROM -->
@@ -670,7 +682,7 @@ function levelLabel(p: number) {
                   @click="tab = t.id"
                 >
                   {{ t.label }}
-                  <span v-if="t.id !== 'general' && changeCount(t.id)" class="badge" :title="`${modifs(changeCount(t.id))} par rapport aux réglages par défaut`">
+                  <span v-if="t.id !== 'general' && changeCount(t.id)" class="badge" :title="`${modifs(changeCount(t.id))} par rapport à une randomisation classique`">
                     {{ modifs(changeCount(t.id)) }}
                   </span>
                 </button>
@@ -730,8 +742,19 @@ function levelLabel(p: number) {
                 </button>
                 <div v-for="p in myPresets" :key="p.id" class="preset mine sv-card">
                   <button type="button" class="apply" @click="applyMyPreset(p)">
-                    <strong>{{ p.name }}</strong>
+                    <strong>{{ p.name }} <span v-if="p.default" class="sv-chip accent">Par défaut</span></strong>
                     <small>{{ p.changes.map((c) => c.label).join(" · ") }}</small>
+                  </button>
+                  <button
+                    type="button"
+                    class="star"
+                    :class="{ on: p.default }"
+                    :aria-pressed="!!p.default"
+                    :aria-label="p.default ? `Ne plus utiliser ${p.name} par défaut` : `Utiliser ${p.name} par défaut`"
+                    :title="p.default ? 'Réglages par défaut (cliquer pour revenir à la randomisation classique)' : 'Utiliser par défaut pour tous mes jeux'"
+                    @click="toggleDefault(p)"
+                  >
+                    <Icon name="star" :size="14" />
                   </button>
                   <button type="button" class="remove" :aria-label="`Supprimer le preset ${p.name}`" title="Supprimer" @click="removeMyPreset(p)">
                     <Icon name="trash" :size="14" />
@@ -741,6 +764,7 @@ function levelLabel(p: number) {
               <p class="save-preset">
                 <button type="button" class="sv-btn small" @click="savingPreset = true"><Icon name="save" :size="14" /> Enregistrer comme preset</button>
                 <small v-if="presetSaved" class="dim">« {{ presetSaved }} » enregistré, ici et dans Nouvelle aventure</small>
+                <small v-else-if="defaultName" class="dim">Le Randomizer démarre avec « {{ defaultName }} »</small>
                 <Tip term="adventure.adventure" />
               </p>
             </div>
@@ -757,7 +781,7 @@ function levelLabel(p: number) {
 
             <div class="section sv-panel">
               <div class="summary-head">
-                <h3>Résumé <span class="dim count">{{ changes.length ? modifs(changes.length) : "réglages par défaut" }}</span></h3>
+                <h3>Résumé <span class="dim count">{{ changes.length ? modifs(changes.length) : "randomisation classique" }}</span></h3>
                 <button v-if="changes.length" class="sv-btn small" @click="reset">Tout réinitialiser</button>
               </div>
               <p v-if="!changes.length" class="dim note">
@@ -1052,7 +1076,7 @@ function levelLabel(p: number) {
 
           <button class="recap sv-card" :title="changes.map((c) => c.text).join('\n') || 'Réglages par défaut'" @click="tab = 'general'">
             <span class="recap-text">
-              <span>{{ changes.length ? `${modifs(changes.length)} par rapport aux réglages par défaut` : "Réglages par défaut" }}</span>
+              <span>{{ changes.length ? `${modifs(changes.length)} par rapport à une randomisation classique` : "Randomisation classique" }}</span>
               <small>Voir le résumé</small>
             </span>
             <Icon name="chevron-right" :size="16" />
@@ -1324,7 +1348,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  padding: var(--sp-3) 36px var(--sp-3) 14px;
+  padding: var(--sp-3) 64px var(--sp-3) 14px;
   border: none;
   background: none;
   color: inherit;
@@ -1333,6 +1357,7 @@ h3 {
   cursor: pointer;
 }
 
+.preset.mine .star,
 .preset.mine .remove {
   position: absolute;
   top: 8px;
@@ -1348,6 +1373,19 @@ h3 {
   cursor: pointer;
 }
 
+.preset.mine .star {
+  right: 36px;
+}
+
+.preset.mine .star.on {
+  color: var(--warn);
+}
+
+.preset.mine .star.on :deep(svg) {
+  fill: currentColor;
+}
+
+.preset.mine .star:hover,
 .preset.mine .remove:hover {
   color: var(--text);
   background: var(--panel-hover);

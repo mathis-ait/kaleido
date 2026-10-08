@@ -127,7 +127,8 @@ defineExpose({ handle });
         >
           <span class="card-head" :class="{ removable: p.user }">
             <strong>{{ p.name }}</strong>
-            <span v-if="p.user" class="sv-chip dim">Ton preset</span>
+            <span v-if="p.default" class="sv-chip accent">Par défaut</span>
+            <span v-else-if="p.user" class="sv-chip dim">Ton preset</span>
             <span v-if="p.companion?.nuzlocke" class="sv-chip accent">Compagnon</span>
           </span>
           <span class="tagline">{{ p.tagline }}</span>

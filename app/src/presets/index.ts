@@ -24,6 +24,8 @@ export interface AdventurePreset {
   ctr?: Record<string, unknown>;
   /** Enregistré par l'utilisateur (modifiable, supprimable). */
   user?: boolean;
+  /** Preset personnel choisi comme réglages par défaut du randomizer (un seul). */
+  default?: boolean;
 }
 
 const files = import.meta.glob<{ default: AdventurePreset }>("./*.json", { eager: true });
@@ -95,6 +97,20 @@ export async function saveUserPreset(name: string, settings: RandomizerSettings)
   });
   await invoke("save_user_presets", { presets: list });
 }
+
+/** Preset personnel par défaut, s'il y en a un. */
+export async function defaultUserPreset(): Promise<AdventurePreset | null> {
+  return (await userPresets()).find((p) => p.default) ?? null;
+}
+
+/** Choisit le preset par défaut (`null` : retour à la randomisation classique). */
+export async function setDefaultPreset(id: string | null) {
+  const list = (await userPresets()).map(stripUser).map(({ default: _d, ...p }) => (p.id === id ? { ...p, default: true } : p));
+  await invoke("save_user_presets", { presets: list });
+}
+
+/** Le preset par défaut passe en tête de liste. */
+export const defaultFirst = (list: AdventurePreset[]) => [...list].sort((a, b) => Number(!!b.default) - Number(!!a.default));
 
 export async function deleteUserPreset(id: string) {
   const list = (await userPresets()).filter((p) => p.id !== id).map(stripUser);
