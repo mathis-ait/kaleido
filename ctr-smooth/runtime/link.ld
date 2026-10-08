@@ -7,16 +7,29 @@ MEMORY
 {
     CAVE_TEXT (rx) : ORIGIN = 0x00579610, LENGTH = 0x9F0
     CAVE_DATA (rw) : ORIGIN = 0x006AE640, LENGTH = 0x980
+    CAVE_RO   (r)  : ORIGIN = 0x005EBA20, LENGTH = 0x5E0
+    /* builds de test uniquement : fonction morte de 10 Ko (aucune reference, aucun
+     * litteral, non exportee par static.crs) */
+    CAVE_TEST (rx) : ORIGIN = 0x004FBF20, LENGTH = 0x2870
 }
 
 SECTIONS
 {
+    .testtext : {
+        *(.text.testpad)
+        *(.text.testcnt)
+        *test.o(.text .text.*)
+    } > CAVE_TEST
+
     .text : {
         *(.text.hooks)
-        *(.text.testpad)
         *(.text .text.*)
-        *(.rodata .rodata.*)
+        *(.rodata .rodata.[!t]*)
     } > CAVE_TEXT
+
+    .testro : {
+        *(.rodata.testdata)
+    } > CAVE_RO
 
     .data (NOLOAD) : {
         *(.state)

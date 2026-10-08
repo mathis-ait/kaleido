@@ -1,10 +1,45 @@
-# ctr-smooth — 60 fps natif 3DS (phases 0 et 1)
+# ctr-smooth — 60 fps natif 3DS (phases 0 à 2)
 
 Runtime et outillage du PRD « 60 FPS natif : 3DS (ROSA) puis toutes plateformes ». Principe : la
 logique du jeu reste à 30 Hz (`update()` jamais modifié), le jeu dessine à chaque VBlank, et l'image
 ajoutée est rendue avec des matrices interpolées entre les deux derniers ticks.
 
 Cible : Pokémon Rubis Oméga EUR, code cartouche v1.0 (Rev 2), Azahar 2126.1.2.
+
+## État de la phase 2 — squelettes, combats, coupures (9 octobre 2026)
+
+Porte du PRD : *matrice de vérification complète au vert*. **Atteinte pour tout ce que la sauvegarde
+disponible permet de jouer** (0 badge, 0:29 de jeu) ; le reste est listé plus bas.
+
+Apports :
+
+- **Interpolation à cadence adaptative** par matrice (`T` = intervalle entre deux changements) :
+  contenu à 30 Hz comme en phase 1, contenu plus lent réparti sur plusieurs images.
+- **Squelettes `nw::gfx`** : poses monde et skinning des `SkeletalModel` (utilisées en combat).
+- **Coupures** : seuils relatifs à l'échelle de la scène, seuil de rotation serré pour les caméras
+  (`n_cut`) ; 115 coupures détectées dans la scène du rival, sans image mélangée entre deux plans.
+- **Systèmes animés au dessin neutralisés sur le dessin ajouté** : transitions et fondus (le combat
+  démarrait 1,4 s plus tôt), animations d'interface 2D (deux fois trop rapides).
+- **Coût CPU** : un modèle n'est traité qu'une fois par image (7 fois moins d'appels en combat).
+
+| Scénario (PRD) | Mesure | Résultat |
+| --- | --- | --- |
+| Dialogue et événement scripté (rival, Route 103), coupure de caméra, combat de dresseur | 6 parties scriptées de 4 000 images (3 actives, 3 désactivées), générateurs MT19937 et TinyMT réinitialisés à l'apparition du joueur | **identiques** : rythme du RNG image par image et état MT final octet pour octet |
+| Effets de bord du dessin ajouté | vidage du tas avant/après un dessin (`tools/drawdiff.py`) | terrain et combat : seulement des valeurs recalculées à chaque dessin (copies de la vue, pointeurs de tampons, mesure de profilage) |
+| Tirages pendant le dessin ajouté | `tools/rngcheck.py` | aucun, en marche et en combat |
+| Combat : cadence affichée | capture image par image | 30 images/s avec lissage contre **15 d'origine** dans Azahar (voir limite ci-dessous) |
+
+Non vérifiable avec cette sauvegarde : Méga-Évolution, Envol, Surf, Concours, Amie Pokémon,
+Super Entraînement, Bases secrètes, cinématiques de légendaires, échanges et combats en ligne.
+Changements de carte et Azahar ralenti / console réelle : prévus en phase 3.
+
+**Limite connue en combat** : le module de combat (CRO `DllBattle`, que le PRD exclut de patcher)
+ne renouvelle l'image affichée qu'un dessin sur deux. L'original s'affiche à 15 images/s dans
+Azahar, le lissage le porte à 30, pas à 60. Détails dans [`docs/runtime.md`](docs/runtime.md).
+
+**Coût hôte** : la 3DS émulée garde sa cadence avec le dessin ajouté ; c'est l'ordinateur qui rend
+deux fois plus d'images (combat à 86 % de vitesse en OpenGL ×6 dans le bac à sable). Une résolution
+interne plus basse ou Vulkan aident.
 
 ## État de la phase 1 — monde extérieur fluide (8 octobre 2026)
 
@@ -23,9 +58,8 @@ La cinquième partie scriptée (désactivée) a divergé des autres : c'est la v
 démarrage d'Azahar, observée aussi entre deux parties désactivées, jamais liée au lissage.
 
 Ce qui est lissé : caméra (vue et position), modèles H3D (personnages, Pokémon : déplacement **et**
-animation squelettique, car leurs os sont en espace monde), modèles `nw::gfx`. Restent à 30 Hz en
-phase 1 : palette d'os des `nw::gfx::SkeletalModel`, particules, effets de texture. Combats et
-cinématiques fonctionnent déjà avec le runtime mais ne sont pas encore vérifiés (phase 2).
+animation squelettique, car leurs os sont en espace monde), modèles `nw::gfx` et, depuis la phase 2,
+leurs squelettes. Restent à 30 Hz : particules, effets de texture, interface 2D.
 
 Fonctionnement, adresses, mémoire et seuils : [`docs/runtime.md`](docs/runtime.md).
 Cartographie du moteur : [`docs/rosa-render-map.md`](docs/rosa-render-map.md).
@@ -56,9 +90,12 @@ tools/smstat.py       état du runtime via GDB : lecture, set enabled, watch, pr
 tools/gdbtrace.py     traces d'appels (entrée de fonction + adresse de retour), dumps mémoire
 tools/framecap.py     capture image par image et comptage des images distinctes
 tools/replay_static.py partie scriptée sans pause GDB ; snapdiff.py, verify_runs.py, tracediff.py
+tools/drawdiff.py     effets de bord d'un dessin sur le tas du jeu (dessin ajouté / d'origine)
+tools/perframe.py, emuspeed.py, rtcap.py, rtcheck.py, encounter.sh   mesures complémentaires
+runtime/test.c        code des essais (Thumb, builds de test, logé dans une fonction morte)
 tools/rngcheck.py     tirages aléatoires pendant les dessins interpolés
 tools/azahar_gdb.py   client GDB RSP ; mkpatch.py : IPS ; ini_set.py / sandbox_config.py : config
-proto/replay/         script Route 103 et traces de la série de vérification finale
+proto/replay/         scripts (Route 103, rival), traces des séries de vérification, rapports drawdiff
 re/                   outillage Ghidra, désassemblage, RTTI, scans
 ```
 

@@ -106,6 +106,7 @@ fn main() -> ExitCode {
         ["hex", rom, path, n] => n.parse().map_err(Into::into).and_then(|n| hex_entry(&open(rom), path, n)),
         ["info3ds", rom] => ctr::info(&ctr::open(rom)),
         ["code3ds", rom, out] => ctr::extract_code(rom, out),
+        ["cat3ds", rom, file, out] => ctr::cat_file(rom, file, out),
         ["ls3ds", rom] => ctr::ls(&ctr::open(rom), ""),
         ["ls3ds", rom, filter] => ctr::ls(&ctr::open(rom), filter),
         ["check3ds", rom] => ctr::check(&ctr::open(rom)),

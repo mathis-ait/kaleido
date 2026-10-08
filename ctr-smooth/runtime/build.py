@@ -47,6 +47,7 @@ def main():
     ap.add_argument('--code', default=CODE)
     ap.add_argument('--counters', action='store_true', help='ajoute les compteurs de trace de la phase 0')
     ap.add_argument('--test-input', action='store_true', help='injection de boutons via S.vpad (essais automatisés)')
+    ap.add_argument('--count3d', action='store_true', help='compteur des passes de scene 3D (0x0038CEA4)')
     ap.add_argument('--script', help='partie scriptee compilee (essais deterministes), implique --test-input')
     ap.add_argument('--snap', type=int, default=1700, help='image de l instantane (avec --script)')
     ap.add_argument('--enabled', type=int, default=1, help='lissage actif au demarrage (avec --script)')
@@ -67,7 +68,7 @@ def main():
         from replay import parse_script2
         absolute, relative = parse_script2(a.script)
         lines = ['/* genere par build.py depuis %s */' % os.path.basename(a.script),
-                 'static const u32 test_script[] = {']
+                 '__attribute__((section(".rodata.testdata"))) static const u32 test_script[] = {']
         lines += ['    %du, 0x%xu,' % (f, m) for f, m in absolute]
         lines += ['    0xFFFF0000u, 0u, /* ancre : apparition du joueur */']
         lines += ['    %du, 0x%xu,' % (f, m) for f, m in relative]
@@ -84,12 +85,22 @@ def main():
               '-fomit-frame-pointer', '-ffunction-sections', '-Wall', '-Wextra']
     run(tool('gcc'), *cflags, *defines, '-c', os.path.join(HERE, 'smooth.c'), '-o', os.path.join(out, 'smooth.o'))
     run(tool('gcc'), *cflags, '-c', os.path.join(HERE, 'hooks.S'), '-o', os.path.join(out, 'hooks.o'))
+    objs = [os.path.join(out, 'hooks.o'), os.path.join(out, 'smooth.o')]
+    if a.test_input or a.count3d:
+        # code des essais : Thumb (plus compact), sans flottants
+        tflags = ['-mthumb', '-mcpu=mpcore', '-mfloat-abi=soft', '-Os', '-ffreestanding', '-fno-builtin', '-nostdlib',
+                  '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-fomit-frame-pointer', '-ffunction-sections',
+                  '-Wall', '-Wextra']
+        run(tool('gcc'), *tflags, *defines, '-c', os.path.join(HERE, 'test.c'), '-o', os.path.join(out, 'test.o'))
+        objs.append(os.path.join(out, 'test.o'))
     elf = os.path.join(out, 'ctr-smooth.elf')
     run(tool('ld'), '-T', os.path.join(HERE, 'link.ld'), '--gc-sections', '-e', 'hook_gate',
-        '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'S',
-        *(['-u', 'hook_pad'] if a.test_input else []),
-        os.path.join(out, 'hooks.o'), os.path.join(out, 'smooth.o'), '-o', elf)
+        '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'smooth_fade', '-u', 'hook_lytanim', '-u', 'S',
+        *(['-u', 'hook_pad'] if a.test_input else []), *(['-u', 'hook_cnt3d'] if a.count3d else []),
+        '--no-warn-mismatch', *objs, '-o', elf)
     run(tool('objcopy'), '-O', 'binary', '-j', '.text', elf, os.path.join(out, 'text.bin'))
+    run(tool('objcopy'), '-O', 'binary', '-j', '.testro', elf, os.path.join(out, 'testro.bin'))
+    run(tool('objcopy'), '-O', 'binary', '-j', '.testtext', elf, os.path.join(out, 'testtext.bin'))
     syms = {}
     for line in run(tool('nm'), elf).splitlines():
         p = line.split()
@@ -111,12 +122,16 @@ def main():
         (0x0010E534, 'rsb r1,r6,#0', bytes.fromhex('001066e2'), bytes.fromhex('000050e3')),  # cmp r0,#0
         (0x0010E538, 'tst r0,r1', bytes.fromhex('010010e1'), bytes.fromhex('00f020e3')),     # nop
         (0x0010E61C, 'nop', bytes.fromhex('00f020e3'), branch(0x0010E61C, syms['smooth_end'], True)),
+        (0x0010E5AC, 'bl 0x0011CB60', bytes.fromhex('6b3900eb'), branch(0x0010E5AC, syms['smooth_fade'], True)),
+        (0x0014D618, 'push {r4-r12,lr}', bytes.fromhex('f05f2de9'), branch(0x0014D618, syms['hook_lytanim'])),
         (0x00375EA8, 'push {r0-r11,lr}', bytes.fromhex('ff4f2de9'), branch(0x00375EA8, syms['hook_camera'])),
         (0x0039B338, 'push {r3-r11,lr}', bytes.fromhex('f84f2de9'), branch(0x0039B338, syms['hook_h3d'])),
         (0x002EC354, 'push {r4-r8,lr}', bytes.fromhex('f0412de9'), branch(0x002EC354, syms['hook_nwmesh'])),
     ]
     if a.test_input:
         hooks.append((0x0036FB34, 'add r1,r4,#0x98', bytes.fromhex('981084e2'), branch(0x0036FB34, syms['hook_pad'], True)))
+        if a.count3d:
+            hooks.append((0x0038CEA4, 'push {r3-r7,lr}', bytes.fromhex('f8402de9'), branch(0x0038CEA4, syms['hook_cnt3d'])))
     recs = []
     for m in a.merge:
         recs += read_ips(m)
@@ -127,6 +142,17 @@ def main():
     if any(orig(t0, len(text))):
         sys.exit('la marge de .text n est pas vide')
     recs.append((t0 - BASE, text))
+    testro = open(os.path.join(out, 'testro.bin'), 'rb').read() if os.path.exists(os.path.join(out, 'testro.bin')) else b''
+    if testro:
+        if len(testro) > 0x5E0 or any(orig(0x005EBA20, len(testro))):
+            sys.exit('donnees de test hors de la marge de .rodata')
+        recs.append((0x005EBA20 - BASE, testro))
+    testtext = open(os.path.join(out, 'testtext.bin'), 'rb').read() if os.path.exists(os.path.join(out, 'testtext.bin')) else b''
+    if testtext:
+        if not (a.test_input or a.count3d):
+            sys.exit('code de test dans un build distribue')
+        recs.append((0x004FBF20 - BASE, testtext))  # fonction morte, builds de test uniquement
+        print('code de test : %d octets dans la fonction morte 0x004FBF20' % len(testtext))
     if a.counters:
         import instrument
         recs += instrument.records(draw60=False)

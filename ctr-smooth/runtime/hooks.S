@@ -40,6 +40,19 @@ hook_h3d:
     push    {r3-r11, lr}
     b       0x0039B33C
 
+@ 0x0014D618 (avance des animations de l'interface 2D, appelée au dessin) :
+@ « push {r4-r12,lr} » devient « b hook_lytanim ». Sur le dessin ajouté (S.extra),
+@ retour immédiat : les animations gardent leur vitesse d'origine.
+    .global hook_lytanim
+hook_lytanim:
+    ldr     r12, =S
+    ldr     r12, [r12, #0x9C]
+    cmp     r12, #0
+    bxne    lr
+    push    {r4-r12, lr}
+    b       0x0014D61C
+    .ltorg
+
 @ 0x002EC354 (nw::gfx MeshRenderer::RenderMesh) : r2 = modèle.
     .global hook_nwmesh
 hook_nwmesh:
@@ -57,11 +70,22 @@ hook_nwmesh:
 @ « bl hook_pad ». r4 = gestionnaire, mot « boutons tenus » en [r4+0x78].
 @ Ajoute S.vpad (écrit par le stub GDB) puis rejoue « add r1, r4, #0x98 ».
     .section .text.testpad, "ax"
+@ Builds de test (--count3d) : 0x0038CEA4 (passe de scène 3D) « push {r3-r7,lr} » -> compteur.
+    .section .text.testcnt, "ax"
+    .global hook_cnt3d
+hook_cnt3d:
+    push    {r0-r3, r12, lr}
+    bl      smooth_cnt3d
+    pop     {r0-r3, r12, lr}
+    push    {r3-r7, lr}
+    b       0x0038CEA8
+
+    .section .text.testpad, "ax"
     .global hook_pad
 hook_pad:
     push    {r4, lr}
     ldr     r0, [r4, #0x78]
-    bl      smooth_pad
+    blx     smooth_pad
     str     r0, [r4, #0x78]
     add     r1, r4, #0x98
     pop     {r4, pc}

@@ -546,3 +546,12 @@ pub fn extract_code(path: &str, out: &str) -> CliResult {
     println!("→ {out}/code.bin, {out}/exheader.bin");
     Ok(())
 }
+
+/// Copie un fichier du RomFS d'une ROM 3DS vers `out` (ex. `static.crs`, `DllBattle.cro`).
+pub fn cat_file(path: &str, file: &str, out: &str) -> CliResult {
+    let rom = open(path);
+    let data = rom.read(file)?;
+    std::fs::write(out, &data)?;
+    println!("{file} : {} octets -> {out}", data.len());
+    Ok(())
+}

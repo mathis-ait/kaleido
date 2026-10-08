@@ -15,6 +15,10 @@ case "$1" in
     sleep 2 ;;
   start)
     "$0" stop
+    # sauvegarde de reference (Route 103, 0:29:09) recopiee a chaque lancement :
+    # une partie scriptee peut sauvegarder (defaite, menus) et fausser les suivantes
+    SAVE="$S/user/sdmc/Nintendo 3DS/00000000000000000000000000000000/00000000000000000000000000000000/title/00040000/0011c400/data"
+    rm -rf "$SAVE"; mkdir -p "$SAVE"; cp -r "C:/Users/Thisma/Documents/Switch/tools-re/sandbox-save-orig/." "$SAVE/"
     M="$S/user/load/mods/000400000011C400"; mkdir -p "$M"; rm -f "$M/code.ips"
     [ "$2" != none ] && cp "$2" "$M/code.ips"
     cat > "$TEMP/ctr-smooth-launch.ps1" <<PS
@@ -28,5 +32,5 @@ PS
     grep -a "patching\|GDB server" "$S/user/log/azahar_log.txt" | tail -2 | cut -c1-140 ;;
   continue)
     sleep 25
-    "$PY" -I "$T/smstat.py" press "A 150" "wait 3000" "A 150" "wait 3000" "START 200" "wait 4000" "A 150" "wait 9000" ;;
+    "$PY" -I "$T/smstat.py" press "A 150" "wait 3000" "A 150" "wait 3000" "START 200" "wait 4000" "A 150" "wait 2500" "A 150" "wait 9000" ;;
 esac

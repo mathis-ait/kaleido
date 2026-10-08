@@ -22,7 +22,8 @@ from azahar_gdb import Rsp  # noqa: E402
 STATE = 0x006AE640
 F = ['magic', 'enabled', 'jump_t', 'jump_r', 'tab_addr', 'tab_size', 'tab', 'failed', 'frame', 'interp',
      'lastrec', 'n_interp', 'n_swap', 'n_jump', 'n_miss', 'n_rec', 'vpad', 'n_skip',
-     'script', 'script_pos', 'snap_frame', 'snap_a', 'snap_alen', 'snap_b', 'snap_blen', 'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor']
+     'script', 'script_pos', 'snap_frame', 'snap_a', 'snap_alen', 'snap_b', 'snap_blen', 'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor',
+     'jump_rel', 'jump_min', 'jump_rcam', 'n_cut', 'upd', 'c3d_u', 'c3d_n', 'extra', 'n_fade']
 OFF = {k: 4 * i for i, k in enumerate(F)}
 BUTTONS = {'A': 1, 'B': 2, 'SELECT': 4, 'START': 8, 'RIGHT': 0x10, 'LEFT': 0x20, 'UP': 0x40, 'DOWN': 0x80,
            'R': 0x100, 'L': 0x200, 'X': 0x400, 'Y': 0x800}
@@ -56,9 +57,16 @@ def parse_script2(path):
             continue
         f, b = line.split()[:2]
         m = 0
+        pulse = None
+        if '/' in b:                       # « A/40x6 » : A pendant 6 images toutes les 40
+            b, spec = b.split('/')
+            period, dur = spec.lower().split('x')
+            pulse = (int(period), int(dur))
         if b != '-':
             for x in b.upper().split('+'):
                 m |= BUTTONS[x]
+        if pulse:
+            m |= 0x80000000 | (pulse[0] << 16) | (pulse[1] << 24)
         (relative if f.startswith('@') else absolute).append((int(f.lstrip('@')), m))
     return sorted(absolute), sorted(relative)
 

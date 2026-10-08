@@ -37,16 +37,24 @@ render:
     end:     { addr: 0x0010E61C, orig: "00f020e3" }
     camera:  { addr: 0x00375EA8, orig: "ff4f2de9", arg: "[sp+0xC]", matrices: [0x148, 0x178] }
     h3d:     { addr: 0x0039B338, orig: "f84f2de9", arg: r0, bones: { count: 0x40, array: 0x4C, stride: 0x30 } }
-    nwmesh:  { addr: 0x002EC354, orig: "f0412de9", arg: r2, matrices: [0x8C] }
+    nwmesh:  { addr: 0x002EC354, orig: "f0412de9", arg: r2, matrices: [0x8C],
+               skeletal: { vtable: 0x005DB47C, skeleton: 0x220, world_pose: { array: 0x40, count: 0x48 }, skin_pose: { array: 0x50, count: 0x58 } } }
+    # systèmes animés au dessin, neutralisés sur le dessin ajouté (phase 2)
+    fade:    { addr: 0x0010E5AC, orig: "6b3900eb", note: "bl 0x0011CB60 ; gestionnaire *(0x0062F830), contextes +0x38/+0x3C (avance figée : +0x46), rappel +0x40" }
+    lytanim: { addr: 0x0014D618, orig: "f05f2de9", note: "avance des animations d'interface 2D" }
     test_pad: { addr: 0x0036FB34, orig: "981084e2", note: "builds de test : mot boutons en [r4+0x78]" }
-  thresholds: { translation: 48.0, rotation: 0.7 }
+  thresholds: { translation_max: 48.0, translation_rel: 0.25, translation_min: 0.5, rotation: 0.7, rotation_camera: 0.25 }
+  interpolation: "cadence adaptative par matrice : P + (C - P) * k / T, T = intervalle entre deux changements (2 à 8 images)"
   runtime:
     code: { addr: 0x00579610, max: 0x9F0 }      # marge de fin de .text
     state: 0x006AE640                           # marge de fin de .bss
-    table: { addr: 0x0A000000, size: 0x40000 }  # svcControlMemory au premier appel
+    table: { addr: 0x0A000000, size: 0x48000 }  # svcControlMemory au premier appel
 
 # Pour les essais (builds de test uniquement)
 test:
+  code_cave: { addr: 0x004FBF20, size: 0x2870, note: "fonction morte : aucune référence, aucun littéral, non exportée par static.crs" }
+  rodata_cave: { addr: 0x005EBA20, size: 0x5E0 }
+  tinymt: 0x08C55E24               # TinyMT global, consommé pendant la marche
   rng_mt19937: 0x08C55E64          # instance gfl MT (index + 624 mots), avancée à chaque VBlank par 0x0010676C
   camera_object: 0x14C486B8        # nw::gfx::Camera du terrain (Route 103), vue en +0x148
 

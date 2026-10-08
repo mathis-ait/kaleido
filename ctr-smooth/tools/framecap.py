@@ -81,6 +81,7 @@ def main():
     ap.add_argument('--out')
     ap.add_argument('--crop', default='')
     ap.add_argument('--settle', type=float, default=0.12)
+    ap.add_argument('--stats', action='store_true', help='compteurs du runtime image par image')
     a = ap.parse_args()
     gdbtrace.load_code()
     hwnd = find_window()
@@ -93,9 +94,13 @@ def main():
     g.s.sendall(b'\x03')
     g._recv_packet()
     frames = []
+    stats = []
     for k in range(a.n):
         if gdbtrace.wait_hit(g, RUN_EACH_FRAME) is None:
             break
+        st = struct.unpack('<16I', g.read(0x006AE640, 64))
+        upd = struct.unpack('<I', g.read(0x006AEFF0, 4))[0]
+        stats.append((st[8], upd, st[12], st[15]))
         time.sleep(a.settle)
         img = capture(hwnd)
         if a.crop:
@@ -108,6 +113,11 @@ def main():
     distinct = sum(d > 0.05 for d in diffs)
     print('ecarts image/image :', ' '.join('%.2f' % d for d in diffs))
     print('%d images distinctes sur %d transitions' % (distinct, len(diffs)))
+    if a.stats:
+        for i in range(1, len(stats)):
+            f, u, sw, rc = stats[i]
+            f0, u0, sw0, rc0 = stats[i - 1]
+            print('  image %d : update %d, changees %d, melangees %d, ecart %.2f' % (f0, u - u0, rc - rc0, sw - sw0, diffs[i - 1]))
     if a.out:
         os.makedirs(a.out, exist_ok=True)
         for i, f in enumerate(frames):
