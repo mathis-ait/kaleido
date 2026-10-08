@@ -23,6 +23,7 @@ pub mod romedit;
 pub mod romedit_ctr;
 pub mod romedit_gb;
 pub mod romedit_gba;
+pub mod romhack;
 pub mod save;
 pub mod saves;
 pub mod showdown;

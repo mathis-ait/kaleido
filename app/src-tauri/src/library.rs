@@ -258,6 +258,10 @@ pub fn cover_urls(game: &str) -> Vec<String> {
     if let Some(urls) = cart_urls(game) {
         return urls;
     }
+    // Romhack installé par Kaleido (`hack-<id>`) : écran titre du hack.
+    if let Some(hack) = game.strip_prefix("hack-").and_then(kaleido_core::romhack::find) {
+        return vec![hack.cover_url.to_string()];
+    }
     // Jeu Switch (`nx-<title ID>`) : icône officielle.
     if let Some(tid) = switch_cover_id(game) {
         return vec![format!("https://api.nlib.cc/nx/{tid}/icon/512/512")];

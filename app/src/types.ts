@@ -373,6 +373,8 @@ export interface Detection {
   kaleido: { tool: string; version: string; seed: number; shareCode: string } | null;
   /** Empreinte du contenu, pour repérer les doublons. */
   fingerprint: string | null;
+  /** Romhack installé par Kaleido (identifiant du catalogue). */
+  romhack?: string | null;
 }
 
 /** ROM produite par Kaleido (signature, ou seed retrouvée dans le nom du fichier). */

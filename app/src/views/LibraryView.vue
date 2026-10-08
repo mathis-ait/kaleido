@@ -12,6 +12,8 @@ import Icon from "../components/Icon.vue";
 import SearchField from "../components/SearchField.vue";
 import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
+import RomhacksDialog from "../play/RomhacksDialog.vue";
+import { romhacksDialog } from "../play/romhacks";
 import { modsDialog } from "../play/mods";
 import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { SHELVES, consoleOf, type ShelfFilter } from "../consoles";
@@ -135,6 +137,7 @@ function progressText(p: { step: string; done: number; total: number }) {
             <button @click="pickFiles"><Icon name="file" :size="16" /><span><strong>Ajouter des jeux</strong><small>Un ou plusieurs fichiers</small></span></button>
           </div>
         </div>
+        <button class="sv-btn" title="Installer un romhack en un clic (patch officiel, version française)" @click="romhacksDialog.open = true"><Icon name="wand" :size="16" /> Romhacks</button>
         <button class="sv-round" :title="`Dossiers suivis (${games.config.folders.length})`" aria-label="Dossiers suivis" @click="foldersOpen = true"><Icon name="folder-open" :size="16" /></button>
         <button class="sv-round" :disabled="games.scanning" title="Relire les dossiers" aria-label="Relire les dossiers" @click="rescan"><Icon name="refresh" :size="16" :class="{ 'sv-spin': games.scanning }" /></button>
         <button class="sv-round" :class="{ off: !audio.music }" :title="audio.music ? 'Musique au survol : activée' : 'Musique au survol : coupée'" :aria-pressed="audio.music" @click="audio.music = !audio.music">
@@ -245,6 +248,7 @@ function progressText(p: { step: string; done: number; total: number }) {
 
   <ModsDialog v-if="modsDialog.game" :key="modsDialog.game.path" />
   <DiscoverDialog v-if="discovering" @close="discovering = false" />
+  <RomhacksDialog v-if="romhacksDialog.open" @close="romhacksDialog.open = false" />
 </template>
 
 <style scoped>

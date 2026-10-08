@@ -20,6 +20,7 @@ import { RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, 
 import NewAdventure from "./NewAdventure.vue";
 import { adventure, closeAdventure, openAdventure, writeAdventure } from "./adventure";
 import { modsDialog, openMods } from "../play/mods";
+import { romhacksDialog } from "../play/romhacks";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
 import { canRandomize, coverUrl, isPokemonGame, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
@@ -515,7 +516,7 @@ async function setImmersive(on: boolean) {
 
 function action(a: KeyAction) {
   // La fenêtre « Mods et réglages » garde le clavier.
-  if (modsDialog.game) return;
+  if (modsDialog.game || romhacksDialog.open) return;
   // Pendant l'insertion, seul Retour compte : il remet la cartouche en place.
   if (inserting.value) {
     if (a === "back") scene.value?.cancelInsert();
@@ -699,6 +700,7 @@ const stats = computed(() => {
           </button>
           <input v-if="audio.music" v-model.number="audio.volume" class="volume" type="range" min="0" max="0.5" step="0.01" :title="`Volume : ${Math.round(audio.volume * 100)} %`" aria-label="Volume de la musique" />
         </div>
+        <button class="round" title="Romhacks : installer un hack en un clic" @click="romhacksDialog.open = true"><Icon name="wand" :size="15" /></button>
         <button class="round" title="Affichage en grille" @click="libraryUi.mode = 'grid'"><Icon name="grid" :size="15" /></button>
         <button class="round" :title="libraryUi.immersive ? 'Quitter le plein écran (Échap)' : 'Plein écran'" @click="setImmersive(!libraryUi.immersive)">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

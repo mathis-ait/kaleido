@@ -32,6 +32,7 @@ mod nuzlocke;
 mod nxmusic;
 mod overlay;
 mod play;
+mod romhacks;
 mod saves;
 mod showdown;
 mod sprites;
@@ -493,6 +494,8 @@ fn main() {
             mods::mods_toggle_other,
             mods::cheats_list,
             mods::cheats_set,
+            romhacks::romhacks_list,
+            romhacks::romhack_install,
             tuning::tune_plan,
             tuning::tune_apply,
             tuning::tune_restore,
