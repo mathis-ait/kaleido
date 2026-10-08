@@ -293,7 +293,8 @@ impl SaveSession {
         let trainer = self.save.trainer();
         let mut legality_out = None;
         self.mutate(|s| {
-            let p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
+            let mut p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
+            p.set_rom_shiny_threshold(s.shiny_threshold);
             if p.is_egg() {
                 return Err(SaveError::Invalid("impossible d'appliquer un set à un œuf".into()));
             }

@@ -44,6 +44,7 @@ const MAX_ENTRIES: usize = 400_000;
 const MAX_TIME: Duration = Duration::from_secs(45);
 /// Une ROM DS fait au moins quelques Mo (évite les petits fichiers `.nds` de démo).
 const MIN_GAME_SIZE: u64 = 1 << 20;
+const MIN_GB_SIZE: u64 = 32 << 10;
 
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +150,9 @@ impl Walk<'_> {
                 continue;
             }
             let Some(kind) = kind_of(&path) else { continue };
-            if entry.metadata().map(|m| m.len()).unwrap_or(0) < MIN_GAME_SIZE {
+            // Les jeux Game Boy pèsent de 32 Ko à 1 Mo.
+            let min = if matches!(path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("gb" | "gbc")) { MIN_GB_SIZE } else { MIN_GAME_SIZE };
+            if entry.metadata().map(|m| m.len()).unwrap_or(0) < min {
                 continue;
             }
             let f = self.folders.entry(dir.to_path_buf()).or_insert_with(|| FoundFolder { path: dir.display().to_string(), ..Default::default() });

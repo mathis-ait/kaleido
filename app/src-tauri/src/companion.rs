@@ -428,12 +428,15 @@ fn apply_live(app: &AppHandle, path: &Path, out: &mut CompanionState) {
 }
 
 /// Seuil des chromatiques de la ROM DS de la partie (taux modifié par le randomizer), lu une fois.
-fn shiny_threshold(rom: Option<&Path>) -> Option<u32> {
+pub(crate) fn shiny_threshold(rom: Option<&Path>) -> Option<u32> {
     static CACHE: Mutex<Option<HashMap<PathBuf, Option<u32>>>> = Mutex::new(None);
     let rom = rom.filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("nds")))?;
     let mut cache = CACHE.lock().ok()?;
     let map = cache.get_or_insert_with(HashMap::new);
-    *map.entry(rom.to_path_buf()).or_insert_with(|| kaleido_core::data::shiny::rom_threshold(rom).map(u32::from))
+    *map.entry(rom.to_path_buf()).or_insert_with(|| {
+        // « Toujours chromatique » : toute valeur passe le test.
+        kaleido_core::data::shiny::rom_threshold(rom).map(|t| if t >= kaleido_core::data::shiny::ALWAYS { 0x10000 } else { u32::from(t) })
+    })
 }
 
 /// ROM de la partie suivie (lecture en direct : code de l'overlay de combat).

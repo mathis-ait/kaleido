@@ -175,6 +175,9 @@ export const romExt = (path: string) => path.match(/\.(gbc|gb|gba)$/i)?.[1].toLo
 
 export const isRom = (d: Detection) => ["gb_rom", "gba_rom", "nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
 
+/** Jeu jouable depuis la bibliothèque, Pokémon ou non (un dossier 3DS doit être un jeu connu). */
+export const isGameFile = (d: Detection) => ["gb_rom", "gba_rom", "nds_rom", "ctr_rom"].includes(d.kind) || isRom(d);
+
 export interface CtrOutcome extends Outcome {
   /** Dossier `romfs` du LayeredFS, si demandé. */
   romfs: string | null;

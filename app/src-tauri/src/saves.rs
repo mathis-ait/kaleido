@@ -36,10 +36,23 @@ impl OpenSave {
     }
 }
 
+/// ROM jouée avec une sauvegarde : celle du même nom à côté (convention de melonDS et
+/// DeSmuME), sinon celle liée au suivi Nuzlocke.
+fn rom_of_save(save: &std::path::Path) -> Option<PathBuf> {
+    let sibling = save.with_extension("nds");
+    if sibling.is_file() {
+        return Some(sibling);
+    }
+    kaleido_core::nuzlocke::load_state(save).rom_path.map(PathBuf::from).filter(|p| p.is_file())
+}
+
 #[tauri::command]
 pub fn open_save(path: PathBuf, state: State<'_, OpenSave>) -> Result<SaveView, String> {
     let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
-    let session = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+    let mut session = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+    // ROM randomisée au taux de chromatiques modifié : le jeu n'utilise plus le seuil 8.
+    let threshold = crate::companion::shiny_threshold(rom_of_save(&path).as_deref()).filter(|&t| t != 8);
+    session.set_shiny_threshold(threshold);
     let view = session.view().map_err(|e| e.to_string())?;
     *state.0.lock().map_err(|e| e.to_string())? = Some((path, session));
     Ok(view)

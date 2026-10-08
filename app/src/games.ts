@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { library } from "./library";
-import { isKaleidoRom, isRom, type Detection } from "./types";
+import { isGameFile, isKaleidoRom, type Detection } from "./types";
 import type { StoredLook } from "./launcher/scene/models";
 import { applyState, emus, loadEmulators, type EmulatorId, type EmulatorsState } from "./play/play";
 
@@ -70,6 +70,13 @@ function switchDetection(g: SwitchGame): Detection {
 /** Title ID d'un jeu (Switch, 3DS), tel que l'affiche la détection. */
 export const titleIdOf = (d: Detection) => d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toUpperCase() ?? null;
 
+/** Code produit à 4 caractères d'une ROM DS ou 3DS (« ADAF », « EKJP »), d'après la détection. */
+export function romCodeOf(d: Pick<Detection, "platform" | "details">): string | null {
+  const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
+  const code = d.platform === "3ds" ? (detail("Code produit").split("-").pop() ?? "") : detail("Code jeu");
+  return /^[A-Z0-9]{4}$/.test(code) ? code : null;
+}
+
 /** Jeux de la série dans l'ordre de leur sortie (Japon), versions jumelles côte à côte. */
 const RELEASE_ORDER = [
   "red", "blue", "yellow", "gold", "silver", "crystal", "ruby", "sapphire", "fire_red", "leaf_green", "emerald",
@@ -118,7 +125,7 @@ export const allGames = computed(() => {
   games.found.forEach(add);
   games.switchFound.map(switchDetection).forEach(add);
   for (const d of library.items) {
-    if (isRom(d) && !games.config.hidden.includes(d.path)) add(d);
+    if (isGameFile(d) && !games.config.hidden.includes(d.path)) add(d);
   }
   return list;
 });
@@ -236,7 +243,7 @@ export async function hideGame(path: string) {
 
 // Les ROMs ouvertes (ou générées par le randomizer) restent dans la bibliothèque.
 watch(
-  () => library.items.filter(isRom).map((d) => d.path),
+  () => library.items.filter(isGameFile).map((d) => d.path),
   async (paths) => {
     if (!games.loaded) await loadGames();
     const fresh = paths.filter((p) => !games.config.files.includes(p) && !games.found.some((g) => g.path === p));

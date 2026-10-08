@@ -7,14 +7,13 @@ import { hideGame } from "../games";
 import { removeItem } from "../library";
 import { isKaleidoRom, type Detection } from "../types";
 import { PLATFORM_LABEL, PLATFORM_SHORT, RECOMMENDED, defaultEmulator, emus, installs, type PlayPlatform } from "../play/play";
-import { platformOf, canRandomize as canRandomizeGame, coverUrl, formatDuration, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf } from "../launcher/actions";
+import { platformOf, canRandomize as canRandomizeGame, coverUrl, isPokemonGame, formatDuration, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf } from "../launcher/actions";
 import { audio, previewMusic, stopMusic } from "../launcher/audio";
 import { openMods } from "../play/mods";
 
 const props = defineProps<{ game: Detection }>();
 
 const platform = computed<PlayPlatform>(() => platformOf(props.game));
-const isSwitch = computed(() => platform.value === "switch");
 const randomized = computed(() => isKaleidoRom(props.game));
 /** Boîte française en priorité, quelle que soit la langue de la ROM. */
 const coverSrc = computed(() => coverUrl(props.game));
@@ -113,9 +112,9 @@ const shortTitle = computed(() => props.game.title.replace(/^Pokémon\s+/, ""));
         <button class="icon-btn" aria-label="Plus d'actions" title="Plus d'actions" @click="menuOpen = !menuOpen">⋯</button>
         <div v-if="menuOpen" class="menu panel" @click="menuOpen = false">
           <button @click="openMods(game)"><Icon name="wand" :size="15" /> Mods et réglages</button>
-          <button v-if="gameStatus?.saveExists" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
+          <button v-if="gameStatus?.saveExists && isPokemonGame(game)" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
           <button v-if="canRandomize" @click="randomize"><Icon name="dice" :size="15" /> Randomiser</button>
-          <button v-if="!isSwitch" @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
+          <button v-if="isPokemonGame(game)" @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
           <button @click="revealItemInDir(game.path)"><Icon name="folder" :size="15" /> Afficher le fichier</button>
           <button class="danger" @click.stop="remove"><Icon name="x" :size="15" /> Retirer de la bibliothèque</button>
         </div>

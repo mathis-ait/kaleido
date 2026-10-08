@@ -20,7 +20,7 @@ import { adventure, closeAdventure, openAdventure, writeAdventure } from "./adve
 import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
-import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
+import { canRandomize, coverUrl, isPokemonGame, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
 import { audio, duckMusic, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
 import { dominantColor } from "./color";
 import { useGamepad, type PadAction } from "./gamepad";
@@ -392,10 +392,10 @@ const menu = computed(() => {
   const items: { label: string; icon: string; run: () => void; danger?: boolean; keep?: boolean }[] = [];
   if (cartridgeMode.value) items.push({ label: "Inspecter la cartouche", icon: "sliders", keep: true, run: () => openInspect(true) });
   items.push({ label: "Mods et réglages", icon: "wand", run: () => openMods(g) });
-  if (statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
-  if (g.platform !== "switch" && statusOf(g)?.savePath) items.push({ label: "Compagnon de partie", icon: "pin", run: () => void openCompanionOf(g) });
+  if (isPokemonGame(g) && statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
+  if (isPokemonGame(g) && statusOf(g)?.savePath) items.push({ label: "Compagnon de partie", icon: "pin", run: () => void openCompanionOf(g) });
   if (canRandomize(g)) items.push({ label: "Randomiser", icon: "dice", run: () => randomize(g) });
-  if (g.platform !== "switch") items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
+  if (isPokemonGame(g)) items.push({ label: "Éditer la ROM", icon: "pencil", run: () => openRom(g.path) });
   items.push({ label: "Afficher le fichier", icon: "folder", run: () => revealItemInDir(g.path) });
   items.push({
     label: "Retirer de la bibliothèque",
@@ -762,7 +762,7 @@ const meta = computed(() => {
               <span class="key light">{{ padConnected ? "A" : "Entrée" }}</span>
             </button>
             <button v-if="canRandomize(game)" class="ghost" @click="startAdventure"><Icon name="dice" :size="16" /> Nouvelle aventure</button>
-            <button v-if="status?.saveExists" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
+            <button v-if="status?.saveExists && isPokemonGame(game)" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
             <button class="ghost" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods</button>
             <button class="ghost icon" title="Plus d'actions" aria-label="Plus d'actions" @click="openMenu">⋯</button>
           </div>

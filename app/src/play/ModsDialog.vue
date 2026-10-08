@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { coverUrl } from "../launcher/actions";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import SearchField from "../components/SearchField.vue";
 import Tip from "../components/Tip.vue";
 import SwitchMusic from "./SwitchMusic.vue";
-import { titleIdOf } from "../games";
 import { installEmulator, installs, loadEmulators, locateEmulator, emus, PLATFORM_LABEL, RECOMMENDED } from "./play";
 import {
   CATEGORY_LABEL,
@@ -53,9 +52,7 @@ const onlyEnabled = ref(false);
 
 const coverSrc = computed(() => {
   const d = game.value;
-  if (d.platform === "switch") return convertFileSrc(`nx-${titleIdOf(d)}.png`, "cover");
-  if (!d.game) return null;
-  return convertFileSrc(`${d.game.id}${d.platform === "nds" && !d.isFrench ? "-en" : ""}.png`, "cover");
+  return coverUrl(d);
 });
 
 async function load() {

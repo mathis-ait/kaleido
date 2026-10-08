@@ -415,6 +415,8 @@ fn le_u32(d: &[u8], at: usize) -> u32 {
 pub struct Pokemon {
     format: PkmFormat,
     data: Vec<u8>,
+    /// Seuil des chromatiques de la ROM jouée, si le randomizer l'a changé (pas écrit dans la sauvegarde).
+    rom_shiny_threshold: Option<u32>,
 }
 
 /// Résumé sérialisable pour l'interface.
@@ -453,7 +455,7 @@ pub struct PokemonSummary {
 impl Pokemon {
     /// Emplacement vide (espèce 0).
     pub fn blank(format: PkmFormat) -> Self {
-        Self { format, data: vec![0; format.buffer_size()] }
+        Self { format, data: vec![0; format.buffer_size()], rom_shiny_threshold: None }
     }
 
     fn check_size(format: PkmFormat, len: usize) -> Result<(), PkmError> {
@@ -470,23 +472,23 @@ impl Pokemon {
         Self::check_size(format, bytes.len())?;
         if format.is_gb() {
             if bytes.len() == super::pk12::BUFFER_SIZE {
-                return Ok(Self { format, data: bytes.to_vec() });
+                return Ok(Self { format, data: bytes.to_vec(), rom_shiny_threshold: None });
             }
             let gen = format.generation();
             let (data, ot, nick, egg) = super::pk12::parse_file(gen, bytes).ok_or(PkmError::Invalid("fichier Pokémon Game Boy illisible".into()))?;
             // Jeu d'origine supposé : Rouge, Or, ou Cristal si des données de capture existent.
             let version = if gen == 1 { 35 } else if data[0x1D] != 0 || data[0x1E] != 0 { 41 } else { 39 };
-            return Ok(Self { format, data: super::pk12::to_internal(gen, &data, &ot, &nick, egg, version) });
+            return Ok(Self { format, data: super::pk12::to_internal(gen, &data, &ot, &nick, egg, version), rom_shiny_threshold: None });
         }
         if format == PkmFormat::Gen3 {
             if bytes.len() == super::pk3::BUFFER_SIZE {
-                return Ok(Self { format, data: bytes.to_vec() });
+                return Ok(Self { format, data: bytes.to_vec(), rom_shiny_threshold: None });
             }
-            return Ok(Self { format, data: super::pk3::to_internal(bytes) });
+            return Ok(Self { format, data: super::pk3::to_internal(bytes), rom_shiny_threshold: None });
         }
         let mut data = vec![0; format.party_size()];
         data[..bytes.len()].copy_from_slice(bytes);
-        Ok(Self { format, data })
+        Ok(Self { format, data, rom_shiny_threshold: None })
     }
 
     /// Données chiffrées, telles que stockées dans une sauvegarde.
@@ -745,7 +747,17 @@ impl Pokemon {
         }
         let pid = self.pid();
         let xor = (self.tid() ^ self.sid()) as u32 ^ (pid >> 16) ^ (pid & 0xFFFF);
-        xor < self.format.shiny_threshold()
+        xor < self.shiny_threshold()
+    }
+
+    /// Joue sur une ROM au taux de chromatiques modifié : chromatique et nouveaux PID suivent
+    /// ce seuil plutôt que celui du jeu d'origine.
+    pub fn set_rom_shiny_threshold(&mut self, threshold: Option<u32>) {
+        self.rom_shiny_threshold = threshold;
+    }
+
+    fn shiny_threshold(&self) -> u32 {
+        self.rom_shiny_threshold.unwrap_or(self.format.shiny_threshold())
     }
 
     pub fn ability(&self) -> u16 {
@@ -1439,7 +1451,11 @@ impl Pokemon {
     fn reroll_pid_inner(&mut self, shiny: bool, xor: Option<u32>, nature: Option<u8>, ability_slot: Option<u8>) -> bool {
         let old = self.pid();
         let tsv = (self.tid() ^ self.sid()) as u32;
-        let threshold = self.format.shiny_threshold();
+        let threshold = self.shiny_threshold();
+        // Taux « toujours chromatique » : aucun PID ordinaire possible.
+        if !shiny && threshold > 0xFFFF {
+            return false;
+        }
         let mut low_byte = old & 0xFF;
         // Emplacement du talent : bit 16 du PID pour un Pokémon né en Gen 5, bit 0 sinon.
         let high_bit = self.format == PkmFormat::Gen5 && (20..=23).contains(&self.version());
@@ -1666,6 +1682,28 @@ pub(super) mod tests {
         pk.set_pid(28);
         assert_eq!(pk.nature(), 3);
         assert!(matches!(pk.set_nature(1), Err(PkmError::NatureFromPid)));
+    }
+
+    #[test]
+    fn rom_shiny_threshold() {
+        // ROM randomisée à 1 / 257 (seuil 255) : l'Azurill de la sauvegarde de test, XOR 207.
+        let mut pk = Pokemon::blank(PkmFormat::Gen5);
+        pk.set_tid(15408);
+        pk.set_sid(27507);
+        pk.set_pid(421088917);
+        assert!(!pk.is_shiny());
+        pk.set_rom_shiny_threshold(Some(255));
+        assert!(pk.is_shiny());
+        // « Non chromatique » doit l'être aussi pour la ROM.
+        pk.set_shiny(ShinyMode::None);
+        assert!(!pk.is_shiny() && pk.shiny_xor().unwrap() >= 255);
+        pk.set_shiny(ShinyMode::Star);
+        assert!(pk.is_shiny());
+        // Tout chromatique : impossible de le rendre ordinaire, le PID ne bouge pas.
+        pk.set_rom_shiny_threshold(Some(0x10000));
+        let pid = pk.pid();
+        pk.set_shiny(ShinyMode::None);
+        assert_eq!(pk.pid(), pid);
     }
 
     #[test]
