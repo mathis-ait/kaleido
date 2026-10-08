@@ -46,13 +46,18 @@ fn rom_of_save(save: &std::path::Path) -> Option<PathBuf> {
     kaleido_core::nuzlocke::load_state(save).rom_path.map(PathBuf::from).filter(|p| p.is_file())
 }
 
+/// Ouvre une sauvegarde ; chromatiques d'après la ROM jouée (un randomizer peut avoir changé
+/// le taux : le jeu n'utilise alors plus le seuil 8).
+fn open_session(path: &std::path::Path, bytes: &[u8]) -> Result<SaveSession, String> {
+    let mut session = SaveSession::open(bytes).map_err(|e| e.to_string())?;
+    session.set_shiny_threshold(crate::companion::shiny_threshold(rom_of_save(path).as_deref()).filter(|&t| t != 8));
+    Ok(session)
+}
+
 #[tauri::command]
 pub fn open_save(path: PathBuf, state: State<'_, OpenSave>) -> Result<SaveView, String> {
     let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
-    let mut session = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
-    // ROM randomisée au taux de chromatiques modifié : le jeu n'utilise plus le seuil 8.
-    let threshold = crate::companion::shiny_threshold(rom_of_save(&path).as_deref()).filter(|&t| t != 8);
-    session.set_shiny_threshold(threshold);
+    let session = open_session(&path, &bytes)?;
     let view = session.view().map_err(|e| e.to_string())?;
     *state.0.lock().map_err(|e| e.to_string())? = Some((path, session));
     Ok(view)
@@ -385,7 +390,7 @@ pub struct SavePeek {
 pub async fn peek_save(path: PathBuf) -> Result<SavePeek, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
-        let s = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+        let s = open_session(&path, &bytes)?;
         let v = s.view().map_err(|e| e.to_string())?;
         let dex = s.pokedex().unwrap_or_default();
         let modified =
