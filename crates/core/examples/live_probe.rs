@@ -147,6 +147,7 @@ fn main() {
                 std::thread::sleep(Duration::from_millis(200));
             }
             println!("{ticks} ticks, le plus long {worst:?}, copies {:x?}", reader.party_addresses());
+            println!("cartes candidates {:x?}", reader.place_candidates());
         }
         "save" => {
             let save = SaveSession::open(&std::fs::read(arg(1)).unwrap()).unwrap();

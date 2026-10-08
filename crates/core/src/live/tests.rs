@@ -625,24 +625,30 @@ fn equipe_3ds_vide_reconnue_a_sa_forme() {
 }
 
 #[test]
-fn carte_3ds_lue_dans_la_copie_vivante() {
-    // Structure « situation » : carte, zone, position. Deux copies au moment de la sauvegarde,
-    // l'une figée (ancienne image), l'autre suit le joueur.
+fn carte_3ds_lue_dans_les_copies_vivantes() {
+    // Structure « situation » : carte puis position (trois flottants), à une distance qui varie
+    // selon la copie. Au moment de la sauvegarde : deux copies vivantes, une image figée.
     let mut src = ctr_world();
-    let key: Vec<u8> = [4u16.to_le_bytes(), 5u16.to_le_bytes()].concat().into_iter().chain([0x11; 12]).collect();
-    src.poke(FCRAM + 0x0020_0000, &key);
-    src.poke(FCRAM + 0x0030_0000, &key);
+    let pos = |x: f32| [x, 1.0, 9369.0].iter().flat_map(|f| f.to_le_bytes()).collect::<Vec<u8>>();
+    let put = |src: &mut DumpSource, at: u64, gap: u64, map: u16, x: f32| {
+        src.poke(at, &map.to_le_bytes());
+        src.poke(at + gap, &pos(x));
+    };
+    for (at, gap) in [(0x0020_0000, 4), (0x0030_0002, 0x0E), (0x0040_0000, 0x10)] {
+        put(&mut src, FCRAM + at, gap, 8, 8253.0);
+    }
     let mut hints = ctr_hints();
-    hints.map = 0x1000;
-    hints.situation = key.clone();
+    hints.situation = [8u16.to_le_bytes().to_vec(), pos(8253.0)].concat();
     let mut reader = LiveReader::new(Console::Ctr, hints);
-    let r = reader.tick(&src).unwrap().unwrap();
-    assert_eq!(r.map, None, "rien n'a encore bougé : la carte de la sauvegarde fait foi");
-    // Le joueur entre dans une maison : seule la copie vivante change.
-    let home: Vec<u8> = [22u16.to_le_bytes(), 36u16.to_le_bytes()].concat().into_iter().chain([0x22; 12]).collect();
-    src.poke(FCRAM + 0x0030_0000, &home);
-    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(22));
-    // Le joueur ressort : toujours la même copie.
-    src.poke(FCRAM + 0x0030_0000, &key);
-    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(4));
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, None, "rien n'a bougé : la carte de la sauvegarde fait foi");
+    // Le joueur change de carte : les deux copies vivantes suivent, l'image figée non.
+    put(&mut src, FCRAM + 0x0030_0002, 0x0E, 259, 8271.0);
+    put(&mut src, FCRAM + 0x0040_0000, 0x10, 259, 8271.0);
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(259));
+    // Un seul mot voisin qui bouge ne suffit pas à changer la carte.
+    src.poke(FCRAM + 0x0020_0000, &0x1234u16.to_le_bytes());
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(259));
+    put(&mut src, FCRAM + 0x0030_0002, 0x0E, 8, 8253.0);
+    put(&mut src, FCRAM + 0x0040_0000, 0x10, 8, 8253.0);
+    assert_eq!(reader.tick(&src).unwrap().unwrap().map, Some(8));
 }

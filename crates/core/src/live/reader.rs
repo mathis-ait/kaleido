@@ -192,16 +192,19 @@ pub struct LiveReader {
 
 /// 3DS : la carte actuelle. Le jeu garde en RAM la structure « situation » de la sauvegarde
 /// (carte, position) en plusieurs copies vivantes, et d'anciennes images figées. Au moment d'une
-/// sauvegarde (ou au chargement de la partie, tant que le joueur n'a pas bougé) toutes valent le
-/// contenu du fichier : on les retient alors toutes, et seule une copie qui change ensuite est crue.
+/// sauvegarde (ou au chargement de la partie, tant que le joueur n'a pas bougé) toutes portent la
+/// carte et la position du fichier : on les retient alors toutes, et seules les copies qui
+/// changent ensuite sont crues.
 #[derive(Debug, Clone, Default)]
 struct CtrPlace {
     /// Contenu du fichier cherché (la recherche est refaite après chaque sauvegarde).
     key: Vec<u8>,
-    /// Copies candidates : (adresse, derniers octets lus).
+    /// Copies candidates : (adresse de la carte, derniers octets lus).
     cands: Vec<(u64, Vec<u8>)>,
-    /// Copie vivante : la dernière qui a changé.
-    live: Option<u64>,
+    /// Candidates qui ont changé depuis la recherche (copies vivantes, ou bruit).
+    moved: HashSet<u64>,
+    /// Dernière carte retenue.
+    map: Option<u16>,
     searched: Option<u64>,
 }
 
@@ -366,6 +369,11 @@ impl LiveReader {
     /// 3DS : adresse du tableau de l'équipe vivante, s'il est trouvé (diagnostic).
     pub fn live_party_address(&self) -> Option<u64> {
         self.live_party.as_ref().map(|l| l.at)
+    }
+
+    /// 3DS : copies candidates de la carte (adresse, valeur, a changé), pour le diagnostic.
+    pub fn place_candidates(&self) -> Vec<(u64, u16, bool)> {
+        self.place.cands.iter().map(|(a, b)| (*a, u16::from_le_bytes([b[0], b[1]]), self.place.moved.contains(a))).collect()
     }
 
     /// Adresse de la dernière équipe adverse trouvée (diagnostic).
@@ -656,47 +664,77 @@ impl LiveReader {
         Ok(Some(party))
     }
 
-    /// 3DS : carte actuelle, lue dans la copie vivante de la structure « situation ».
+    /// 3DS : carte actuelle. Les copies de la structure « situation » sont retrouvées par la
+    /// position du joueur écrite dans le fichier (flottants). 6e génération : la carte est un mot de
+    /// 16 bits égal à celle du fichier dans les 0x40 octets qui précèdent (sa place varie selon la
+    /// copie : 0x0E, 0x10, 0x24 observés en Y). 7e : `[carte][zone][x][y][z]`.
+    /// La carte retenue est celle sur laquelle s'accordent le plus de copies qui ont changé.
     fn ctr_map(&mut self, src: &dyn MemorySource) -> Option<u16> {
         let key = self.hints.situation.clone();
-        if key.len() < 8 || key.iter().all(|&b| b == 0) {
+        if key.len() != 14 || key[2..].iter().all(|&b| b == 0) {
             return None;
         }
+        let saved = u16::from_le_bytes([key[0], key[1]]);
+        let gen7 = self.hints.format == PkmFormat::Gen7;
         let tick = self.tick;
-        let p = &mut self.place;
-        if p.key != key {
+        if self.place.key != key {
             // Nouvelle sauvegarde : la RAM vaut le fichier, toutes les copies se retrouvent.
-            *p = CtrPlace { key: key.clone(), ..CtrPlace::default() };
+            self.place = CtrPlace { key: key.clone(), ..CtrPlace::default() };
         }
-        if p.cands.is_empty() && p.searched.is_none_or(|t| tick - t >= CTR_PLACE_SEARCH) {
-            p.searched = Some(tick);
+        if self.place.cands.is_empty() && self.place.searched.is_none_or(|t| tick - t >= CTR_PLACE_SEARCH) {
+            self.place.searched = Some(tick);
             let regions = self.fcram_regions(src);
-            let p = &mut self.place;
-            p.cands = scan::find_all(src, &regions, &key, 4, 16).into_iter().map(|a| (a, key.clone())).collect();
+            let mut cands = Vec::new();
+            if gen7 {
+                // [carte][zone][x][y][z] : la hauteur (y) diffère d'une copie à l'autre, x et z non.
+                for hit in scan::find_all(src, &regions, &key[2..6], 4, 64) {
+                    let (Some(m), Ok(z)) = (hit.checked_sub(4), src.read_vec(hit + 8, 4)) else { continue };
+                    if z == key[10..14] && src.read_vec(m, 2).is_ok_and(|b| b == key[..2]) {
+                        cands.push((m, key[..2].to_vec()));
+                    }
+                }
+            } else {
+                for hit in scan::find_all(src, &regions, &key[2..], 4, 64) {
+                    let Some(start) = hit.checked_sub(0x40) else { continue };
+                    let Ok(before) = src.read_vec(start, 0x40) else { continue };
+                    for i in (0..0x40).step_by(2) {
+                        if u16::from_le_bytes([before[i], before[i + 1]]) == saved {
+                            cands.push((start + i as u64, saved.to_le_bytes().to_vec()));
+                        }
+                    }
+                }
+            }
+            self.place.cands = cands;
         }
         let p = &mut self.place;
-        let mut changed = None;
+        let mut any = false;
         for (a, last) in &mut p.cands {
-            let Ok(now) = src.read_vec(*a, key.len()) else { continue };
+            let Ok(now) = src.read_vec(*a, 2) else { continue };
             if now != *last {
                 *last = now;
-                changed = Some(*a);
+                p.moved.insert(*a);
+                any = true;
             }
         }
-        if changed.is_some() {
-            p.live = changed;
+        if any {
+            // Les copies vivantes s'accordent ; un mot voisin qui bouge pour autre chose, non.
+            let mut votes: Vec<(u16, usize)> = Vec::new();
+            for (a, last) in &p.cands {
+                let v = u16::from_le_bytes([last[0], last[1]]);
+                if !p.moved.contains(a) || v >= 0x400 {
+                    continue;
+                }
+                match votes.iter_mut().find(|(m, _)| *m == v) {
+                    Some((_, n)) => *n += 1,
+                    None => votes.push((v, 1)),
+                }
+            }
+            // 6e génération : la carte est cherchée dans les 0x40 octets avant la position, il faut
+            // deux copies d'accord ; 7e : sa place est connue, une suffit.
+            let need = if gen7 { 1 } else { 2 };
+            p.map = votes.iter().max_by_key(|(_, n)| *n).filter(|(_, n)| *n >= need).map(|(m, _)| *m);
         }
-        let at = p.live?;
-        let ofs = (self.hints.map & 3) as u64;
-        let b = src.read_vec(at + ofs, 2).ok()?;
-        let map = u16::from_le_bytes([b[0], b[1]]);
-        // Une carte hors limites : la copie a été réutilisée pour autre chose.
-        if map >= 0x400 {
-            p.live = None;
-            p.cands.retain(|(a, _)| *a != at);
-            return None;
-        }
-        Some(map)
+        p.map
     }
 
     fn save_block_fields(&self, src: &dyn MemorySource) -> (Option<u16>, Option<u8>) {
