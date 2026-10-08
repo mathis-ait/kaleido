@@ -206,7 +206,8 @@ fn battle_code(rom: &Path, overlay: u32) -> Option<BattleCode> {
 
 /// En-tête du module de combat d'une ROM 3DS, lu une fois par ROM.
 fn cro_head(rom: &Path, module: &str) -> Option<Vec<u8>> {
-    static CACHE: Mutex<Vec<(PathBuf, String, Option<Vec<u8>>)>> = Mutex::new(Vec::new());
+    type Entry = (PathBuf, String, Option<Vec<u8>>);
+    static CACHE: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
     let mut cache = CACHE.lock().ok()?;
     if let Some((_, _, v)) = cache.iter().find(|(p, m, _)| p == rom && m == module) {
         return v.clone();
