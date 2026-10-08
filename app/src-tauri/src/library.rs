@@ -35,6 +35,23 @@ pub struct LibraryConfig {
     pub hidden: Vec<String>,
     /// Dossiers retirés par l'utilisateur : la recherche automatique ne les rajoute plus.
     pub ignored: Vec<String>,
+    /// Réglages « Inspecter » du mode Cartouche, par empreinte de ROM.
+    pub cartridge: std::collections::BTreeMap<String, CartridgeLook>,
+}
+
+/// Apparence choisie pour la cartouche d'un jeu ; un champ absent prend la valeur déduite du jeu.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CartridgeLook {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish: Option<String>,
+    /// `custom` : image fournie par l'utilisateur (voir `labels.rs`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wear: Option<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {

@@ -226,3 +226,50 @@ export function sfx(kind: Sfx) {
     osc.stop(start + t.d + 0.02);
   });
 }
+
+// --- Mode Cartouche
+
+/** Baisse la musique pendant l'insertion d'une cartouche (true), ou la remet (false). */
+export function duckMusic(on: boolean) {
+  if (!master || !ctx) return;
+  master.gain.setTargetAtTime(audio.music ? audio.volume * (on ? 0.3 : 1) : 0, ctx.currentTime, 0.12);
+}
+
+/**
+ * Clic de la cartouche qui s'enclenche : deux ou trois oscillateurs très courts et un
+ * souffle de bruit filtré (frottement), propres au support. Suit l'interrupteur des bruitages.
+ */
+export function insertClick(tone: { f: number[]; d: number; type: OscillatorType; noise: number }) {
+  if (!audio.sfx) return;
+  const c = context();
+  const start = c.currentTime;
+  tone.f.forEach((f, i) => {
+    const t = start + i * tone.d * 0.6;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = tone.type;
+    osc.frequency.setValueAtTime(f, t);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.6, t + tone.d);
+    gain.gain.setValueAtTime(0.06, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + tone.d);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t);
+    osc.stop(t + tone.d + 0.02);
+  });
+  if (tone.noise > 0) {
+    const length = Math.round(c.sampleRate * 0.08);
+    const buffer = c.createBuffer(1, length, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    const noise = c.createBufferSource();
+    noise.buffer = buffer;
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 1800;
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.03 * tone.noise, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.08);
+    noise.connect(filter).connect(gain).connect(c.destination);
+    noise.start(start);
+  }
+}

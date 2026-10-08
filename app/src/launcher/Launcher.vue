@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Backdrop from "./Backdrop.vue";
 import TitleScene from "./TitleScene.vue";
+import PadHints from "./PadHints.vue";
 import Icon from "../components/Icon.vue";
 import { openRom } from "../editor";
-import { UPDATE_LABEL, hideGame, libraryUi } from "../games";
+import { UPDATE_LABEL, games as libraryState, hideGame, libraryUi, setCartridgeLook } from "../games";
+import { cartridgeBlocker, cartridgeMode, presentation } from "./presentation";
+import { FINISHES, WEARS, cartridgeKey, resolveLook, type StoredLook } from "./scene/models";
+import { glyphs, layoutOf, type HintAction } from "./scene/hints";
 import { removeItem } from "../library";
 import { PLATFORM_LABEL, RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
 import NewAdventure from "./NewAdventure.vue";
@@ -15,11 +21,21 @@ import { modsDialog, openMods } from "../play/mods";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
 import { canRandomize, coverUrl, formatDuration, lastPlayed, launchGame, openCompanionOf, openSaveOf, platformOf, playTime, randomize, statusOf, timeAgo } from "./actions";
-import { audio, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
+import { audio, duckMusic, prefetchMusic, previewMusic, sfx, stopMusic } from "./audio";
 import { dominantColor } from "./color";
 import { useGamepad, type PadAction } from "./gamepad";
 
+// three.js et la scène : chunk séparé, chargé seulement en mode Cartouche.
+const CartridgeScene = defineAsyncComponent(() => import("./scene/CartridgeScene.vue"));
+
 const props = defineProps<{ games: Detection[] }>();
+
+try {
+  performance.clearMarks("launcher-open");
+  performance.mark("launcher-open");
+} catch {
+  /* mesure indisponible */
+}
 
 // --- Onglets
 
@@ -230,7 +246,9 @@ const notice = ref<string | null>(null);
 
 async function play() {
   const g = game.value;
-  if (!g || launching.value || installing.value) return;
+  if (!g || launching.value || installing.value || inserting.value) return;
+  // Mode Cartouche : la cartouche s'insère dans la console (si l'émulateur est prêt).
+  if (cartridgeMode.value && scene.value && emulator.value && insertAndPlay(g)) return;
   sfx("select");
   // Sans l'oublier : la musique reprend quand on ferme l'émulateur et revient dans Kaleido.
   stopMusic(false);
@@ -244,6 +262,85 @@ async function play() {
     previewMusic(game.value);
   }
 }
+
+// --- Mode Cartouche
+
+type SceneApi = {
+  startInsert(hooks: { launch(): void; done(): void; cancelled(): void }): boolean;
+  cancelInsert(): boolean;
+  resetInsert(): void;
+  reloadLabel(path: string): void;
+};
+const scene = ref<SceneApi | null>(null);
+const stageEl = ref<HTMLElement | null>(null);
+const ringEl = ref<HTMLElement | null>(null);
+const inserting = ref(false);
+/** Fondu au noir de la fin d'insertion (0 à 1). */
+const fade = ref(0);
+let musicCut = false;
+
+function onFade(v: number) {
+  fade.value = v;
+  // La musique baisse pendant l'insertion et se coupe au fondu.
+  if (v > 0 && inserting.value && !musicCut) {
+    musicCut = true;
+    stopMusic(false);
+  }
+}
+
+/**
+ * Insertion de la cartouche : l'émulateur démarre au point d'enfoncement (l'animation
+ * ne retarde pas le lancement) ; Échap ou B l'annule avant ce point.
+ */
+function insertAndPlay(g: Detection): boolean {
+  let launched: Promise<string | null> | null = null;
+  musicCut = false;
+  const started = scene.value!.startInsert({
+    launch: () => {
+      launched = launchGame(g);
+    },
+    done: async () => {
+      launching.value = { cover: null, title: g.title, status: "Lancement…" };
+      const emu = await (launched ?? Promise.resolve(null));
+      duckMusic(false);
+      scene.value?.resetInsert();
+      inserting.value = false;
+      if (emu && launching.value) {
+        launching.value.status = `Bon jeu ! (${emu})`;
+        setTimeout(() => (launching.value = null), 1600);
+      } else {
+        launching.value = null;
+        previewMusic(game.value);
+      }
+    },
+    cancelled: () => {
+      inserting.value = false;
+      duckMusic(false);
+    },
+  });
+  if (!started) return false;
+  inserting.value = true;
+  sfx("select");
+  duckMusic(true);
+  return true;
+}
+
+function onSceneFailed(reason: string) {
+  presentation.wanted = "covers";
+  notice.value = `Mode Cartouche indisponible (${reason}) : retour aux jaquettes.`;
+}
+
+function choosePresentation(p: "covers" | "cartridges") {
+  if (p === "cartridges" && cartridgeBlocker.value) {
+    notice.value = `Mode Cartouche indisponible : ${cartridgeBlocker.value}. Le lanceur reste en jaquettes.`;
+    return;
+  }
+  presentation.wanted = p;
+  notice.value = null;
+}
+
+/** Choix « Inspecter » de tous les jeux, transmis à la scène. */
+const looks = computed<Record<string, StoredLook>>(() => libraryState.config.cartridge ?? {});
 
 async function openSave() {
   const g = game.value;
@@ -292,7 +389,8 @@ const menuIndex = ref(0);
 const menu = computed(() => {
   const g = game.value;
   if (!g) return [];
-  const items: { label: string; icon: string; run: () => void; danger?: boolean }[] = [];
+  const items: { label: string; icon: string; run: () => void; danger?: boolean; keep?: boolean }[] = [];
+  if (cartridgeMode.value) items.push({ label: "Inspecter la cartouche", icon: "sliders", keep: true, run: () => openInspect(true) });
   items.push({ label: "Mods et réglages", icon: "wand", run: () => openMods(g) });
   if (statusOf(g)?.saveExists) items.push({ label: "Ouvrir sa sauvegarde", icon: "save", run: openSave });
   if (g.platform !== "switch" && statusOf(g)?.savePath) items.push({ label: "Compagnon de partie", icon: "pin", run: () => void openCompanionOf(g) });
@@ -313,16 +411,114 @@ const menu = computed(() => {
 
 function openMenu() {
   menuIndex.value = 0;
+  sheetMode.value = "menu";
   menuOpen.value = true;
   sfx("select");
 }
 
 function runMenu(i: number) {
   const item = menu.value[i];
+  if (item?.keep) return item.run();
   menuOpen.value = false;
   if (!item) return;
   if (item.label !== "Ouvrir sa sauvegarde" && item.label !== "Retirer de la bibliothèque") stopMusic();
   item.run();
+}
+
+// --- Inspecter : apparence de la cartouche (bloc « Cartouche » de la fiche du jeu)
+
+const sheetMode = ref<"menu" | "inspect">("menu");
+const inspectIndex = ref(0);
+/** Inspecter ouvert depuis le menu : Retour y revient au lieu de fermer la fiche. */
+const inspectFromMenu = ref(false);
+
+const lookKey = computed(() => (game.value ? cartridgeKey(game.value) : null));
+const stored = computed<StoredLook>(() => (lookKey.value ? looks.value[lookKey.value] ?? {} : {}));
+
+interface InspectRow {
+  id: keyof StoredLook;
+  label: string;
+  options: { id: string | undefined; label: string; color?: string }[];
+}
+
+const inspectRows = computed<InspectRow[]>(() => {
+  const g = game.value;
+  if (!g) return [];
+  const natural = resolveLook(g, null);
+  return [
+    {
+      id: "shell",
+      label: "Couleur de coque",
+      options: [{ id: undefined, label: `Auto · ${natural.shell.label}`, color: natural.shell.color }, ...natural.support.shells.map((s) => ({ id: s.id, label: s.label, color: s.color }))],
+    },
+    {
+      id: "finish",
+      label: "Finition",
+      options: [{ id: undefined, label: `Auto · ${FINISHES.find((f) => f.id === natural.finish)!.label}` }, ...FINISHES],
+    },
+    {
+      id: "label",
+      label: "Étiquette",
+      options: [
+        { id: undefined, label: "Générée" },
+        { id: "custom", label: stored.value.label === "custom" ? "Image personnelle" : "Choisir une image…" },
+      ],
+    },
+    { id: "wear", label: "Usure", options: WEARS.map((w) => ({ id: w.id === "neuve" ? undefined : w.id, label: w.label })) },
+  ];
+});
+
+function openInspect(fromMenu = false) {
+  if (!game.value || !cartridgeMode.value) return;
+  inspectFromMenu.value = fromMenu;
+  inspectIndex.value = 0;
+  sheetMode.value = "inspect";
+  menuOpen.value = true;
+  if (!fromMenu) sfx("select");
+}
+
+function closeInspect() {
+  if (inspectFromMenu.value) sheetMode.value = "menu";
+  else menuOpen.value = false;
+}
+
+async function chooseLook(row: InspectRow, id: string | undefined) {
+  const g = game.value;
+  const key = lookKey.value;
+  if (!g || !key) return;
+  if (row.id === "label") {
+    if (id === "custom") {
+      const file = await openDialog({ title: "Image de l'étiquette", filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }] });
+      if (typeof file !== "string") return;
+      try {
+        await invoke("label_custom", { key, source: file });
+      } catch (e) {
+        notice.value = `Étiquette impossible : ${e}`;
+        return;
+      }
+    } else {
+      await invoke("label_custom", { key, source: null }).catch(() => undefined);
+    }
+    await setCartridgeLook(key, { label: id === "custom" ? "custom" : undefined });
+    scene.value?.reloadLabel(g.path);
+    return;
+  }
+  await setCartridgeLook(key, { [row.id]: id } as Partial<StoredLook>);
+}
+
+/** Valeur choisie d'une ligne (index dans ses options). */
+function optionIndex(row: InspectRow) {
+  return Math.max(0, row.options.findIndex((o) => o.id === stored.value[row.id]));
+}
+
+function cycleLook(delta: number) {
+  const row = inspectRows.value[inspectIndex.value];
+  if (!row) return;
+  // L'étiquette personnelle demande un fichier : seulement avec A / Entrée.
+  if (row.id === "label") return;
+  const n = row.options.length;
+  void chooseLook(row, row.options[(optionIndex(row) + delta + n) % n].id);
+  sfx("move");
 }
 
 // --- Plein écran
@@ -337,9 +533,31 @@ async function setImmersive(on: boolean) {
 function action(a: PadAction) {
   // La fenêtre « Mods et réglages » garde le clavier et la manette.
   if (modsDialog.game) return;
+  // Pendant l'insertion, seul Retour compte : il remet la cartouche en place.
+  if (inserting.value) {
+    if (a === "back" && scene.value?.cancelInsert()) sfx("back");
+    return;
+  }
   if (launching.value) return;
   if (adventure.open) {
-    adventureView.value?.handle(a);
+    // X sert de bouton Menu dans la Nouvelle aventure (corbeille des presets).
+    adventureView.value?.handle(a === "inspect" ? "menu" : a);
+    return;
+  }
+  if (menuOpen.value && sheetMode.value === "inspect") {
+    const n = inspectRows.value.length;
+    if (a === "up" || a === "down") {
+      inspectIndex.value = (inspectIndex.value + (a === "up" ? -1 : 1) + n) % n;
+      sfx("move");
+    } else if (a === "left" || a === "right") cycleLook(a === "left" ? -1 : 1);
+    else if (a === "accept") {
+      const row = inspectRows.value[inspectIndex.value];
+      if (row?.id === "label") void chooseLook(row, stored.value.label === "custom" ? undefined : "custom");
+      else cycleLook(1);
+    } else if (a === "back" || a === "inspect" || a === "menu") {
+      sfx("back");
+      closeInspect();
+    }
     return;
   }
   if (menuOpen.value) {
@@ -355,6 +573,8 @@ function action(a: PadAction) {
   else if (a === "right") move(1);
   else if (a === "accept") play();
   else if (a === "menu" || a === "down") openMenu();
+  else if (a === "inspect") openInspect();
+  else if (a === "adventure") startAdventure();
   else if (a === "prevTab") switchTab(-1);
   else if (a === "nextTab") switchTab(1);
   else if (a === "back" && libraryUi.immersive) {
@@ -363,7 +583,34 @@ function action(a: PadAction) {
   }
 }
 
-const { connected: padConnected } = useGamepad(action);
+const { connected: padConnected, id: padId, stick } = useGamepad(action);
+
+/** Aides en bas d'écran (cliquables à la souris). */
+const hintItems = computed(() => {
+  const g = game.value;
+  const items: { action: HintAction; label: string; run?: () => void }[] = [{ action: "move", label: "Choisir" }];
+  items.push({ action: "accept", label: "Jouer", run: play });
+  if (g && cartridgeMode.value) items.push({ action: "inspect", label: "Inspecter", run: () => openInspect() });
+  if (g && canRandomize(g)) items.push({ action: "adventure", label: "Nouvelle aventure", run: startAdventure });
+  items.push({ action: "tabs", label: "Plateformes", run: () => switchTab(1) });
+  items.push({ action: "menu", label: "Plus", run: openMenu });
+  if (libraryUi.immersive) items.push({ action: "back", label: "Quitter le plein écran", run: () => setImmersive(false) });
+  return items;
+});
+
+const sheetHints = computed<{ action: HintAction; label: string }[]>(() =>
+  sheetMode.value === "inspect"
+    ? [
+        { action: "move", label: "Changer" },
+        { action: "back", label: "Retour" },
+      ]
+    : [
+        { action: "accept", label: "Valider" },
+        { action: "back", label: "Retour" },
+      ],
+);
+
+const tabGlyphs = computed(() => glyphs("tabs", padConnected.value, layoutOf(padId.value)));
 
 const KEYS: Record<string, PadAction> = {
   ArrowLeft: "left",
@@ -380,6 +627,8 @@ const KEYS: Record<string, PadAction> = {
   PageDown: "nextTab",
   m: "menu",
   ContextMenu: "menu",
+  i: "inspect",
+  n: "adventure",
 };
 
 function onKey(e: KeyboardEvent) {
@@ -433,17 +682,44 @@ const meta = computed(() => {
 </script>
 
 <template>
-  <section class="launcher" :style="{ '--tint': color }" @wheel.passive="onWheel">
+  <section class="launcher" :class="{ cartridges: cartridgeMode }" :style="{ '--tint': color }" @wheel.passive="onWheel">
     <Backdrop :image="game ? coverUrl(game) : null" :color="color" />
     <TitleScene :game="game ?? null" />
+    <CartridgeScene
+      v-if="cartridgeMode"
+      ref="scene"
+      :games="list"
+      :index="index"
+      :drag-shift="dragShift"
+      :dragging="dragging"
+      :tilt="tilt"
+      :stick="stick"
+      :looks="looks"
+      :tint="color"
+      :stage="stageEl"
+      :ring="ringEl"
+      @fade="onFade"
+      @failed="onSceneFailed"
+    />
 
     <header class="topbar">
       <nav class="tabs">
-        <span class="key" title="Q ou LB">{{ padConnected ? "LB" : "Q" }}</span>
+        <span class="key" title="Q ou L">{{ tabGlyphs[0].text }}</span>
         <button v-for="t in TABS" :key="t.id" :class="{ active: tab === t.id }" @click="tab = t.id">{{ t.label }}</button>
-        <span class="key" title="E ou RB">{{ padConnected ? "RB" : "E" }}</span>
+        <span class="key" title="E ou R">{{ tabGlyphs[1].text }}</span>
       </nav>
       <div class="status">
+        <div class="present" role="group" aria-label="Présentation du lanceur">
+          <button :class="{ on: !cartridgeMode }" :aria-pressed="!cartridgeMode" @click="choosePresentation('covers')">Jaquettes</button>
+          <button
+            :class="{ on: cartridgeMode, blocked: presentation.wanted === 'cartridges' && !cartridgeMode }"
+            :aria-pressed="cartridgeMode"
+            :title="presentation.wanted === 'cartridges' && cartridgeBlocker ? `Indisponible : ${cartridgeBlocker}` : 'Cartouches en 3D'"
+            @click="choosePresentation('cartridges')"
+          >
+            Cartouches
+          </button>
+        </div>
         <button class="round" :class="{ off: !audio.music }" :title="audio.music ? 'Couper la musique' : 'Activer la musique'" @click="audio.music = !audio.music">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 18V5l12-2v13" />
@@ -504,6 +780,7 @@ const meta = computed(() => {
     </div>
 
     <div
+      ref="stageEl"
       class="stage"
       :class="{ dragging }"
       @pointerdown="onDragStart"
@@ -511,7 +788,7 @@ const meta = computed(() => {
       @pointerup="onDragEnd"
       @pointercancel="onDragEnd"
     >
-      <div class="ring">
+      <div ref="ringEl" class="ring">
         <button
           v-for="{ g, i } in visible"
           :key="g.path"
@@ -538,11 +815,9 @@ const meta = computed(() => {
     </div>
 
     <footer class="hints">
-      <span><span class="key">◀ ▶</span> Choisir</span>
-      <span><span class="key">{{ padConnected ? "A" : "Entrée" }}</span> Jouer</span>
-      <span><span class="key">{{ padConnected ? "Start" : "M" }}</span> Plus</span>
-      <span v-if="libraryUi.immersive"><span class="key">{{ padConnected ? "B" : "Échap" }}</span> Quitter le plein écran</span>
-      <span v-if="padConnected" class="pad"><Icon name="check" :size="13" /> Manette connectée</span>
+      <PadHints :items="hintItems" :pad="padConnected" :pad-id="padId">
+        <span v-if="padConnected" class="pad"><Icon name="check" :size="13" /> Manette connectée</span>
+      </PadHints>
     </footer>
 
     <Transition name="sheet">
@@ -555,15 +830,35 @@ const meta = computed(() => {
               <h3>{{ game.title }}</h3>
             </div>
           </div>
-          <div class="sheet-list">
+          <div v-if="sheetMode === 'menu'" class="sheet-list">
             <button v-for="(m, i) in menu" :key="m.label" :class="{ active: i === menuIndex, danger: m.danger }" @mouseenter="menuIndex = i" @click="runMenu(i)">
               <Icon :name="m.icon" :size="18" />
               <span>{{ m.label }}</span>
             </button>
           </div>
+          <div v-else class="inspect">
+            <p class="inspect-title">Cartouche · {{ resolveLook(game, stored).support.label }}</p>
+            <div v-for="(row, r) in inspectRows" :key="row.id" class="inspect-row" :class="{ active: r === inspectIndex }" @mouseenter="inspectIndex = r">
+              <span class="inspect-label">{{ row.label }}</span>
+              <div class="chips" role="radiogroup" :aria-label="row.label">
+                <button
+                  v-for="(o, k) in row.options"
+                  :key="o.label"
+                  class="chip"
+                  :class="{ on: k === optionIndex(row) }"
+                  role="radio"
+                  :aria-checked="k === optionIndex(row)"
+                  @click="chooseLook(row, o.id)"
+                >
+                  <span v-if="o.color" class="swatch" :style="{ background: o.color }" />
+                  {{ o.label }}
+                </button>
+              </div>
+            </div>
+            <button v-if="inspectFromMenu" class="inspect-back" @click="closeInspect"><Icon name="chevron-left" :size="15" /> Toutes les actions</button>
+          </div>
           <footer>
-            <span><span class="key">{{ padConnected ? "A" : "Entrée" }}</span> Valider</span>
-            <span><span class="key">{{ padConnected ? "B" : "Échap" }}</span> Retour</span>
+            <PadHints :items="sheetHints" :pad="padConnected" :pad-id="padId" />
           </footer>
         </aside>
       </div>
@@ -578,6 +873,8 @@ const meta = computed(() => {
         @play="playAdventure"
       />
     </Transition>
+
+    <div v-if="fade > 0" class="insert-fade" :class="{ settle: !inserting }" :style="{ opacity: fade }" aria-hidden="true" />
 
     <Transition name="fade">
       <div v-if="launching" class="launch-layer">
@@ -601,8 +898,57 @@ const meta = computed(() => {
   user-select: none;
 }
 
-.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop):not(.title-scene):not(.adventure) {
+.launcher > :not(.menu-layer):not(.launch-layer):not(.backdrop):not(.title-scene):not(.adventure):not(.cartridge-scene):not(.insert-fade) {
   position: relative;
+}
+
+/* --- Mode Cartouche : la scène 3D dessine, les boutons du carrousel restent (clics, glisser, lecteur d'écran). */
+
+.cartridges .cover > * {
+  visibility: hidden;
+}
+
+.insert-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 190;
+  background: #000;
+  pointer-events: none;
+}
+
+.insert-fade.settle {
+  transition: opacity 0.4s ease;
+}
+
+.present {
+  display: flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.present button {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.present button:hover:not(.on) {
+  color: #fff;
+}
+
+.present button.on {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0b0d18;
+}
+
+.present button.blocked {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 /* --- Barre du haut */
@@ -1050,13 +1396,10 @@ h1 {
   font-size: 12px;
 }
 
-.hints > span {
+.pad {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-}
-
-.pad {
   color: var(--tint);
 }
 
@@ -1158,18 +1501,105 @@ h1 {
 }
 
 .sheet footer {
-  display: flex;
-  gap: 22px;
   padding: 18px 6px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.65);
   font-size: 12px;
 }
 
-.sheet footer > span {
+.sheet footer :deep(.pad-hints) {
+  justify-content: flex-start;
+}
+
+/* --- Inspecter */
+
+.inspect {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 18px;
+  overflow-y: auto;
+}
+
+.inspect-title {
+  margin: 0 6px 10px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inspect-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 12px;
+  transition: background 0.12s;
+}
+
+.inspect-row.active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.inspect-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 6px 11px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip:hover:not(.on) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.chip.on {
+  background: #fff;
+  color: #0b0d18;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.inspect-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin: auto 6px 0;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.inspect-back:hover {
+  color: #fff;
 }
 
 .sheet-enter-active,

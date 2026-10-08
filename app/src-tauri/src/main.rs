@@ -24,6 +24,7 @@ mod battle;
 mod emusaves;
 mod gifts;
 mod legality;
+mod labels;
 mod library;
 mod live;
 mod mods;
@@ -467,6 +468,8 @@ fn main() {
             play::watch_save_resync,
             library::library_config,
             library::library_set_config,
+            labels::label_cache,
+            labels::label_custom,
             library::library_scan,
             library::emulator_download_info,
             library::emulator_install,

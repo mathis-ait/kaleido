@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 31" width="21mm" height="31mm">
+  <!-- Carte Switch, cotes publiques en mm (portrait). Coin supérieur gauche coupé. -->
+  <path id="outline" d="M 2.2 0 H 19.8 A 1.2 1.2 0 0 1 21 1.2 V 29.8 A 1.2 1.2 0 0 1 19.8 31 H 1.2 A 1.2 1.2 0 0 1 0 29.8 V 2.2 Z" />
+  <rect id="label" x="1.5" y="3.5" width="18" height="26" fill="none" stroke="red" stroke-width="0.1" />
+</svg>

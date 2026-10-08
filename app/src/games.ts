@@ -2,6 +2,7 @@ import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { library } from "./library";
 import { isRom, type Detection } from "./types";
+import type { StoredLook } from "./launcher/scene/models";
 import { applyState, emus, loadEmulators, type EmulatorId, type EmulatorsState } from "./play/play";
 
 /** Miroir de `LibraryConfig` (library.rs). */
@@ -11,6 +12,8 @@ export interface LibraryConfig {
   hidden: string[];
   /** Dossiers retirés : la recherche automatique ne les rajoute plus. */
   ignored: string[];
+  /** Réglages « Inspecter » du mode Cartouche, par empreinte (voir launcher/scene/models.ts). */
+  cartridge?: Record<string, StoredLook>;
 }
 
 /** Miroir de `SwitchGame` (switch.rs). */
@@ -178,6 +181,16 @@ export const addFiles = (paths: string[], scan = true) =>
       if (!c.files.includes(p)) c.files.push(p);
     }
   }, scan);
+
+/** Change l'apparence de la cartouche d'un jeu (mode Cartouche) ; un champ vide reprend la valeur déduite. */
+export const setCartridgeLook = (key: string, patch: Partial<StoredLook>) =>
+  change((c) => {
+    const look: Record<string, unknown> = { ...(c.cartridge?.[key] ?? {}), ...patch };
+    for (const k of Object.keys(look)) if (look[k] === undefined || look[k] === null) delete look[k];
+    c.cartridge = { ...(c.cartridge ?? {}) };
+    if (Object.keys(look).length) c.cartridge[key] = look as StoredLook;
+    else delete c.cartridge[key];
+  }, false);
 
 /** Retire un jeu de la bibliothèque (le fichier n'est pas touché). */
 export async function hideGame(path: string) {

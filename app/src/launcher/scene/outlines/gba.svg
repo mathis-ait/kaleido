@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 35" width="58mm" height="35mm">
+  <!-- Cartouche GBA, cotes publiques en mm. Connecteur plus étroit en bas, stries en haut. -->
+  <path id="outline" d="M 4 0 H 54 A 4 4 0 0 1 58 4 V 27 H 56 V 35 H 2 V 27 H 0 V 4 A 4 4 0 0 1 4 0 Z" />
+  <rect id="label" x="6" y="5" width="46" height="21" fill="none" stroke="red" stroke-width="0.1" />
+</svg>

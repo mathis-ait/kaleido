@@ -29,7 +29,7 @@ const pages = pagesArg ? pagesArg.split(",") : Object.keys(PAGES);
 const themes = (themesArg ?? "nuit,jour,graphite").split(",");
 const widths = (widthsArg ?? "1280,1920").split(",").map(Number);
 
-const targets = await (await fetch("http://127.0.0.1:9222/json")).json();
+const targets = await (await fetch(`http://127.0.0.1:${process.env.KALEIDO_DEBUG_PORT ?? 9222}/json`)).json();
 const page = targets.find((t) => t.type === "page" && !t.url.includes("companion"));
 if (!page) throw new Error("aucune page WebView2 trouvée");
 const ws = new WebSocket(page.webSocketDebuggerUrl);

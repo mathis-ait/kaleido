@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 35" width="33mm" height="35mm">
+  <!-- Carte DS, cotes publiques en mm. Encoche de détrompage sur le bord gauche, stries de prise en haut. -->
+  <path id="outline" d="M 1.5 0 H 31.5 A 1.5 1.5 0 0 1 33 1.5 V 33.5 A 1.5 1.5 0 0 1 31.5 35 H 1.5 A 1.5 1.5 0 0 1 0 33.5 V 7 H 1 V 4 H 0 V 1.5 A 1.5 1.5 0 0 1 1.5 0 Z" />
+  <rect id="label" x="2.5" y="8" width="28" height="24.5" fill="none" stroke="red" stroke-width="0.1" />
+</svg>
