@@ -9,7 +9,7 @@ import OverlaySettings from "../companion/OverlaySettings.vue";
 import { THEMES, currentTheme } from "../theme";
 import { SPRITE_STYLES, spritePrefs } from "../spriteStyle";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { checkUpdate, updates } from "../updates";
+import { checkUpdate, installUpdate, updates } from "../updates";
 
 /** Pokémon des aperçus : un classique, une forme, un sprite femelle, un chromatique. */
 const DEMO: { id: number; form?: number; gender?: "female"; label: string }[] = [
@@ -55,8 +55,10 @@ onMounted(() => {
 
 <template>
   <section class="settings">
-    <h1>Apparence</h1>
-    <p class="lead">Choisis l'ambiance de Kaleido.</p>
+    <h1>Paramètres</h1>
+    <p class="lead">Apparence, sprites, émulateurs et mises à jour.</p>
+
+    <h2>Thème</h2>
 
     <div class="themes">
       <button
@@ -164,12 +166,15 @@ onMounted(() => {
           <p v-else class="lead small">Vérifie s'il existe une version plus récente sur GitHub.</p>
         </div>
         <div class="update-actions">
-          <button v-if="updates.info?.newer" class="btn btn-primary" @click="openUrl(updates.info.url)">Télécharger</button>
+          <button v-if="updates.info?.newer && updates.info.installable" class="btn btn-primary" :disabled="updates.installing" @click="installUpdate">
+            {{ updates.installing ? "Mise à jour…" : "Mettre à jour" }}
+          </button>
+          <button v-else-if="updates.info?.newer" class="btn btn-primary" @click="openUrl(updates.info.url)">Télécharger</button>
           <button class="btn" :disabled="updates.checking" @click="checkUpdate">Vérifier maintenant</button>
         </div>
       </div>
       <pre v-if="updates.info?.newer && updates.info.notes" class="notes">{{ updates.info.notes }}</pre>
-      <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement. Rien d'autre n'est envoyé." />
+      <Toggle v-model="updates.auto" label="Vérifier au démarrage" hint="Kaleido demande à GitHub le numéro de la dernière version publiée, une fois par lancement, et te propose de l'installer. Rien d'autre n'est envoyé." />
     </div>
 
     <h2>À propos</h2>

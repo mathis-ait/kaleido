@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { initGamepadNav } from "./gamepadNav";
 import { initTheme } from "./theme";
-import { initUpdates } from "./updates";
+import { initUpdates, updates } from "./updates";
 import "./styles/main.css";
 import "./save/form.css";
 
@@ -33,5 +33,5 @@ if (!isCompanion) {
 
 // Accès à l'état depuis les outils de test automatisés (mode développement uniquement).
 if (import.meta.env.DEV) {
-  Object.assign(window, { __kaleido: { nav, library, editor, addPaths, openRom, currentTheme, saveState, openSave, saveStore } });
+  Object.assign(window, { __kaleido: { nav, library, editor, addPaths, openRom, currentTheme, saveState, openSave, saveStore, updates } });
 }

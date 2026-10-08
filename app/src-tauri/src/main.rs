@@ -523,6 +523,7 @@ fn main() {
             teams::teams_list,
             teams::teams_get,
             updates::check_update,
+            updates::update_install,
             emusaves::emulator_saves,
             gifts::gifts_search,
             gifts::gifts_overview,
