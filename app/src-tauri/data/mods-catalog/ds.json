@@ -25,6 +25,46 @@
   "mods": [
     {
       "source": "manual",
+      "page": "https://www.pokemontrash.com/club/rom-hacking/(traduction-fr)-pokemon-following-platinum-pokemon-platinum-qol",
+      "category": "romhack",
+      "group": "platine-hack",
+      "recommended": false,
+      "gameVersion": null,
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "CPU"
+      ],
+      "kind": "patch",
+      "author": "Mikelan98 et AdAstra, traduit par Darkrai-X",
+      "id": "web:following-platinum-fr",
+      "name": "Pokémon Following Platinum (en français)",
+      "popularity": 150000,
+      "description": "Platine, avec le premier Pokémon de ton équipe qui te suit partout comme dans HeartGold et SoulSilver, et avec qui tu peux parler. Musiques réarrangées en bonus. L'histoire reste celle de Platine. Traduction française complète.",
+      "warning": "S'applique uniquement sur Platine anglais (code CPUE, « Pokémon Platinum Version (US) ») : lance ce mod depuis ta ROM Platine anglaise, pas la française. Sur la page Pokémon Trash, télécharge le patch « Following Platinum » (.xdelta). Quelques noms de dresseurs s'affichent en « ????? »."
+    },
+    {
+      "source": "manual",
+      "page": "https://www.pokemontrash.com/club/rom-hacking/(traduction-fr)-pokemon-following-platinum-pokemon-platinum-qol",
+      "category": "romhack",
+      "group": "platine-hack",
+      "recommended": false,
+      "gameVersion": null,
+      "requires": [],
+      "exclusive": true,
+      "titles": [
+        "CPU"
+      ],
+      "kind": "patch",
+      "author": "BluRosie (sur Following Platinum), traduit par Darkrai-X",
+      "id": "web:platinum-qol-fr",
+      "name": "Pokémon Platinum QoL (en français)",
+      "popularity": 60000,
+      "description": "Tout Following Platinum (Pokémon qui suit), plus du confort : CT réutilisables, CS utilisables sans les apprendre, course avec B, Surf plus rapide, fuite des combats facilitée, Pokédex national complétable sans échange. Traduction française.",
+      "warning": "S'applique uniquement sur Platine anglais (code CPUE) : lance ce mod depuis ta ROM Platine anglaise. Sur la page Pokémon Trash, prends le patch « Platinum QoL » (.xdelta). Ne se cumule pas avec Following Platinum ni Renegade Platinum."
+    },
+    {
+      "source": "manual",
       "gb": null,
       "file": null,
       "group": null,
