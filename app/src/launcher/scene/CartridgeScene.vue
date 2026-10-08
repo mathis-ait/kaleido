@@ -42,8 +42,7 @@ import type { Detection } from "../../types";
 import { isKaleidoRom } from "../../types";
 import { currentTheme } from "../../theme";
 import { audio, insertClick } from "../audio";
-import { coverUrl } from "../actions";
-import { PHOTO_CROP, cartPhotoKey, cartridgeCode, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
+import { PHOTO_CROP, cartPhotoKey, cartridgeKey, resolveLook, type Look, type Slot, type StoredLook } from "./models";
 import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
 import { REAL_MODELS, disposeTemplates, instantiate, realTemplate, type RealTemplate } from "./realModels";
@@ -360,16 +359,11 @@ function applyMaterial(item: Item, center: boolean) {
 function labelInput(item: Item) {
   const d = item.game;
   const seedDetail = d.details.find((x) => x.label === "Seed")?.value;
-  const platform = d.platform === "gb" && d.game?.id === "crystal" ? "Game Boy Color" : { gb: "Game Boy", gba: "Game Boy Advance", nds: "Nintendo DS", "3ds": "Nintendo 3DS", switch: "Nintendo Switch" }[d.platform ?? "nds"];
   const photo = item.real ? cartPhotoKey(d) : null;
   return {
     key: item.key,
     title: d.game?.name ?? d.title,
-    code: cartridgeCode(d),
-    platform,
-    cover: coverUrl(d),
     support: item.look.support,
-    shellColor: item.look.shell.color,
     wear: item.look.wear,
     seed: d.kaleido?.seed ?? (seedDetail ? Number(seedDetail) : null),
     randomized: isKaleidoRom(d),

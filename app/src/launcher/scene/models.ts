@@ -32,11 +32,6 @@ export interface SupportModel {
   shells: Shell[];
   defaultShell: string;
   slot: Slot;
-  /**
-   * Partie de la jaquette reprise sur l'étiquette (fractions de l'image) : la moitié haute,
-   * sans le bandeau de la plateforme ni les logos d'éditeur du haut de la boîte.
-   */
-  coverCrop: { x: number; y: number; w: number; h: number };
   /** Clic d'insertion, synthétisé (voir `insertClick` dans audio.ts). */
   click: { f: number[]; d: number; type: OscillatorType; noise: number };
 }
@@ -54,8 +49,6 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     shells: [GREY_DS, BLACK, WHITE],
     defaultShell: "gris",
     slot: "ds-back",
-    // Boîte DS : bandeau « Nintendo DS » à gauche.
-    coverCrop: { x: 0.15, y: 0.08, w: 0.85, h: 0.45 },
     click: { f: [2900, 1800], d: 0.022, type: "square", noise: 0.25 },
   },
   "3ds": {
@@ -66,8 +59,6 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     shells: [{ id: "gris-clair", label: "Gris clair", color: "#d4d5d8" }, BLACK, { id: "gris-fonce", label: "Gris foncé", color: "#55585f" }],
     defaultShell: "gris-clair",
     slot: "3ds-back",
-    // Boîte 3DS : bandeau « Nintendo 3DS » à droite.
-    coverCrop: { x: 0, y: 0.08, w: 0.86, h: 0.45 },
     click: { f: [2500, 1500], d: 0.024, type: "square", noise: 0.25 },
   },
   gba: {
@@ -86,7 +77,6 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     ],
     defaultShell: "gris",
     slot: "gba-top",
-    coverCrop: { x: 0.2, y: 0.08, w: 0.8, h: 0.45 },
     click: { f: [900, 520], d: 0.05, type: "triangle", noise: 0.6 },
   },
   gb: {
@@ -104,7 +94,6 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     ],
     defaultShell: "gris",
     slot: "gb-top",
-    coverCrop: { x: 0.13, y: 0.1, w: 0.87, h: 0.5 },
     click: { f: [760, 430], d: 0.06, type: "triangle", noise: 0.7 },
   },
   switch: {
@@ -115,8 +104,6 @@ export const SUPPORTS: Record<Support, SupportModel> = {
     shells: [BLACK, { id: "gris", label: "Gris", color: "#7b7e86" }],
     defaultShell: "noir",
     slot: "switch-dock",
-    // Icône officielle du jeu (carrée, sans bandeau) : reprise entière.
-    coverCrop: { x: 0, y: 0, w: 1, h: 1 },
     click: { f: [3400], d: 0.014, type: "square", noise: 0.15 },
   },
 };

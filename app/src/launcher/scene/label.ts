@@ -1,15 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasTexture, SRGBColorSpace } from "three";
-import { dominantColor } from "../color";
 import { hash32, type SupportModel, type Wear } from "./models";
 
 /**
- * Étiquette d'une cartouche, composée dans un canvas hors écran : fond de la couleur
- * de la jaquette avec un grain papier, moitié haute de la jaquette (logo et Pokémon
- * de boîte), bandeau avec le nom, le code jeu et la plateforme. Aucun logo de marque.
+ * Étiquette d'une cartouche, préparée dans un canvas hors écran : image choisie par
+ * l'utilisateur, sinon photo de la vraie carte (zone de l'étiquette), sinon étiquette
+ * neutre avec le titre du jeu, en attendant un scan (ScreenScraper).
  *
- * Cache mémoire par clé, et cache disque en PNG (`label_cache`, labels.rs) pour ne
- * composer chaque étiquette qu'une fois.
+ * Cache mémoire par clé, et cache disque en PNG (`label_cache`, labels.rs) pour les
+ * étiquettes tirées des photos.
  */
 
 /** À changer quand la composition change : les étiquettes en cache sont alors refaites. */
@@ -19,19 +18,14 @@ export interface LabelInput {
   /** Clé du jeu (`cartridgeKey`). */
   key: string;
   title: string;
-  code: string | null;
-  platform: string;
-  cover: string | null;
   support: SupportModel;
-  /** Couleur de la coque, pour un jeu sans jaquette. */
-  shellColor: string;
   wear: Wear;
   /** Seed d'une ROM randomisée par Kaleido. */
   seed: number | null;
   randomized: boolean;
   /** Image fournie par l'utilisateur (Inspecter) : elle prime sur tout le reste. */
   custom: boolean;
-  /** Photo de la vraie carte (`cover://`) et position de l'étiquette dans la photo : elle prime sur la composition. */
+  /** Photo de la vraie carte (`cover://`) et position de l'étiquette dans la photo : elle prime sur l'étiquette neutre. */
   photo: string | null;
   photoCrop: { x: number; y: number; w: number; h: number } | null;
   /** Taille de l'étiquette en mm, quand le modèle 3D la donne (sinon la zone du support). */
@@ -91,19 +85,6 @@ function cssVar(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-/** Couleur CSS → [r, g, b] (0-255), via le canvas. */
-function rgb(color: string): [number, number, number] {
-  const c = document.createElement("canvas").getContext("2d")!;
-  c.fillStyle = color;
-  c.fillRect(0, 0, 1, 1);
-  const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
-  return [r, g, b];
-}
-
-function shade([r, g, b]: [number, number, number], k: number) {
-  return `rgb(${Math.round(r * k)} ${Math.round(g * k)} ${Math.round(b * k)})`;
-}
-
 function paperGrain(g: CanvasRenderingContext2D, w: number, h: number, rand: () => number) {
   const data = g.getImageData(0, 0, w, h);
   const px = data.data;
@@ -114,16 +95,6 @@ function paperGrain(g: CanvasRenderingContext2D, w: number, h: number, rand: () 
     px[i + 2] += n;
   }
   g.putImageData(data, 0, 0);
-}
-
-function fitText(g: CanvasRenderingContext2D, text: string, maxWidth: number, size: number, weight: number, family: string) {
-  let s = size;
-  g.font = `${weight} ${s}px ${family}`;
-  while (s > 10 && g.measureText(text).width > maxWidth) {
-    s -= 1;
-    g.font = `${weight} ${s}px ${family}`;
-  }
-  return s;
 }
 
 /** Usure « jouée » : coins éclaircis, rayures fines, couleurs un peu passées. */
@@ -161,14 +132,14 @@ function wearOut(g: CanvasRenderingContext2D, w: number, h: number, rand: () => 
 }
 
 /** Autocollant KALEIDO et seed courte, posé de travers sur l'étiquette d'une ROM randomisée. */
-function drawSticker(g: CanvasRenderingContext2D, w: number, h: number, input: LabelInput, font: string) {
+function drawSticker(g: CanvasRenderingContext2D, w: number, h: number, input: LabelInput, font: string, top = 0.56) {
   const label = input.seed !== null ? `KALEIDO · ${String(input.seed).slice(-6)}` : "KALEIDO";
   const size = Math.round(Math.min(w, h) * 0.055);
   g.font = `800 ${size}px ${font}`;
   const tw = g.measureText(label).width + size * 1.4;
   const th = size * 1.9;
   const x = w - tw - w * 0.05;
-  const y = h * 0.56;
+  const y = h * top;
   g.save();
   g.translate(x + tw / 2, y + th / 2);
   g.rotate(-0.06);
@@ -186,58 +157,28 @@ function drawSticker(g: CanvasRenderingContext2D, w: number, h: number, input: L
   g.restore();
 }
 
-/** Illustration de la jaquette (sans bandeau de plateforme), recadrée pour remplir la zone. */
-function drawArt(g: CanvasRenderingContext2D, cover: HTMLImageElement, crop: SupportModel["coverCrop"], x: number, y: number, w: number, h: number) {
-  const sx = cover.naturalWidth * crop.x;
-  const sy = cover.naturalHeight * crop.y;
-  const sw = cover.naturalWidth * crop.w;
-  const sh = cover.naturalHeight * crop.h;
-  const scale = Math.max(w / sw, h / sh);
-  const cw = w / scale;
-  const ch = h / scale;
-  g.drawImage(cover, sx + (sw - cw) / 2, sy, cw, ch, x, y, w, h);
-}
-
-/** « NINTENDO DS » / « NINTENDO 3DS » : texte imprimé du bandeau du haut des vraies étiquettes. */
-function drawConsoleMark(g: CanvasRenderingContext2D, cx: number, cy: number, size: number, model: "DS" | "3DS", font: string) {
-  g.textBaseline = "middle";
-  g.font = `500 ${size * 0.62}px ${font}`;
-  const left = "NINTENDO";
-  g.save();
-  // Espacement des lettres du mot « NINTENDO », comme sur les cartes.
-  const spacing = size * 0.06;
-  const leftWidth = [...left].reduce((s, ch) => s + g.measureText(ch).width + spacing, 0);
-  g.font = `900 ${size}px ${font}`;
-  const rightWidth = g.measureText(model).width;
-  const total = leftWidth + size * 0.18 + rightWidth;
-  let x = cx - total / 2;
-  g.font = `500 ${size * 0.62}px ${font}`;
-  g.fillStyle = "#2a2a2e";
-  for (const ch of left) {
-    g.fillText(ch, x, cy + size * 0.08);
-    x += g.measureText(ch).width + spacing;
+/** Coupe un titre en deux lignes au plus, la coupure la plus équilibrée. */
+function splitTitle(g: CanvasRenderingContext2D, title: string, maxWidth: number): string[] {
+  if (g.measureText(title).width <= maxWidth) return [title];
+  const words = title.split(" ");
+  let best: string[] = [title];
+  let bestWidth = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const lines = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+    const width = Math.max(...lines.map((l) => g.measureText(l).width));
+    if (width < bestWidth) {
+      best = lines;
+      bestWidth = width;
+    }
   }
-  x += size * 0.18;
-  g.font = `900 ${size}px ${font}`;
-  if (model === "3DS") {
-    g.fillStyle = "#d7141a";
-    g.fillText("3", x, cy);
-    x += g.measureText("3").width;
-    g.fillStyle = "#2a2a2e";
-    g.fillText("DS", x, cy);
-  } else {
-    g.fillStyle = "#2a2a2e";
-    g.fillText(model, x, cy);
-  }
-  g.restore();
+  return best;
 }
 
 /**
- * Étiquette composée quand il n'y a pas de photo de la vraie carte : même gabarit que
- * les étiquettes officielles du support (bandeau du haut, illustration, code en bas),
- * avec l'illustration de la jaquette française.
+ * Étiquette neutre, en attendant le scan de la vraie étiquette : papier uni et titre du
+ * jeu imprimé au centre. Pas de fausse étiquette reconstituée depuis la jaquette.
  */
-export async function composeLabel(input: LabelInput): Promise<{ canvas: HTMLCanvasElement; complete: boolean }> {
+async function neutralLabel(input: LabelInput): Promise<HTMLCanvasElement> {
   const [w, h] = labelSize(input.support, input.size);
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -245,84 +186,37 @@ export async function composeLabel(input: LabelInput): Promise<{ canvas: HTMLCan
   const g = canvas.getContext("2d", { willReadFrequently: true })!;
   const rand = random(`${input.key}:${input.wear}`);
   const font = cssVar("--font-display", "Segoe UI, sans-serif");
-  const mono = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
   await document.fonts?.ready;
-
-  const cover = input.cover ? await loadImage(input.cover) : null;
-  const tint = cover && input.cover ? await dominantColor(input.cover) : null;
-  const base = rgb(tint ?? input.shellColor);
-  const support = input.support.id;
-  const paper = "#f4f3ef";
 
   g.save();
   g.beginPath();
   g.roundRect(0, 0, w, h, w * 0.025);
   g.clip();
-  g.fillStyle = paper;
+  g.fillStyle = "#efeee9";
   g.fillRect(0, 0, w, h);
-
-  // Zones du gabarit : bandeau du haut, illustration, bandeau du bas (code).
-  const top = support === "ds" || support === "3ds" ? h * 0.14 : support === "switch" ? h * 0.12 : 0;
-  const bottom = support === "ds" || support === "3ds" ? h * 0.12 : support === "switch" ? h * 0.1 : h * 0.1;
-  const art = { x: 0, y: top, w, h: h - top - bottom };
-
-  if (cover) drawArt(g, cover, input.support.coverCrop, art.x, art.y, art.w, art.h);
-  else {
-    g.fillStyle = shade(base, 0.8);
-    g.fillRect(art.x, art.y, art.w, art.h);
-    g.fillStyle = "rgba(255,255,255,0.94)";
-    g.textBaseline = "middle";
-    const size = fitText(g, input.title, w * 0.86, Math.round(h * 0.12), 800, font);
-    g.font = `800 ${size}px ${font}`;
-    g.fillText(input.title, w * 0.07, art.y + art.h / 2);
-  }
-
-  // Bandeau du haut.
-  if (support === "ds" || support === "3ds") {
-    g.fillStyle = paper;
-    g.fillRect(0, 0, w, top);
-    drawConsoleMark(g, w / 2, top * 0.54, top * 0.52, support === "ds" ? "DS" : "3DS", font);
-  } else if (support === "switch") {
-    g.fillStyle = "#e4000f";
-    g.fillRect(0, 0, w, top);
-    g.fillStyle = "#fff";
-    g.textBaseline = "middle";
-    g.textAlign = "center";
-    g.font = `800 ${Math.round(top * 0.42)}px ${font}`;
-    g.fillText("NINTENDO SWITCH", w / 2, top / 2 + 1);
-    g.textAlign = "start";
-  }
-
-  // Bandeau du bas : code imprimé à droite, comme sur les cartes (titre pour la Switch, sans code connu).
-  g.fillStyle = paper;
-  g.fillRect(0, h - bottom, w, bottom);
-  g.textBaseline = "middle";
-  const mid = h - bottom / 2;
-  const code = input.code ?? input.title;
-  g.fillStyle = "#1f1f22";
-  if (support === "ds" || support === "3ds") {
-    g.font = `500 ${Math.round(bottom * 0.5)}px ${mono}`;
-    g.textAlign = "right";
-    g.fillText(code.split("").join(String.fromCharCode(8202)), w * 0.94, mid, w * 0.88);
-  } else {
-    g.font = `700 ${Math.round(bottom * 0.46)}px ${input.code ? mono : font}`;
-    g.textAlign = "left";
-    g.fillText(code, w * 0.05, mid, w * 0.9);
-  }
-  g.textAlign = "start";
-
-  // Grain du papier et léger vernis.
   paperGrain(g, w, h, rand);
-  const gloss = g.createLinearGradient(0, 0, w * 0.4, h);
-  gloss.addColorStop(0, "rgba(255,255,255,0.06)");
-  gloss.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = gloss;
-  g.fillRect(0, 0, w, h);
   g.restore();
 
-  if (input.randomized) drawSticker(g, w, h, input, font);
+  // Titre : la plus grande taille qui tient sur deux lignes dans la largeur de l'étiquette.
+  const maxWidth = w * 0.84;
+  let size = Math.round(Math.min(h * 0.13, w * 0.11));
+  let lines: string[] = [];
+  for (; size > 12; size--) {
+    g.font = `700 ${size}px ${font}`;
+    lines = splitTitle(g, input.title, maxWidth);
+    if (lines.every((l) => g.measureText(l).width <= maxWidth)) break;
+  }
+  g.fillStyle = "#26272b";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const lineHeight = size * 1.18;
+  const y0 = h / 2 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, i) => g.fillText(line, w / 2, y0 + i * lineHeight, maxWidth));
+  g.textAlign = "start";
+
+  if (input.randomized) drawSticker(g, w, h, input, font, 0.74);
   if (input.wear === "jouee") wearOut(g, w, h, rand);
-  return { canvas, complete: !input.cover || !!cover };
+  return canvas;
 }
 
 // --- Texture
@@ -390,16 +284,9 @@ async function source(input: LabelInput): Promise<HTMLCanvasElement> {
       return fromPhoto;
     }
   }
-  const diskKey = `${input.key}-g${suffix}`;
-  const cached = await readCache(diskKey);
-  if (cached) {
-    const bitmap = await toCanvas(cached);
-    if (bitmap) return bitmap;
-  }
   const t = performance.now();
-  const { canvas, complete } = await composeLabel(input);
+  const canvas = await neutralLabel(input);
   lastComposeMs = performance.now() - t;
-  if (complete) writeCache(diskKey, canvas);
   return canvas;
 }
 
