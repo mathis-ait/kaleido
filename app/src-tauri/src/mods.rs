@@ -1299,7 +1299,11 @@ fn prepare_archive(
     }
     let hint = catalog.as_ref().and_then(|c| c.variant.clone());
     match choose_root(&roots, opts.variant.as_deref(), hint.as_deref(), tid) {
-        Ok(rel) => Ok(Ok(Prepared { root: if rel.is_empty() { out } else { out.join(rel) }, marker })),
+        Ok(rel) => {
+            // `textures:<chemin>` (3DS) : pack de textures, sans dossier romfs.
+            let rel = rel.strip_prefix("textures:").unwrap_or(&rel).to_string();
+            Ok(Ok(Prepared { root: if rel.is_empty() { out } else { out.join(rel) }, marker }))
+        }
         Err(list) => Ok(Err(list)),
     }
 }
