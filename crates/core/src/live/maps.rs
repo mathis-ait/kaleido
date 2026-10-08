@@ -49,6 +49,12 @@ pub struct GameMap {
     /// Overlay ARM9 du moteur de combat : présent en RAM seulement pendant un combat.
     #[serde(default)]
     pub battle_overlay: Option<u32>,
+    /// Module CRO du moteur de combat (3DS) : chargé seulement pendant un combat.
+    #[serde(default)]
+    pub battle_module: Option<String>,
+    /// Module CRO de la carte (3DS), chargé au même emplacement que celui du combat.
+    #[serde(default)]
+    pub field_module: Option<String>,
     #[serde(default)]
     pub notes: String,
 }
@@ -89,6 +95,15 @@ pub fn battle_code(rom: &std::path::Path, overlay: u32) -> Option<(String, u32, 
     let code = rom.overlay(overlay).ok()?;
     let n = code.len().min(256);
     (n >= 64).then(|| (rom.header().game_code.clone(), o.ram_address, code[..n].to_vec()))
+}
+
+/// Début (empreintes SHA-256 de l'en-tête) d'un module CRO de la ROM 3DS : unique au fichier,
+/// présent en mémoire tant que le module est chargé.
+pub fn cro_head(rom: &std::path::Path, module: &str) -> Option<Vec<u8>> {
+    let fs = kaleido_formats::romfs::RomFsSource::open(rom).ok()?;
+    let want = format!("/{module}.cro");
+    let path = fs.files().iter().map(|f| f.path.clone()).find(|p| p.eq_ignore_ascii_case(&want) || p.eq_ignore_ascii_case(&want[1..]))?;
+    fs.read_range(&path, 0, 32).ok().filter(|b| b.len() == 32 && b.iter().any(|&x| x != 0))
 }
 
 /// Carte d'un jeu DS d'après son code complet (`IPGF`).

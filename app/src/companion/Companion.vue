@@ -179,7 +179,7 @@ const tabs = [
             <Segmented v-model="tab" :options="tabs" label="Affichage" />
 
             <template v-if="tab === 'team'">
-              <LiveBattle v-if="state.battle?.foes.length || state.encounter" :battle="state.battle" :encounter="state.encounter" :place="state.place" />
+              <LiveBattle v-if="state.battle || state.encounter" :battle="state.battle" :encounter="state.encounter" :place="state.place" />
               <NextBattleCard v-else-if="state.nextBattle" :battle="state.nextBattle" />
               <ul class="team">
                 <TeamCard v-for="m in snap.party" :key="m.uid" :mon="m" :open="openMon === m.uid" @toggle="openMon = openMon === m.uid ? null : m.uid" />

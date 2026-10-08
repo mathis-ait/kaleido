@@ -204,6 +204,18 @@ fn battle_code(rom: &Path, overlay: u32) -> Option<BattleCode> {
     v
 }
 
+/// En-tête du module de combat d'une ROM 3DS, lu une fois par ROM.
+fn cro_head(rom: &Path, module: &str) -> Option<Vec<u8>> {
+    static CACHE: Mutex<Vec<(PathBuf, String, Option<Vec<u8>>)>> = Mutex::new(Vec::new());
+    let mut cache = CACHE.lock().ok()?;
+    if let Some((_, _, v)) = cache.iter().find(|(p, m, _)| p == rom && m == module) {
+        return v.clone();
+    }
+    let v = maps::cro_head(rom, module);
+    cache.push((rom.to_path_buf(), module.to_string(), v.clone()));
+    v
+}
+
 /// Cherche l'émulateur qui fait tourner la partie suivie et s'y attache.
 #[cfg(windows)]
 fn attach(base: &Base, info: &mut LiveInfo, rom: Option<&Path>) -> Option<Attached> {
@@ -249,6 +261,15 @@ fn attach(base: &Base, info: &mut LiveInfo, rom: Option<&Path>) -> Option<Attach
         reader.set_battle(map.battle_scan());
         if let Some((addr, value)) = map.battle_flag(&id) {
             reader.set_battle_flag(addr, value);
+        }
+        // 3DS : en-tête du module de combat (CRO) lu dans la ROM de la partie.
+        if let (Some(module), Some(rom), true) = (map.battle_module.as_deref(), rom, ctr) {
+            if let Some(head) = cro_head(rom, module) {
+                reader.set_battle_module(head);
+                if let Some(field) = map.field_module.as_deref().and_then(|f| cro_head(rom, f)) {
+                    reader.set_field_module(field);
+                }
+            }
         }
         // Overlay de combat lu dans la ROM de la partie, si c'est bien le jeu qui tourne.
         if let (Some(ovl), Some(rom)) = (map.battle_overlay, rom) {
@@ -420,6 +441,13 @@ fn run(app: AppHandle, save: PathBuf, stop: Arc<AtomicBool>) {
                                 }
                             }
                             s.battle = Some(BattleView { wild: battle.wild, foes });
+                        }
+                        // Combat vu par le jeu sans équipe adverse lisible (3DS) : carte « Combat en cours ».
+                        None if read.in_battle == Some(true) => {
+                            battle_at = Some(Instant::now());
+                            if s.battle.as_ref().is_none_or(|b| !b.foes.is_empty()) {
+                                s.battle = Some(BattleView { wild: false, foes: Vec::new() });
+                            }
                         }
                         None if battle_at.is_none_or(|t| t.elapsed() >= BATTLE_HOLD) => s.battle = None,
                         None => {}

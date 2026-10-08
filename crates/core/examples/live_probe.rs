@@ -52,6 +52,17 @@ fn main() {
             };
             println!("console {console:x?} en {:?}", t.elapsed());
             let mut reader = LiveReader::new(console, hints);
+            // KALEIDO_ROM=<rom.3ds> KALEIDO_MODULE=DllBattle : détection de combat 3DS (comme l'app).
+            if let (Ok(rom), Ok(m)) = (std::env::var("KALEIDO_ROM"), std::env::var("KALEIDO_MODULE")) {
+                if let Some(head) = kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &m) {
+                    reader.set_battle_module(head);
+                    println!("module de combat {m} lu dans la ROM");
+                    if let Some(f) = std::env::var("KALEIDO_FIELD").ok().and_then(|f| kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &f)) {
+                        reader.set_field_module(f);
+                        println!("module de carte lu dans la ROM");
+                    }
+                }
+            }
             let t = Instant::now();
             let first = reader.tick(&proc);
             println!(
@@ -102,7 +113,7 @@ fn main() {
                                 .collect();
                             format!(" | combat {} {}{:?}", if b.wild { "sauvage" } else { "dresseur" }, if b.new { "NOUVEAU " } else { "" }, e)
                         });
-                        format!("carte {:?} badges {:?} équipe {:?}{}", r.map, r.badges, party, battle.unwrap_or_default())
+                        format!("carte {:?} badges {:?} équipe {:?}{} en combat {:?}", r.map, r.badges, party, battle.unwrap_or_default(), r.in_battle)
                     }
                     Ok(None) => "rien ce tick".into(),
                     Err(e) => format!("erreur : {e}"),

@@ -19,7 +19,10 @@ const OUTCOMES: { value: EncounterOutcome; label: string }[] = [
 const outcomeLabel = computed(() => OUTCOMES.find((o) => o.value === props.encounter?.outcome)?.label ?? "");
 
 const fighting = computed(() => !!props.battle?.foes.length);
+/** Combat vu par le jeu sans adversaire lisible (3DS). */
+const blind = computed(() => !!props.battle && !props.battle.foes.length);
 const title = computed(() => {
+  if (blind.value) return "Combat en cours";
   if (!fighting.value) return "Rencontre";
   return props.battle!.wild ? "Combat sauvage" : "Combat de dresseur";
 });
@@ -46,6 +49,7 @@ const where = computed(() => props.encounter?.place ?? props.place);
         </span>
       </li>
     </ul>
+    <p v-else-if="blind" class="dim blind">Le compagnon voit le combat, pas encore l'adversaire sur ce jeu.</p>
     <div v-else-if="encounter" class="foes">
       <span class="one">
         <Sprite :id="encounter.species" :form="encounter.form" :shiny="encounter.shiny" :size="56" />
@@ -135,6 +139,11 @@ small {
   font-size: var(--fs-base);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.blind {
+  margin: 0;
+  font-size: var(--fs-md);
 }
 
 .outcome {

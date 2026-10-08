@@ -138,6 +138,9 @@ pub struct LiveRead {
     pub map: Option<u16>,
     pub badges: Option<u8>,
     pub battle: Option<Battle>,
+    /// Combat en cours d'après le jeu (overlay ou module de combat chargé), quand c'est connu.
+    /// Sur 3DS, seul ce signal existe : l'équipe adverse n'est pas encore lue.
+    pub in_battle: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -154,7 +157,7 @@ pub struct LiveReader {
     console: Console,
     hints: RamHints,
     copies: Vec<Copy>,
-    tick: u64,
+    pub(crate) tick: u64,
     /// Dernier tick où l'équipe a été recherchée.
     searched_at: Option<u64>,
     /// PID / constantes de chiffrement déjà vus chez l'adversaire.
@@ -167,6 +170,8 @@ pub struct LiveReader {
     flag: Option<(u64, u32)>,
     /// Début du code de l'overlay de combat (adresse hôte, octets attendus).
     code: Option<(u64, Vec<u8>)>,
+    /// 3DS : modules de combat et de carte, et l'emplacement mémoire qu'ils se partagent.
+    module: Option<CtrModules>,
     /// Ticks consécutifs sans équipe valide.
     misses: u32,
     /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
@@ -178,6 +183,19 @@ const RESEARCH_DS: u64 = 5;
 const RESEARCH_CTR: u64 = 150;
 /// Recherche de l'équipe adverse (DS) : tous les N ticks.
 const BATTLE_SCAN: u64 = 2;
+/// 3DS : recherche de l'emplacement des modules tant qu'il est inconnu, tous les N ticks (5 s),
+/// puis seulement si son contenu devient inattendu (partie relancée), toutes les 60 s.
+const CTR_MODULE_SEARCH: u64 = 25;
+const CTR_MODULE_RESEARCH: u64 = 300;
+
+/// 3DS : en-têtes des modules de combat et de carte, emplacement partagé, dernière recherche.
+#[derive(Debug, Clone)]
+struct CtrModules {
+    battle: Vec<u8>,
+    field: Option<Vec<u8>>,
+    slot: Option<u64>,
+    searched: Option<u64>,
+}
 
 impl LiveReader {
     pub fn new(console: Console, hints: RamHints) -> Self {
@@ -193,6 +211,7 @@ impl LiveReader {
             fight: None,
             flag: None,
             code: None,
+            module: None,
             misses: 0,
             battle: true,
         }
@@ -212,6 +231,55 @@ impl LiveReader {
         if let Console::Ds(ram) = &self.console {
             self.code = Some((ram.host(ds_address), bytes));
         }
+    }
+
+    /// 3DS : en-tête du module CRO de combat (lu dans la ROM), cherché dans la FCRAM.
+    pub fn set_battle_module(&mut self, head: Vec<u8>) {
+        self.module = Some(CtrModules { battle: head, field: None, slot: None, searched: None });
+    }
+
+    /// 3DS : en-tête du module de la carte, chargé au même emplacement que celui du combat
+    /// (observé sur Rubis Oméga) : il permet de trouver cet emplacement avant le premier combat.
+    pub fn set_field_module(&mut self, head: Vec<u8>) {
+        if let Some(m) = &mut self.module {
+            m.field = Some(head);
+        }
+    }
+
+    /// 3DS : combat en cours d'après le module de combat chargé. L'adresse trouvée est relue à
+    /// chaque passage ; sans elle, nouvelle recherche toutes les 5 s (la FCRAM fait plusieurs centaines de Mo).
+    pub(crate) fn ctr_in_battle(&mut self, src: &dyn MemorySource) -> Option<bool> {
+        let tick = self.tick;
+        let regions = self.search_regions(src);
+        let m = self.module.as_mut()?;
+        let n = m.battle.len();
+        // Emplacement connu : une seule lecture de 32 octets par passage.
+        if let Some(a) = m.slot {
+            match src.read_vec(a, n) {
+                Ok(b) if b == m.battle => return Some(true),
+                Ok(b) if m.field.as_ref() == Some(&b) => return Some(false),
+                _ => {}
+            }
+        }
+        // Emplacement inconnu ou contenu inattendu : nouvelle recherche dans la FCRAM, espacée.
+        let wait = if m.slot.is_some() { CTR_MODULE_RESEARCH } else { CTR_MODULE_SEARCH };
+        if m.searched.is_some_and(|t| tick - t < wait) {
+            return Some(false);
+        }
+        m.searched = Some(tick);
+        let first = |h: &[u8]| u32::from_le_bytes([h[0], h[1], h[2], h[3]]);
+        let mut keys = vec![first(&m.battle)];
+        if let Some(f) = &m.field {
+            keys.push(first(f));
+        }
+        for (hit, _) in scan::find_u32s(src, &regions, &keys, 64) {
+            let Ok(b) = src.read_vec(hit, n) else { continue };
+            if b == m.battle || m.field.as_ref() == Some(&b) {
+                m.slot = Some(hit);
+                return Some(b == m.battle);
+            }
+        }
+        Some(false)
     }
 
     /// Active ou coupe la recherche de l'équipe adverse.
@@ -380,9 +448,10 @@ impl LiveReader {
             return Ok(None);
         }
         let (map, badges) = self.save_block_fields(src);
-        let in_battle = match &self.code {
-            Some((at, bytes)) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
-            None => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
+        let in_battle = match (&self.console, &self.code) {
+            (Console::Ctr, _) => self.ctr_in_battle(src),
+            (_, Some((at, bytes))) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
+            (_, None) => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
         };
         let battle = if !self.battle || !matches!(self.console, Console::Ds(_)) {
             None
@@ -397,7 +466,7 @@ impl LiveReader {
         };
         // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
         let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
-        Ok(Some(LiveRead { party, map, badges, battle }))
+        Ok(Some(LiveRead { party, map, badges, battle, in_battle }))
     }
 
     fn save_block_fields(&self, src: &dyn MemorySource) -> (Option<u16>, Option<u8>) {

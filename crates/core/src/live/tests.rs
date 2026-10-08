@@ -368,3 +368,26 @@ fn seconde_copie_reutilisee_par_l_adversaire_ignoree() {
         }
     }
 }
+
+#[test]
+fn combat_3ds_vu_par_le_module_charge() {
+    // Grande zone (FCRAM) synthétique : le module de combat y apparaît puis disparaît.
+    let head: Vec<u8> = (1..=32).collect();
+    let base = 0x4000_0000u64;
+    let mut src = DumpSource::new().with_zone(base, vec![0u8; 64 << 20]);
+    let mut reader = LiveReader::new(Console::Ctr, ss_hints());
+    reader.set_battle_module(head.clone());
+    assert_eq!(reader.ctr_in_battle(&src), Some(false));
+    src.poke(base + 0x123_4000, &head);
+    // Hors combat, la recherche n'est relancée qu'après quelques secondes.
+    for _ in 0..30 {
+        reader.tick += 1;
+        if reader.ctr_in_battle(&src) == Some(true) {
+            break;
+        }
+    }
+    assert_eq!(reader.ctr_in_battle(&src), Some(true), "module trouvé");
+    // Fin du combat : le module de la carte reprend la place.
+    src.poke(base + 0x123_4000, &[0xAA; 32]);
+    assert_eq!(reader.ctr_in_battle(&src), Some(false));
+}
