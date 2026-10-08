@@ -241,7 +241,7 @@ export function cartPhotoKey(d: Pick<Detection, "platform" | "details" | "game">
   if (!platform) return null;
   const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
   const code = d.platform === "3ds" ? (detail("Code produit").split("-").pop() ?? "") : detail("Code jeu");
-  // Autre jeu DS ou 3DS : photo GameTDB d'après le code seul.
-  if (!d.game) return /^[A-Z0-9]{4}$/.test(code) && (platform === "ds" || platform === "3ds") ? `photo-${platform}-jeu-${code}` : null;
+  // Autre jeu : photo LaunchBox ou GameTDB d'après le code seul.
+  if (!d.game) return /^[A-Z0-9]{4}$/.test(code) ? `photo-${platform}-jeu-${code}` : null;
   return /^[A-Z0-9]{4}$/.test(code) ? `photo-${platform}-${d.game.id}-${code}` : `photo-${platform}-${d.game.id}`;
 }
