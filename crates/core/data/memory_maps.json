@@ -49,16 +49,22 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
       "saveBlock": {
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
       "battle": {
         "method": "partyHeader",
-        "verified": []
+        "verified": [
+          "CPUE"
+        ]
       },
-      "notes": "Overlay de combat 16 d'après les décompilations (pokediamond, pokeplatinum) et l'analyse des overlays (non vérifié en jeu). Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280. RAM principale trouvée par l'en-tête dans melonDS 1.1 (CPUE, écran titre) ; équipe non vérifiée en jeu : la ROM Platine Europe du dossier de test n'a pas de sauvegarde.",
+      "notes": "Vérifié dans melonDS 1.1 sur Platinum EU (CPUE), nouvelle partie : équipe lue en direct (Tortipouss), carte lue dans le bloc de sauvegarde en RAM (414, 342, 311 Route 201). Combat : overlay 16 présent en RAM seulement en combat (captures hors combat / combat contre Barry), Étourmi N.3 sauvage lu sur la Route 201, fin du combat vue (fuite). Bloc général : dresseur 0x68, équipe 0xA0 (en-tête [capacité 6][nombre] juste avant), carte 0x1280.",
       "reference": [
         {
           "what": "pointeur vers le bloc général (US)",
@@ -221,9 +227,11 @@
       },
       "battle": {
         "method": "croModule",
-        "verified": []
+        "verified": [
+          "0004000000055E00"
+        ]
       },
-      "notes": "Équipe de 4 lue en direct dans Azahar 2126.1.2 sur Pokémon Y EU (sauvegarde réelle, copie) : attache ~9 s + 5 s pour le premier relevé. Carte et combat non lus sur 3DS. Combat : modules DllBattle / DllField présents dans la ROM comme sur Rubis Oméga, non vérifié en jeu.",
+      "notes": "Vérifié dans Azahar 2126.1.2 sur Pokémon Y EU (sauvegarde réelle, copie) : équipe vivante (tableau de six objets Pokémon + nombre ; la copie au format équipe n'est que l'image de la sauvegarde), attache ~0,5 s. Combat : module DllBattle à la place de DllField, vu en jeu sur la Route 2 ; adversaire lu (Chartor N.3, PV 17 → 9 en direct), nos PV en combat (potion, dégâts), capture vue dans l'équipe vivante, fuite. Bloc de combat : espèce +0x0C, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0xF6 (zéro en +0xF4). Carte lue en direct : copies de la structure « situation » retrouvées par la position du fichier (trois flottants), carte (u16) 0x0E, 0x10 ou 0x24 octets avant selon la copie, deux copies d'accord exigées ; des images figées existent. Vu en jeu : 8 → 259 (Route 2) → 8. Pas de nom de lieu pour la 3DS.",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -263,7 +271,7 @@
           "000400000011C400"
         ]
       },
-      "notes": "Équipe lue en direct dans Azahar 2126.1.2 sur Rubis Oméga EU (sauvegarde réelle, copie) : attache en ~5 s, n° 645 N. 6 15/28 PV. Carte et combat non lus sur 3DS (pas de bloc de sauvegarde en RAM repéré, pas de détection de combat). Combat : module DllBattle chargé à la place de DllField (même emplacement), vu en jeu dans Azahar sur Route 103 (rencontre Zigzaton, fuite) ; l'adversaire n'est pas lu.",
+      "notes": "Vérifié dans Azahar 2126.1.2 sur Rubis Oméga EU (sauvegarde réelle, copie) : équipe vivante (PV 9/28 après un combat alors que l'image de la sauvegarde gardait 15/28). Combat : module DllBattle chargé à la place de DllField (même emplacement), vu en jeu sur la Route 103 (Goélise N.3, deux rencontres, fuites) ; adversaire et nos PV lus dans les blocs de combat (espèce +0x0C répétée en +0xF4, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0xF6), reliés aux données PK6 par l'objet qui les tient. Carte lue en direct comme X / Y : 7 → 25 (Route 103) → 7 vu en jeu. Pas de nom de lieu pour la 3DS.",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -299,7 +307,7 @@
         "method": "croModule",
         "verified": []
       },
-      "notes": "Non vérifié (Azahar absent). Combat : module « Battle » de la ROM (7e génération), non vérifié en jeu ; module de carte inconnu, l'emplacement est trouvé au premier combat.",
+      "notes": "Non vérifié en jeu (la sauvegarde Lune de test est vide et illisible). Mêmes modules que Ultra-Soleil dans la ROM (Battle, FieldRo) et même moteur : lecture supposée identique à Ultra-Soleil (vérifié).",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -314,7 +322,8 @@
           "verified": false
         }
       ],
-      "battleModule": "Battle"
+      "battleModule": "Battle",
+      "fieldModule": "FieldRo"
     },
     {
       "game": "USUM",
@@ -325,16 +334,20 @@
       ],
       "party": {
         "method": "signature",
-        "verified": []
+        "verified": [
+          "00040000001B5000"
+        ]
       },
       "saveBlock": {
         "verified": []
       },
       "battle": {
         "method": "croModule",
-        "verified": []
+        "verified": [
+          "00040000001B5000"
+        ]
       },
-      "notes": "Non vérifié (Azahar absent). Ultra-Soleil EU lancé dans Azahar : sauvegarde de test au tout début (équipe vide), rien à lire ; la recherche par numéro de dresseur ne trouve pas le bloc sur 3DS. Combat : module « Battle » de la ROM (7e génération), non vérifié en jeu ; module de carte inconnu, l'emplacement est trouvé au premier combat.",
+      "notes": "Vérifié dans Azahar 2126.1.2 sur Ultra-Soleil EU (copie d'une sauvegarde en tout début de partie, sans Pokémon) : tableau d'équipe vide reconnu à sa forme (deux tableaux vides, le premier qui se remplit gagne), Brindibou N.5 vu dès sa remise. Combat : module « Battle » chargé à la place de « FieldRo » (même emplacement, 0x006DD000 dans le journal d'Azahar), vu en jeu sur la Route 1 ; Manglouton N.3 lu, PV 16 → 11 → 6 → 1 → 0 en direct, fin du combat vue. Bloc de combat : espèce +0x0C, PV max +0x0E, PV +0x10, niveau +0x18, statistiques +0x1DA (espèce répétée en +0x1D8). Carte lue en direct : structure [carte][zone][x][y][z] retrouvée en RAM par la carte et la position x / z du fichier (la hauteur y diffère selon la copie ; le fichier intercale FFFFFFFF après la carte), au moment d'une sauvegarde ou du chargement tant que le joueur n'a pas bougé ; seules les copies qui changent ensuite sont crues (des images figées existent). Vu en jeu : 4 (Route 1, devant la maison) → 22 (maison) → 4. Pas de nom de lieu pour la 3DS (zone → lieu non lu dans la ROM).",
       "reference": [
         {
           "what": "équipe (adresse virtuelle du jeu)",
@@ -349,7 +362,8 @@
           "verified": false
         }
       ],
-      "battleModule": "Battle"
+      "battleModule": "Battle",
+      "fieldModule": "FieldRo"
     }
   ]
 }

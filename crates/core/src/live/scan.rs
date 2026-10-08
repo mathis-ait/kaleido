@@ -165,14 +165,13 @@ pub fn find_ds_ram(src: &dyn MemorySource) -> Option<DsRam> {
     best.map(|(_, r)| r)
 }
 
-/// Zones assez grandes pour contenir la FCRAM 3DS (128 Mio au moins), ou toutes les zones
-/// d'au moins 1 Mio si aucune ne l'est (émulateur qui découpe la FCRAM).
+/// Zones assez grandes pour contenir la FCRAM 3DS (64 Mio au moins), la plus grande d'abord, ou
+/// toutes les zones d'au moins 1 Mio si aucune ne l'est (émulateur qui découpe la FCRAM).
 pub fn ctr_candidate_regions(src: &dyn MemorySource) -> Vec<Region> {
     let all = src.regions();
     let big: Vec<Region> = all.iter().copied().filter(|r| r.size >= 64 << 20).collect();
-    if big.is_empty() {
-        all.into_iter().filter(|r| r.size >= 1 << 20).collect()
-    } else {
-        big
-    }
+    let mut out: Vec<Region> = if big.is_empty() { all.into_iter().filter(|r| r.size >= 1 << 20).collect() } else { big };
+    // La FCRAM (128 ou 256 Mio) est la plus grande zone d'Azahar : cherchée en premier.
+    out.sort_by_key(|r| std::cmp::Reverse(r.size));
+    out
 }

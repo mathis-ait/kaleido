@@ -24,6 +24,7 @@
 
 use std::collections::HashSet;
 
+use super::ctr::{self, Fighter, ParamLayout};
 use super::scan::{self, DsRam};
 use super::{LiveError, MemorySource, Region};
 use crate::save::{PkmFormat, Pokemon, RamHints};
@@ -176,7 +177,58 @@ pub struct LiveReader {
     misses: u32,
     /// Recherche de l'équipe adverse activée (cartes mémoire : `battle`).
     battle: bool,
+    /// 3DS : Pokémon en combat suivis, et où les chercher.
+    ctr: CtrBattle,
+    /// 3DS : équipe vivante (la copie au format équipe n'est que l'image de la sauvegarde).
+    live_party: Option<ctr::LiveParty>,
+    /// Lectures ratées de suite de l'équipe vivante.
+    live_misses: u32,
+    live_searched: Option<u64>,
+    /// Autres tableaux possibles (sauvegarde sans Pokémon).
+    live_alts: Vec<ctr::LiveParty>,
+    /// 3DS : structures « situation » (carte et position) candidates en RAM.
+    place: CtrPlace,
 }
+
+/// 3DS : la carte actuelle. Le jeu garde en RAM la structure « situation » de la sauvegarde
+/// (carte, position) en plusieurs copies vivantes, et d'anciennes images figées. Au moment d'une
+/// sauvegarde (ou au chargement de la partie, tant que le joueur n'a pas bougé) toutes portent la
+/// carte et la position du fichier : on les retient alors toutes, et seules les copies qui
+/// changent ensuite sont crues.
+#[derive(Debug, Clone, Default)]
+struct CtrPlace {
+    /// Contenu du fichier cherché (la recherche est refaite après chaque sauvegarde).
+    key: Vec<u8>,
+    /// Copies candidates : (adresse de la carte, derniers octets lus).
+    cands: Vec<(u64, Vec<u8>)>,
+    /// Candidates qui ont changé depuis la recherche (copies vivantes, ou bruit).
+    moved: HashSet<u64>,
+    /// Dernière carte retenue.
+    map: Option<u16>,
+    searched: Option<u64>,
+}
+
+/// 3DS : recherche des structures « situation » tant qu'aucune n'est trouvée, tous les N ticks (15 s).
+const CTR_PLACE_SEARCH: u64 = 75;
+
+/// 3DS : Pokémon en combat (blocs de combat reliés à leurs données PK6), zone où ils ont été vus
+/// la dernière fois (le jeu réutilise les mêmes adresses d'un combat à l'autre), prochaine recherche.
+#[derive(Debug, Clone, Default)]
+struct CtrBattle {
+    fighters: Vec<Fighter>,
+    window: Option<Region>,
+    next_scan: u64,
+    attempts: u32,
+    /// En combat au tick précédent (module de combat chargé).
+    active: bool,
+}
+
+/// 3DS : recherche des Pokémon en combat toutes les secondes au début du combat, puis toutes les 15 s
+/// (une recherche dans toute la FCRAM prend une demi-seconde).
+const CTR_FIGHT_SCAN: u64 = 5;
+const CTR_FIGHT_RESCAN: u64 = 75;
+/// Marge autour des Pokémon en combat vus la dernière fois : la recherche suivante commence là.
+const CTR_WINDOW: u64 = 4 << 20;
 
 /// Re-recherche de l'équipe perdue : au plus tous les N ticks (la recherche 3DS lit la FCRAM).
 const RESEARCH_DS: u64 = 5;
@@ -214,6 +266,12 @@ impl LiveReader {
             module: None,
             misses: 0,
             battle: true,
+            ctr: CtrBattle::default(),
+            live_party: None,
+            live_misses: 0,
+            live_searched: None,
+            live_alts: Vec::new(),
+            place: CtrPlace::default(),
         }
     }
 
@@ -250,8 +308,7 @@ impl LiveReader {
     /// chaque passage ; sans elle, nouvelle recherche toutes les 5 s (la FCRAM fait plusieurs centaines de Mo).
     pub(crate) fn ctr_in_battle(&mut self, src: &dyn MemorySource) -> Option<bool> {
         let tick = self.tick;
-        let regions = self.search_regions(src);
-        let m = self.module.as_mut()?;
+        let m = self.module.as_ref()?;
         let n = m.battle.len();
         // Emplacement connu : une seule lecture de 32 octets par passage.
         if let Some(a) = m.slot {
@@ -266,6 +323,9 @@ impl LiveReader {
         if m.searched.is_some_and(|t| tick - t < wait) {
             return Some(false);
         }
+        // Liste des zones mémoire lue seulement pour une recherche (elle parcourt tout l'espace du processus).
+        let regions = self.fcram_regions(src);
+        let m = self.module.as_mut()?;
         m.searched = Some(tick);
         let first = |h: &[u8]| u32::from_le_bytes([h[0], h[1], h[2], h[3]]);
         let mut keys = vec![first(&m.battle)];
@@ -307,6 +367,16 @@ impl LiveReader {
         self.copies.iter().map(|c| c.addr).collect()
     }
 
+    /// 3DS : adresse du tableau de l'équipe vivante, s'il est trouvé (diagnostic).
+    pub fn live_party_address(&self) -> Option<u64> {
+        self.live_party.as_ref().map(|l| l.at)
+    }
+
+    /// 3DS : copies candidates de la carte (adresse, valeur, a changé), pour le diagnostic.
+    pub fn place_candidates(&self) -> Vec<(u64, u16, bool)> {
+        self.place.cands.iter().map(|(a, b)| (*a, u16::from_le_bytes([b[0], b[1]]), self.place.moved.contains(a))).collect()
+    }
+
     /// Adresse de la dernière équipe adverse trouvée (diagnostic).
     pub fn enemy_address(&self) -> Option<u64> {
         self.enemy_at
@@ -338,24 +408,43 @@ impl LiveReader {
         self.searched_at = Some(self.tick);
         let format = self.hints.format;
         let size = format.party_size() as u64;
-        let regions = self.search_regions(src);
+        let all = self.search_regions(src);
         let mut found: Vec<u64> = Vec::new();
         let keys = self.hints.party_keys.clone();
-        for (hit, key) in scan::find_u32s(src, &regions, &keys, 256) {
-            let j = keys.iter().position(|&k| k == key).unwrap_or(0);
-            // L'équipe a pu être réordonnée depuis la sauvegarde : on essaie chaque position.
-            let order = std::iter::once(j).chain((0..PARTY_SLOTS).filter(|&k| k != j));
-            for k in order {
-                let Some(slot0) = hit.checked_sub(k as u64 * size) else { continue };
-                if found.contains(&slot0) {
-                    break;
-                }
-                let Ok(Some(p)) = read_party_at(src, format, slot0) else { continue };
-                if p.mons.get(k).is_some_and(|m| m.data()[..4] == key.to_le_bytes()) {
-                    found.push(slot0);
-                    break;
+        // 3DS : zone par zone, la plus grande (FCRAM) d'abord, jusqu'à trouver l'équipe.
+        let sets: Vec<Vec<Region>> = match self.console {
+            Console::Ctr => all.iter().map(|r| vec![*r]).collect(),
+            Console::Ds(_) => vec![all.clone()],
+        };
+        let mut regions = all.clone();
+        for set in sets {
+            let hits = scan::find_u32s(src, &set, &keys, 256);
+            if hits.is_empty() {
+                continue;
+            }
+            regions = set;
+            for (hit, key) in hits {
+                let j = keys.iter().position(|&k| k == key).unwrap_or(0);
+                // L'équipe a pu être réordonnée depuis la sauvegarde : on essaie chaque position.
+                let order = std::iter::once(j).chain((0..PARTY_SLOTS).filter(|&k| k != j));
+                for k in order {
+                    let Some(slot0) = hit.checked_sub(k as u64 * size) else { continue };
+                    if found.contains(&slot0) {
+                        break;
+                    }
+                    let Ok(Some(p)) = read_party_at(src, format, slot0) else { continue };
+                    if p.mons.get(k).is_some_and(|m| m.data()[..4] == key.to_le_bytes()) {
+                        found.push(slot0);
+                        break;
+                    }
                 }
             }
+            if !found.is_empty() {
+                break;
+            }
+        }
+        if found.is_empty() {
+            regions = all;
         }
         // Équipe vide dans la sauvegarde (nouvelle partie, starter pas encore reçu) ou équipe
         // introuvable par ses Pokémon : on retrouve le bloc de sauvegarde par le numéro du
@@ -396,9 +485,135 @@ impl LiveReader {
             Console::Ds(_) => RESEARCH_DS,
             Console::Ctr => RESEARCH_CTR,
         };
-        if self.copies.is_empty() && self.searched_at.is_none_or(|t| self.tick - t >= research) {
+        // 3DS : l'équipe vivante d'abord ; la copie au format équipe (image de la sauvegarde) ne
+        // sert que si elle reste introuvable. Nouvel essai de temps en temps.
+        let ctr = matches!(self.console, Console::Ctr);
+        if ctr && self.live_party.is_none() && self.live_searched.is_none_or(|t| self.tick - t >= RESEARCH_CTR) {
+            self.search_live_party(src);
+        }
+        if (!ctr || self.live_party.is_none()) && self.copies.is_empty() && self.searched_at.is_none_or(|t| self.tick - t >= research) {
             self.search_party(src);
         }
+        let tick = self.tick;
+        let party = if self.live_party.is_some() {
+            match self.read_live_party(src) {
+                Some(mons) => PartyAt { mons, raw: Vec::new() },
+                // Lu pendant une écriture : on garde l'instantané précédent.
+                None => return Ok(None),
+            }
+        } else {
+            match self.read_copies(src)? {
+                Some(p) => p,
+                None => return Ok(None),
+            }
+        };
+        let (map, badges) = match self.console {
+            Console::Ctr => (self.ctr_map(src), None),
+            Console::Ds(_) => self.save_block_fields(src),
+        };
+        let in_battle = match (&self.console, &self.code) {
+            (Console::Ctr, _) => self.ctr_in_battle(src),
+            (_, Some((at, bytes))) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
+            (_, None) => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
+        };
+        if matches!(self.console, Console::Ctr) {
+            let now = in_battle == Some(true);
+            // Fin de combat : le tableau trouvé a pu être celui du combat (libéré, nombre remis à
+            // zéro) ; on le cherche de nouveau, la copie du combat n'a plus de Pokémon.
+            if self.ctr.active && !now {
+                self.live_party = None;
+                self.live_searched = None;
+            }
+            self.ctr.active = now;
+        }
+        let battle = if !self.battle {
+            None
+        } else if matches!(self.console, Console::Ctr) {
+            if in_battle == Some(true) {
+                self.ctr_battle(src, &party.mons, map)
+            } else {
+                self.ctr_battle_over();
+                None
+            }
+        } else if in_battle == Some(false) {
+            // Le jeu dit « hors combat » : les équipes restées en RAM ne comptent plus.
+            if let Some(f) = &mut self.fight {
+                f.over = true;
+            }
+            None
+        } else {
+            self.scan_battle(src, &party.mons, map, tick.is_multiple_of(BATTLE_SCAN) || in_battle == Some(true))
+        };
+        // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
+        let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
+        Ok(Some(LiveRead { party, map, badges, battle, in_battle }))
+    }
+
+    /// 3DS : équipe vivante, si son tableau est connu. Après 10 lectures ratées de suite (partie
+    /// relancée), le tableau est oublié et recherché de nouveau avec l'équipe.
+    fn read_live_party(&mut self, src: &dyn MemorySource) -> Option<Vec<Pokemon>> {
+        let lp = self.live_party.as_ref()?;
+        // Équipe vide alors que la sauvegarde a des Pokémon : tableau abandonné par le jeu.
+        let mut read = lp.read(src, self.hints.format).filter(|m| !m.is_empty() || self.hints.party_keys.is_empty());
+        // Sauvegarde sans Pokémon : plusieurs tableaux vides possibles, le premier qui se remplit gagne.
+        if read.as_ref().is_some_and(|m| m.is_empty()) {
+            let format = self.hints.format;
+            if let Some(i) = self.live_alts.iter().position(|a| a.read(src, format).is_some_and(|m| !m.is_empty())) {
+                let alt = self.live_alts.remove(i);
+                read = alt.read(src, format);
+                if let Some(old) = self.live_party.replace(alt) {
+                    self.live_alts.push(old);
+                }
+            }
+        }
+        match read {
+            Some(mons) => {
+                self.live_misses = 0;
+                Some(mons)
+            }
+            None => {
+                self.live_misses += 1;
+                if self.live_misses >= 10 {
+                    self.live_party = None;
+                    self.live_misses = 0;
+                    self.copies.clear();
+                    self.searched_at = None;
+                }
+                None
+            }
+        }
+    }
+
+    /// 3DS : tableau de l'équipe vivante, retrouvé depuis un Pokémon de la sauvegarde (données
+    /// PK6 au format boîte tenues par un objet dont la section équipe se déchiffre).
+    /// Sans Pokémon dans la sauvegarde (début de partie), les tableaux sont reconnus à leur forme :
+    /// le premier qui se remplit devient l'équipe.
+    fn search_live_party(&mut self, src: &dyn MemorySource) {
+        self.live_searched = Some(self.tick);
+        self.live_alts.clear();
+        let regions = self.fcram_regions(src);
+        for (hit, key) in scan::find_u32s(src, &regions, &self.hints.party_keys, 256) {
+            let Ok(data) = src.read_vec(hit, 232) else { continue };
+            if !ctr::encrypted_box_mon(&data) {
+                continue;
+            }
+            let Some((obj, vaddr, off)) = ctr::owner_of(src, hit, key) else { continue };
+            if let Some(lp) = ctr::find_live_party(src, &regions, vaddr, off, obj.vtable) {
+                self.live_party = Some(lp);
+                self.live_misses = 0;
+                return;
+            }
+        }
+        if self.hints.party_keys.is_empty() {
+            let mut found = ctr::find_party_arrays(src, &regions).into_iter();
+            self.live_party = found.next();
+            self.live_alts = found.collect();
+            self.live_misses = 0;
+        }
+    }
+
+    /// Copies de l'équipe au format équipe (DS ; 3DS tant que l'équipe vivante n'est pas trouvée).
+    fn read_copies(&mut self, src: &dyn MemorySource) -> Result<Option<PartyAt>, LiveError> {
         let format = self.hints.format;
         let mut best: Option<(u64, bool, PartyAt)> = None;
         let mut torn = false;
@@ -447,26 +662,80 @@ impl LiveReader {
             // Le bloc de sauvegarde est en cours d'écriture : on attend le tick suivant.
             return Ok(None);
         }
-        let (map, badges) = self.save_block_fields(src);
-        let in_battle = match (&self.console, &self.code) {
-            (Console::Ctr, _) => self.ctr_in_battle(src),
-            (_, Some((at, bytes))) => Some(src.read_vec(*at, bytes.len()).is_ok_and(|b| b == *bytes)),
-            (_, None) => self.flag.map(|(at, v)| src.read_u32(at).is_ok_and(|x| x == v)),
-        };
-        let battle = if !self.battle || !matches!(self.console, Console::Ds(_)) {
-            None
-        } else if in_battle == Some(false) {
-            // Le jeu dit « hors combat » : les équipes restées en RAM ne comptent plus.
-            if let Some(f) = &mut self.fight {
-                f.over = true;
+        Ok(Some(party))
+    }
+
+    /// 3DS : carte actuelle. Les copies de la structure « situation » sont retrouvées par la
+    /// position du joueur écrite dans le fichier (flottants). 6e génération : la carte est un mot de
+    /// 16 bits égal à celle du fichier dans les 0x40 octets qui précèdent (sa place varie selon la
+    /// copie : 0x0E, 0x10, 0x24 observés en Y). 7e : `[carte][zone][x][y][z]`.
+    /// La carte retenue est celle sur laquelle s'accordent le plus de copies qui ont changé.
+    fn ctr_map(&mut self, src: &dyn MemorySource) -> Option<u16> {
+        let key = self.hints.situation.clone();
+        if key.len() != 14 || key[2..].iter().all(|&b| b == 0) {
+            return None;
+        }
+        let saved = u16::from_le_bytes([key[0], key[1]]);
+        let gen7 = self.hints.format == PkmFormat::Gen7;
+        let tick = self.tick;
+        if self.place.key != key {
+            // Nouvelle sauvegarde : la RAM vaut le fichier, toutes les copies se retrouvent.
+            self.place = CtrPlace { key: key.clone(), ..CtrPlace::default() };
+        }
+        if self.place.cands.is_empty() && self.place.searched.is_none_or(|t| tick - t >= CTR_PLACE_SEARCH) {
+            self.place.searched = Some(tick);
+            let regions = self.fcram_regions(src);
+            let mut cands = Vec::new();
+            if gen7 {
+                // [carte][zone][x][y][z] : la hauteur (y) diffère d'une copie à l'autre, x et z non.
+                for hit in scan::find_all(src, &regions, &key[2..6], 4, 64) {
+                    let (Some(m), Ok(z)) = (hit.checked_sub(4), src.read_vec(hit + 8, 4)) else { continue };
+                    if z == key[10..14] && src.read_vec(m, 2).is_ok_and(|b| b == key[..2]) {
+                        cands.push((m, key[..2].to_vec()));
+                    }
+                }
+            } else {
+                for hit in scan::find_all(src, &regions, &key[2..], 4, 64) {
+                    let Some(start) = hit.checked_sub(0x40) else { continue };
+                    let Ok(before) = src.read_vec(start, 0x40) else { continue };
+                    for i in (0..0x40).step_by(2) {
+                        if u16::from_le_bytes([before[i], before[i + 1]]) == saved {
+                            cands.push((start + i as u64, saved.to_le_bytes().to_vec()));
+                        }
+                    }
+                }
             }
-            None
-        } else {
-            self.scan_battle(src, &party.mons, map, tick.is_multiple_of(BATTLE_SCAN) || in_battle == Some(true))
-        };
-        // En combat, la copie de combat porte les PV à jour (le bloc de sauvegarde attend la fin).
-        let party = battle.as_ref().map_or(party.mons, |b| b.ours.clone());
-        Ok(Some(LiveRead { party, map, badges, battle, in_battle }))
+            self.place.cands = cands;
+        }
+        let p = &mut self.place;
+        let mut any = false;
+        for (a, last) in &mut p.cands {
+            let Ok(now) = src.read_vec(*a, 2) else { continue };
+            if now != *last {
+                *last = now;
+                p.moved.insert(*a);
+                any = true;
+            }
+        }
+        if any {
+            // Les copies vivantes s'accordent ; un mot voisin qui bouge pour autre chose, non.
+            let mut votes: Vec<(u16, usize)> = Vec::new();
+            for (a, last) in &p.cands {
+                let v = u16::from_le_bytes([last[0], last[1]]);
+                if !p.moved.contains(a) || v >= 0x400 {
+                    continue;
+                }
+                match votes.iter_mut().find(|(m, _)| *m == v) {
+                    Some((_, n)) => *n += 1,
+                    None => votes.push((v, 1)),
+                }
+            }
+            // 6e génération : la carte est cherchée dans les 0x40 octets avant la position, il faut
+            // deux copies d'accord ; 7e : sa place est connue, une suffit.
+            let need = if gen7 { 1 } else { 2 };
+            p.map = votes.iter().max_by_key(|(_, n)| *n).filter(|(_, n)| *n >= need).map(|(m, _)| *m);
+        }
+        p.map
     }
 
     fn save_block_fields(&self, src: &dyn MemorySource) -> (Option<u16>, Option<u8>) {
@@ -547,6 +816,104 @@ impl LiveReader {
         Some(Battle { enemies, ours: ours_now, wild, new })
     }
 
+    /// 3DS : fin du combat (module de combat déchargé).
+    fn ctr_battle_over(&mut self) {
+        self.ctr.fighters.clear();
+        self.ctr.next_scan = 0;
+        self.ctr.attempts = 0;
+        if let Some(f) = &mut self.fight {
+            f.over = true;
+        }
+    }
+
+    /// Disposition des blocs de combat selon la génération.
+    fn ctr_layout(&self) -> ParamLayout {
+        if self.hints.format == PkmFormat::Gen7 {
+            ctr::GEN7_PARAM
+        } else {
+            ctr::GEN6_PARAM
+        }
+    }
+
+    /// 3DS, en combat : Pokémon en combat relus à chaque passage ; recherchés dans la FCRAM au début
+    /// du combat (d'abord autour de ceux du combat précédent, puis dans toute la FCRAM).
+    fn ctr_battle(&mut self, src: &dyn MemorySource, ours: &[Pokemon], map: Option<u16>) -> Option<Battle> {
+        let layout = self.ctr_layout();
+        if !self.ctr.fighters.is_empty() {
+            let again: Option<Vec<Fighter>> = self.ctr.fighters.iter().map(|f| ctr::reread(src, &layout, f)).collect();
+            self.ctr.fighters = again.unwrap_or_default();
+        }
+        let mine: HashSet<u32> = ours.iter().map(|p| u32::from_le_bytes(key_of(p))).collect();
+        let has_foe = |fs: &[Fighter]| fs.iter().any(|f| !mine.contains(&f.key()));
+        if !has_foe(&self.ctr.fighters) {
+            if self.tick < self.ctr.next_scan {
+                return None;
+            }
+            self.ctr.attempts += 1;
+            self.ctr.next_scan = self.tick + if self.ctr.attempts < 5 { CTR_FIGHT_SCAN } else { CTR_FIGHT_RESCAN };
+            let format = self.hints.format;
+            let mut fs = Vec::new();
+            if let Some(w) = self.ctr.window {
+                fs = ctr::fighters(src, &ctr::scan(src, &[w], format, &layout));
+            }
+            if !has_foe(&fs) {
+                let regions = self.fcram_regions(src);
+                fs = ctr::fighters(src, &ctr::scan(src, &regions, format, &layout));
+            }
+            if !has_foe(&fs) {
+                return None;
+            }
+            let lo = fs.iter().map(|f| f.param_at).min().unwrap_or(0);
+            let hi = fs.iter().map(|f| f.param_at).max().unwrap_or(0);
+            let base = lo.saturating_sub(CTR_WINDOW);
+            self.ctr.window = Some(Region { base, size: hi + CTR_WINDOW - base, allocation: base });
+            self.ctr.fighters = fs;
+        }
+        let fighters = &self.ctr.fighters;
+        let enemies: Vec<Pokemon> = fighters.iter().filter(|f| !mine.contains(&f.key())).map(Fighter::pokemon).collect();
+        // Notre équipe avec les PV du combat.
+        let ours_now: Vec<Pokemon> = ours
+            .iter()
+            .map(|p| {
+                let key = u32::from_le_bytes(key_of(p));
+                match fighters.iter().find(|f| f.key() == key) {
+                    Some(f) => {
+                        let mut q = p.clone();
+                        q.set_current_hp(f.param.hp.min(p.party_stats().map_or(u16::MAX, |s| s[0])));
+                        q
+                    }
+                    None => p.clone(),
+                }
+            })
+            .collect();
+        let mut keys: Vec<u32> = enemies.iter().map(|m| u32::from_le_bytes(key_of(m))).collect();
+        keys.sort_unstable();
+        let new = match &self.fight {
+            Some(f) if f.keys == keys && !f.over => false,
+            _ => {
+                let new = keys.iter().any(|k| !self.seen_enemies.contains(k));
+                self.fight = Some(Fight { keys: keys.clone(), map, save_raw: Vec::new(), over: false });
+                new
+            }
+        };
+        self.seen_enemies.extend(keys);
+        let (tid, sid) = (self.hints.tid, self.hints.sid);
+        // Un Pokémon sauvage porte nos identifiants (calcul du chromatique) ; ceux d'un dresseur, jamais.
+        let wild = enemies.iter().all(|m| m.tid() == tid && m.sid() == sid);
+        Some(Battle { enemies, ours: ours_now, wild, new })
+    }
+
+    /// 3DS : la zone de la FCRAM qui contient notre équipe (les autres grandes zones de l'émulateur
+    /// sont son propre code), ou toutes les zones candidates.
+    fn fcram_regions(&self, src: &dyn MemorySource) -> Vec<Region> {
+        let all = scan::ctr_candidate_regions(src);
+        let at = self.copies.first().map(|c| c.addr).or(self.live_party.as_ref().map(|l| l.at));
+        match at.and_then(|a| all.iter().find(|r| r.contains(a, 1))) {
+            Some(r) => vec![*r],
+            None => all,
+        }
+    }
+
     /// Toutes les paires (copie de combat de notre équipe, équipe adverse qui la suit) en RAM.
     fn battle_pairs(&self, src: &dyn MemorySource, mine: &HashSet<u32>) -> Vec<(u64, Vec<Pokemon>, u64, Vec<Pokemon>)> {
         let Console::Ds(ram) = &self.console else { return Vec::new() };
@@ -556,7 +923,8 @@ impl LiveReader {
         let save_at = self.copies.iter().find(|c| c.save_block).map(|c| c.addr);
         let Ok(bytes) = src.read_vec(ram.base, ram.size as usize) else { return Vec::new() };
         let words = bytes.as_chunks::<4>().0;
-        let header = |i: usize| u32::from_le_bytes(words[i]) == PARTY_SLOTS as u32 && (1..=PARTY_SLOTS as u32).contains(&u32::from_le_bytes(words[i + 1]));
+        let header =
+            |i: usize| u32::from_le_bytes(words[i]) == PARTY_SLOTS as u32 && (1..=PARTY_SLOTS as u32).contains(&u32::from_le_bytes(words[i + 1]));
         let mut out = Vec::new();
         for i in 0..words.len().saturating_sub(3) {
             if !header(i) || !mine.contains(&u32::from_le_bytes(words[i + 2])) {

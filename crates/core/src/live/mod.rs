@@ -18,6 +18,7 @@
 //! 4. [`maps`] : cartes mémoire par jeu (`memory_maps.json`), pour ce que la recherche par
 //!    signature ne trouve pas seule.
 
+pub mod ctr;
 pub mod maps;
 pub mod reader;
 pub mod scan;

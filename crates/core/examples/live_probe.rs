@@ -46,18 +46,30 @@ fn main() {
             }
             println!("dresseur {} {:?} ; équipe {:08x?}", save.save.trainer().name, hints.trainer_name_bytes.len(), hints.party_keys);
             let t = Instant::now();
-            let console = match scan::find_ds_ram(&proc) {
+            // KALEIDO_CTR=1 : 3DS, sans chercher de RAM DS (lent sur la mémoire d'Azahar).
+            let ds = if std::env::var_os("KALEIDO_CTR").is_some() { None } else { scan::find_ds_ram(&proc) };
+            let console = match ds {
                 Some(r) => Console::Ds(r),
                 None => Console::Ctr,
             };
             println!("console {console:x?} en {:?}", t.elapsed());
             let mut reader = LiveReader::new(console, hints);
+            // DS : overlay de combat lu dans la ROM (KALEIDO_ROM), comme l'app.
+            if let (Console::Ds(ram), Ok(rom)) = (reader.console().clone(), std::env::var("KALEIDO_ROM")) {
+                let ovl = kaleido_core::live::maps::for_ds_code(&ram.game_code).and_then(|m| m.battle_overlay);
+                if let Some((_, addr, bytes)) = ovl.and_then(|o| kaleido_core::live::maps::battle_code(std::path::Path::new(&rom), o)) {
+                    reader.set_battle_code(addr, bytes);
+                    println!("overlay de combat {ovl:?} lu dans la ROM");
+                }
+            }
             // KALEIDO_ROM=<rom.3ds> KALEIDO_MODULE=DllBattle : détection de combat 3DS (comme l'app).
             if let (Ok(rom), Ok(m)) = (std::env::var("KALEIDO_ROM"), std::env::var("KALEIDO_MODULE")) {
                 if let Some(head) = kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &m) {
                     reader.set_battle_module(head);
                     println!("module de combat {m} lu dans la ROM");
-                    if let Some(f) = std::env::var("KALEIDO_FIELD").ok().and_then(|f| kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &f)) {
+                    if let Some(f) =
+                        std::env::var("KALEIDO_FIELD").ok().and_then(|f| kaleido_core::live::maps::cro_head(std::path::Path::new(&rom), &f))
+                    {
                         reader.set_field_module(f);
                         println!("module de carte lu dans la ROM");
                     }
@@ -66,10 +78,11 @@ fn main() {
             let t = Instant::now();
             let first = reader.tick(&proc);
             println!(
-                "premier tick en {:?} ({}), copies {:x?}",
+                "premier tick en {:?} ({}), copies {:x?}, équipe vivante {:x?}",
                 t.elapsed(),
                 first.as_ref().map(|r| r.is_some()).unwrap_or(false),
-                reader.party_addresses()
+                reader.party_addresses(),
+                reader.live_party_address()
             );
             reader.prime_battle(&proc);
             let secs: u64 = arg(3).parse().unwrap_or(10);
@@ -77,7 +90,17 @@ fn main() {
             let mut last = String::new();
             let mut worst = Duration::ZERO;
             let mut ticks = 0;
+            let modified = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+            let mut save_at = modified(arg(2));
             while Instant::now() < end {
+                // Sauvegarde réécrite par le jeu : nouveaux repères (comme l'app).
+                if modified(arg(2)) != save_at {
+                    save_at = modified(arg(2));
+                    if let Ok(s) = std::fs::read(arg(2)).map_err(|_| ()).and_then(|b| SaveSession::open(&b).map_err(|_| ())) {
+                        reader.set_hints(s.save.ram_hints());
+                        println!("sauvegarde relue");
+                    }
+                }
                 let t = Instant::now();
                 let r = reader.tick(&proc);
                 worst = worst.max(t.elapsed());
@@ -113,7 +136,14 @@ fn main() {
                                 .collect();
                             format!(" | combat {} {}{:?}", if b.wild { "sauvage" } else { "dresseur" }, if b.new { "NOUVEAU " } else { "" }, e)
                         });
-                        format!("carte {:?} badges {:?} équipe {:?}{} en combat {:?}", r.map, r.badges, party, battle.unwrap_or_default(), r.in_battle)
+                        format!(
+                            "carte {:?} badges {:?} équipe {:?}{} en combat {:?}",
+                            r.map,
+                            r.badges,
+                            party,
+                            battle.unwrap_or_default(),
+                            r.in_battle
+                        )
                     }
                     Ok(None) => "rien ce tick".into(),
                     Err(e) => format!("erreur : {e}"),
@@ -125,6 +155,7 @@ fn main() {
                 std::thread::sleep(Duration::from_millis(200));
             }
             println!("{ticks} ticks, le plus long {worst:?}, copies {:x?}", reader.party_addresses());
+            println!("cartes candidates {:x?}", reader.place_candidates());
         }
         "save" => {
             let save = SaveSession::open(&std::fs::read(arg(1)).unwrap()).unwrap();

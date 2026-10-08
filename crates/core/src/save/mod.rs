@@ -734,6 +734,7 @@ impl SaveFile {
             badges: self.badges_offset(),
             hours: t.hours,
             party_keys: party.iter().map(|p| rd_u32(p.data(), 0)).collect(),
+            situation: situation_bytes(self.format(), d, self.layout.map),
         }
     }
 }
@@ -758,6 +759,20 @@ pub struct RamHints {
     /// Premier mot (`u32`) de chaque Pokémon de l'équipe : PID en Gen 4-5, constante de
     /// chiffrement en Gen 6-7. Ce mot n'est pas chiffré : il sert de signature en RAM.
     pub party_keys: Vec<u32>,
+    /// 3DS : carte (u16) puis position du joueur (trois flottants) au moment de la sauvegarde, pour
+    /// retrouver en RAM la structure vivante qui les porte (voir [`crate::live::reader`]). Vide sur DS.
+    pub situation: Vec<u8>,
+}
+
+/// Carte et position du joueur dans le bloc « situation » du fichier (3DS) : la position suit la
+/// carte de 0x0E octets en 6e génération (X / Y), de 8 en 7e (Soleil / Lune).
+fn situation_bytes(format: PkmFormat, d: &[u8], map: usize) -> Vec<u8> {
+    let coords = match format {
+        PkmFormat::Gen6 => map + 0x0E,
+        PkmFormat::Gen7 => map + 8,
+        _ => return Vec::new(),
+    };
+    d.get(map..map + 2).zip(d.get(coords..coords + 12)).map(|(m, c)| [m, c].concat()).unwrap_or_default()
 }
 
 /// Résumé lisible d'une sauvegarde, pour le débogage.
