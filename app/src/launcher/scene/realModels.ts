@@ -5,6 +5,7 @@ import {
   Group,
   Matrix4,
   Mesh,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   Vector2,
   Vector3,
@@ -263,7 +264,16 @@ export function instantiate(t: RealTemplate): { root: Object3D; shells: MeshStan
   const others: MeshStandardMaterial[] = [];
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return;
-    const mat = (o.material as MeshStandardMaterial).clone();
+    const source = o.material as MeshStandardMaterial;
+    let mat: MeshStandardMaterial;
+    if (o.userData.part === "shell") {
+      // Coque : matériau physique (vernis, irisation des ROM randomisées), mêmes textures.
+      const phys = new MeshPhysicalMaterial();
+      MeshStandardMaterial.prototype.copy.call(phys, source);
+      // La copie « standard » remet les defines du matériau standard : on rétablit ceux du physique.
+      (phys as unknown as { defines: Record<string, string> }).defines = { STANDARD: "", PHYSICAL: "" };
+      mat = phys;
+    } else mat = source.clone();
     mat.userData.map = mat.map;
     // Couleur d'origine (pièces sans texture : plastique noir de la Switch, contacts dorés).
     mat.userData.color = mat.color.clone();

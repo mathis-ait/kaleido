@@ -87,7 +87,7 @@ function poseOf(i: number): Pose {
   const abs = Math.abs(k);
   const sign = Math.sign(k);
   return {
-    x: (k === 0 ? 0 : sign * (250 + (abs - 1) * 168)) + props.dragShift,
+    x: k === 0 ? 0 : sign * (250 + (abs - 1) * 168),
     z: k === 0 ? 40 : -140 - abs * 26,
     rot: k === 0 ? 0 : -sign * 44,
     scale: k === 0 ? 1.16 : 0.9,
@@ -149,6 +149,8 @@ interface Item {
   t0: number;
   dur: number;
   sizePx: [number, number];
+  /** Cartouche centrale lors du dernier réglage des matériaux. */
+  center: boolean | null;
 }
 
 let renderer: WebGLRenderer | null = null;
@@ -165,6 +167,7 @@ let slot: { group: Group; kind: Slot; width: number; body: MeshBasicMaterial; ho
 const SLOT_Y = -190;
 const SLOT_Z = 42;
 const clip = new Plane(new Vector3(0, 1, 0), 0);
+const CLIP = [clip];
 
 let insertion: Insertion | null = null;
 let insert: InsertState = { ...INITIAL };
@@ -225,6 +228,38 @@ function plasticGrain(): CanvasTexture {
   return t;
 }
 let grain: CanvasTexture | null = null;
+
+/**
+ * Épaisseur du film irisé des ROM randomisées : bandes diagonales douces et légèrement
+ * ondulées. Le film n'a pas la même épaisseur partout, d'où des reflets arc-en-ciel
+ * qui se déplacent avec l'angle (plastique holographique).
+ */
+function holoThickness(): CanvasTexture {
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      const wave = Math.sin((u + v) * Math.PI * 6 + Math.sin(v * Math.PI * 4) * 1.2) * 0.5 + 0.5;
+      const ripple = Math.sin((u - v) * Math.PI * 10) * 0.15;
+      const t = Math.min(1, Math.max(0, wave * 0.85 + ripple + 0.1));
+      const i = (y * size + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(t * 255);
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new CanvasTexture(c);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  return t;
+}
+let holo: CanvasTexture | null = null;
+/** Coque nacrée d'une ROM randomisée, quand aucune couleur n'a été choisie : l'irisation y ressort. */
+const PEARL = "#dcdde6";
 
 function init() {
   const el = canvas.value!;
@@ -328,26 +363,56 @@ function applyMaterial(item: Item, center: boolean) {
   const translucent = look.finish === "translucide";
   const worn = look.wear === "jouee" ? 0.15 : 0;
   const metal = look.shell.id === "argent" || look.shell.id === "or";
+  const randomized = isKaleidoRom(item.game);
+  // ROM randomisée sans couleur choisie dans Inspecter : coque nacrée.
+  const pearl = randomized && !props.looks[item.key]?.shell;
+  const shellColor = pearl ? PEARL : look.shell.color;
   for (const m of item.shells) {
     if (item.real) {
       // Modèle réel : sa texture photographiée, recoloriée si une autre coque est choisie.
-      const native = look.shell.id === item.real.spec.nativeShell;
+      const native = !pearl && look.shell.id === item.real.spec.nativeShell;
       const original = (m.userData.map as Texture | null) ?? null;
-      const map = native || !original ? original : (recolored(item.real, original, look.shell.color) ?? original);
+      const map = native || !original ? original : (recolored(item.real, original, shellColor) ?? original);
       if (m.map !== map) {
         m.map = map;
         m.needsUpdate = true;
       }
       // Pièce sans texture (corps de la carte Switch) : la couleur choisie remplace la sienne.
-      m.userData.base = native ? (m.userData.color as Color) : original ? WHITE : new Color(look.shell.color);
+      m.userData.base = native ? (m.userData.color as Color) : original ? WHITE : new Color(shellColor);
     } else {
       m.roughness = (look.finish === "brillant" ? 0.22 : translucent ? 0.28 : 0.46) + worn;
       m.metalness = metal ? 0.35 : 0;
-      m.userData.base = new Color(look.shell.color);
+      m.userData.base = new Color(shellColor);
+    }
+    if (randomized) {
+      // Film holographique : lisse et un peu métallique, pour que les reflets irisés dominent
+      // (les textures de rugosité et de métal du modèle sont mises de côté).
+      m.roughness = 0.18;
+      m.metalness = 0.6;
+    }
+    const rough = randomized ? null : ((m.userData.roughnessMap as Texture | null | undefined) ?? m.roughnessMap);
+    if (m.userData.roughnessMap === undefined) {
+      m.userData.roughnessMap = m.roughnessMap;
+      m.userData.metalnessMap = m.metalnessMap;
+    }
+    if (m.roughnessMap !== rough) {
+      m.roughnessMap = rough;
+      m.metalnessMap = randomized ? null : (m.userData.metalnessMap as Texture | null);
+      m.needsUpdate = true;
     }
     if (m instanceof MeshPhysicalMaterial) {
-      m.clearcoat = translucent ? 0.6 : look.finish === "brillant" ? 0.5 : 0;
+      m.clearcoat = randomized ? 0 : translucent ? 0.6 : look.finish === "brillant" ? 0.5 : 0;
       m.clearcoatRoughness = 0.2 + worn;
+      // ROM randomisée par Kaleido : plastique irisé, comme un kaléidoscope. Les reflets
+      // changent avec l'angle (oscillation, inclinaison à la souris), sans halo ni effet ajouté.
+      m.iridescence = randomized ? 1 : 0;
+      m.iridescenceIOR = 1.4;
+      m.iridescenceThicknessRange = [120, 900];
+      const thickness = randomized ? (holo ??= holoThickness()) : null;
+      if (m.iridescenceThicknessMap !== thickness) {
+        m.iridescenceThicknessMap = thickness;
+        m.needsUpdate = true;
+      }
     }
     // Translucide : vraie transparence plutôt que `transmission`, qui ne verrait que la scène
     // three.js (vide) et pas le fond du lanceur, dessiné dans le DOM sous le canvas. Plus
@@ -355,6 +420,18 @@ function applyMaterial(item: Item, center: boolean) {
     m.userData.alpha = translucent ? (center ? 0.6 : 0.72) : 1;
   }
   for (const m of item.others) m.userData.base = (m.userData.color as Color | undefined) ?? WHITE;
+  // Étiquette d'une ROM randomisée : légère irisation, comme un autocollant holographique.
+  const label = item.labelMat;
+  if (label instanceof MeshPhysicalMaterial) {
+    label.iridescence = randomized ? 0.55 : 0;
+    label.iridescenceIOR = 1.4;
+    label.iridescenceThicknessRange = [200, 1000];
+    const thickness = randomized ? (holo ??= holoThickness()) : null;
+    if (label.iridescenceThicknessMap !== thickness) {
+      label.iridescenceThicknessMap = thickness;
+      label.needsUpdate = true;
+    }
+  }
 }
 
 function labelInput(item: Item) {
@@ -423,6 +500,24 @@ function loadingMaterial() {
 /** Étiquette imprimée : papier couché, un peu satiné ; coins arrondis par transparence. */
 const newLabelMaterial = () => new MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, alphaTest: 0.5 });
 
+/**
+ * Réglages fixés à la création : tout est dessiné dans la passe transparente (les voisines
+ * s'estompent, les coques translucides laissent voir l'intérieur), les pièces internes avant
+ * la coque et l'étiquette après. Basculer `transparent` en pleine animation forçait une
+ * recompilation des shaders : c'était la source des à-coups au défilement.
+ */
+function prepareMaterials(item: Item) {
+  for (const m of [...item.shells, ...item.others, item.labelMat]) {
+    m.transparent = true;
+    m.needsUpdate = true;
+  }
+  item.body.traverse((o) => {
+    if (!(o instanceof Mesh)) return;
+    if (o === item.labelMesh) o.renderOrder = 1;
+    else if (item.others.includes(o.material as MeshStandardMaterial)) o.renderOrder = -1;
+  });
+}
+
 /** Modèle procédural (cartouche GB, ou repli si un modèle réel ne charge pas). */
 function buildProcedural(item: Item) {
   const geo = supportGeometry(item.look.support.id);
@@ -474,13 +569,16 @@ function createItem(game: Detection, i: number): Item {
     t0: 0,
     dur: 0,
     sizePx: [0, 0],
+    center: null,
   };
   const finish = (t: RealTemplate | null) => {
     if (items.get(game.path) !== item) return;
     if (t) buildReal(item, t);
     else buildProcedural(item);
     item.ready = true;
-    applyMaterial(item, props.games[props.index]?.path === game.path);
+    item.center = props.games[props.index]?.path === game.path;
+    applyMaterial(item, item.center);
+    prepareMaterials(item);
     loadLabel(item);
     invalidate();
   };
@@ -498,10 +596,18 @@ function disposeItem(item: Item) {
 }
 
 /** Instancie les jeux proches (7 de chaque côté, comme les jaquettes) et vise leur nouvelle pose. */
+/** Décalage du glisser au dernier `sync` (voir plus bas). */
+let lastShift = 0;
+
 function sync() {
   if (!renderer) return;
   const now = performance.now();
   const wanted = new Set<string>();
+  // Pendant un glisser, les cartouches suivent la souris sans délai. Quand le jeu change
+  // en cours de glisser (ou au lâcher), le décalage saute d'un pas : ce saut est reporté
+  // dans l'animation pour que rien ne bouge d'un coup à l'écran.
+  const delta = props.dragShift - lastShift;
+  lastShift = props.dragShift;
   props.games.forEach((g, i) => {
     if (Math.abs(i - props.index) > 7) return;
     wanted.add(g.path);
@@ -513,13 +619,19 @@ function sync() {
     }
     item.game = g;
     const to = poseOf(i);
-    if (Object.keys(to).some((k) => to[k as keyof Pose] !== item!.to[k as keyof Pose])) {
+    const moved = Object.keys(to).some((k) => to[k as keyof Pose] !== item!.to[k as keyof Pose]);
+    if (moved || (!props.dragging && delta !== 0)) {
+      item.cur.x -= delta;
       item.from = { ...item.cur };
       item.to = to;
       item.t0 = now;
-      item.dur = props.dragging ? 120 : 500;
+      item.dur = props.dragging ? 160 : 500;
     }
-    applyMaterial(item, i === props.index);
+    // Matériaux (translucide, recoloration) : seulement quand la cartouche devient ou cesse d'être centrale.
+    if (item.center !== (i === props.index)) {
+      item.center = i === props.index;
+      applyMaterial(item, item.center);
+    }
   });
   for (const [path, item] of items) {
     if (!wanted.has(path)) {
@@ -535,7 +647,8 @@ function refreshLooks() {
     const look = resolveLook(item.game, props.looks[item.key]);
     const before = item.labelSig;
     item.look = look;
-    applyMaterial(item, props.games[props.index]?.path === item.game.path);
+    item.center = props.games[props.index]?.path === item.game.path;
+    applyMaterial(item, item.center);
     const sig = lookSig(look);
     const labelChanged = before.split("|").slice(3).join("|") !== sig.split("|").slice(3).join("|");
     if (labelChanged) loadLabel(item);
@@ -624,20 +737,33 @@ function invalidate() {
   if (!raf && renderer) raf = requestAnimationFrame(frame);
 }
 
-function placeCamera() {
-  const el = canvas.value!;
+/** Mise en page du carrousel DOM (centre de la perspective, position de l'anneau), mesurée à part. */
+let layout: { w: number; h: number; cx: number; cy: number; rx: number; ry: number } | null = null;
+const smallWindow = window.matchMedia("(max-height: 820px)");
+
+function measure() {
+  const el = canvas.value;
+  if (!el || !renderer) return;
   const w = el.clientWidth;
   const h = el.clientHeight;
   if (!w || !h) return;
-  const size = renderer!.getSize(new Vector2());
-  if (size.x !== w || size.y !== h) renderer!.setSize(w, h, false);
   const c = el.getBoundingClientRect();
   const s = props.stage?.getBoundingClientRect();
   const r = props.ring?.getBoundingClientRect();
-  // Même règle que la feuille de style du lanceur : carrousel réduit sur les petites fenêtres.
-  zoom = window.matchMedia("(max-height: 820px)").matches ? 0.78 : 1;
   const cx = s ? s.left + s.width / 2 - c.left : w / 2;
   const cy = s ? s.top + s.height / 2 - c.top : h / 2;
+  layout = { w, h, cx, cy, rx: r ? r.left - c.left - cx : 0, ry: r ? -(r.top - c.top - cy) : 0 };
+  // Même règle que la feuille de style du lanceur : carrousel réduit sur les petites fenêtres.
+  zoom = smallWindow.matches ? 0.78 : 1;
+  invalidate();
+}
+
+function placeCamera() {
+  if (!layout) measure();
+  if (!layout) return;
+  const { w, h, cx, cy } = layout;
+  const size = renderer!.getSize(new Vector2());
+  if (size.x !== w || size.y !== h) renderer!.setSize(w, h, false);
   const d = 1100 * zoom;
   camera.fov = (2 * Math.atan(h / 2 / d) * 180) / Math.PI;
   camera.aspect = w / h;
@@ -645,7 +771,7 @@ function placeCamera() {
   camera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h);
   camera.updateProjectionMatrix();
   root.scale.setScalar(zoom);
-  root.position.set(r ? r.left - c.left - cx : 0, r ? -(r.top - c.top - cy) : 0, 0);
+  root.position.set(layout.rx, layout.ry, 0);
 }
 
 function step(now: number): boolean {
@@ -668,7 +794,7 @@ function step(now: number): boolean {
     const { cur } = item;
     const isCenter = item.game.path === center;
     const inserting = insertPath === item.game.path;
-    let x = cur.x;
+    let x = cur.x + props.dragShift;
     let y = 0;
     let z = cur.z;
     let scale = cur.scale;
@@ -699,16 +825,10 @@ function step(now: number): boolean {
     item.group.scale.setScalar(scale);
     item.body.rotation.set(rotX, rotY, 0);
     item.group.visible = item.ready && opacity > 0.01;
-    const transparent = opacity < 0.999;
     for (const m of [...item.shells, ...item.others, item.labelMat]) {
-      const alpha = opacity * ((m.userData.alpha as number | undefined) ?? 1);
-      const blend = transparent || alpha < 0.999;
-      if (m.transparent !== blend) {
-        m.transparent = blend;
-        m.needsUpdate = true;
-      }
-      m.opacity = alpha;
-      m.clippingPlanes = inserting ? [clip] : null;
+      m.opacity = opacity * ((m.userData.alpha as number | undefined) ?? 1);
+      const planes = inserting ? CLIP : null;
+      if (m.clippingPlanes !== planes) m.clippingPlanes = planes;
     }
     for (const m of [...item.shells, ...item.others]) {
       const base = m.userData.base as Color | undefined;
@@ -736,12 +856,28 @@ function step(now: number): boolean {
   return busy;
 }
 
+let slowFrames = 0;
+let lastFrame = 0;
+
+function adaptResolution(now: number, busy: boolean) {
+  const dt = now - lastFrame;
+  lastFrame = now;
+  if (!busy || dt > 200) return;
+  slowFrames = dt > 24 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
+  if (slowFrames > 20 && renderer && renderer.getPixelRatio() > 1) {
+    renderer.setPixelRatio(1);
+    slowFrames = 0;
+    layout = null;
+  }
+}
+
 function frame(now: number) {
   raf = 0;
   if (!renderer) return;
   placeCamera();
   const busy = step(now);
   renderer.render(scene, camera);
+  adaptResolution(now, busy);
   if (firstFrame) {
     firstFrame = false;
     try {
@@ -810,6 +946,7 @@ watch(
   () => [props.games, props.index, props.dragShift],
   () => sync(),
 );
+watch(() => [props.games, props.index], () => measure());
 watch(() => props.looks, refreshLooks, { deep: true });
 watch(() => [props.tilt, props.stick, props.tint], () => invalidate());
 watch(currentTheme, () => renderer && themeLight());
@@ -825,8 +962,10 @@ onMounted(() => {
   init();
   if (!renderer) return;
   sync();
-  resize = new ResizeObserver(() => invalidate());
+  resize = new ResizeObserver(() => measure());
   resize.observe(canvas.value!);
+  if (props.stage) resize.observe(props.stage);
+  window.addEventListener("resize", measure);
   window.addEventListener("focus", wake);
   document.addEventListener("visibilitychange", wake);
 });
@@ -837,6 +976,7 @@ onUnmounted(() => {
   insertion?.stop();
   resize?.disconnect();
   window.removeEventListener("focus", wake);
+  window.removeEventListener("resize", measure);
   document.removeEventListener("visibilitychange", wake);
   for (const item of items.values()) disposeItem(item);
   items.clear();
@@ -851,6 +991,8 @@ onUnmounted(() => {
   for (const t of recolors.values()) t.dispose();
   recolors.clear();
   grain?.dispose();
+  holo?.dispose();
+  holo = null;
   loading?.tex.dispose();
   loading?.mat.dispose();
   loading = null;
