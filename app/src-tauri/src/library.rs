@@ -186,7 +186,8 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
 
 /// Photos de face de vraies cartouches sur LaunchBox, relevées une fois pour les jeux pris en
 /// charge (`cart_photos.json` : jeu → `fr|en <fichier>`, régions européennes puis américaines,
-/// jamais une autre langue ; jeux Switch par title ID, `nx_<title id>`). Images publiques, sans clé.
+/// jamais une autre langue ; jeux Switch par title ID, `nx_<title id>` ; autres jeux par plateforme
+/// et code sans la région, `ds_YFT`, pour les spin-off). Images publiques, sans clé.
 const CART_PHOTOS: &str = include_str!("cart_photos.json");
 const LAUNCHBOX_IMAGES: &str = "https://images.launchbox-app.com";
 
@@ -218,7 +219,11 @@ fn cart_urls(key: &str) -> Option<Vec<String>> {
     if code.is_some_and(|c| c.len() != 4 || !c.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())) {
         return None;
     }
-    let photos = launchbox_photos(game);
+    // Autre jeu (`photo-<plateforme>-jeu-<code>`) : photo LaunchBox d'après le code sans la région.
+    let photos = match (game, code) {
+        ("jeu", Some(code)) => launchbox_photos(&format!("{platform}_{}", &code[..3])),
+        _ => launchbox_photos(game),
+    };
     let mut urls: Vec<String> = photos.iter().filter(|(fr, _)| *fr).map(|(_, u)| u.clone()).collect();
     // GameTDB : cartes DS et 3DS seulement, d'après le code de la ROM.
     let mut tdb_own = Vec::new();
@@ -315,8 +320,9 @@ fn load_cover(dir: &Path, game: &str) -> Result<Vec<u8>, String> {
     if let Ok(data) = fs::read(&file) {
         return Ok(data);
     }
+    // Marqueur valable pour cette version seulement : une mise à jour peut ajouter des sources.
     let missing = dir.join(format!("{game}.missing"));
-    if missing.exists() {
+    if fs::read(&missing).is_ok_and(|v| v == env!("CARGO_PKG_VERSION").as_bytes()) {
         return Err("pas de jaquette".into());
     }
     let urls = cover_urls(game);
@@ -338,7 +344,7 @@ fn load_cover(dir: &Path, game: &str) -> Result<Vec<u8>, String> {
     if let Some(e) = offline {
         return Err(e);
     }
-    let _ = fs::write(&missing, b"");
+    let _ = fs::write(&missing, env!("CARGO_PKG_VERSION"));
     Err("pas de jaquette".into())
 }
 
@@ -754,6 +760,11 @@ mod tests {
         assert!(!w2.iter().any(|u| u.contains("/ES/") || u.contains("/JA/")));
         // Cartouche GBA : LaunchBox seulement ; code facultatif (Game Boy).
         assert!(cover_urls("photo-gba-emerald-BPEF").iter().all(|u| u.contains("launchbox")));
+        // Spin-off (Donjon Mystère, Ranger…) : photo LaunchBox d'après le code, quelle que soit la région de la ROM.
+        assert!(cover_urls("photo-ds-jeu-YFTE").iter().any(|u| u.contains("launchbox")));
+        assert!(cover_urls("photo-ds-jeu-APHF").iter().any(|u| u.contains("launchbox")));
+        assert!(cover_urls("photo-3ds-jeu-A98A").iter().any(|u| u.contains("launchbox")) && cover_urls("photo-switch-nx_0100b3f000be2000")[0].contains("launchbox"));
+        assert!(cover_urls("photo-gba-jeu-B24E").iter().any(|u| u.contains("launchbox")));
         assert!(!cover_urls("photo-gb-red").is_empty());
         assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-inconnu").is_empty() && cover_urls("photo-switch-arceus").is_empty());
         // Carte Switch : par title ID (Épée).
