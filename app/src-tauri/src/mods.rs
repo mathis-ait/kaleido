@@ -2500,6 +2500,84 @@ pub fn mods_downloads_dir(app: AppHandle) -> Option<String> {
     app.path().download_dir().ok().map(|p| p.display().to_string())
 }
 
+// ---------------------------------------------------------------------------
+// Surveillance du dossier Téléchargements (mods à télécharger soi-même)
+
+/// Numéro de la surveillance en cours : en lancer une nouvelle (ou l'arrêter) clôt la précédente.
+static WATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadFound {
+    id: String,
+    /// Fichier terminé, ou `None` à la fin du délai.
+    path: Option<String>,
+}
+
+/// Fichiers terminés de `dir` apparus ou modifiés après `since`, avec l'une des extensions.
+/// Un fichier en cours (`.crdownload`, `.part` à côté, taille nulle) est écarté.
+pub fn finished_downloads(dir: &Path, since: SystemTime, extensions: &[String]) -> Vec<(PathBuf, u64)> {
+    let Ok(entries) = fs::read_dir(dir) else { return vec![] };
+    let mut out = Vec::new();
+    for e in entries.flatten() {
+        let p = e.path();
+        let Ok(meta) = e.metadata() else { continue };
+        if !meta.is_file() || meta.len() == 0 {
+            continue;
+        }
+        let ext = p.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if !extensions.iter().any(|x| x.eq_ignore_ascii_case(&ext)) {
+            continue;
+        }
+        // Firefox écrit dans « nom.part » en laissant un fichier vide au nom final.
+        let mut part = p.clone().into_os_string();
+        part.push(".part");
+        if Path::new(&part).exists() {
+            continue;
+        }
+        let changed = meta.modified().ok().max(meta.created().ok());
+        if changed.is_some_and(|t| t >= since) {
+            out.push((p, meta.len()));
+        }
+    }
+    out
+}
+
+/// Attend qu'un fichier téléchargé arrive dans Téléchargements (30 minutes au plus) et le
+/// signale par l'évènement `mods-download`.
+#[tauri::command]
+pub fn mods_watch_downloads(id: String, extensions: Vec<String>, app: AppHandle) -> Result<(), String> {
+    let dir = app.path().download_dir().map_err(|_| "dossier Téléchargements introuvable".to_string())?;
+    let ticket = WATCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    // Petite marge : le navigateur peut dater le fichier un peu avant le clic.
+    let since = SystemTime::now() - Duration::from_secs(5);
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
+        let mut last: Vec<(PathBuf, u64)> = Vec::new();
+        while WATCH.load(std::sync::atomic::Ordering::SeqCst) == ticket {
+            if std::time::Instant::now() > deadline {
+                let _ = app.emit("mods-download", DownloadFound { id: id.clone(), path: None });
+                return;
+            }
+            let now = finished_downloads(&dir, since, &extensions);
+            // Taille identique d'un passage à l'autre : le fichier est terminé.
+            if let Some((p, _)) = now.iter().find(|f| last.contains(f)) {
+                WATCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = app.emit("mods-download", DownloadFound { id: id.clone(), path: Some(p.display().to_string()) });
+                return;
+            }
+            last = now;
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mods_watch_stop() {
+    WATCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
 #[tauri::command]
 pub async fn cheats_list(target: ModTarget, app: AppHandle) -> Result<Vec<Cheat>, String> {
     crate::blocking(move || {
@@ -2697,6 +2775,24 @@ mod tests {
         }
         h[0x15E..0x160].copy_from_slice(&crc.to_le_bytes());
         assert!(nds_header_ok(&h));
+    }
+
+    #[test]
+    fn download_detection() {
+        let dir = std::env::temp_dir().join(format!("kaleido-dl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let since = SystemTime::now() - Duration::from_secs(5);
+        fs::write(dir.join("mod.zip"), b"PK").unwrap();
+        fs::write(dir.join("lumi.7z"), b"").unwrap();
+        fs::write(dir.join("lumi.7z.part"), b"7z").unwrap();
+        fs::write(dir.join("other.crdownload"), b"x").unwrap();
+        fs::write(dir.join("notes.txt"), b"x").unwrap();
+        let exts: Vec<String> = ["zip", "7z", "rar"].iter().map(|s| s.to_string()).collect();
+        let found = finished_downloads(&dir, since, &exts);
+        assert_eq!(found.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), vec!["mod.zip"]);
+        assert!(finished_downloads(&dir, SystemTime::now() + Duration::from_secs(60), &exts).is_empty());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

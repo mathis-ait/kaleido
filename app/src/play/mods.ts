@@ -227,6 +227,8 @@ export const browseMods = (game: number, query: string, sort: string, category: 
 export const modCategories = (game: number) => invoke<GbCategory[]>("mods_categories", { game });
 export const modDetails = (id: number) => invoke<GbProfile>("mods_details", { id });
 export const downloadsDir = () => invoke<string | null>("mods_downloads_dir");
+export const watchDownloads = (id: string, extensions: string[]) => invoke<void>("mods_watch_downloads", { id, extensions });
+export const stopWatch = () => invoke<void>("mods_watch_stop");
 export const toggleOther = (target: ModTarget, name: string, enabled: boolean) => invoke<ModsView>("mods_toggle_other", { target, name, enabled });
 export const listCheats = (target: ModTarget) => invoke<Cheat[]>("cheats_list", { target });
 export const setCheats = (target: ModTarget, enabled: string[]) => invoke<Cheat[]>("cheats_set", { target, enabled });

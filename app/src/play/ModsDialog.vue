@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { coverUrl } from "../launcher/actions";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import Icon from "../components/Icon.vue";
 import SearchField from "../components/SearchField.vue";
 import Segmented from "../components/Segmented.vue";
@@ -23,7 +24,9 @@ import {
   listMods,
   modsDialog,
   setCheats,
+  stopWatch,
   targetOf,
+  watchDownloads,
   toggleMod,
   toggleOther,
   tuneApply,
@@ -103,6 +106,49 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener("keydown", onKey));
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+
+// --- Téléchargement manuel surveillé
+
+/** Mod dont Kaleido attend le fichier dans Téléchargements. */
+const waiting = ref<ModEntry | null>(null);
+let unlisten: UnlistenFn | undefined;
+onMounted(async () => {
+  unlisten = await listen<{ id: string; path: string | null }>("mods-download", async (e) => {
+    const m = waiting.value;
+    if (!m || e.payload.id !== m.id) return;
+    waiting.value = null;
+    if (!e.payload.path) {
+      await message("Aucun fichier n'est arrivé dans Téléchargements. Tu peux aussi choisir le fichier avec « Installer le fichier… ».", { title: "Téléchargement non trouvé" });
+      return;
+    }
+    await run(m.id, m.name, { local: e.payload.path });
+  });
+});
+onBeforeUnmount(() => {
+  unlisten?.();
+  if (waiting.value) void stopWatch();
+});
+
+function extensionsFor(m: ModEntry) {
+  if (platform.value === "nds") return [...PATCHES, ...ARCHIVES];
+  return m.kind === "plugin3gx" ? ["3gx", ...ARCHIVES] : ARCHIVES;
+}
+
+async function download(m: ModEntry) {
+  if (!(await confirmConflicts(m))) return;
+  try {
+    await watchDownloads(m.id, extensionsFor(m));
+    waiting.value = m;
+    await openUrl(m.page);
+  } catch (e) {
+    await message(String(e), { title: "Surveillance impossible", kind: "error" });
+  }
+}
+
+function cancelWait() {
+  waiting.value = null;
+  void stopWatch();
+}
 
 // --- Onglets
 
@@ -233,8 +279,9 @@ const PATCHES = ["xdelta", "xdelta3", "vcdiff", "bps", "ips"];
 /** Fichier téléchargé à la main (Nexus Mods, Discord…) ou mod d'une autre source. */
 async function importFile(m: ModEntry | null) {
   if (m && !(await confirmConflicts(m))) return;
+  if (waiting.value) cancelWait();
   const patch = platform.value === "nds";
-  const extensions = patch ? [...PATCHES, ...ARCHIVES] : m?.kind === "plugin3gx" ? ["3gx", ...ARCHIVES] : ARCHIVES;
+  const extensions = m ? extensionsFor(m) : patch ? [...PATCHES, ...ARCHIVES] : ARCHIVES;
   const path = await open({
     title: m ? `Fichier téléchargé pour « ${m.name} »` : "Mod à installer",
     defaultPath: (await downloadsDir().catch(() => null)) ?? undefined,
@@ -360,7 +407,7 @@ async function toggleCheat(c: Cheat) {
 
             <section v-for="g in groups" :key="g.category" class="group">
               <h4>{{ g.label }}</h4>
-              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" @install="install(m)" @import="importFile(m)" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
             </section>
             <p v-if="!groups.length" class="dim center">Aucun mod dans cette catégorie pour ce jeu.</p>
             <p v-if="view.gamebanana" class="dim small center">
@@ -374,7 +421,7 @@ async function toggleCheat(c: Cheat) {
           <!-- Installés -->
           <template v-else-if="tab === 'installed'">
             <p v-if="!installedMods.length && !view.others.length" class="dim center">Aucun mod installé pour ce jeu.</p>
-            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" @install="install(m)" @import="importFile(m)" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
             <template v-if="view.others.length">
               <div class="block-head">
                 <h4>Installés hors de Kaleido</h4>

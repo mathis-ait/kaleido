@@ -500,6 +500,8 @@ fn main() {
             mods::mods_categories,
             mods::mods_details,
             mods::mods_downloads_dir,
+            mods::mods_watch_downloads,
+            mods::mods_watch_stop,
             mods::cheats_list,
             mods::cheats_set,
             romhacks::romhacks_list,

@@ -5,8 +5,8 @@ import Icon from "../components/Icon.vue";
 import { formatCount, formatSize, modProgress, type ModEntry } from "./mods";
 
 /** Carte d'un mod : aperçu, description, avertissements et actions. */
-const props = defineProps<{ mod: ModEntry; busy: string | null }>();
-const emit = defineEmits<{ install: []; import: []; uninstall: []; toggle: [enabled: boolean] }>();
+const props = defineProps<{ mod: ModEntry; busy: string | null; waiting?: boolean }>();
+const emit = defineEmits<{ install: []; import: []; download: []; cancelWait: []; uninstall: []; toggle: [enabled: boolean] }>();
 
 const m = computed(() => props.mod);
 const manual = computed(() => m.value.source === "manual" || (m.value.kind === "patch" && !m.value.gb));
@@ -61,6 +61,10 @@ const sourceLabel = computed(() => {
         <span v-if="m.popularity && m.source !== 'auto'">{{ formatCount(m.popularity) }} {{ m.page.includes("nexusmods") ? "téléchargements" : "vues" }}</span>
         <button v-if="m.page" class="link" @click="openUrl(m.page)">{{ sourceLabel }}</button>
       </p>
+      <p v-if="waiting && !working" class="wait">
+        <span class="dot" /> Télécharge le fichier sur la page qui vient de s'ouvrir : Kaleido l'installera dès qu'il arrivera dans Téléchargements.
+        <button class="link" @click="emit('cancelWait')">Annuler</button>
+      </p>
       <template v-if="working">
         <p class="dim">{{ progress.text }}</p>
         <div class="bar"><div :style="{ width: progress.percent + '%' }" /></div>
@@ -70,7 +74,7 @@ const sourceLabel = computed(() => {
     <div class="actions">
       <template v-if="!m.installed">
         <template v-if="manual">
-          <button class="sv-btn" :disabled="locked" @click="openUrl(m.page)"><Icon name="download" :size="14" /> Télécharger</button>
+          <button class="sv-btn" :disabled="locked" @click="emit('download')"><Icon name="download" :size="14" /> Télécharger</button>
           <button class="sv-btn solid" :disabled="locked" @click="emit('import')">
             {{ working ? "Installation…" : m.kind === "patch" ? "Appliquer le patch…" : "Installer le fichier…" }}
           </button>
@@ -226,6 +230,29 @@ const sourceLabel = computed(() => {
 .actions .sv-switch {
   justify-content: center;
   font-size: 13px;
+}
+
+.wait {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--text-dim);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .bar {
