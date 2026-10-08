@@ -135,7 +135,22 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
         }
     })
     .await?;
-    std::process::Command::new(&installer).args(["/P", "/R", "/UPDATE"]).spawn().map_err(|e| format!("impossible de lancer l'installeur : {e}"))?;
+    // L'installeur ne démarre qu'une fois Kaleido vraiment fermé : lancé tout de suite, il
+    // tentait de le fermer pendant sa fermeture et s'arrêtait sur « Failed to kill Kaleido ».
+    let quoted = installer.display().to_string().replace('\'', "''");
+    let script = format!(
+        "Wait-Process -Id {} -Timeout 60 -ErrorAction SilentlyContinue; Start-Process -FilePath '{quoted}' -ArgumentList '/P','/R','/UPDATE'",
+        std::process::id()
+    );
+    let mut command = std::process::Command::new("powershell");
+    command.args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW
+        command.creation_flags(0x0800_0000);
+    }
+    command.spawn().map_err(|e| format!("impossible de lancer l'installeur : {e}"))?;
     app.exit(0);
     Ok(())
 }
