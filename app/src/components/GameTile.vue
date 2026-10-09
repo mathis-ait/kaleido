@@ -11,6 +11,7 @@ import { RECOMMENDED, defaultEmulator, emus, installs } from "../play/play";
 import { platformOf, canRandomize as canRandomizeGame, coverUrl, isPokemonGame, formatDuration, lastPlayed, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf, timeAgo } from "../launcher/actions";
 import { audio, previewMusic, stopMusic } from "../launcher/audio";
 import { modUpdatesOf, openMods } from "../play/mods";
+import { openRandomized } from "../play/randomized";
 
 /**
  * Jeu de la grille : la jaquette sur un fond flouté de ses propres couleurs, le titre et
@@ -113,7 +114,8 @@ const line = computed(() => {
       <div class="text">
         <h3 :title="game.title">{{ game.title }}</h3>
         <p :title="time ? `Temps de jeu ${time.source}` : game.path">
-          <span v-if="randomized" class="tag" :title="game.kaleido ? `Seed ${game.kaleido.seed}` : 'ROM générée par Kaleido'">Randomisée</span>
+          <button v-if="game.kaleido" class="tag tag-btn" :title="`Seed ${game.kaleido.seed} · voir les paramètres appliqués`" @click="openRandomized(game)">Randomisée</button>
+          <span v-else-if="randomized" class="tag" title="ROM générée par Kaleido">Randomisée</span>
           <span v-if="game.kind === 'ctr_dump'" class="tag" title="Dossier : joué comme mod par-dessus le jeu d'origine">Mod</span>
           <span v-if="incomplete" class="tag tag-warn" :title="incomplete">Fichier incomplet</span>
           <button v-if="pendingMods" class="tag tag-btn" :title="`${pendingMods} mod${pendingMods > 1 ? 's ont' : ' a'} une nouvelle version`" @click="openMods(game)">Mods à mettre à jour</button>
@@ -127,6 +129,7 @@ const line = computed(() => {
         <div v-if="menuOpen" class="menu" @click="menuOpen = false">
           <button @click="openMods(game)"><Icon name="wand" :size="15" /> Mods et réglages<template v-if="pendingMods"> · {{ pendingMods }} à mettre à jour</template></button>
           <button v-if="gameStatus?.saveExists && isPokemonGame(game)" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
+          <button v-if="game.kaleido" @click="openRandomized(game)"><Icon name="dice" :size="15" /> Paramètres de randomisation</button>
           <button v-if="canRandomize" @click="randomizeGame(game)"><Icon name="dice" :size="15" /> Randomiser</button>
           <button v-if="isPokemonGame(game)" @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
           <button @click="revealItemInDir(game.path)"><Icon name="folder" :size="15" /> Afficher le fichier</button>

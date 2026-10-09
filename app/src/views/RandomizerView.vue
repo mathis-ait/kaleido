@@ -14,20 +14,34 @@ import PlayPanel from "../play/PlayPanel.vue";
 import { library } from "../library";
 import { deleteUserPreset, saveUserPreset, setDefaultPreset, settingsOf, userPresets, type AdventurePreset } from "../presets";
 import { nav } from "../nav";
+import {
+  CATCH_OPTS,
+  FIELD_OPTS,
+  SHOP_OPTS,
+  STARTER_OPTS,
+  STATIC_OPTS,
+  STATS_OPTS,
+  TM_COMPAT_OPTS,
+  TRADE_OPTS,
+  TRAINER_OPTS,
+  TUTOR_COMPAT_OPTS,
+  WILD_OPTS,
+  describeSettings,
+  levelLabel,
+  shinyLabel as shinyLabelOf,
+  type TabId,
+} from "./randomizerSummary";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   RANDOMIZABLE,
   isKaleidoRom,
   isRom,
   romExt,
-  type CompatMode,
   type CtrOutcome,
-  type ItemSettings,
   type Outcome,
   type PokemonRef,
   type Preset,
   type RandomizerSettings,
-  type StaticSettings,
 } from "../types";
 
 /** Réglages par défaut : une randomisation « classique », à ajuster librement. */
@@ -111,45 +125,7 @@ const shinyPresetOn = (odds: number) => {
   return isCtr.value && odds === 8192 ? n >= 4096 : n === odds;
 };
 
-/** 3DS, même calcul que le moteur (data/shiny_ctr.rs) : N tirages de PID, N exprimable
- *  par `mov r0, #N` en ARM (un octet tourné d'un nombre pair de bits). */
-const armImmediate = (v: number) => {
-  for (let rot = 0; rot < 16; rot++) {
-    const r = 2 * rot;
-    const imm = r === 0 ? v : ((v << r) | (v >>> (32 - r))) >>> 0;
-    if (imm <= 0xff) return true;
-  }
-  return false;
-};
-const ctrRerolls = (odds: number): number | "always" | null => {
-  if (odds <= 1) return "always";
-  if (odds >= 4096) return null;
-  const n = Math.min(0x4000, Math.max(1, Math.round(Math.log(1 - 1 / odds) / Math.log(4095 / 4096))));
-  for (let d = 0; d <= n; d++) {
-    for (const v of [n - d, n + d]) if (v >= 1 && v <= 0x4000 && armImmediate(v)) return v === 1 ? null : v;
-  }
-  return null;
-};
-const ctrShinyLabel = (odds: number) => {
-  const n = ctrRerolls(odds);
-  if (n === "always") return "tous les Pokémon";
-  if (n === null) return "1 / 4096 (normal)";
-  return `1 / ${Math.max(1, Math.round(1 / (1 - Math.pow(4095 / 4096, n))))}`;
-};
-
-/** Même calcul que le moteur : seuil arrondi entre 1 et 255 (sur 65 536). */
-const shinyLabel = computed(() => {
-  const n = Number(settings.shinyOdds) || 8192;
-  if (isCtr.value) return ctrShinyLabel(n);
-  if (n <= 1) return "tous les Pokémon";
-  const threshold = Math.min(255, Math.max(1, Math.round(65536 / n)));
-  return `1 / ${Math.floor(65536 / threshold)}`;
-});
-/** Le taux sera-t-il vraiment modifié ? (3DS : rien sous 1 / 4 096) */
-const shinyChanged = computed(() => {
-  const n = Number(settings.shinyOdds) || 8192;
-  return isCtr.value ? ctrRerolls(n) !== null : n !== 8192;
-});
+const shinyLabel = computed(() => shinyLabelOf(settings.shinyOdds, isCtr.value));
 
 /** Noms des espèces (français), pour choisir ses starters. */
 const speciesNames = ref<string[]>([]);
@@ -226,73 +202,8 @@ onMounted(async () => {
 
 // --- Options des choix exclusifs (partagées entre les onglets et le résumé)
 
-type Opt<T extends string> = { value: T; label: string; hint?: string };
-
-const STARTER_OPTS: Opt<RandomizerSettings["starters"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "random", label: "Aléatoires" },
-  { value: "three_stage", label: "Trio évolutif", hint: "Pokémon de base avec deux évolutions" },
-  { value: "triangle", label: "Plante · Feu · Eau", hint: "Trio évolutif qui garde le triangle des types" },
-  { value: "custom", label: "Je choisis", hint: "Tape le nom des trois Pokémon de ton choix" },
-];
-const WILD_OPTS: Opt<RandomizerSettings["wild"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "random", label: "Totalement aléatoires" },
-  { value: "area", label: "Par zone", hint: "Dans une zone, chaque espèce est remplacée par une même nouvelle espèce" },
-  { value: "global", label: "Global", hint: "Une espèce devient la même partout dans le jeu" },
-];
-const TRAINER_OPTS: Opt<RandomizerSettings["trainers"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "random", label: "Aléatoires" },
-  { value: "type_themed", label: "Thématiques", hint: "Chaque dresseur garde un type dominant (champions compris)" },
-];
-const STATS_OPTS: Opt<RandomizerSettings["stats"]>[] = [
-  { value: "unchanged", label: "Statistiques inchangées" },
-  { value: "shuffle", label: "Mélangées", hint: "Les 6 statistiques sont permutées, le total ne change pas" },
-  { value: "random", label: "Redistribuées", hint: "Nouvelle répartition du même total" },
-];
-const CATCH_OPTS: Opt<RandomizerSettings["catchRate"]>[] = [
-  { value: "unchanged", label: "Normale" },
-  { value: "doubled", label: "Facile (×2)" },
-  { value: "max", label: "Garantie", hint: "Taux de capture maximal pour toutes les espèces" },
-];
-const TM_COMPAT_OPTS: Opt<CompatMode>[] = [
-  { value: "unchanged", label: "Normale" },
-  { value: "random_prefer_type", label: "Aléatoire (selon le type)" },
-  { value: "random", label: "Aléatoire" },
-  { value: "full", label: "Toutes les CT pour tous" },
-];
-const TUTOR_COMPAT_OPTS: Opt<CompatMode>[] = [
-  { value: "unchanged", label: "Normale" },
-  { value: "random_prefer_type", label: "Aléatoire (selon le type)" },
-  { value: "full", label: "Tout pour tous" },
-];
-const FIELD_OPTS: Opt<ItemSettings["fieldItems"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "shuffle", label: "Mélangés", hint: "Les mêmes objets, à d'autres endroits" },
-  { value: "random", label: "Aléatoires" },
-  { value: "random_even", label: "Aléatoires équilibrés", hint: "Chaque objet sort une fois avant toute répétition" },
-];
-const SHOP_OPTS: Opt<ItemSettings["shops"]>[] = [
-  { value: "unchanged", label: "Inchangées" },
-  { value: "shuffle", label: "Mélangées" },
-  { value: "random", label: "Aléatoires", hint: "Les comptoirs principaux et les boutiques de CT ne changent pas" },
-];
-const STATIC_OPTS: Opt<StaticSettings["mode"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "swap_legendaries", label: "Légendaire contre légendaire", hint: "Un légendaire devient un autre légendaire, un Pokémon ordinaire un autre ordinaire" },
-  { value: "similar_strength", label: "Puissance similaire" },
-  { value: "random", label: "Aléatoires" },
-];
-const TRADE_OPTS: Opt<StaticSettings["trades"]>[] = [
-  { value: "unchanged", label: "Inchangés" },
-  { value: "given", label: "Pokémon reçu aléatoire", hint: "Le Pokémon demandé reste le même" },
-  { value: "given_and_requested", label: "Reçu et demandé aléatoires" },
-];
-
 // --- Onglets des réglages
 
-type TabId = "general" | "pokemon" | "starters" | "wild" | "trainers" | "moves" | "items" | "statics" | "shiny";
 const TABS: { id: TabId; label: string; intro: string }[] = [
   { id: "general", label: "Général", intro: "Préréglages, sortie et résumé de tout ce qui change par rapport à une randomisation classique." },
   { id: "pokemon", label: "Pokémon", intro: "Ce qui change pour toutes les espèces : statistiques, types, talents, évolutions et attaques apprises." },
@@ -383,82 +294,21 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 // --- Résumé : chaque option différente des réglages par défaut, en français courant
 
 const DEFAULTS = defaults();
-const lab = <T extends string>(opts: Opt<T>[], v: T) => opts.find((o) => o.value === v)?.label ?? v;
 interface Change {
   tab: TabId;
   text: string;
 }
-const changes = computed<Change[]>(() => {
-  const s = settings;
-  const d = DEFAULTS;
-  const out: Change[] = [];
-  const add = (tab: TabId, changed: boolean, text: string) => {
-    if (changed) out.push({ tab, text });
-  };
-  const flag = (tab: TabId, label: string, v: boolean, dv: boolean) => add(tab, v !== dv, `${label} : ${v ? "oui" : "non"}`);
-  const pct = (p: number) => `${p >= 0 ? "+" : ""}${p} %`;
-
-  add("pokemon", s.stats !== d.stats, `Statistiques : ${lab(STATS_OPTS, s.stats).toLowerCase()}`);
-  flag("pokemon", "Types aléatoires", s.randomTypes, d.randomTypes);
-  flag("pokemon", "Talents aléatoires", s.randomAbilities, d.randomAbilities);
-  flag("pokemon", "Sans légendaires", s.noLegendaries, d.noLegendaries);
-  flag("pokemon", "Évolutions sans échange", s.easyEvolutions, d.easyEvolutions);
-  flag("pokemon", "Attaques apprises aléatoires", s.randomMovesets, d.randomMovesets);
-  add("pokemon", s.catchRate !== d.catchRate, `Capture : ${lab(CATCH_OPTS, s.catchRate).toLowerCase()}`);
-
-  const chosen = s.starters === "custom" ? customNames.value.filter((n) => n.trim()).join(", ") : "";
-  add("starters", s.starters !== d.starters, `Starters : ${lab(STARTER_OPTS, s.starters).toLowerCase()}${chosen ? ` (${chosen})` : ""}`);
-  const kanto = s.kantoStarters;
-  const kantoChosen = kanto === "custom" ? customKantoNames.value.filter((n) => n.trim()).join(", ") : "";
-  add("starters", isXy.value && kanto !== "unchanged", `Pokémon de Kanto : ${lab(STARTER_OPTS, kanto).toLowerCase()}${kantoChosen ? ` (${kantoChosen})` : ""}`);
-
-  add("wild", s.wild !== d.wild, `Pokémon sauvages : ${lab(WILD_OPTS, s.wild).toLowerCase()}`);
-  flag("wild", "Sauvages de puissance similaire", s.wildSimilarStrength, d.wildSimilarStrength);
-  add("wild", s.wildLevelPercent !== d.wildLevelPercent, `Niveaux des sauvages : ${levelLabel(s.wildLevelPercent)}`);
-
-  add("trainers", s.trainers !== d.trainers, `Dresseurs : ${lab(TRAINER_OPTS, s.trainers).toLowerCase()}`);
-  flag("trainers", "Dresseurs de puissance similaire", s.trainersSimilarStrength, d.trainersSimilarStrength);
-  add("trainers", s.trainerLevelPercent !== d.trainerLevelPercent, `Niveaux des dresseurs : ${levelLabel(s.trainerLevelPercent)}`);
-  flag("trainers", "Pokémon des dresseurs évolués", s.trainerEvolutions, d.trainerEvolutions);
-  flag("trainers", "IV des dresseurs au maximum", s.trainerMaxIvs, d.trainerMaxIvs);
-
-  const m = s.moves;
-  const dm = d.moves;
-  flag("moves", "CT aléatoires", m.randomTms, dm.randomTms);
-  flag("moves", "Maîtres des capacités aléatoires", m.randomTutors, dm.randomTutors);
-  flag("moves", "Garder les attaques de terrain", m.keepFieldMoves, dm.keepFieldMoves);
-  flag("moves", "Sans Sonicboom / Draco-Rage", m.noGameBreaking, dm.noGameBreaking);
-  add("moves", m.goodDamagingPercent !== dm.goodDamagingPercent, `Attaques offensives garanties : ${m.goodDamagingPercent} %`);
-  add("moves", m.tmCompat !== dm.tmCompat, `Compatibilité CT : ${lab(TM_COMPAT_OPTS, m.tmCompat).toLowerCase()}`);
-  add("moves", m.tutorCompat !== dm.tutorCompat, `Maîtres des capacités : ${lab(TUTOR_COMPAT_OPTS, m.tutorCompat).toLowerCase()}`);
-  flag("moves", "Toutes les CS pour tous", m.fullHmCompat, dm.fullHmCompat);
-  flag("moves", "Les évolutions héritent des CT", m.followEvolutions, dm.followEvolutions);
-  flag("moves", "Garder les CT des attaques apprises", m.levelupSanity, dm.levelupSanity);
-
-  const it = s.items;
-  const di = d.items;
-  add("items", it.fieldItems !== di.fieldItems, `Objets au sol : ${lab(FIELD_OPTS, it.fieldItems).toLowerCase()}`);
-  add("items", it.shops !== di.shops, `Boutiques : ${lab(SHOP_OPTS, it.shops).toLowerCase()}`);
-  flag("items", "Pas d'objets inutiles", it.banBadFieldItems, di.banBadFieldItems);
-  flag("items", "Pas d'objets inutiles en boutique", it.banBadShopItems, di.banBadShopItems);
-  flag("items", "Pas d'objets ordinaires en boutique", it.banRegularShopItems, di.banRegularShopItems);
-  flag("items", "Pierres d'évolution en vente", it.guaranteeEvolutionItems, di.guaranteeEvolutionItems);
-  flag("items", "Objets X en vente", it.guaranteeXItems, di.guaranteeXItems);
-  flag("items", "Pas d'objets trop forts en boutique", it.banOpShopItems, di.banOpShopItems);
-  flag("items", "Sans Super Bonbon", it.noRareCandy, di.noRareCandy);
-  flag("items", "Sans Master Ball", it.noMasterBall, di.noMasterBall);
-
-  const st = s.statics;
-  const ds = d.statics;
-  add("statics", st.mode !== ds.mode, `Pokémon fixes et dons : ${lab(STATIC_OPTS, st.mode).toLowerCase()}`);
-  add("statics", st.levelModifier !== ds.levelModifier, `Niveaux des Pokémon fixes : ${pct(st.levelModifier)}`);
-  add("statics", st.trades !== ds.trades, `Échanges : ${lab(TRADE_OPTS, st.trades).toLowerCase()}`);
-  flag("statics", "Objets tenus aléatoires (échanges)", st.tradeRandomItems, ds.tradeRandomItems);
-  flag("statics", "IV aléatoires (échanges)", st.tradeRandomIvs, ds.tradeRandomIvs);
-
-  add("shiny", shinyChanged.value, `Chromatiques : ${shinyLabel.value}`);
-  return out;
-});
+const changes = computed<Change[]>(() =>
+  describeSettings(settings, DEFAULTS, {
+    isCtr: isCtr.value,
+    isXy: isXy.value,
+    starterNames: customNames.value,
+    kantoNames: customKantoNames.value,
+  })
+    // La sortie 3DS (mod ou ROM) ne change rien à la randomisation elle-même.
+    .filter((r) => r.changed && r.tab !== "general")
+    .map((r) => ({ tab: r.tab, text: `${r.label} : ${r.value}` })),
+);
 const changeCount = (id: TabId) => changes.value.filter((c) => c.tab === id).length;
 // Les pastilles « n modifs » élargissent la barre sans la redimensionner.
 watch(
@@ -620,10 +470,6 @@ async function generateCtr() {
   }
 }
 
-// Déclaration de fonction (hissée) : le résumé des modifs l'appelle dès l'initialisation.
-function levelLabel(p: number) {
-  return p === 100 ? "inchangés" : `${p > 100 ? "+" : ""}${p - 100} %`;
-}
 </script>
 
 <template>

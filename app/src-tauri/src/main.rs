@@ -280,6 +280,14 @@ async fn randomize_ctr(path: PathBuf, settings: Settings, seed: u64, output: Pat
         if let Some(title_dir) = written.romfs.as_ref().and_then(|r| r.parent()) {
             let _ = std::fs::write(title_dir.join(kaleido_core::formats::romfs::MOD_BASE_FILE), path.display().to_string());
         }
+        // Signature (seed + code de partage) : la bibliothèque retrouve les paramètres appliqués.
+        let tag = randomizer::KaleidoTag::new(seed, outcome.share_code.clone());
+        if let Some(title_dir) = written.romfs.as_ref().and_then(|r| r.parent()) {
+            let _ = tag.write_to(&title_dir.join(randomizer::TAG_FILE));
+        }
+        if let Some(image) = &written.image {
+            let _ = tag.write_to(&randomizer::KaleidoTag::sidecar_of(image));
+        }
         let show = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
         Ok(CtrOutcome { outcome, romfs: show(written.romfs), image: show(written.image) })
     })
@@ -356,6 +364,35 @@ fn parse_share_code(code: String) -> Option<(u64, Settings)> {
     randomizer::parse_share_code(&code)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RandomizedInfo {
+    seed: u64,
+    version: String,
+    share_code: String,
+    settings: Settings,
+    /// Journal écrit à la génération, s'il est toujours là.
+    journal: Option<String>,
+}
+
+/// Paramètres appliqués à une ROM générée par Kaleido (lus dans sa signature).
+#[tauri::command]
+async fn randomized_info(path: PathBuf) -> Result<Option<RandomizedInfo>, String> {
+    blocking(move || {
+        let Some(tag) = kaleido_core::detect_path(&path).map_err(|e| e.to_string())?.kaleido else { return Ok(None) };
+        let Some((seed, settings)) = randomizer::parse_share_code(&tag.share_code) else { return Ok(None) };
+        // DS / GB / GBA : `<rom>.journal.txt` ; 3DS : `Kaleido <seed> - journal.txt` dans le dossier
+        // de sortie (parent de la ROM, ou quelques niveaux au-dessus du dossier du mod).
+        let ctr_name = format!("Kaleido {seed} - journal.txt");
+        let journal = std::iter::once(path.with_extension("journal.txt"))
+            .chain(path.ancestors().skip(1).take(4).map(|dir| dir.join(&ctr_name)))
+            .find(|p| p.is_file())
+            .map(|p| p.display().to_string());
+        Ok(Some(RandomizedInfo { seed, version: tag.version, share_code: tag.share_code, settings, journal }))
+    })
+    .await
+}
+
 #[tauri::command]
 fn sprite_cache_info(app: AppHandle) -> Result<sprites::CacheInfo, String> {
     sprites::cache_info(&app)
@@ -411,6 +448,7 @@ fn main() {
             rom_editor_save,
             rom_editor_save_ctr,
             parse_share_code,
+            randomized_info,
             sprite_cache_info,
             overlay::overlay_status,
             overlay::overlay_configure,
