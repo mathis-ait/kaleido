@@ -106,7 +106,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <tr><td>Systèmes animés au dessin</td><td><span class="pill p-ok">corrigés</span></td><td>Fondus et animations d'interface figés sur le dessin ajouté ; diff du tas propre</td></tr>
     <tr><td>Intérieurs des bâtiments</td><td><span class="pill p-ok">corrigé</span></td><td>Lot A : la 3D stéréoscopique des intérieurs rendait le décor avec des caméras non lissées. Boutique de Rosyères : écarts réguliers au lieu d'une pièce figée une image sur deux (commit 03e5428), à confirmer à l'essai réel</td></tr>
     <tr><td>Combats</td><td><span class="pill p-ok">60 images</span></td><td>15 d'origine dans Azahar, 30 avec le lissage : le module <span class="mono">DllBattle</span> ne renouvelle l'image qu'un dessin sur deux</td></tr>
-    <tr><td>Méga-Évolution, Envol, Surf, Concours, Amie, Super Entraînement, Bases secrètes, cinématiques</td><td><span class="pill p-todo">non testé</span></td><td>La sauvegarde de test (0 badge, 0:29) n'y donne pas accès</td></tr>
+    <tr><td>Méga-Évolution, Envol, Surf, Concours, Amie, Super Entraînement</td><td><span class="pill p-ok">60 images</span></td><td>Lot D, sauvegarde de fin de jeu ; Bases secrètes et cinématiques des légendaires non testées</td></tr>
     <tr><td>Kaleido, v1.4, Saphir Alpha, console</td><td><span class="pill p-todo">à faire</span></td><td>Patch installé à la main dans l'Azahar de l'utilisateur, ancien fichier gardé en <span class="mono">code.ips.avant-60fps.bak</span></td></tr>
   </tbody>
 </table></div>
@@ -198,7 +198,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 <section class="lot" id="lot-d">
   <div class="lot-head">
     <span class="lot-id">Lot D</span><h3>Scènes non testées</h3>
-    <span class="meta"><span class="pill p-todo">2 séances</span><span class="pill p-wait">attend une sauvegarde</span></span>
+    <span class="meta"><span class="pill p-ok">fait le 10 octobre</span><span class="pill p-wait">2 scènes restantes</span></span>
   </div>
   <p>Demande une sauvegarde plus avancée, idéalement après la Ligue (Envol, Méga-Évolution, Surf, Bases secrètes). Elle sera copiée dans le bac à sable ; l'originale n'est jamais modifiée.</p>
   <div class="tbl"><table>
@@ -212,14 +212,16 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
       <tr><td>Cinématiques des légendaires</td><td>Coupures de plan en série</td><td>Aucune image mélangée entre deux plans, durée identique</td></tr>
     </tbody>
   </table></div>
+  <p><b>Résultat</b> (sauvegarde de fin de jeu, Vulkan ×6) : vélo, Surf, Envol, atterrissage, Méga-Évolution, Pokémon-Amie, Super Entraînement et Concours à 57-59 images par seconde réelle sur l'écran 3D. L'Envol demandait un correctif du seuil de translation (caméra très rapide refusée à chaque tick). Le Super Entraînement fait tomber Azahar à 25 % en ×6 même sans lissage (104 % en ×3). Non testés : Bases secrètes, cinématiques des légendaires.</p>
   <div class="gate"><b>Porte :</b> chaque ligne vérifiée en capture, ou listée comme limite connue avec sa raison.</div>
 </section>
 
 <section class="lot" id="lot-e">
   <div class="lot-head">
     <span class="lot-id">Lot E</span><h3>Intégration dans Kaleido</h3>
-    <span class="meta"><span class="pill p-todo">2 séances</span></span>
+    <span class="meta"><span class="pill p-ok">fait le 10 octobre</span><span class="pill p-wait">essai dans l'app à faire</span></span>
   </div>
+  <p><b>Résultat.</b> Branche fusionnée avec <span class="mono">main</span>. Entrée « 60 fps natif » dans Mods et réglages : patch embarqué par SHA-256, fusion avec le <span class="mono">code.ips</span> existant (refus si chevauchement), retrait qui garde le taux de chromatiques, remplacement d'une version plus ancienne, blocage si une mise à jour est installée, refus si un code « 60 FPS » est actif. Tests Rust (dont ROM réelle) et front au vert. Pas encore essayé dans l'application lancée.</p>
   <ul>
     <li><b>Remettre la branche à jour.</b> <span class="mono">fps60</span> part de la 0.5.0 ; <span class="mono">main</span> a 20 commits d'avance (0.7.0, mods v2, LayeredFS 3DS).</li>
     <li><b>Patchs précompilés.</b> Les utilisateurs n'ont pas de compilateur ARM : Kaleido embarque les <span class="mono">code.ips</span> produits par <span class="mono">build.py</span>, un par SHA-256 de <span class="mono">code.bin</span>, au lieu de compiler le runtime comme le prévoyait le PRD d'origine.</li>

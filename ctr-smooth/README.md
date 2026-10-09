@@ -6,6 +6,36 @@ ajoutée est rendue avec des matrices interpolées entre les deux derniers ticks
 
 Cible : Pokémon Rubis Oméga EUR, code cartouche v1.0 (Rev 2), Azahar 2126.1.2.
 
+## Suite — lot E : intégration dans Kaleido (10 octobre 2026)
+
+« Mods et réglages » de Rubis Oméga propose l'entrée **60 fps natif** (catégorie Fluidité). Kaleido
+lit le programme de la ROM, vérifie son SHA-256 (profil `crates/core/src/data/fps60_ctr.rs`, qui
+embarque `runtime/build/code.ips`), puis écrit un seul `code.ips` : le lissage fusionné avec le
+`code.ips` déjà présent (taux de chromatiques), refusé s'ils écrivent aux mêmes octets. Le retrait
+garde les autres patchs ; une version plus ancienne du runtime est remplacée. Entrée bloquée si une
+mise à jour du jeu est installée dans Azahar ; installation refusée si un code de triche « 60 FPS »
+est actif. Tests : `crates/core/tests/ctr_fps60_rom.rs` (ROM réelle, avec le taux de chromatiques et
+avec le patch de la phase 2).
+
+## Suite — lot D : scènes avec une sauvegarde de fin de jeu (10 octobre 2026)
+
+Sauvegarde fournie (8 badges, Pokédex 721), copiée dans le bac à sable. Vulkan ×6, mesure sans
+pause (`tools/cadence.py` : images présentées sur chaque écran et images identiques à la précédente).
+
+| Scène | Images par seconde réelle, lissage actif | Remarque |
+| --- | --- | --- |
+| Vélo, Surf | 29 transitions distinctes sur 29, écarts réguliers | |
+| Envol | 58, aucune image répétée | **corrigé** : la caméra (120 à 400 unités par tick) était refusée par le seuil de translation à chaque tick ; un grand déplacement qui prolonge le mouvement précédent est désormais mélangé |
+| Atterrissage, Vol | transitions propres | |
+| Méga-Évolution (Lucario) | 58 | aucun glissement, coupures de plan détectées |
+| Pokémon-Amie | écran du bas (Pokémon 3D) 59 | écran du haut : fond 2D à 30, attendu |
+| Super Entraînement | écran du haut 58 | à ×6, Azahar tombe à 25 % de vitesse **même lissage coupé** ; à ×3, 104 % |
+| Concours Live (Poivressel) | 57, aucune image répétée | écran du bas 2D à 30 |
+| Bases secrètes, cinématiques des légendaires | non testées | |
+
+Après le changement de seuil, scène du rival rejouée (2 actives, 2 coupées) : état MT19937 final
+identique à la phase 2.
+
 ## Suite — lot C : combats (9 octobre 2026)
 
 | Combat du rival, Vulkan ×6, mesure sans pause GDB | Lissage coupé | Lissage actif |
