@@ -497,6 +497,7 @@ fn main() {
             mods::mods_uninstall,
             mods::mods_toggle_other,
             mods::mods_toggle,
+            mods::mods_reorder,
             mods::mods_save_restore,
             mods::mods_profile_save,
             mods::mods_profile_delete,

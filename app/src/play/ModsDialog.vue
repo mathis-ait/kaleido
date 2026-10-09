@@ -28,6 +28,7 @@ import {
   deleteProfile,
   formatDate,
   ORIGIN_PROFILE,
+  reorderMods,
   restoreSave,
   saveProfile,
   stopWatch,
@@ -454,6 +455,49 @@ async function removeProfile() {
 
 watch(activeProfile, (p) => (profileChoice.value = p), { immediate: true });
 
+// --- Mises à jour et priorité
+
+const updatable = computed(() => (view.value?.mods ?? []).filter((m) => m.installed && m.updateAvailable && m.source !== "manual"));
+
+async function updateAll() {
+  for (const m of updatable.value.slice()) {
+    const fresh = view.value?.mods.find((x) => x.id === m.id);
+    if (fresh?.updateAvailable) await run(fresh.id, fresh.name, {});
+  }
+}
+
+async function revert(m: ModEntry) {
+  if (!m.previousFile) return;
+  await run(m.id, m.name, { file: m.previousFile });
+}
+
+/** Mods actifs qui remplacent des fichiers en commun, dans l'ordre où Eden les applique. */
+const priority = computed(() => {
+  const v = view.value;
+  if (!v || platform.value !== "switch") return [];
+  const items = [
+    ...v.mods.filter((m) => m.installed && m.enabled && m.folder && m.overlaps.length).map((m) => ({ name: m.name, folder: m.folder!, overlaps: m.overlaps })),
+    ...v.others.filter((o) => o.enabled && o.overlaps.length).map((o) => ({ name: o.name, folder: o.name, overlaps: o.overlaps })),
+  ];
+  // Eden compare les noms de dossiers octet par octet : le premier l'emporte.
+  return items.sort((a, b) => (a.folder < b.folder ? -1 : a.folder > b.folder ? 1 : 0));
+});
+
+async function move(index: number, by: number) {
+  const list = priority.value.map((p) => p.folder);
+  const j = index + by;
+  if (j < 0 || j >= list.length) return;
+  [list[index], list[j]] = [list[j], list[index]];
+  busy.value = "order";
+  try {
+    await applyView(await reorderMods(target.value, list));
+  } catch (e) {
+    await message(String(e), { title: "Ordre non changé", kind: "error" });
+  } finally {
+    busy.value = null;
+  }
+}
+
 const installedMods = computed(() => (view.value?.mods ?? []).filter((m) => m.installed && m.kind !== "cheats"));
 
 // --- Codes de triche
@@ -532,7 +576,7 @@ async function toggleCheat(c: Cheat) {
 
             <section v-for="g in groups" :key="g.category" class="group">
               <h4>{{ g.label }}</h4>
-              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @revert="revert(m)" @toggle="(on) => toggle(m, on)" />
             </section>
             <p v-if="!groups.length" class="dim center">Aucun mod dans cette catégorie pour ce jeu.</p>
             <p v-if="view.gamebanana" class="dim small center">
@@ -546,7 +590,28 @@ async function toggleCheat(c: Cheat) {
           <!-- Installés -->
           <template v-else-if="tab === 'installed'">
             <p v-if="!installedMods.length && !view.others.length" class="dim center">Aucun mod installé pour ce jeu.</p>
-            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+            <div v-if="updatable.length" class="sel-head">
+              <p class="note small"><Icon name="download" :size="14" /> {{ updatable.length }} mod{{ updatable.length > 1 ? "s ont" : " a" }} une nouvelle version.</p>
+              <button class="sv-btn solid small-btn" :disabled="!!busy" @click="updateAll">Tout mettre à jour</button>
+            </div>
+            <template v-if="priority.length > 1">
+              <div class="block-head">
+                <h4>Priorité entre mods</h4>
+              </div>
+              <p class="dim small">Ces mods remplacent des fichiers en commun : pour ces fichiers, celui du haut l'emporte. Eden applique les dossiers par ordre alphabétique, Kaleido les numérote dans l'ordre choisi.</p>
+              <ol class="priority">
+                <li v-for="(p, i) in priority" :key="p.folder">
+                  <span class="rank">{{ i + 1 }}</span>
+                  <div>
+                    <span>{{ p.name }}</span>
+                    <small class="dim">en commun avec {{ p.overlaps.join(", ") }}</small>
+                  </div>
+                  <button class="icon-btn" :disabled="!!busy || i === 0" aria-label="Monter" title="Passer devant" @click="move(i, -1)"><Icon name="chevron-up" :size="14" /></button>
+                  <button class="icon-btn" :disabled="!!busy || i === priority.length - 1" aria-label="Descendre" title="Passer derrière" @click="move(i, 1)"><Icon name="chevron-down" :size="14" /></button>
+                </li>
+              </ol>
+            </template>
+            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @revert="revert(m)" @toggle="(on) => toggle(m, on)" />
             <template v-if="view.saves.length">
               <div class="block-head">
                 <h4>Copies de ta partie</h4>
@@ -963,6 +1028,43 @@ async function toggleCheat(c: Cheat) {
 .others li.off span {
   color: var(--text-dim);
   text-decoration: line-through;
+}
+
+.priority {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priority li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.priority li div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.priority .rank {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .variant-overlay {

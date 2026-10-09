@@ -19,6 +19,8 @@ pub struct NexusMod {
     pub thumbnail_url: Option<String>,
     #[serde(default)]
     pub downloads: Option<u64>,
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -53,12 +55,12 @@ pub fn mods(app: &AppHandle, ids: &[(String, u32)]) -> BTreeMap<(String, u32), N
     if wanted.is_empty() {
         return BTreeMap::new();
     }
-    let key = crate::mods::fxhash(&format!("{wanted:?}"));
+    let key = crate::mods::fxhash(&format!("v2{wanted:?}"));
     let cache = app.path().app_cache_dir().ok().map(|d| d.join("mods").join(format!("nexus-{key:016x}.json")));
     let fresh = cache.as_ref().and_then(|c| fs::metadata(c).ok()).and_then(|m| m.modified().ok()).and_then(|t| SystemTime::now().duration_since(t).ok()).is_some_and(|a| a < Duration::from_secs(24 * 3600));
     let body = if fresh { cache.as_ref().and_then(|c| fs::read(c).ok()) } else { None }.or_else(|| {
         let list = wanted.iter().map(|(d, n)| format!("{{gameDomain: \\\"{d}\\\", modId: {n}}}")).collect::<Vec<_>>().join(", ");
-        let query = format!("{{\"query\":\"{{ legacyModsByDomain(ids: [{list}]) {{ nodes {{ modId thumbnailUrl downloads }} }} }}\"}}");
+        let query = format!("{{\"query\":\"{{ legacyModsByDomain(ids: [{list}]) {{ nodes {{ modId thumbnailUrl downloads version }} }} }}\"}}");
         let fetched = ureq::post("https://api.nexusmods.com/v2/graphql")
             .set("User-Agent", USER_AGENT)
             .set("Content-Type", "application/json")

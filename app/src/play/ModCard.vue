@@ -6,7 +6,7 @@ import { formatCount, formatSize, modProgress, type ModEntry } from "./mods";
 
 /** Carte d'un mod : aperçu, description, avertissements et actions. */
 const props = defineProps<{ mod: ModEntry; busy: string | null; waiting?: boolean; have?: string | null }>();
-const emit = defineEmits<{ install: []; import: []; download: []; cancelWait: []; uninstall: []; toggle: [enabled: boolean] }>();
+const emit = defineEmits<{ install: []; import: []; download: []; cancelWait: []; uninstall: []; revert: []; toggle: [enabled: boolean] }>();
 
 const m = computed(() => props.mod);
 const manual = computed(() => m.value.source === "manual" || (m.value.kind === "patch" && !m.value.gb));
@@ -56,7 +56,7 @@ const sourceLabel = computed(() => {
       <p v-if="m.requires.length" class="warn"><Icon name="alert" :size="13" /> Nécessite : {{ m.requires.join(", ") }}</p>
       <p v-if="m.warning" class="warn"><Icon name="alert" :size="13" /> {{ m.warning }}</p>
       <p v-if="m.overlaps.length" class="warn">
-        <Icon name="alert" :size="13" /> Remplace les mêmes fichiers que {{ m.overlaps.join(", ") }} : pour ces fichiers, un seul des deux s'appliquera.
+        <Icon name="alert" :size="13" /> Remplace les mêmes fichiers que {{ m.overlaps.join(", ") }} : pour ces fichiers, c'est l'ordre de « Priorité entre mods » (onglet Installés) qui décide.
       </p>
       <p v-if="m.conflicts.length && !m.installed" class="dim">Désactivera : {{ m.conflicts.join(", ") }}</p>
       <p class="meta">
@@ -94,6 +94,7 @@ const sourceLabel = computed(() => {
           <span class="track" />
           <span>{{ m.enabled ? "Activé" : "Désactivé" }}</span>
         </label>
+        <button v-if="m.previousFile && !m.updateAvailable" class="sv-btn" :disabled="locked" title="Remet le fichier d'avant la dernière mise à jour" @click="emit('revert')">Version précédente</button>
         <button class="sv-btn" :disabled="locked" @click="emit('uninstall')">{{ working ? "…" : m.kind === "patch" ? "Supprimer la ROM" : "Retirer" }}</button>
       </template>
     </div>

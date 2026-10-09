@@ -105,6 +105,10 @@ pub struct ModEntry {
     pub exefs: Option<String>,
     /// Touche à la partie (romhack, rééquilibrage, mod exclusif) : sauvegarde copiée avant.
     pub affects_save: bool,
+    /// Fichier GameBanana d'avant la dernière mise à jour (encore en cache) : retour possible.
+    pub previous_file: Option<u64>,
+    /// Dossier du mod (Switch), pour l'ordre de priorité.
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -171,6 +175,14 @@ pub(crate) struct Marker {
     gb: Option<u32>,
     #[serde(default)]
     page: Option<String>,
+    /// Fichier GameBanana installé, et celui d'avant une mise à jour (pour revenir en arrière).
+    #[serde(default)]
+    file: Option<u64>,
+    #[serde(default)]
+    previous_file: Option<u64>,
+    /// Version Nexus Mods au moment de l'installation.
+    #[serde(default)]
+    nexus_version: Option<String>,
 }
 
 /// Options d'installation.
@@ -1531,6 +1543,31 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
         }
     }
 
+    // Mises à jour : mods installés depuis l'explorateur (fichier plus récent sur GameBanana)
+    // et mods Nexus (version plus récente), et retour possible à la version d'avant.
+    let explorer: Vec<u32> = entries.iter().filter(|e| e.installed && e.source == "explorer").filter_map(|e| e.gb).collect();
+    let profiles = gb_profiles(app, &explorer);
+    let nexus_keys: Vec<(String, u32)> = entries.iter().filter(|e| e.installed).filter_map(|e| crate::nexus::parse_id(&e.id)).collect();
+    let nexus = crate::nexus::mods(app, &nexus_keys);
+    for e in entries.iter_mut().filter(|e| e.installed) {
+        let Some((folder, marker, _)) = mine(&e.id) else { continue };
+        e.folder = Some(folder);
+        e.previous_file = marker.previous_file;
+        if e.source == "explorer" {
+            if let Some(Ok((_, files))) = e.gb.and_then(|g| profiles.get(&g)) {
+                let newest = pick_gb_file(files, None, None);
+                e.update_available = newest.is_some_and(|f| marker.version.as_deref() != Some(f._sFile.as_str()) && marker.file != Some(f._idRow));
+            }
+        }
+        if let (Some(have), Some(now)) = (marker.nexus_version.as_deref(), crate::nexus::parse_id(&e.id).and_then(|k| nexus.get(&k)).and_then(|m| m.version.as_deref())) {
+            if have != now {
+                e.update_available = true;
+                let w = format!("Nouvelle version sur Nexus Mods ({now}, tu as la {have}) : télécharge-la, Kaleido la mettra à la place.");
+                e.warning = Some(e.warning.take().map_or(w.clone(), |old| format!("{w} {old}")));
+            }
+        }
+    }
+
     let other_names: Vec<String> = installed.iter().filter(|(_, m)| m.is_none()).map(|(n, _)| n.clone()).collect();
     resolve_conflicts(&mut entries, &active_others, &other_names);
     for e in entries.iter_mut().filter(|e| e.installed && e.enabled) {
@@ -1604,6 +1641,9 @@ fn prepare_archive(
         marker.version = Some(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(stem));
         marker.source = if catalog.is_some() { "catalog".into() } else { "local".into() };
         marker.page = catalog.as_ref().and_then(|c| c.page.clone());
+        if let Some(key) = crate::nexus::parse_id(id) {
+            marker.nexus_version = crate::nexus::mods(app, &[key.clone()]).get(&key).and_then(|m| m.version.clone());
+        }
     } else if let Some(gb) = catalog.as_ref().and_then(|c| c.gb).or_else(|| id.strip_prefix("gb:").and_then(|n| n.split(':').next()?.parse::<u32>().ok())) {
         let (profile, files) = crate::gamebanana::profile_raw(app, gb)?;
         let file = pick_gb_file(&files, opts.file, catalog.as_ref().and_then(|c| c.file.as_deref())).ok_or("ce mod n'a pas de fichier téléchargeable")?;
@@ -1614,6 +1654,7 @@ fn prepare_archive(
         marker.version = Some(file._sFile.clone());
         marker.source = "GameBanana".into();
         marker.gb = Some(gb);
+        marker.file = Some(file._idRow);
         marker.category = Some(catalog.as_ref().map(|c| c.category.clone()).unwrap_or_else(|| category_from_gb(&profile.category, &profile.name)));
     } else {
         return Err("ce mod se télécharge à la main : choisis le fichier téléchargé".into());
@@ -1714,25 +1755,37 @@ fn install_switch(app: &AppHandle, target: &ModTarget, tid: u64, id: &str, opts:
             Err(list) => return Ok(Installed::Variants(list)),
         };
         emit("install", 0, 1);
-        // Ancienne version (active ou mise de côté) remplacée.
+        // Ancienne version (active ou mise de côté) remplacée : la nouvelle reprend son dossier
+        // (et donc son rang de priorité), son état et garde trace du fichier d'avant.
+        let mut previous: Option<(PathBuf, Marker)> = None;
         for dir in [&game_dir, &parked] {
             for (name, marker) in installed_dirs(dir) {
-                if marker.is_some_and(|m| m.id == p.marker.id) {
+                if let Some(m) = marker.filter(|m| m.id == p.marker.id) {
                     fs::remove_dir_all(dir.join(&name)).map_err(|e| e.to_string())?;
+                    previous = Some((dir.join(&name), m));
                 }
             }
         }
-        let base = folder_name(p.marker.name.as_deref().unwrap_or("Mod"));
-        let mut folder = base.clone();
-        let mut n = 2;
-        while game_dir.join(&folder).exists() || parked.join(&folder).exists() {
-            folder = format!("{base} ({n})");
-            n += 1;
+        let mut marker = p.marker.clone();
+        if let Some((_, old)) = &previous {
+            marker.previous_file = if old.file.is_some() && old.file != marker.file { old.file } else { old.previous_file.filter(|f| Some(*f) != marker.file) };
         }
-        let target = game_dir.join(&folder);
+        let target = match &previous {
+            Some((path, _)) => path.clone(),
+            None => {
+                let base = folder_name(marker.name.as_deref().unwrap_or("Mod"));
+                let mut folder = base.clone();
+                let mut n = 2;
+                while game_dir.join(&folder).exists() || parked.join(&folder).exists() {
+                    folder = format!("{base} ({n})");
+                    n += 1;
+                }
+                game_dir.join(&folder)
+            }
+        };
         move_dir(&p.root, &target)?;
         let _ = fs::remove_file(target.join(MARKER));
-        write_marker(&target, &p.marker)?;
+        write_marker(&target, &marker)?;
         Ok(Installed::Done)
     });
     let _ = fs::remove_dir_all(&work);
@@ -1772,6 +1825,84 @@ fn toggle_folder(app: &AppHandle, tid: u64, name: &str, enabled: bool) -> Result
         return Err(format!("un dossier « {name} » existe déjà"));
     }
     move_dir(&from, &to)
+}
+
+/// Retire un préfixe de rang « 01 » … « 99 » d'un nom de dossier installé à la main
+/// (« 01 HD Textures »). « 60 FPS » ou « 30 fps » sont des noms, pas des rangs.
+pub fn strip_rank(name: &str) -> &str {
+    let b = name.as_bytes();
+    let rest = name.get(3..).unwrap_or("");
+    let looks_like_name = rest.get(..3).is_some_and(|w| w.eq_ignore_ascii_case("fps")) || rest.starts_with(|c: char| c.is_ascii_digit());
+    if b.len() > 3 && b[0].is_ascii_digit() && b[1].is_ascii_digit() && b[2] == b' ' && !looks_like_name {
+        rest
+    } else {
+        name
+    }
+}
+
+/// Nouveaux noms pour l'ordre voulu : (dossier, nom de base connu pour un mod de Kaleido).
+/// Le premier l'emporte (Eden lit les dossiers par ordre alphabétique et garde le premier
+/// fichier trouvé). Seuls les dossiers à renommer sont rendus.
+pub fn rank_names(order: &[(String, Option<String>)]) -> Vec<(String, String)> {
+    order
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (old, base))| {
+            let base = base.clone().unwrap_or_else(|| strip_rank(old).to_string());
+            let new = format!("{:02} {base}", i + 1);
+            (new != *old).then(|| (old.clone(), new))
+        })
+        .collect()
+}
+
+/// Range les dossiers actifs donnés dans cet ordre de priorité (préfixes « 01 », « 02 »…).
+fn reorder_switch(app: &AppHandle, tid: u64, order: &[String]) -> Result<(), String> {
+    let r = resolve(EmulatorId::Eden, app);
+    let game_dir = eden_load_dir(&r).ok_or("dossier d'Eden introuvable")?.join(format!("{tid:016X}"));
+    for name in order {
+        if name.is_empty() || name.contains(['/', '\\']) || name == ".." || !game_dir.join(name).is_dir() {
+            return Err(format!("dossier « {name} » introuvable"));
+        }
+    }
+    let markers = installed_dirs(&game_dir);
+    // Mods de Kaleido : leur nom d'origine vient du marqueur (sans rang éventuel déjà mis).
+    let with_base: Vec<(String, Option<String>)> = order
+        .iter()
+        .map(|n| {
+            let base = markers.iter().find(|(d, _)| d == n).and_then(|(_, m)| m.as_ref()).and_then(|m| m.name.as_deref()).map(folder_name);
+            (n.clone(), base)
+        })
+        .collect();
+    let renames = rank_names(&with_base);
+    // En deux temps, pour ne jamais tomber sur un nom déjà pris par un autre dossier de la liste.
+    let mut temp = Vec::new();
+    for (i, (old, new)) in renames.iter().enumerate() {
+        let t = format!(".kaleido-tri-{i}");
+        fs::rename(game_dir.join(old), game_dir.join(&t)).map_err(|e| format!("« {old} » ne peut pas être renommé : {e}"))?;
+        temp.push((t, new.clone(), old.clone()));
+    }
+    for (t, new, old) in &temp {
+        if game_dir.join(new).exists() {
+            let _ = fs::rename(game_dir.join(t), game_dir.join(old));
+            return Err(format!("un dossier « {new} » existe déjà"));
+        }
+        fs::rename(game_dir.join(t), game_dir.join(new)).map_err(|e| e.to_string())?;
+    }
+    // Les profils retiennent les mods installés à la main par leur dossier.
+    let mut g = crate::mods_saves::game_profiles(app, tid);
+    let mut changed = false;
+    for p in g.profiles.iter_mut() {
+        for k in p.mods.iter_mut() {
+            if let Some((_, new)) = renames.iter().find(|(old, _)| k.strip_prefix("folder:") == Some(old.as_str())) {
+                *k = format!("folder:{new}");
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        crate::mods_saves::set_game_profiles(app, tid, g)?;
+    }
+    Ok(())
 }
 
 /// Met de côté ou réactive un mod installé par Kaleido.
@@ -2266,7 +2397,7 @@ fn install_plugin3gx(app: &AppHandle, user: &Path, tid: u64, id: &str, opts: &In
             fs::copy(p, dir.join(&name)).map_err(|e| e.to_string())?;
             names.push(name);
         }
-        let marker = Marker { id: id.into(), version: Some(names.join("|")), source: "GameBanana".into(), name: Some(entry.name.clone()), category: Some(entry.category.clone()), gb: entry.gb, page: entry.page.clone() };
+        let marker = Marker { id: id.into(), version: Some(names.join("|")), source: "GameBanana".into(), name: Some(entry.name.clone()), category: Some(entry.category.clone()), gb: entry.gb, page: entry.page.clone(), ..Default::default() };
         fs::write(plugin_marker(user, tid, id), serde_json::to_vec_pretty(&marker).unwrap_or_default()).map_err(|e| e.to_string())?;
         // Sans le chargeur de plugins (désactivé par défaut), Azahar ignore le .3gx. Kaleido note
         // qu'il l'a activé lui-même, pour ne le couper ensuite que dans ce cas.
@@ -2975,6 +3106,21 @@ pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle)
     .await
 }
 
+/// Switch : ordre de priorité des mods actifs (dossiers, le premier l'emporte).
+#[tauri::command]
+pub async fn mods_reorder(target: ModTarget, order: Vec<String>, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        if target.platform != "switch" {
+            return Err("l'ordre ne se règle que pour les jeux Switch".into());
+        }
+        reorder_switch(&app, base_title_id(parse_tid(target.title_id.as_deref())?), &order)?;
+        let mut view = view_for(&app, &target)?;
+        after_change(&app, &target, &mut view);
+        Ok(view)
+    })
+    .await
+}
+
 /// Switch : met de côté ou remet en place un mod installé hors de Kaleido.
 #[tauri::command]
 pub async fn mods_toggle_other(target: ModTarget, name: String, enabled: bool, app: AppHandle) -> Result<ModsView, String> {
@@ -3344,6 +3490,29 @@ mod tests {
         assert_eq!(found.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), vec!["mod.zip"]);
         assert!(finished_downloads(&dir, SystemTime::now() + Duration::from_secs(60), &exts).is_empty());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn priority_names() {
+        assert_eq!(strip_rank("01 HD Texture Overhaul v0.5"), "HD Texture Overhaul v0.5");
+        assert_eq!(strip_rank("60 FPS"), "60 FPS");
+        assert_eq!(strip_rank("1 seul"), "1 seul");
+        assert_eq!(strip_rank("06 60 FPS v1.1.1"), "06 60 FPS v1.1.1");
+        let order = vec![("03 Draw Distance".to_string(), None), ("Water".to_string(), None), ("01 HD Textures".to_string(), None)];
+        assert_eq!(rank_names(&order), vec![
+            ("03 Draw Distance".to_string(), "01 Draw Distance".to_string()),
+            ("Water".to_string(), "02 Water".to_string()),
+            ("01 HD Textures".to_string(), "03 HD Textures".to_string()),
+        ]);
+        // Déjà dans l'ordre : rien à renommer.
+        assert!(rank_names(&[("01 A".to_string(), None), ("02 B".to_string(), None)]).is_empty());
+        // Mod de Kaleido « 60 FPS » : nom connu par le marqueur, jamais pris pour un rang.
+        assert_eq!(rank_names(&[("Water".into(), None), ("60 FPS".into(), Some("60 FPS".into()))]), vec![("Water".to_string(), "01 Water".to_string()), ("60 FPS".to_string(), "02 60 FPS".to_string())]);
+        assert!(rank_names(&[("01 60 FPS".into(), Some("60 FPS".into()))]).is_empty());
+        // Eden compare les noms octet par octet : un rang « 01 » passe avant toute lettre.
+        let mut names = vec!["Water".to_string(), "02 B".to_string(), "01 A".to_string(), "Ash".to_string()];
+        names.sort();
+        assert_eq!(names, vec!["01 A", "02 B", "Ash", "Water"]);
     }
 
     #[test]

@@ -28,6 +28,8 @@ const PATHS: Record<string, string[]> = {
   pin: ["M12 17v5", "M9 3h6", "M10 3v6l-3 4v2h10v-2l-3-4V3"],
   "chevron-left": ["M15 18l-6-6 6-6"],
   "chevron-right": ["M9 18l6-6-6-6"],
+  "chevron-up": ["M18 15l-6-6-6 6"],
+  "chevron-down": ["M6 9l6 6 6-6"],
   user: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4 21a8 8 0 0 1 16 0"],
   bag: ["M5 8h14l-1 12H6z", "M9 8V6a3 3 0 0 1 6 0v2"],
   book: ["M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z", "M20 4h-5a3 3 0 0 0-3 3", "M20 4v14h-6"],

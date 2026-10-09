@@ -48,6 +48,10 @@ export interface ModEntry {
   exefs: "ok" | "base" | "other" | null;
   /** Touche à la partie : la sauvegarde est copiée avant de l'activer. */
   affectsSave: boolean;
+  /** Fichier GameBanana d'avant la dernière mise à jour (retour possible). */
+  previousFile: number | null;
+  /** Dossier du mod (Switch). */
+  folder: string | null;
 }
 
 export interface OtherMod {
@@ -260,6 +264,7 @@ export async function installMod(target: ModTarget, id: string, options: Install
 
 export const uninstallMod = (target: ModTarget, id: string) => invoke<ModsView>("mods_uninstall", { target, id });
 export const toggleMod = (target: ModTarget, id: string, enabled: boolean) => invoke<ModsView>("mods_toggle", { target, id, enabled });
+export const reorderMods = (target: ModTarget, order: string[]) => invoke<ModsView>("mods_reorder", { target, order });
 export const restoreSave = (target: ModTarget, id: string) => invoke<ModsView>("mods_save_restore", { target, id });
 export const saveProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_save", { target, name });
 export const deleteProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_delete", { target, name });
