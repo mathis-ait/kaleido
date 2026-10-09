@@ -167,6 +167,15 @@ pub fn read_partition(f: &mut File, base: u64, magic: &[u8; 4], entry_size: usiz
         .collect()
 }
 
+/// Octets qui manquent à la fin d'un `.nsp` ou `.xci` (téléchargement ou copie interrompus) :
+/// le contenu annoncé dépasse la taille du fichier. `None` si le fichier est complet ou illisible.
+pub fn missing_bytes(path: &Path) -> Option<u64> {
+    let mut f = File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    let end = container_entries(&mut f).ok()?.iter().map(|e| e.offset + e.size).max()?;
+    (end > len).then(|| end - len)
+}
+
 /// Contenus (NCA) et tickets d'un fichier `.xci` ou `.nsp`.
 pub fn container_entries(f: &mut File) -> Result<Vec<Entry>> {
     if let Some(entries) = read_partition(f, 0, b"PFS0", 0x18) {
@@ -723,6 +732,42 @@ mod tests {
         let (Ok(file), Ok(keys)) = (std::env::var("KALEIDO_NX_FILE"), std::env::var("KALEIDO_NX_KEYS")) else { return };
         let id = program_build_id(Path::new(&file), &Keys::load(Path::new(&keys)).unwrap()).unwrap();
         println!("build id : {}", build_id_hex(&id));
+    }
+
+    /// `KALEIDO_NX_FILES=<fichiers séparés par ;> cargo test -p kaleido-core real_missing -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_missing() {
+        let Ok(files) = std::env::var("KALEIDO_NX_FILES") else { return };
+        for f in files.split(';') {
+            println!("{f} : {:?}", missing_bytes(Path::new(f)).map(|m| format!("{} Mo manquants", m / 1024 / 1024)));
+        }
+    }
+
+    #[test]
+    fn truncated_container() {
+        // PFS0 d'un seul fichier de 0x100 octets, coupé avant la fin.
+        let mut nsp = b"PFS0".to_vec();
+        nsp.extend_from_slice(&1u32.to_le_bytes());
+        nsp.extend_from_slice(&8u32.to_le_bytes());
+        nsp.extend_from_slice(&0u32.to_le_bytes());
+        nsp.extend_from_slice(&0u64.to_le_bytes());
+        nsp.extend_from_slice(&0x100u64.to_le_bytes());
+        nsp.extend_from_slice(&0u32.to_le_bytes());
+        nsp.extend_from_slice(&0u32.to_le_bytes());
+        nsp.extend_from_slice(b"a.nca\0\0\0");
+        let header = nsp.len() as u64;
+        let dir = std::env::temp_dir().join(format!("kaleido-trunc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.nsp");
+        let mut full = nsp.clone();
+        full.resize(nsp.len() + 0x100, 0);
+        std::fs::write(&path, &full).unwrap();
+        assert_eq!(missing_bytes(&path), None);
+        std::fs::write(&path, &full[..full.len() - 0x40]).unwrap();
+        assert_eq!(missing_bytes(&path), Some(0x40));
+        let _ = header;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

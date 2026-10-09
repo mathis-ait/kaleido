@@ -404,3 +404,23 @@ mod tests {
     }
 }
 
+
+#[cfg(test)]
+mod real_game {
+    /// `KALEIDO_NX_FILE=<jeu> KALEIDO_NX_UPDATE=<mise à jour> KALEIDO_NX_KEYS=<prod.keys> cargo test -p kaleido-core real_game_trpfd -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_game_trpfd() {
+        use std::path::Path;
+        let (Ok(file), Ok(keys)) = (std::env::var("KALEIDO_NX_FILE"), std::env::var("KALEIDO_NX_KEYS")) else { return };
+        let update = std::env::var("KALEIDO_NX_UPDATE").ok();
+        let keys = crate::nx::Keys::load(Path::new(&keys)).unwrap();
+        let t = std::time::Instant::now();
+        let data = crate::nx::read_game_file(Path::new(&file), update.as_deref().map(Path::new), &keys, "arc/data.trpfd").unwrap();
+        let d = super::FileDescriptor::parse(&data).unwrap();
+        println!("data.trpfd : {} octets lus en {:?}, {} fichiers indexés, {} archives", data.len(), t.elapsed(), d.hashes.len(), d.packs.len());
+        assert!(d.hashes.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(super::FileDescriptor::parse(&d.to_bytes()).unwrap(), d);
+        println!("relu et réécrit à l'identique");
+    }
+}

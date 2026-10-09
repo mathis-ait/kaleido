@@ -28,6 +28,8 @@ export interface SwitchGame {
   updateVersion: string | null;
   /** Fichier de cette mise à jour. */
   updatePath?: string | null;
+  /** Fichiers incomplets : [nom, octets manquants]. */
+  incomplete?: [string, number][];
 }
 
 /** Libellé de la mise à jour dans les détails d'un jeu Switch. */
@@ -63,7 +65,7 @@ function switchDetection(g: SwitchGame): Detection {
       { label: "Title ID", value: g.titleId },
       ...(g.hasUpdate ? [{ label: UPDATE_LABEL, value: g.updateVersion ?? "trouvée" }] : []),
     ],
-    warnings: [],
+    warnings: (g.incomplete ?? []).map(([name, missing]) => `Fichier incomplet : « ${name} » (il manque ${Math.round(missing / 1024 / 1024)} Mo à la fin). Le jeu risque de planter : télécharge ou copie-le à nouveau.`),
     kaleido: null,
     fingerprint: null,
     updatePath: g.updatePath ?? null,
