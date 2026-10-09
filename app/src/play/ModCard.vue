@@ -53,6 +53,7 @@ const sourceLabel = computed(() => {
         <span v-if="manual && !m.installed" class="sv-chip">Téléchargement manuel</span>
       </div>
       <p class="desc">{{ m.description }}</p>
+      <p v-if="m.blocked && !m.installed" class="warn"><Icon name="alert" :size="13" /> {{ m.blocked }}</p>
       <p v-if="m.requires.length" class="warn"><Icon name="alert" :size="13" /> Nécessite : {{ m.requires.join(", ") }}</p>
       <p v-if="m.warning" class="warn"><Icon name="alert" :size="13" /> {{ m.warning }}</p>
       <p v-if="m.overlaps.length" class="warn">
@@ -80,8 +81,8 @@ const sourceLabel = computed(() => {
     <div class="actions">
       <template v-if="!m.installed">
         <template v-if="manual">
-          <button class="sv-btn" :disabled="locked" @click="emit('download')"><Icon name="download" :size="14" /> Télécharger</button>
-          <button class="sv-btn solid" :disabled="locked" @click="emit('import')">
+          <button class="sv-btn" :disabled="locked || !!m.blocked" @click="emit('download')"><Icon name="download" :size="14" /> Télécharger</button>
+          <button class="sv-btn solid" :disabled="locked || !!m.blocked" @click="emit('import')">
             {{ working ? "Installation…" : m.kind === "patch" ? "Appliquer le patch…" : "Installer le fichier…" }}
           </button>
         </template>

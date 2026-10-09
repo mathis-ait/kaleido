@@ -109,6 +109,8 @@ pub struct ModEntry {
     pub previous_file: Option<u64>,
     /// Dossier du mod (Switch), pour l'ordre de priorité.
     pub folder: Option<String>,
+    /// Le mod ne peut pas s'appliquer à ce jeu (ex. patch DS pour une autre version) : la raison.
+    pub blocked: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2610,6 +2612,36 @@ fn nds_code(rom: &Path) -> Option<String> {
     code.bytes().all(|b| b.is_ascii_alphanumeric()).then(|| code.to_string())
 }
 
+/// Révision d'une ROM DS (octet 0x1E de l'en-tête).
+fn nds_revision(rom: &Path) -> Option<u8> {
+    let mut f = fs::File::open(rom).ok()?;
+    let mut header = [0u8; 0x20];
+    f.read_exact(&mut header).ok()?;
+    Some(header[0x1E])
+}
+
+/// La plupart des romhacks DS se patchent sur la version USA (code en « E », ou « O » pour les
+/// Noire / Blanche internationales). La version européenne en anglais de Platine a le même
+/// code CPUE mais la révision 10 : son contenu diffère. `None` si la ROM convient.
+pub fn us_rom_problem(code: &str, revision: u8) -> Option<String> {
+    let region = code.as_bytes().get(3).copied()?;
+    if matches!(region, b'E' | b'O') && revision < 10 {
+        return None;
+    }
+    let what = match region {
+        b'E' | b'P' | b'O' => "la version européenne en anglais",
+        b'F' => "la version française",
+        b'D' => "la version allemande",
+        b'I' => "la version italienne",
+        b'S' => "la version espagnole",
+        b'J' => "la version japonaise",
+        b'K' => "la version coréenne",
+        _ => "une autre version",
+    };
+    let us = format!("{}E", &code[..3]);
+    Some(format!("Ta ROM ne convient pas à ce patch : il faut la version USA du jeu (code {us}, révision 0 ou 1), et celle-ci est {what} (code {code}, révision {revision}). Le patch échouerait : utilise une copie USA de ta cartouche."))
+}
+
 /// En dessous, le fichier de la base est jugé inutilisable (Diamant FR : 9 codes d'un autre jeu).
 const MIN_NDS_CHEATS: usize = 20;
 
@@ -2641,9 +2673,13 @@ fn nds_view(app: &AppHandle, rom: &Path) -> ModsView {
     });
     // Romhacks livrés en patch : la ROM créée se range à côté de celle-ci.
     if let Some(catalog) = code.as_deref().and_then(|c| c.get(..3)).and_then(|c| crate::mods_catalog::for_game(app, c)) {
+        let revision = nds_revision(rom).unwrap_or(0);
         for m in catalog.mods {
             let out = patched_rom_path(rom, &m.name);
+            let needs_us = m.game_version.as_deref().is_some_and(|v| v.contains("USA"));
+            let blocked = if needs_us { code.as_deref().and_then(|c| us_rom_problem(c, revision)) } else { None };
             view.mods.push(ModEntry {
+                blocked,
                 installed: out.is_file(),
                 enabled: true,
                 id: m.id,
@@ -3561,6 +3597,16 @@ mod tests {
         assert_eq!(found.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), vec!["mod.zip"]);
         assert!(finished_downloads(&dir, SystemTime::now() + Duration::from_secs(60), &exts).is_empty());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn us_rom_check() {
+        assert_eq!(us_rom_problem("CPUE", 0), None);
+        assert_eq!(us_rom_problem("CPUE", 1), None);
+        assert_eq!(us_rom_problem("IRBO", 0), None);
+        assert!(us_rom_problem("CPUE", 10).unwrap().contains("européenne en anglais"));
+        assert!(us_rom_problem("CPUF", 0).unwrap().contains("française (code CPUF"));
+        assert!(us_rom_problem("IPKF", 0).unwrap().contains("code IPKE"));
     }
 
     #[test]

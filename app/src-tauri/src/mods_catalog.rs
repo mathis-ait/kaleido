@@ -109,7 +109,19 @@ pub fn for_game(app: &AppHandle, key: &str) -> Option<CatalogFile> {
         .ok()
         .and_then(|d| parse(&String::from_utf8_lossy(&d)))
         .filter(|f| matches(f, key) && !f.mods.is_empty());
-    let mut file = remote.unwrap_or_else(|| local.clone());
+    // Le catalogue distant l'emporte pour les mods qu'il connaît ; ceux qui ne sont que dans la
+    // version intégrée (cache téléchargé avant leur ajout) restent proposés.
+    let mut file = match remote {
+        Some(mut r) => {
+            for m in &local.mods {
+                if !r.mods.iter().any(|x| x.id == m.id) {
+                    r.mods.push(m.clone());
+                }
+            }
+            r
+        }
+        None => local.clone(),
+    };
     file.mods.retain(|m| m.titles.as_ref().is_none_or(|t| t.iter().any(|t| t.eq_ignore_ascii_case(key))));
     Some(file)
 }

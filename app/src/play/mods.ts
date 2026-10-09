@@ -52,6 +52,8 @@ export interface ModEntry {
   previousFile: number | null;
   /** Dossier du mod (Switch). */
   folder: string | null;
+  /** Ne peut pas s'appliquer à ce jeu : la raison. */
+  blocked: string | null;
 }
 
 export interface OtherMod {
