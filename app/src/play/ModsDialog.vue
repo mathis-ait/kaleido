@@ -640,6 +640,7 @@ async function toggleCheat(c: Cheat) {
                     <small v-if="o.exefs === 'ok'" class="ok-text">Correctif compatible avec {{ view.executable?.source }}</small>
                     <small v-else-if="o.exefs === 'base'" class="warn">Correctif prévu pour le jeu sans mise à jour : il ne s'appliquera pas avec {{ view.executable?.source }}</small>
                     <small v-else-if="o.exefs === 'other'" class="warn">Correctif prévu pour une autre version du jeu : Eden l'ignorera</small>
+                    <small v-else-if="o.exefs === 'shadowed'" class="warn">Correctif prévu pour ta mise à jour séparée, qu'Eden ne lance pas (voir la note dans Sélection)</small>
                   </div>
                   <button v-if="o.canToggle" class="sv-btn small-btn" :disabled="!!busy" @click="setOther(o.name, !o.enabled)">{{ o.enabled ? "Désactiver" : "Réactiver" }}</button>
                 </li>

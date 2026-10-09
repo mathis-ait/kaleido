@@ -1306,20 +1306,27 @@ fn resolve_conflicts(entries: &mut [ModEntry], others: &[(String, Kind)], active
     }
 }
 
-/// Build ID de l'exécutable d'un fichier Switch, gardé en mémoire par chemin, taille et date.
-fn file_build_id(path: &Path, keys: &kaleido_core::nx::Keys) -> Result<String, String> {
+/// Build IDs des exécutables d'un fichier Switch : (title ID du contenu, build ID), gardés
+/// en mémoire par chemin, taille et date.
+fn file_build_ids(path: &Path, keys: &kaleido_core::nx::Keys) -> Result<Vec<(u64, String)>, String> {
     use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<BTreeMap<(PathBuf, u64, u64), String>>> = OnceLock::new();
+    static CACHE: OnceLock<Mutex<BTreeMap<(PathBuf, u64, u64), Vec<(u64, String)>>>> = OnceLock::new();
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
     let key = (path.to_path_buf(), meta.len(), stamp);
     let cache = CACHE.get_or_init(Default::default);
-    if let Some(id) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
-        return Ok(id.clone());
+    if let Some(ids) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        return Ok(ids.clone());
     }
-    let id = kaleido_core::nx::program_build_id(path, keys).map(|b| kaleido_core::nx::build_id_hex(&b)).map_err(|e| e.to_string())?;
-    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(key, id.clone());
-    Ok(id)
+    let ids: Vec<(u64, String)> = kaleido_core::nx::program_build_ids(path, keys).map_err(|e| e.to_string())?.into_iter().map(|(t, b)| (t, kaleido_core::nx::build_id_hex(&b))).collect();
+    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(key, ids.clone());
+    Ok(ids)
+}
+
+/// Build ID de l'exécutable principal d'un fichier (le jeu de base s'il y en a un).
+fn file_build_id(path: &Path, keys: &kaleido_core::nx::Keys) -> Result<String, String> {
+    let ids = file_build_ids(path, keys)?;
+    ids.iter().find(|(t, _)| t & 0xFFF == 0).or(ids.first()).map(|(_, id)| id.clone()).ok_or_else(|| "aucun exécutable".to_string())
 }
 
 /// Build ID de l'exécutable lancé par Eden (la mise à jour si présente) et du jeu de base.
@@ -1327,16 +1334,28 @@ struct ExeIds {
     running: String,
     base: Option<String>,
     has_update: bool,
+    /// Mise à jour contenue dans le fichier du jeu lui-même (.xci « + Expansion Pass »…) :
+    /// c'est elle qu'Eden lance, même quand une mise à jour plus récente est à côté.
+    embedded: Option<String>,
+    /// Mise à jour trouvée à côté, en fichier séparé.
+    separate: Option<String>,
 }
 
 fn exe_ids(app: &AppHandle, target: &ModTarget) -> Result<ExeIds, String> {
     let keys_path = crate::switch::prod_keys(app).ok_or("clés de la console (prod.keys) introuvables")?;
     let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
-    let base = target.rom.as_deref().map(|p| file_build_id(Path::new(p), &keys));
-    match target.update_file.as_deref() {
-        Some(u) => Ok(ExeIds { running: file_build_id(Path::new(u), &keys)?, base: base.and_then(Result::ok), has_update: true }),
-        None => Ok(ExeIds { running: base.ok_or("fichier du jeu inconnu")??, base: None, has_update: false }),
-    }
+    let in_game = match target.rom.as_deref() {
+        Some(p) => file_build_ids(Path::new(p), &keys).unwrap_or_default(),
+        None => vec![],
+    };
+    let base = in_game.iter().find(|(t, _)| t & 0xFFF == 0).map(|(_, id)| id.clone());
+    let embedded = in_game.iter().find(|(t, _)| t & 0xFFF == 0x800).map(|(_, id)| id.clone());
+    let separate = match target.update_file.as_deref() {
+        Some(u) => Some(file_build_id(Path::new(u), &keys)?),
+        None => None,
+    };
+    let running = embedded.clone().or(separate.clone()).or(base.clone()).ok_or("fichier du jeu inconnu")?;
+    Ok(ExeIds { running, base, has_update: embedded.is_some() || separate.is_some(), embedded, separate })
 }
 
 /// Verdict des correctifs ExeFS d'un mod (build IDs visés) face à l'exécutable lancé.
@@ -1399,6 +1418,7 @@ fn exefs_warning(verdict: &str, exe: &Executable) -> Option<String> {
     match verdict {
         "base" => Some(format!("Ce correctif vise le jeu sans mise à jour, alors qu'Eden lance {} : il ne s'appliquera pas.", exe.source)),
         "other" => Some(format!("Ce correctif vise une autre version du jeu que {} : Eden l'ignorera sans rien dire.", exe.source)),
+        "shadowed" => Some("Ce correctif vise ta mise à jour séparée, mais Eden lance la mise à jour intégrée à ton fichier de jeu : il ne s'appliquera pas tant que la mise à jour séparée n'est pas installée dans Eden (voir la note en haut).".to_string()),
         _ => None,
     }
 }
@@ -1420,14 +1440,30 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
         }
     };
     if let Some(ids) = &ids {
-        let source = match (ids.has_update, target.game_version.as_deref()) {
-            (true, Some(v)) => format!("la mise à jour {v}"),
-            (true, None) => "la mise à jour installée".to_string(),
-            (false, _) => "le jeu de base".to_string(),
+        let source = if ids.embedded.is_some() {
+            "la mise à jour intégrée à ton fichier de jeu".to_string()
+        } else {
+            match (ids.has_update, target.game_version.as_deref()) {
+                (true, Some(v)) => format!("la mise à jour {v}"),
+                (true, None) => "la mise à jour installée".to_string(),
+                (false, _) => "le jeu de base".to_string(),
+            }
         };
         view.executable = Some(Executable { source, build_id: ids.running.clone() });
+        if ids.embedded.is_some() && ids.separate.is_some() && ids.embedded != ids.separate {
+            let file = target.update_file.as_deref().and_then(|u| Path::new(u).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            view.notes.insert(0, format!("Ton fichier de jeu contient sa propre mise à jour, différente de « {file} » : Eden lance celle du fichier de jeu, et les correctifs prévus pour l'autre ne s'appliquent pas. Pour qu'Eden lance « {file} », installe-la dans Eden (menu Fichier, « Installer des fichiers dans la NAND »), puis vérifie la version dans Propriétés, Add-ons."));
+        }
     }
-    let verdict = |patches: &[String]| ids.as_ref().and_then(|i| exefs_verdict(patches, &i.running, i.base.as_deref())).map(str::to_string);
+    let verdict = |patches: &[String]| {
+        let i = ids.as_ref()?;
+        let v = exefs_verdict(patches, &i.running, i.base.as_deref())?;
+        // Bon pour la mise à jour séparée, mais Eden lance celle du fichier de jeu.
+        if v != "ok" && i.embedded.is_some() && i.separate.as_deref().is_some_and(|s| patches.iter().any(|p| kaleido_core::nx::build_id_matches(p, s))) {
+            return Some("shadowed".to_string());
+        }
+        Some(v.to_string())
+    };
     let tier = tuning::current_tier();
     let installed = installed_dirs(&game_dir);
     let disabled = disabled_dir(app, tid).map(|d| installed_dirs(&d)).unwrap_or_default();

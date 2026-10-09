@@ -564,6 +564,14 @@ pub fn open_program(path: &Path, keys: &Keys) -> Result<Nca> {
 
 /// Build ID de l'exécutable d'un jeu ou d'une mise à jour (.xci, .nsp).
 pub fn program_build_id(path: &Path, keys: &Keys) -> Result<[u8; 32]> {
+    let all = program_build_ids(path, keys)?;
+    // Le jeu de base d'abord (un .xci peut contenir aussi une mise à jour).
+    all.iter().find(|(tid, _)| tid & 0xFFF == 0).or(all.first()).map(|(_, id)| *id).ok_or_else(|| bad("aucun exécutable dans ce fichier"))
+}
+
+/// Build ID de chaque exécutable d'un fichier : (title ID du contenu, build ID). Un .xci
+/// « + Expansion Pass » contient le jeu (…000) et sa mise à jour (…800).
+pub fn program_build_ids(path: &Path, keys: &Keys) -> Result<Vec<(u64, [u8; 32])>> {
     let mut f = File::open(path)?;
     let entries = container_entries(&mut f)?;
     let mut titlekeys = HashMap::new();
@@ -573,17 +581,23 @@ pub fn program_build_id(path: &Path, keys: &Keys) -> Result<[u8; 32]> {
         }
     }
     let mut last = bad("aucun exécutable dans ce fichier");
+    let mut out = Vec::new();
     for e in entries.iter().filter(|e| e.name.ends_with(".nca")) {
         let Ok(mut nca) = Nca::open(path, e, keys, &titlekeys) else { continue };
         if nca.info.content != ContentType::Program || nca.sections.iter().all(|s| s.pfs0.is_none()) {
             continue;
         }
         match nca.main_build_id() {
-            Ok(id) => return Ok(id),
+            // Le programme d'une mise à jour garde le title ID du jeu : on le reconnaît à sa
+            // RomFS de mise à jour (BKTR) et on le range sous …800.
+            Ok(id) => out.push((if nca.sections.iter().any(|s| s.crypto == 4) { nca.info.title_id | 0x800 } else { nca.info.title_id }, id)),
             Err(err) => last = err,
         }
     }
-    Err(last)
+    if out.is_empty() {
+        return Err(last);
+    }
+    Ok(out)
 }
 
 /// Build ID tel que l'écrivent les correctifs (`@nsobid`, nom des .ips) : hexadécimal

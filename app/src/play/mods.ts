@@ -44,8 +44,9 @@ export interface ModEntry {
   gb: number | null;
   popularity: number | null;
   kind: string | null;
-  /** Correctifs ExeFS : « ok », « base » (jeu sans mise à jour), « other » (autre version). */
-  exefs: "ok" | "base" | "other" | null;
+  /** Correctifs ExeFS : « ok », « base » (jeu sans mise à jour), « other » (autre version),
+   * « shadowed » (bon pour la mise à jour séparée, mais Eden lance celle du fichier de jeu). */
+  exefs: "ok" | "base" | "other" | "shadowed" | null;
   /** Touche à la partie : la sauvegarde est copiée avant de l'activer. */
   affectsSave: boolean;
   /** Fichier GameBanana d'avant la dernière mise à jour (retour possible). */
@@ -62,7 +63,7 @@ export interface OtherMod {
   category: ModCategory;
   overlaps: string[];
   canToggle: boolean;
-  exefs: "ok" | "base" | "other" | null;
+  exefs: "ok" | "base" | "other" | "shadowed" | null;
 }
 
 export interface ModsView {
