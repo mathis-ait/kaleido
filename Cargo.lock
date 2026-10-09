@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "kaleido-app"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes",
  "kaleido-core",
@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "kaleido-cli"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "kaleido-core",
  "kaleido-formats",
@@ -2001,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "kaleido-core"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "kaleido-formats"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "serde",
  "sha2",
