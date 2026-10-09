@@ -190,6 +190,22 @@ pub fn detect_path(path: &Path) -> Result<Detection, DetectError> {
             detection.detail("Romhack", format!("{} v{} par {}", hack.name, hack.version, hack.author));
         }
     }
+    // 3DS : signature écrite à côté de la ROM ou dans le dossier du mod.
+    if detection.kaleido.is_none() {
+        let sidecar = match detection.kind {
+            FileKind::CtrRom => Some(crate::randomizer::KaleidoTag::sidecar_of(path)),
+            FileKind::CtrDump => {
+                let root = if path.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs")) { path.parent().unwrap_or(path) } else { path };
+                Some(root.join(crate::randomizer::TAG_FILE))
+            }
+            _ => None,
+        };
+        if let Some(tag) = sidecar.as_deref().and_then(crate::randomizer::KaleidoTag::read_from) {
+            detection.detail("Randomisée par", format!("Kaleido {}", tag.version));
+            detection.detail("Seed", tag.seed.to_string());
+            detection.kaleido = Some(tag);
+        }
+    }
     // ROM générée avant l'ajout de la signature : la seed figure dans le nom proposé par Kaleido.
     if matches!(detection.kind, FileKind::NdsRom | FileKind::GbRom) && detection.kaleido.is_none() {
         if let Some(seed) = seed_from_file_name(&detection.file_name) {
@@ -480,6 +496,24 @@ mod tests {
         let found: Vec<String> = expand_path(&root).iter().map(|p| p.strip_prefix(&root).unwrap().display().to_string().replace('\\', "/")).collect();
         assert_eq!(found, vec!["Rubis", "a.nds", "b.SAV", "sous/c.3ds"]);
         assert_eq!(expand_path(&root.join("Rubis")), vec![root.join("Rubis")]);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn ctr_mod_signature_sidecar() {
+        let root = std::env::temp_dir().join(format!("kaleido-ctr-tag-{}", std::process::id()));
+        fs::create_dir_all(root.join("romfs")).unwrap();
+        assert!(detect_path(&root).unwrap().kaleido.is_none());
+        let code = crate::randomizer::share_code(7, &Default::default());
+        crate::randomizer::KaleidoTag::new(7, code.clone()).write_to(&root.join(crate::randomizer::TAG_FILE)).unwrap();
+        for p in [root.clone(), root.join("romfs")] {
+            let tag = detect_path(&p).unwrap().kaleido.expect("signature du mod");
+            assert_eq!((tag.seed, tag.share_code.as_str()), (7, code.as_str()));
+        }
+        assert_eq!(
+            crate::randomizer::KaleidoTag::sidecar_of(Path::new("Y - Kaleido 7.3ds")),
+            Path::new("Y - Kaleido 7.3ds.kaleido.json")
+        );
         fs::remove_dir_all(&root).unwrap();
     }
 

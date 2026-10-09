@@ -78,6 +78,32 @@ pub struct KaleidoTag {
     pub share_code: String,
 }
 
+/// 3DS : la signature ne tient pas dans la ROM, elle est écrite à côté
+/// (`kaleido.json` dans le dossier du mod, `<rom>.kaleido.json` pour une ROM complète).
+pub const TAG_FILE: &str = "kaleido.json";
+
+impl KaleidoTag {
+    pub fn new(seed: u64, share_code: String) -> Self {
+        Self { tool: "Kaleido".into(), version: env!("CARGO_PKG_VERSION").into(), seed, share_code }
+    }
+
+    /// Fichier de signature d'une ROM 3DS complète : `Y - Kaleido 1.3ds.kaleido.json`.
+    pub fn sidecar_of(rom: &std::path::Path) -> std::path::PathBuf {
+        let mut name = rom.as_os_str().to_owned();
+        name.push(".");
+        name.push(TAG_FILE);
+        name.into()
+    }
+
+    pub fn write_to(&self, path: &std::path::Path) -> std::io::Result<()> {
+        std::fs::write(path, serde_json::to_vec_pretty(self).unwrap_or_default())
+    }
+
+    pub fn read_from(path: &std::path::Path) -> Option<Self> {
+        serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    }
+}
+
 fn rng_for(seed: u64, part: &str) -> ChaCha8Rng {
     // FNV-1a du nom de la partie, pour des flux indépendants.
     let salt = part.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3));

@@ -12,6 +12,8 @@ import Icon from "../components/Icon.vue";
 import SearchField from "../components/SearchField.vue";
 import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
+import RandomizedDialog from "../play/RandomizedDialog.vue";
+import { randomizedDialog } from "../play/randomized";
 import RomhacksDialog from "../play/RomhacksDialog.vue";
 import { romhacksDialog } from "../play/romhacks";
 import { modUpdates, modsDialog, refreshModUpdates } from "../play/mods";
@@ -272,6 +274,7 @@ function progressText(p: { step: string; done: number; total: number }) {
   </Dialog>
 
   <ModsDialog v-if="modsDialog.game" :key="modsDialog.game.path" />
+  <RandomizedDialog v-if="randomizedDialog.game" :key="randomizedDialog.game.path" />
   <DiscoverDialog v-if="discovering" @close="discovering = false" />
   <RomhacksDialog v-if="romhacksDialog.open" @close="romhacksDialog.open = false" />
 </template>
