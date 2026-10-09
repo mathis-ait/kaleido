@@ -13,7 +13,7 @@ F = ['magic', 'enabled', 'jump_t', 'jump_r', 'tab_addr', 'tab_size', 'tab', 'fai
      'lastrec', 'n_interp', 'n_swap', 'n_jump', 'n_miss', 'n_rec', 'vpad', 'n_skip', 'script', 'script_pos', 'snap_frame', 'snap_a', 'snap_alen', 'snap_b', 'snap_blen',
      'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor', 'jump_rel', 'jump_min', 'jump_rcam', 'n_cut', 'upd', 'c3d_u', 'c3d_n', 'extra', 'n_fade',
      'eye0', 'eye1', 'eye2', 'eye3', 'eyef0', 'eyef1', 'eyef2', 'eyef3', 'n_eye',
-     'pad', 'combo_f', 'tstate0', 'tstate1', 'n_tskip']
+     'pad', 'combo_f', 'tstate0', 'tstate1', 'n_tskip', 'cam_u', 'cam_n', 'h3d_u', 'h3d_n', 'nw_u', 'nw_n']
 FLOATS = {'jump_t', 'jump_r', 'jump_rel', 'jump_min', 'jump_rcam'}
 def read(g):
     raw = g.read(ADDR, 4 * len(F))
@@ -53,7 +53,7 @@ elif len(sys.argv) > 1 and sys.argv[1] == 'watch':
     g.send('c'); t = time.time(); time.sleep(secs); g.s.sendall(b'\x03'); g._recv_packet(); dt = time.time() - t
     b = read(g); c1 = struct.unpack('<3I', g.read(0x006AEFF0, 12))
     print(show(b))
-    for k in ('frame', 'n_interp', 'n_swap', 'n_jump', 'n_cut', 'n_miss', 'n_rec', 'n_skip', 'c3d_u', 'c3d_n', 'n_fade', 'n_eye', 'n_tskip'):
+    for k in ('frame', 'n_interp', 'n_swap', 'n_jump', 'n_cut', 'n_miss', 'n_rec', 'n_skip', 'c3d_u', 'c3d_n', 'n_fade', 'n_eye', 'n_tskip', 'cam_u', 'cam_n', 'h3d_u', 'h3d_n', 'nw_u', 'nw_n'):
         print('  %-9s %8.1f/s' % (k, (b[k] - a[k]) / dt))
     for name, x, y in zip(('update', 'sans update', 'draw'), c0, c1):
         print('  %-11s %6.1f/s' % (name, (y - x) / dt))

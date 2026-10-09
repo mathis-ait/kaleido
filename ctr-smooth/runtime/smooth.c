@@ -296,6 +296,14 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
         S.n_skip++, skip = 2u;
     S.frame++;
     S.upd = did_update;
+#ifdef COUNT3D
+    {
+        u32 idx = *(const volatile u8 *)0x10002200u; /* GSP : framebuffer info de l'écran du haut */
+        if (idx != S.lcd_idx)
+            S.n_flip++;
+        S.lcd_idx = idx;
+    }
+#endif
 #ifdef TEST_SCRIPT
     on = test_frame(did_update, on);
 #endif
@@ -361,8 +369,22 @@ void smooth_fade(void)
 }
 
 /* nw::gfx::Camera : vue (+0x148) et son inverse (+0x178). */
+#ifdef COUNT3D
+#define TCOUNT(k) (S.tc[2u * (k) + (S.upd ? 0u : 1u)]++)
+#else
+#define TCOUNT(k) ((void)0)
+#endif
+
 void smooth_camera(u8 *cam)
 {
+    TCOUNT(0);
+#ifdef COUNT3D
+    {
+        u32 i = S.tlog_i++ & 15u;
+        S.tlog[2u * i] = S.frame << 1 | S.upd;
+        S.tlog[2u * i + 1u] = (u32)cam;
+    }
+#endif
     if (!S.tab || !cam)
         return;
     S.cam = cam;
@@ -373,6 +395,7 @@ void smooth_camera(u8 *cam)
 /* Modèle H3D (gfl::grp::g3d) : matrices monde des os, *(+0x4C)[0 .. *(+0x40)[. */
 void smooth_h3d(u8 *model)
 {
+    TCOUNT(1);
     if (!S.tab || !model)
         return;
     u32 n = *(u32 *)(model + 0x40);
@@ -391,6 +414,7 @@ void smooth_h3d(u8 *model)
  * et skinning (+0x4C), chacune { allocateur, matrices, ?, nombre }. */
 void smooth_nwmodel(u8 *model)
 {
+    TCOUNT(2);
     if (!S.tab || !model)
         return;
     smooth((float *)(model + 0x8C), 0);

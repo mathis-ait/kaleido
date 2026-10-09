@@ -106,3 +106,9 @@ u32 smooth_pad(u32 hold)
     S.pad = hold | S.vpad | mask;
     return S.pad;
 }
+
+/* Builds de test (--probe ADDR) : compteur d'appels par sonde et par parité d'image. */
+__attribute__((section(".text.testcnt"))) void smooth_probe(u32 i)
+{
+    S.pc[2u * i + (S.upd ? 0u : 1u)]++;
+}

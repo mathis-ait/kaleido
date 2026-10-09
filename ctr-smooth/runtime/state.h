@@ -58,6 +58,12 @@ typedef struct {
     /* Suite : transitions */
     u32 tstate[2];     /* état (+0x0C, +0x44, +0x48 combinés) des deux contextes de transition */
     u32 n_tskip;       /* dessins ajoutés supprimés au changement d'état d'une transition */
+    u32 tc[6];         /* essais (--count3d) : appels caméra, H3D, nw::gfx ; [2k] image d'update, [2k+1] sans */
+    u32 tlog[32];      /* essais (--count3d) : (frame << 1 | upd, caméra) des 16 derniers appels de hook_camera */
+    u32 tlog_i;
+    u32 pc[16];        /* essais (--probe) : appels de la sonde i, [2i] image d'update, [2i+1] sans */
+    u32 lcd_idx;       /* essais (--count3d) : dernier index du tampon affiché, écran du haut (GSP 0x10002200) */
+    u32 n_flip;        /* essais : changements de cet index (images réellement présentées à l'écran) */
 } State;
 
 extern State S;

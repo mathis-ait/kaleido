@@ -49,12 +49,16 @@ def main():
     ap.add_argument('--counters', action='store_true', help='ajoute les compteurs de trace de la phase 0')
     ap.add_argument('--test-input', action='store_true', help='injection de boutons via S.vpad (essais automatisés)')
     ap.add_argument('--count3d', action='store_true', help='compteur des passes de scene 3D (0x0038CEA4)')
+    ap.add_argument('--probe', action='append', default=[], type=lambda s: int(s, 0),
+                    help='essais : compte les appels de la fonction ADDR par parite (8 au plus ; implique --count3d)')
     ap.add_argument('--script', help='partie scriptee compilee (essais deterministes), implique --test-input')
     ap.add_argument('--snap', type=int, default=1700, help='image de l instantane (avec --script)')
     ap.add_argument('--enabled', type=int, default=1, help='lissage actif au demarrage (avec --script)')
     ap.add_argument('--merge', action='append', default=[])
     ap.add_argument('-o', default=os.path.join(HERE, 'build', 'code.ips'))
     a = ap.parse_args()
+    if a.probe:
+        a.count3d = True
 
     code = open(a.code, 'rb').read()
     if hashlib.sha256(code).hexdigest() != SHA:
@@ -84,9 +88,20 @@ def main():
     cflags = ['-marm', '-mcpu=mpcore', '-mfpu=vfp', '-mfloat-abi=hard', '-Os', '-ffreestanding',
               '-fno-builtin', '-nostdlib', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
               '-fomit-frame-pointer', '-ffunction-sections', '-Wall', '-Wextra']
-    run(tool('gcc'), *cflags, *defines, '-c', os.path.join(HERE, 'smooth.c'), '-o', os.path.join(out, 'smooth.o'))
+    run(tool('gcc'), *cflags, *defines, *(['-DCOUNT3D'] if a.count3d else []), '-c', os.path.join(HERE, 'smooth.c'), '-o', os.path.join(out, 'smooth.o'))
     run(tool('gcc'), *cflags, '-c', os.path.join(HERE, 'hooks.S'), '-o', os.path.join(out, 'hooks.o'))
     objs = [os.path.join(out, 'hooks.o'), os.path.join(out, 'smooth.o')]
+    if a.probe:
+        a.count3d = True
+        # trampolines : compteur, puis instruction d'origine (push, independante de la position), retour en ADDR+4
+        lines = ['    .syntax unified', '    .arm', '    .section .text.testcnt, "ax"']
+        for i, addr in enumerate(a.probe[:8]):
+            word = struct.unpack('<I', code[addr - BASE:addr - BASE + 4])[0]
+            lines += ['    .global probe_%d' % i, 'probe_%d:' % i, '    push {r0-r3, r12, lr}', '    mov r0, #%d' % i,
+                      '    blx smooth_probe', '    pop {r0-r3, r12, lr}', '    .word 0x%08x' % word, '    ldr pc, =0x%08x' % (addr + 4), '    .ltorg']
+        open(os.path.join(out, 'probes.S'), 'w').write(chr(10).join(lines) + chr(10))
+        run(tool('gcc'), '-mcpu=mpcore', '-c', os.path.join(out, 'probes.S'), '-o', os.path.join(out, 'probes.o'))
+        objs.append(os.path.join(out, 'probes.o'))
     if a.test_input or a.count3d:
         # code des essais : Thumb (plus compact), sans flottants
         tflags = ['-mthumb', '-mcpu=mpcore', '-mfloat-abi=soft', '-Os', '-ffreestanding', '-fno-builtin', '-nostdlib',
@@ -98,6 +113,7 @@ def main():
     run(tool('ld'), '-T', os.path.join(HERE, 'link.ld'), '--gc-sections', '-e', 'hook_gate',
         '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'smooth_fade', '-u', 'hook_lytanim', '-u', 'hook_setview', '-u', 'hook_hid', '-u', 'S',
         *(['-u', 'hook_pad'] if a.test_input else []), *(['-u', 'hook_cnt3d'] if a.count3d else []),
+        *[x for i in range(len(a.probe[:8])) for x in ('-u', 'probe_%d' % i)],
         '--no-warn-mismatch', *objs, '-o', elf)
     run(tool('objcopy'), '-O', 'binary', '-j', '.text', elf, os.path.join(out, 'text.bin'))
     run(tool('objcopy'), '-O', 'binary', '-j', '.testro', elf, os.path.join(out, 'testro.bin'))
@@ -137,6 +153,8 @@ def main():
     if a.test_input:
         if a.count3d:
             hooks.append((0x0038CEA4, 'push {r3-r7,lr}', bytes.fromhex('f8402de9'), branch(0x0038CEA4, syms['hook_cnt3d'])))
+    for i, addr in enumerate(a.probe[:8]):
+        hooks.append((addr, 'sonde %d' % i, orig(addr), branch(addr, syms['probe_%d' % i])))
     recs = []
     for m in a.merge:
         recs += read_ips(m)
