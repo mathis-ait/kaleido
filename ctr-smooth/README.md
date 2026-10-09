@@ -1,10 +1,28 @@
-# ctr-smooth — 60 fps natif 3DS (phases 0 à 2)
+# ctr-smooth — 60 fps natif 3DS (phases 0 à 2, suite en cours)
 
 Runtime et outillage du PRD « 60 FPS natif : 3DS (ROSA) puis toutes plateformes ». Principe : la
 logique du jeu reste à 30 Hz (`update()` jamais modifié), le jeu dessine à chaque VBlank, et l'image
 ajoutée est rendue avec des matrices interpolées entre les deux derniers ticks.
 
 Cible : Pokémon Rubis Oméga EUR, code cartouche v1.0 (Rev 2), Azahar 2126.1.2.
+
+## Suite — lot A : intérieurs (9 octobre 2026)
+
+Plan de la suite : [`docs/prd-suite.html`](docs/prd-suite.html). Premier essai réel : « dans les
+bâtiments c'est un peu saccadé ». Cause trouvée : Rubis Oméga n'active la 3D stéréoscopique qu'en
+intérieur, et le décor y est rendu avec les **caméras des yeux**, recalculées pendant `update()` et
+que le lissage ne voyait pas. La pièce ne bougeait qu'une image sur deux, le joueur à chaque image.
+
+| Mesure (boutique de Rosyères, marche) | Avant | Après |
+| --- | --- | --- |
+| Écarts image à image | alternance environ 6 / 0,25 | réguliers, 4,9 à 5,25 |
+| Images distinctes | 39 sur 39, mais la pièce figée une image sur deux | 39 sur 39 |
+| Tirages pendant les dessins ajoutés | | aucun |
+| Extérieur (Rosyères) | | inchangé : 39 sur 39, écarts réguliers |
+
+Correctif : crochet sur `SetViewMatrix` (0x00392FB4) qui retient les caméras des yeux, lissées au
+début de chaque dessin. Détails dans [`docs/runtime.md`](docs/runtime.md) § Caméras stéréoscopiques.
+Non mesuré : Centre Pokémon, maisons de Bourg-en-Vol (même chemin de rendu attendu).
 
 ## État de la phase 2 — squelettes, combats, coupures (9 octobre 2026)
 

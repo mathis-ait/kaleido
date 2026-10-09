@@ -1,4 +1,4 @@
-# Runtime ctr-smooth (phase 2) — Rubis Oméga EUR v1.0
+# Runtime ctr-smooth (phase 2 et suite) — Rubis Oméga EUR v1.0
 
 ## Principe retenu
 
@@ -39,6 +39,7 @@ de l'image.
 | 0x0038CEA4 | `push {r3-r7,lr}` → `b hook_cnt3d` | **builds de test** (`--count3d`) : passes de scène 3D |
 | 0x0010E5AC | `bl 0x0011CB60` → `bl smooth_fade` | transitions : avance figée et rappel neutralisé sur le dessin ajouté |
 | 0x0014D618 | `push {r4-r12,lr}` → `b hook_lytanim` | animations d interface : retour immédiat sur le dessin ajouté |
+| 0x00392FB4 | `add r4,r0,#0x148` → `bl hook_setview` | `SetViewMatrix` : retient les caméras des yeux (3D stéréoscopique, intérieurs) |
 
 Matrices lissées (3×4) :
 
@@ -50,8 +51,37 @@ Matrices lissées (3×4) :
   pose monde `+0x3C` et pose de skinning `+0x4C`, chacune { allocateur, matrices, fin, nombre }
   (accesseurs virtuels 0x002FD054 et 0x002FD064, consommées par 0x002EC45C).
 
+- **Suite (lot A)** : caméras des yeux gauche et droit (`nw::gfx::Camera`), voir plus bas.
+
 Un modèle étant rendu maillage par maillage, un tableau d'os n'est traité qu'une fois par image
 (garde `seen` sur sa première matrice) : 7 fois moins d'appels en combat.
+
+## Caméras stéréoscopiques (intérieurs)
+
+Rubis Oméga n'active la 3D qu'en intérieur (bâtiments, grottes), pas dans le monde extérieur. En
+intérieur, le décor est rendu avec deux caméras d'yeux, pas avec la caméra de base :
+
+- le module de terrain (CRO, appel depuis 0x0076D054) appelle **pendant `update()`** la mise à jour
+  stéréo 0x00377984 : caméra de base `[obj+0x94]`, yeux `[obj+0x98]` et `[obj+0x9C]` ; projections
+  `+0x1A8` et vues `+0x148` calculées par 0x002DBEF4 (ou copiées de la base, 0x0015EB38 / 0x00144CA8,
+  quand l'écart des yeux est nul) ;
+- `SetViewMatrix` 0x00392F90 recopie la vue dans chaque œil et recalcule l'inverse `+0x178`
+  (0x00195DD0) ;
+- les yeux ne passent jamais par `hook_camera` : avant ce correctif, la pièce restait figée sur le
+  dessin ajouté (écarts image à image alternant environ 6 et 0,25 dans la boutique de Rosyères), seul
+  le joueur bougeait.
+
+Correctif : `hook_setview` retient chaque caméra dont la vue est posée (4 emplacements,
+`eye`/`eye_f`), et `smooth_gate` lisse leurs vue et inverse au début de chaque dessin lissé. Une
+caméra n'est utilisée que si sa vue a été posée au tick courant ou au précédent
+(`frame - eye_f <= 2`) et si sa vtable est celle de `nw::gfx::Camera` (0x005DBAB8) : une caméra
+libérée au changement de carte n'est jamais touchée.
+
+Mesures (boutique de Rosyères, marche) : 39 images distinctes sur 39 avec des écarts réguliers
+(4,9 à 5,25) contre une alternance 6 / 0,25 avant ; aucun tirage pendant les dessins ajoutés
+(`tools/rngcheck.py`) ; `tools/drawdiff.py` (`proto/replay/drawdiff-interieur.txt`) ne montre que
+des valeurs recalculées à chaque dessin et un drapeau « premier dessin après le tick »
+(0x086FBB28, bit 0x80, et un pointeur voisin) posé une fois par tick, comme dans le jeu d'origine.
 
 ## Seuils (coupures, apparitions)
 
@@ -70,7 +100,7 @@ fois n'est pas mélangée.
 
 | Zone | Adresse | Contenu |
 | --- | --- | --- |
-| Code | 0x00579610–0x0057A000 (marge de fin de `.text`) | 1,8 Ko (release), 2,5 Ko (tests scriptés) |
+| Code | 0x00579610–0x0057A000 (marge de fin de `.text`) | 2,3 Ko (release, marge restante 240 octets) ; le code des essais va dans la fonction morte 0x004FBF20 |
 | Données des essais | 0x005EBA20–0x005EC000 (marge de fin de `.rodata`) | script d'entrées compilé |
 | État `State` | 0x006AE640 (marge de fin de `.bss`, hors fichier) | initialisé au premier appel (magic `SMTH`) |
 | Table | 0x0A000000, 288 Ko, `svcControlMemory` | 2 048 entrées de 120 octets (0x3C000) ; instantané en +0x3C000, trace en +0x3D000 (tests) |
@@ -95,7 +125,10 @@ démarrage. Si elle échoue, `failed` ≠ 0 et le jeu garde son comportement d'o
 | 0x24 | interp | | 0x8C | n_cut |
 | 0x28 | lastrec | | 0x90 | upd |
 | 0x2C | n_interp | | 0x94, 0x98 | c3d_u, c3d_n (tests) |
-| 0x30–0x3C | n_swap, n_jump, n_miss, n_rec | | | |
+| 0x30–0x3C | n_swap, n_jump, n_miss, n_rec | | 0x9C, 0xA0 | extra, n_fade |
+| | | | 0xA4–0xB3 | eye[4] (caméras des yeux) |
+| | | | 0xB4–0xC3 | eye_f[4] (image de la pose) |
+| | | | 0xC4 | n_eye (vues d'yeux lissées) |
 
 `tools/smstat.py` lit et modifie cette structure via le stub GDB (`set enabled 0`, `set jump_rcam 0.3`).
 

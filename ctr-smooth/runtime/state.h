@@ -48,6 +48,10 @@ typedef struct {
     u32 c3d_u, c3d_n;  /* essais : passes de scène 3D (0x0038CEA4) sur images avec / sans update */
     u32 extra;         /* le dessin en cours est le dessin ajouté (image d'update, mode 30 Hz) */
     u32 n_fade;        /* dessins ajoutés pendant lesquels les transitions ont été figées (cumul) */
+    /* Suite : caméras stéréoscopiques (yeux gauche / droit, intérieurs) */
+    u8 *eye[4];        /* nw::gfx::Camera dont la vue est posée par SetViewMatrix (0x00392F90) */
+    u32 eye_f[4];      /* valeur de frame lors de cette pose */
+    u32 n_eye;         /* vues de caméras d'yeux lissées (cumul) */
 } State;
 
 extern State S;

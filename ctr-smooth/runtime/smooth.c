@@ -179,6 +179,43 @@ static void smooth_array(float *mats, u32 n)
     e0->seen = S.frame;
 }
 
+/* Caméras des yeux (3D stéréoscopique, active en intérieur) : le module de terrain
+ * les recalcule pendant update() à partir de la caméra de base (0x00377984, puis
+ * SetViewMatrix 0x00392F90 sur chaque œil) ; le rendu les lit telles quelles, sans
+ * passer par hook_camera. Leurs vues sont lissées au début de chaque dessin.
+ * Une caméra n'est retenue que si sa vue a été posée au tick courant ou au précédent
+ * (frame - eye_f <= 2) : une caméra libérée entre-temps n'est jamais touchée. */
+#define NW_CAMERA_VT 0x005DBAB8u
+static void smooth_eyes(void)
+{
+    for (u32 i = 0; i < 4u; i++) {
+        u8 *c = S.eye[i];
+        if (c && S.frame - S.eye_f[i] <= 2u && *(u32 *)c == NW_CAMERA_VT) {
+            smooth((float *)(c + 0x148), 1);
+            smooth((float *)(c + 0x178), 1);
+            S.n_eye++;
+        }
+    }
+}
+
+/* SetViewMatrix (0x00392FB4, r0 = nw::gfx::Camera) : retient la caméra. */
+void smooth_setview(u8 *cam)
+{
+    if (S.magic != MAGIC || !cam)
+        return;
+    u32 slot = 0, oldest = 0xFFFFFFFFu;
+    for (u32 i = 0; i < 4u; i++) {
+        if (S.eye[i] == cam) {
+            slot = i;
+            break;
+        }
+        if (S.eye_f[i] < oldest)
+            oldest = S.eye_f[i], slot = i;
+    }
+    S.eye[slot] = cam;
+    S.eye_f[slot] = S.frame;
+}
+
 /* Remplace la décision « dessiner ? » de runEachFrame (0x0010E530).
  * Renvoie 1 pour sauter le dessin (comportement d'origine), 0 pour dessiner. */
 u32 smooth_gate(const u8 *mgr, u32 did_update)
@@ -230,6 +267,8 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
     S.extra = on && mode && did_update && !skip;
     if (on && mode && did_update && !skip)
         S.n_interp++;
+    if (S.interp)
+        smooth_eyes();
     return skip == 1u;
 }
 

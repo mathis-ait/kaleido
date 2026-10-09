@@ -11,7 +11,8 @@ from azahar_gdb import Rsp
 ADDR = 0x006AE640
 F = ['magic', 'enabled', 'jump_t', 'jump_r', 'tab_addr', 'tab_size', 'tab', 'failed', 'frame', 'interp',
      'lastrec', 'n_interp', 'n_swap', 'n_jump', 'n_miss', 'n_rec', 'vpad', 'n_skip', 'script', 'script_pos', 'snap_frame', 'snap_a', 'snap_alen', 'snap_b', 'snap_blen',
-     'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor', 'jump_rel', 'jump_min', 'jump_rcam', 'n_cut', 'upd', 'c3d_u', 'c3d_n', 'extra', 'n_fade']
+     'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor', 'jump_rel', 'jump_min', 'jump_rcam', 'n_cut', 'upd', 'c3d_u', 'c3d_n', 'extra', 'n_fade',
+     'eye0', 'eye1', 'eye2', 'eye3', 'eyef0', 'eyef1', 'eyef2', 'eyef3', 'n_eye']
 FLOATS = {'jump_t', 'jump_r', 'jump_rel', 'jump_min', 'jump_rcam'}
 def read(g):
     raw = g.read(ADDR, 4 * len(F))
@@ -20,7 +21,8 @@ def read(g):
         vals[k] = struct.unpack_from('<f' if k in FLOATS else '<I', raw, 4 * i)[0]
     return vals
 TEST = {'script', 'script_pos', 'snap_frame', 'snap_a', 'snap_alen', 'snap_b', 'snap_blen', 'snap_dst',
-        'snap_done', 'trace', 'trace_n', 'seen', 'tab_addr', 'tab_size', 'lastrec', 'interp'}
+        'snap_done', 'trace', 'trace_n', 'seen', 'tab_addr', 'tab_size', 'lastrec', 'interp',
+        'eye0', 'eye1', 'eye2', 'eye3', 'eyef0', 'eyef1', 'eyef2', 'eyef3'}
 def show(v):
     return '  '.join(('%s=%.2f' % (k, v[k])) if k in FLOATS else ('%s=%#x' % (k, v[k]) if k in ('magic', 'tab', 'tab_addr', 'tab_size', 'vpad') else '%s=%d' % (k, v[k])) for k in F if k not in TEST)
 g = Rsp(timeout=5); g.cmd('?')
@@ -50,7 +52,7 @@ elif len(sys.argv) > 1 and sys.argv[1] == 'watch':
     g.send('c'); t = time.time(); time.sleep(secs); g.s.sendall(b'\x03'); g._recv_packet(); dt = time.time() - t
     b = read(g); c1 = struct.unpack('<3I', g.read(0x006AEFF0, 12))
     print(show(b))
-    for k in ('frame', 'n_interp', 'n_swap', 'n_jump', 'n_cut', 'n_miss', 'n_rec', 'n_skip', 'c3d_u', 'c3d_n', 'n_fade'):
+    for k in ('frame', 'n_interp', 'n_swap', 'n_jump', 'n_cut', 'n_miss', 'n_rec', 'n_skip', 'c3d_u', 'c3d_n', 'n_fade', 'n_eye'):
         print('  %-9s %8.1f/s' % (k, (b[k] - a[k]) / dt))
     for name, x, y in zip(('update', 'sans update', 'draw'), c0, c1):
         print('  %-11s %6.1f/s' % (name, (y - x) / dt))

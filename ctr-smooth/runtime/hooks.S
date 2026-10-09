@@ -54,6 +54,14 @@ hook_lytanim:
     .ltorg
 
 @ 0x002EC354 (nw::gfx MeshRenderer::RenderMesh) : r2 = modèle.
+    .global hook_setview
+hook_setview:                   @ bl depuis 0x00392FB4 (add r4,r0,#0x148) ; r0 = nw::gfx::Camera
+    push    {r0-r3, r12, lr}
+    bl      smooth_setview
+    pop     {r0-r3, r12, lr}
+    add     r4, r0, #0x148
+    bx      lr
+
     .global hook_nwmesh
 hook_nwmesh:
     push    {r0-r3, r12, lr}
