@@ -299,8 +299,17 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
 #ifdef COUNT3D
     {
         u32 idx = *(const volatile u8 *)0x10002200u; /* GSP : framebuffer info de l'écran du haut */
-        if (idx != S.lcd_idx)
+        if (idx != S.lcd_idx && idx < 2u) {
+            /* tampon gauche de l'entrée idx : 0x10002200 + 4 + 0x1C * idx + 4 ; 400 x 240 x 3 octets */
+            const volatile u32 *fb = *(const volatile u32 *const volatile *)(0x10002208u + 0x1Cu * idx);
+            u32 hsh = 2166136261u;
+            for (u32 k = 0; k < 0x46500u / 4u; k += 97u)
+                hsh = (hsh ^ fb[k]) * 16777619u;
             S.n_flip++;
+            if (hsh == S.lcd_hash)
+                S.n_dup++;
+            S.lcd_hash = hsh;
+        }
         S.lcd_idx = idx;
     }
 #endif

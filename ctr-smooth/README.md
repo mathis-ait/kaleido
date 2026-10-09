@@ -6,6 +6,19 @@ ajoutée est rendue avec des matrices interpolées entre les deux derniers ticks
 
 Cible : Pokémon Rubis Oméga EUR, code cartouche v1.0 (Rev 2), Azahar 2126.1.2.
 
+## Suite — lot C : combats (9 octobre 2026)
+
+| Combat du rival, Vulkan ×6, mesure sans pause GDB | Lissage coupé | Lissage actif |
+| --- | --- | --- |
+| Images présentées par seconde réelle | 29,2 | 58,2 (menu), 57,7 (attaque) |
+| Images identiques à la précédente | 0 sur 117 | 1 sur 233, 1 sur 347 |
+| Vitesse du jeu (ticks par seconde réelle) | 29,5 | 29,2 / 28,9 |
+
+Le combat était déjà à 60 côté jeu : la limite « 15 → 30 » de la phase 2 était un artefact de la
+capture sous GDB. Il utilise aussi les caméras des yeux, lissées depuis le lot A. En OpenGL ×6,
+Azahar ne suit pas (89 % de vitesse) : Vulkan conseillé. Méthode : `build.py --probe`,
+`tools/cadence.py` (index GSP du tampon affiché, empreinte des images).
+
 ## Suite — lot B : portes, Azahar ralenti, interrupteur (9 octobre 2026)
 
 | Point | Résultat |
@@ -58,15 +71,14 @@ Apports :
 | Dialogue et événement scripté (rival, Route 103), coupure de caméra, combat de dresseur | 6 parties scriptées de 4 000 images (3 actives, 3 désactivées), générateurs MT19937 et TinyMT réinitialisés à l'apparition du joueur | **identiques** : rythme du RNG image par image et état MT final octet pour octet |
 | Effets de bord du dessin ajouté | vidage du tas avant/après un dessin (`tools/drawdiff.py`) | terrain et combat : seulement des valeurs recalculées à chaque dessin (copies de la vue, pointeurs de tampons, mesure de profilage) |
 | Tirages pendant le dessin ajouté | `tools/rngcheck.py` | aucun, en marche et en combat |
-| Combat : cadence affichée | capture image par image | 30 images/s avec lissage contre **15 d'origine** dans Azahar (voir limite ci-dessous) |
+| Combat : cadence affichée | capture image par image (méthode fausse en combat, voir lot C) | ~~30 contre 15~~ : 58 contre 29 mesuré sans pause au lot C |
 
 Non vérifiable avec cette sauvegarde : Méga-Évolution, Envol, Surf, Concours, Amie Pokémon,
 Super Entraînement, Bases secrètes, cinématiques de légendaires, échanges et combats en ligne.
 Changements de carte et Azahar ralenti / console réelle : prévus en phase 3.
 
-**Limite connue en combat** : le module de combat (CRO `DllBattle`, que le PRD exclut de patcher)
-ne renouvelle l'image affichée qu'un dessin sur deux. L'original s'affiche à 15 images/s dans
-Azahar, le lissage le porte à 30, pas à 60. Détails dans [`docs/runtime.md`](docs/runtime.md).
+~~Limite connue en combat~~ : **corrigé par le lot C** (voir plus haut) : la « mi-cadence » venait
+de la méthode de mesure ; le combat s'affiche à 58 images/s avec le lissage.
 
 **Coût hôte** : la 3DS émulée garde sa cadence avec le dessin ajouté ; c'est l'ordinateur qui rend
 deux fois plus d'images (combat à 86 % de vitesse en OpenGL ×6 dans le bac à sable). Une résolution

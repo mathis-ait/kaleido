@@ -64,6 +64,8 @@ typedef struct {
     u32 pc[16];        /* essais (--probe) : appels de la sonde i, [2i] image d'update, [2i+1] sans */
     u32 lcd_idx;       /* essais (--count3d) : dernier index du tampon affiché, écran du haut (GSP 0x10002200) */
     u32 n_flip;        /* essais : changements de cet index (images réellement présentées à l'écran) */
+    u32 lcd_hash;      /* essais : empreinte (échantillon) de l'image présentée */
+    u32 n_dup;         /* essais : images présentées identiques à la précédente */
 } State;
 
 extern State S;

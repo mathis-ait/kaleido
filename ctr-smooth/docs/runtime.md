@@ -200,27 +200,38 @@ Vérification finale (scène du rival, 4 000 images, `proto/replay/h-*`) : 3 par
 3 désactivées identiques (rythme du RNG et état MT19937 final), une fois les générateurs MT19937
 (0x08C55E64) et TinyMT (0x08C55E24) réinitialisés à l'ancre dans les builds de test.
 
-## Combat : présentation à mi-cadence
+## Combat (lot C) : 60 images, la « mi-cadence » était un artefact de mesure
 
-Mesures en combat (`tools/framecap.py`, compteur de présentations `gfx+0x178+0xBC`, compteur `--count3d`) :
+La phase 2 concluait que le combat ne renouvelait l'image qu'un dessin sur deux (15 images/s
+d'origine, 30 avec le lissage). **C'était faux** : la mesure (`tools/framecap.py`) arrête le jeu à
+chaque VBlank par le stub GDB et capture la fenêtre ; en combat, scène lourde, l'image capturée
+n'était pas celle du dernier dessin.
 
-- la caméra et les os changent à **chaque tick** (30 Hz) ;
-- le jeu dessine et présente à chaque dessin (compteur de présentations `gfx+0x178+0xBC`) ;
-- pourtant l'image affichée n'est renouvelée **qu'un dessin sur deux**, dans le jeu d'origine
-  comme avec le lissage : le combat s'affiche à 15 images/s d'origine dans Azahar, à 30 avec le
-  lissage, toujours sur la même parité d'image.
+Mesure sans aucune pause (builds `--probe`, `tools/cadence.py`) : à chaque appel de la décision de
+dessin, le runtime lit l'index du tampon affiché de l'écran du haut dans la mémoire partagée GSP
+(`0x10002200`, tampons LCD en VRAM `0x1F300000` / `0x1F346600`), compte ses changements et prend
+une empreinte de l'image présentée (un mot sur 97) pour compter les images identiques.
 
-L'alternance n'est pas dans `code.bin` (drapeaux de dessin constants) : elle vient du module de
-combat `DllBattle` (CRO, fonction de dessin vers 0x0076E5A0 dans cette session), que le PRD exclut
-de patcher. Atteindre 60 images/s en combat demande d'identifier cette alternance (piste : passes
-de rendu alternées ou cible de rendu double), à traiter comme un chantier à part.
+| Combat du rival (bac à sable, Vulkan ×6) | Ticks / s | Images présentées / s | Images identiques à la précédente |
+| --- | --- | --- | --- |
+| Lissage coupé | 29,5 | 29,2 | 0 sur 117 |
+| Lissage actif, menu | 29,2 | 58,2 | 1 sur 233 |
+| Lissage actif, attaque | 28,9 | 57,7 | 1 sur 347 |
+
+Le combat utilise aussi les caméras des yeux (mise à jour stéréo 0x00377984 appelée par
+`DllBattle`, puis `SetViewMatrix`) : le correctif du lot A les lisse aussi en combat ; il est
+probable que c'est ce qui manquait au combat lors du premier essai réel (non mesuré avec
+l'ancien patch).
+
+Coût hôte en combat : en OpenGL ×6, Azahar tombe à 89 % de vitesse lissage actif (le jeu ralentit,
+environ 51 images/s réelles) ; en Vulkan ×6, 96 à 106 %. Vulkan est à conseiller.
 
 ## Coût
 
 | Scène | Vitesse d'émulation, lissage désactivé | actif |
 | --- | --- | --- |
 | Terrain (Route 103) | 100 % | 100 % (Vulkan), 87 % (OpenGL, bac à sable) |
-| Combat | 102 % | 86 % (OpenGL ×6, bac à sable) |
+| Combat | 102 % | 89 % (OpenGL ×6), 96 à 106 % (Vulkan ×6), bac à sable |
 
 La 3DS émulée garde sa cadence (60 images par seconde **émulée** dans les deux cas) : c'est
 l'ordinateur hôte qui doit rendre deux fois plus d'images. Le jeu n'est donc pas ralenti en temps

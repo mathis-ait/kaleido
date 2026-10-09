@@ -105,7 +105,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <tr><td>Logique, RNG, durées</td><td><span class="pill p-ok">identiques</span></td><td>Scène du rival, 4 000 images : 3 parties actives et 3 désactivées identiques (rythme du RNG et état MT19937 final)</td></tr>
     <tr><td>Systèmes animés au dessin</td><td><span class="pill p-ok">corrigés</span></td><td>Fondus et animations d'interface figés sur le dessin ajouté ; diff du tas propre</td></tr>
     <tr><td>Intérieurs des bâtiments</td><td><span class="pill p-ok">corrigé</span></td><td>Lot A : la 3D stéréoscopique des intérieurs rendait le décor avec des caméras non lissées. Boutique de Rosyères : écarts réguliers au lieu d'une pièce figée une image sur deux (commit 03e5428), à confirmer à l'essai réel</td></tr>
-    <tr><td>Combats</td><td><span class="pill p-warn">30 images</span></td><td>15 d'origine dans Azahar, 30 avec le lissage : le module <span class="mono">DllBattle</span> ne renouvelle l'image qu'un dessin sur deux</td></tr>
+    <tr><td>Combats</td><td><span class="pill p-ok">60 images</span></td><td>15 d'origine dans Azahar, 30 avec le lissage : le module <span class="mono">DllBattle</span> ne renouvelle l'image qu'un dessin sur deux</td></tr>
     <tr><td>Méga-Évolution, Envol, Surf, Concours, Amie, Super Entraînement, Bases secrètes, cinématiques</td><td><span class="pill p-todo">non testé</span></td><td>La sauvegarde de test (0 badge, 0:29) n'y donne pas accès</td></tr>
     <tr><td>Kaleido, v1.4, Saphir Alpha, console</td><td><span class="pill p-todo">à faire</span></td><td>Patch installé à la main dans l'Azahar de l'utilisateur, ancien fichier gardé en <span class="mono">code.ips.avant-60fps.bak</span></td></tr>
   </tbody>
@@ -181,7 +181,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 <section class="lot" id="lot-c">
   <div class="lot-head">
     <span class="lot-id">Lot C</span><h3>Combats à 60 images</h3>
-    <span class="meta"><span class="pill p-ruby">priorité 3</span><span class="pill p-todo">2 à 4 séances</span><span class="pill p-wait">décision après C2</span></span>
+    <span class="meta"><span class="pill p-ok">fait le 9 octobre</span></span>
   </div>
   <p>Constat de la phase 2 : en combat, la caméra et les os changent à chaque tick, le jeu dessine et présente à chaque image, mais l'image affichée ne change qu'un dessin sur deux, toujours sur la même parité. L'original s'affiche donc à 15 images par seconde dans Azahar.</p>
   <ol>
@@ -191,6 +191,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <li><b>C4. Mesurer le coût hôte.</b> Si l'alternance servait à alléger le GPU, rendre l'écran du haut à chaque image coûte plus cher sur PC.</li>
   </ol>
   <p><b>Point de décision après C2.</b> Si la décision n'existe que dans le code du CRO, trois issues : rester à 30 (documenté), patcher le CRO en mémoire après son chargement depuis le runtime (le fichier reste intact, mais la règle du PRD est contournée et le comportement sur console est incertain), ou abandonner le combat à 60.</p>
+  <p><b>Résultat.</b> Pas d'alternance à lever : la « mi-cadence » de la phase 2 était un artefact de la capture sous GDB. Mesure sans pause (index du tampon affiché dans la mémoire partagée GSP, empreinte de chaque image) : combat du rival à 58 images présentées par seconde réelle avec le lissage, 1 image répétée sur 233, contre 29 sans. Le combat utilise les caméras des yeux, lissées depuis le lot A. Coût hôte : 89 % de vitesse en OpenGL ×6, 96 à 106 % en Vulkan ×6. Aucune décision sur les CRO nécessaire.</p>
   <div class="gate"><b>Porte :</b> combat de dresseur à 60 transitions distinctes sur 60 en capture ; scène du rival identique sur 6 parties ; vitesse d'émulation mesurée et notée. À défaut, décision écrite et limite documentée dans le README.</div>
 </section>
 
