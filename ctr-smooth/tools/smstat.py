@@ -14,6 +14,7 @@ F = ['magic', 'enabled', 'jump_t', 'jump_r', 'tab_addr', 'tab_size', 'tab', 'fai
      'snap_dst', 'snap_done', 'cam', 'trace', 'trace_n', 'seen', 'anchor', 'jump_rel', 'jump_min', 'jump_rcam', 'n_cut', 'upd', 'c3d_u', 'c3d_n', 'extra', 'n_fade',
      'eye0', 'eye1', 'eye2', 'eye3', 'eyef0', 'eyef1', 'eyef2', 'eyef3', 'n_eye',
      'pad', 'combo_f', 'tstate0', 'tstate1', 'n_tskip', 'cam_u', 'cam_n', 'h3d_u', 'h3d_n', 'nw_u', 'nw_n']
+# champs suivants (après tlog, pc, lcd) : adresses fixes calculées par offset_of() plus bas
 FLOATS = {'jump_t', 'jump_r', 'jump_rel', 'jump_min', 'jump_rcam'}
 def read(g):
     raw = g.read(ADDR, 4 * len(F))
@@ -46,6 +47,20 @@ elif len(sys.argv) > 1 and sys.argv[1] == 'press':
         g.write(VP, struct.pack('<I', mask))
         g.send('c'); time.sleep(ms / 1000); g.s.sendall(b''); g._recv_packet()
     g.write(VP, struct.pack('<I', 0))
+    print('ok')
+elif len(sys.argv) > 1 and sys.argv[1] in ('stick', 'touch'):
+    # stick X Y [ms] (valeurs signees, environ +-150) ; touch X Y [ms] (ecran du bas 320 x 240) ; ms absent = laisse en place, « off » = relache
+    from stateoff import off
+    k = 'vstick' if sys.argv[1] == 'stick' else 'vtouch'
+    if sys.argv[2] == 'off':
+        val = 0
+    else:
+        x, y = int(sys.argv[2]), int(sys.argv[3])
+        val = (x & 0xFFFF) | (y & 0xFFFF) << 16 if k == 'vstick' else x | y << 16 | 0x80000000
+    g.write(ADDR + off(k), struct.pack('<I', val))
+    if len(sys.argv) > 4:
+        g.send('c'); time.sleep(int(sys.argv[4]) / 1000); g.s.sendall(b''); g._recv_packet()
+        g.write(ADDR + off(k), struct.pack('<I', 0))
     print('ok')
 elif len(sys.argv) > 1 and sys.argv[1] == 'watch':
     secs = float(sys.argv[2]) if len(sys.argv) > 2 else 3.0

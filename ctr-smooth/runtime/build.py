@@ -112,7 +112,7 @@ def main():
     elf = os.path.join(out, 'ctr-smooth.elf')
     run(tool('ld'), '-T', os.path.join(HERE, 'link.ld'), '--gc-sections', '-e', 'hook_gate',
         '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'smooth_fade', '-u', 'hook_lytanim', '-u', 'hook_setview', '-u', 'hook_hid', '-u', 'S',
-        *(['-u', 'hook_pad'] if a.test_input else []), *(['-u', 'hook_cnt3d'] if a.count3d else []),
+        *(['-u', 'hook_pad', '-u', 'hook_touch'] if a.test_input else []), *(['-u', 'hook_cnt3d'] if a.count3d else []),
         *[x for i in range(len(a.probe[:8])) for x in ('-u', 'probe_%d' % i)],
         '--no-warn-mismatch', *objs, '-o', elf)
     run(tool('objcopy'), '-O', 'binary', '-j', '.text', elf, os.path.join(out, 'text.bin'))
@@ -151,6 +151,7 @@ def main():
          branch(0x0036FB34, syms['hook_pad' if a.test_input else 'hook_hid'], True)),
     ]
     if a.test_input:
+        hooks.append((0x0036FB40, 'mov r0,r4', bytes.fromhex('0400a0e1'), branch(0x0036FB40, syms['hook_touch'], True)))
         if a.count3d:
             hooks.append((0x0038CEA4, 'push {r3-r7,lr}', bytes.fromhex('f8402de9'), branch(0x0038CEA4, syms['hook_cnt3d'])))
     for i, addr in enumerate(a.probe[:8]):

@@ -4,8 +4,8 @@
  */
 #include "state.h"
 
-#define SNAP_OFF 0x3C000u
-#define TRACE_OFF 0x3D000u
+#define SNAP_OFF 0x40000u
+#define TRACE_OFF 0x41000u
 
 #ifdef TEST_SCRIPT
 #include "build/test_script.h" /* généré par build.py --script */
@@ -77,7 +77,7 @@ __attribute__((section(".text.testcnt"))) void smooth_cnt3d(void)
 /* Builds de test : boutons tenus = manette + S.vpad + script. Le script a deux
  * parties : images absolues (menus, jusqu'à l'ancre), séparateur 0xFFFF0000,
  * puis images relatives à l'ancre (apparition du joueur), fin 0xFFFFFFFF. */
-u32 smooth_pad(u32 hold)
+u32 smooth_pad(u32 hold, u8 *dev)
 {
     const u32 *p = S.script;
     u32 mask = 0;
@@ -103,6 +103,10 @@ u32 smooth_pad(u32 hold)
             }
         }
     }
+    /* stick : nn::hid::PadStatus { hold, trigger, release, stick x, stick y } en dev+0x78 */
+    if (S.vstick) {
+        *(u32 *)(dev + 0x84) = S.vstick;
+    }
     S.pad = hold | S.vpad | mask;
     return S.pad;
 }
@@ -111,4 +115,14 @@ u32 smooth_pad(u32 hold)
 __attribute__((section(".text.testcnt"))) void smooth_probe(u32 i)
 {
     S.pc[2u * i + (S.upd ? 0u : 1u)]++;
+}
+
+/* Builds de test : écran tactile (nn::hid::TouchPanelStatus { u16 x, u16 y, u8 touch } en dev+0x98). */
+void smooth_touch(u8 *dev)
+{
+    if (S.vtouch & 0x80000000u) {
+        *(unsigned short *)(dev + 0x98) = (unsigned short)(S.vtouch & 0x1FFu);
+        *(unsigned short *)(dev + 0x9A) = (unsigned short)((S.vtouch >> 16) & 0xFFu);
+        dev[0x9C] = 1;
+    }
 }

@@ -30,9 +30,9 @@
 #define STALE_FRAMES 120u
 
 /* Zones de la mémoire allouée (0x40000 octets) */
-#define TAB_BYTES (TAB_N * sizeof(Entry)) /* 0x3C000 */
-#define SNAP_OFF 0x3C000u
-#define TRACE_OFF 0x3D000u
+#define TAB_BYTES (TAB_N * sizeof(Entry)) /* 0x40000 */
+#define SNAP_OFF 0x40000u
+#define TRACE_OFF 0x41000u
 #define MAX_PERIOD 8u
 #define UNSEEN_FRAMES 4u
 #define PAD_COMBO 0x304u /* L (0x200) + R (0x100) + Select (0x4) */   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
@@ -45,7 +45,10 @@ struct Entry {
     u32 tc, tp;     /* images d'apparition de cur et de prev (tp = 0 : inconnue) */
     float prev[12]; /* avant-dernière valeur distincte (P) */
     float cur[12];  /* dernière valeur lue (C), restaurée en fin d'image */
+    float dlast;    /* écart de translation du dernier changement (même refusé) */
+    u32 rsv;
 };
+_Static_assert(sizeof(Entry) == 128, "Entry : 128 octets (table 0x40000)");
 
 
 
@@ -116,6 +119,7 @@ static void smooth(float *m, u32 camera)
             e->prev[i] = e->cur[i] = m[i];
         e->obs = e->tc = f;
         e->tp = 0;
+        e->dlast = 0.0f;
         S.n_rec++;
         return;
     }
@@ -143,7 +147,12 @@ static void smooth(float *m, u32 camera)
         float lim_t = S.jump_rel * mag + S.jump_min;
         if (lim_t > S.jump_t)
             lim_t = S.jump_t;
-        u32 jump = dt > lim_t || dr > (camera ? S.jump_rcam : S.jump_r);
+        /* Un grand déplacement qui prolonge le mouvement du changement précédent (Envol,
+         * vélo, caméra qui suit) est mélangé ; un saut surgi d'un coup (téléportation,
+         * réapparition, coupure) ne l'est pas. */
+        u32 tjump = dt > lim_t && dt > 2.0f * e->dlast + lim_t;
+        e->dlast = dt;
+        u32 jump = tjump || dr > (camera ? S.jump_rcam : S.jump_r);
         for (u32 i = 0; i < 12; i++) {
             e->prev[i] = jump ? m[i] : e->cur[i];
             e->cur[i] = m[i];
@@ -222,6 +231,27 @@ void smooth_setview(u8 *cam)
     S.eye_f[slot] = S.frame;
 }
 
+#ifdef COUNT3D
+/* Essais : images réellement présentées sur un écran (GSP, framebuffer info : index puis
+ * deux entrées de 0x1C octets, adresse du tampon gauche en +4) ; c[0] index, c[1] images,
+ * c[2] empreinte, c[3] images identiques à la précédente. */
+static void lcd_probe(const volatile u8 *info, u32 *c)
+{
+    u32 idx = info[0];
+    if (idx != c[0] && idx < 2u) {
+        const volatile u32 *fb = *(const volatile u32 *const volatile *)(info + 8u + 0x1Cu * idx);
+        u32 hsh = 2166136261u;
+        for (u32 k = 0; k < 0x38400u / 4u; k += 97u) /* 320 x 240 x 3 : couvre les deux écrans */
+            hsh = (hsh ^ fb[k]) * 16777619u;
+        c[1]++;
+        if (hsh == c[2])
+            c[3]++;
+        c[2] = hsh;
+    }
+    c[0] = idx;
+}
+#endif
+
 /* Remplace la décision « dessiner ? » de runEachFrame (0x0010E530).
  * Renvoie 1 pour sauter le dessin (comportement d'origine), 0 pour dessiner. */
 u32 smooth_gate(const u8 *mgr, u32 did_update)
@@ -239,7 +269,7 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
         S.jump_min = 0.5f;
         S.jump_rcam = 0.25f;
         S.tab_addr = 0x0A000000u;
-        S.tab_size = 0x48000u; /* table 0x3C000 + essais (instantané, trace de 4 000 images) */
+        S.tab_size = 0x4A000u; /* table 0x40000 + essais (instantané, trace de 4 000 images) */
 #ifdef TEST_SCRIPT
         S.enabled = 0u; /* le mode testé s'applique à partir de l'ancre */
 #endif
@@ -297,21 +327,8 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
     S.frame++;
     S.upd = did_update;
 #ifdef COUNT3D
-    {
-        u32 idx = *(const volatile u8 *)0x10002200u; /* GSP : framebuffer info de l'écran du haut */
-        if (idx != S.lcd_idx && idx < 2u) {
-            /* tampon gauche de l'entrée idx : 0x10002200 + 4 + 0x1C * idx + 4 ; 400 x 240 x 3 octets */
-            const volatile u32 *fb = *(const volatile u32 *const volatile *)(0x10002208u + 0x1Cu * idx);
-            u32 hsh = 2166136261u;
-            for (u32 k = 0; k < 0x46500u / 4u; k += 97u)
-                hsh = (hsh ^ fb[k]) * 16777619u;
-            S.n_flip++;
-            if (hsh == S.lcd_hash)
-                S.n_dup++;
-            S.lcd_hash = hsh;
-        }
-        S.lcd_idx = idx;
-    }
+    lcd_probe((const volatile u8 *)0x10002200u, &S.lcd_idx);
+    lcd_probe((const volatile u8 *)0x10002240u, &S.lcd2_idx);
 #endif
 #ifdef TEST_SCRIPT
     on = test_frame(did_update, on);

@@ -45,9 +45,9 @@ def main():
     else:
         sys.exit('instantane non atteint (image %d)' % rd(g, 'frame'))
     tab = rd(g, 'tab')
-    snap = g.read(tab + 0x3C000, MT_LEN + 0x30)
+    snap = g.read(tab + 0x40000, MT_LEN + 0x30)
     open(a.out, 'wb').write(snap)
-    open(os.path.splitext(a.out)[0] + '.trace', 'wb').write(g.read(tab + 0x3D000, 8 * (a.snap + 1)))
+    open(os.path.splitext(a.out)[0] + '.trace', 'wb').write(g.read(tab + 0x41000, 8 * (a.snap + 1)))
     open(os.path.splitext(a.out)[0] + '.anchor', 'w').write(str(rd(g, 'anchor')))
     st = {k: rd(g, k) for k in ('enabled', 'anchor', 'frame', 'n_interp', 'n_swap', 'n_jump', 'n_cut', 'n_skip', 'n_fade')}
     g.send('c')

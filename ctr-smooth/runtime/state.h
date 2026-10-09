@@ -62,10 +62,13 @@ typedef struct {
     u32 tlog[32];      /* essais (--count3d) : (frame << 1 | upd, caméra) des 16 derniers appels de hook_camera */
     u32 tlog_i;
     u32 pc[16];        /* essais (--probe) : appels de la sonde i, [2i] image d'update, [2i+1] sans */
-    u32 lcd_idx;       /* essais (--count3d) : dernier index du tampon affiché, écran du haut (GSP 0x10002200) */
-    u32 n_flip;        /* essais : changements de cet index (images réellement présentées à l'écran) */
-    u32 lcd_hash;      /* essais : empreinte (échantillon) de l'image présentée */
-    u32 n_dup;         /* essais : images présentées identiques à la précédente */
+    u32 lcd_idx;       /* essais (--count3d) : écran du haut (GSP 0x10002200) : dernier index du tampon affiché, */
+    u32 n_flip;        /*   images réellement présentées, */
+    u32 lcd_hash;      /*   empreinte de la dernière, */
+    u32 n_dup;         /*   images identiques à la précédente */
+    u32 lcd2_idx, n_flip2, lcd2_hash, n_dup2; /* essais : idem pour l'écran du bas (GSP 0x10002240) */
+    u32 vstick;        /* essais (--test-input) : stick injecté, x (s16) | y << 16 ; 0 = manette */
+    u32 vtouch;        /* essais : écran tactile injecté, x | y << 16 | bit 31 = appui */
 } State;
 
 extern State S;

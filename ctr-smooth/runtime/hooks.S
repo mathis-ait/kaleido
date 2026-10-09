@@ -104,7 +104,19 @@ hook_cnt3d:
 hook_pad:
     push    {r4, lr}
     ldr     r0, [r4, #0x78]
+    mov     r1, r4
     blx     smooth_pad
     str     r0, [r4, #0x78]
     add     r1, r4, #0x98
     pop     {r4, pc}
+
+@ Builds de test : 0x0036FB40 (« mov r0, r4 », juste après TouchPanelReader::ReadLatest)
+@ devient « bl hook_touch » : écran tactile injecté en [r4+0x98] (x, y, appui).
+    .global hook_touch
+hook_touch:
+    push    {r0-r3, r12, lr}
+    mov     r0, r4
+    blx     smooth_touch
+    pop     {r0-r3, r12, lr}
+    mov     r0, r4
+    bx      lr
