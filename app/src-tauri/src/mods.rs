@@ -55,6 +55,9 @@ pub struct ModTarget {
     /// Version du jeu installée (mise à jour Switch), pour signaler les mods prévus pour une autre.
     #[serde(default)]
     pub game_version: Option<String>,
+    /// Switch : fichier de la mise à jour installée (`rom` = jeu de base).
+    #[serde(default)]
+    pub update_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -96,6 +99,10 @@ pub struct ModEntry {
     pub popularity: Option<u64>,
     /// « layeredfs », « textures », « patch » (DS), « cheats ».
     pub kind: Option<String>,
+    /// Correctifs ExeFS (Switch) : « ok » (visent l'exécutable lancé), « base » (le jeu sans
+    /// mise à jour), « other » (une autre version) ; absent quand le mod n'en a pas ou que
+    /// l'exécutable n'a pas pu être lu.
+    pub exefs: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -106,6 +113,7 @@ pub struct OtherMod {
     pub category: String,
     pub overlaps: Vec<String>,
     pub can_toggle: bool,
+    pub exefs: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -126,6 +134,16 @@ pub struct ModsView {
     pub installed_gb: Vec<u32>,
     /// Une archive téléchargée à la main peut être installée.
     pub can_import: bool,
+    /// Switch : exécutable lancé par Eden, vérifié pour les correctifs ExeFS.
+    pub executable: Option<Executable>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Executable {
+    /// « la mise à jour 1.1.1 », « le jeu de base ».
+    pub source: String,
+    pub build_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1018,7 +1036,10 @@ fn catalog_entries(app: &AppHandle, key: &str, target: &ModTarget, mine: &dyn Fn
         }
         let file = profile.and_then(|(_, files)| pick_gb_file(files, None, m.file.as_deref()));
         let requires: Vec<String> = m.requires.iter().filter(|r| mine(r).is_none_or(|(_, _, on)| !on)).filter_map(|r| catalog.mods.iter().find(|o| &o.id == r)).map(|o| o.name.clone()).collect();
-        let warning = [m.warning.clone(), version_warning(m.game_version.as_deref(), target.game_version.as_deref())].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        // L'écart de version est montré discrètement par l'interface : un mod de romfs fait sur
+        // une version antérieure marche le plus souvent. Les correctifs ExeFS, eux, sont vérifiés.
+        let _ = target;
+        let warning = m.warning.clone().unwrap_or_default();
         out.push(ModEntry {
             id: m.id.clone(),
             name: m.name.clone(),
@@ -1105,6 +1126,103 @@ fn resolve_conflicts(entries: &mut [ModEntry], others: &[(String, Kind)], active
     }
 }
 
+/// Build ID de l'exécutable d'un fichier Switch, gardé en mémoire par chemin, taille et date.
+fn file_build_id(path: &Path, keys: &kaleido_core::nx::Keys) -> Result<String, String> {
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<BTreeMap<(PathBuf, u64, u64), String>>> = OnceLock::new();
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+    let key = (path.to_path_buf(), meta.len(), stamp);
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(id) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        return Ok(id.clone());
+    }
+    let id = kaleido_core::nx::program_build_id(path, keys).map(|b| kaleido_core::nx::build_id_hex(&b)).map_err(|e| e.to_string())?;
+    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(key, id.clone());
+    Ok(id)
+}
+
+/// Build ID de l'exécutable lancé par Eden (la mise à jour si présente) et du jeu de base.
+struct ExeIds {
+    running: String,
+    base: Option<String>,
+    has_update: bool,
+}
+
+fn exe_ids(app: &AppHandle, target: &ModTarget) -> Result<ExeIds, String> {
+    let keys_path = crate::switch::prod_keys(app).ok_or("clés de la console (prod.keys) introuvables")?;
+    let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
+    let base = target.rom.as_deref().map(|p| file_build_id(Path::new(p), &keys));
+    match target.update_file.as_deref() {
+        Some(u) => Ok(ExeIds { running: file_build_id(Path::new(u), &keys)?, base: base.and_then(Result::ok), has_update: true }),
+        None => Ok(ExeIds { running: base.ok_or("fichier du jeu inconnu")??, base: None, has_update: false }),
+    }
+}
+
+/// Verdict des correctifs ExeFS d'un mod (build IDs visés) face à l'exécutable lancé.
+pub fn exefs_verdict(patches: &[String], running: &str, base: Option<&str>) -> Option<&'static str> {
+    use kaleido_core::nx::build_id_matches;
+    if patches.is_empty() {
+        return None;
+    }
+    if patches.iter().any(|p| build_id_matches(p, running)) {
+        return Some("ok");
+    }
+    if base.is_some_and(|b| patches.iter().any(|p| build_id_matches(p, b))) {
+        return Some("base");
+    }
+    Some("other")
+}
+
+/// Build IDs visés par les correctifs `exefs/` d'un dossier de mod.
+fn dir_patch_ids(dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(dir) else { return vec![] };
+    let Some(exefs) = entries.flatten().map(|e| e.path()).find(|p| p.is_dir() && p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("exefs"))) else { return vec![] };
+    let Ok(files) = fs::read_dir(exefs) else { return vec![] };
+    files
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let content = if name.to_ascii_lowercase().ends_with(".pchtxt") { fs::read(e.path()).unwrap_or_default() } else { Vec::new() };
+            kaleido_core::nx::patch_build_id(&name, &content)
+        })
+        .collect()
+}
+
+/// Build IDs visés par les correctifs d'une archive Fl4sh : (dossier qui contient `exefs/`, build ID).
+fn zip_patch_ids(zip_path: &Path) -> Vec<(String, String)> {
+    let Ok(file) = fs::File::open(zip_path) else { return vec![] };
+    let Ok(mut zip) = zip::ZipArchive::new(file) else { return vec![] };
+    let mut out = Vec::new();
+    for i in 0..zip.len() {
+        let Ok(mut entry) = zip.by_index(i) else { continue };
+        let path = entry.name().replace('\\', "/");
+        let lower = path.to_ascii_lowercase();
+        let Some(pos) = lower.rfind("/exefs/") else { continue };
+        let name = path[pos + 7..].to_string();
+        if name.contains('/') || name.is_empty() {
+            continue;
+        }
+        let mut content = Vec::new();
+        if lower.ends_with(".pchtxt") {
+            let _ = (&mut entry).take(1 << 20).read_to_end(&mut content);
+        }
+        if let Some(id) = kaleido_core::nx::patch_build_id(&name, &content) {
+            out.push((path[..pos + 1].to_string(), id));
+        }
+    }
+    out
+}
+
+/// Phrase d'avertissement pour un verdict ExeFS.
+fn exefs_warning(verdict: &str, exe: &Executable) -> Option<String> {
+    match verdict {
+        "base" => Some(format!("Ce correctif vise le jeu sans mise à jour, alors qu'Eden lance {} : il ne s'appliquera pas.", exe.source)),
+        "other" => Some(format!("Ce correctif vise une autre version du jeu que {} : Eden l'ignorera sans rien dire.", exe.source)),
+        _ => None,
+    }
+}
+
 fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     let r = resolve(EmulatorId::Eden, app);
     let mut view = ModsView { emulator: Some("Eden"), emulator_found: r.exe.is_some(), gamebanana: crate::gamebanana::game_of(tid), can_import: true, ..Default::default() };
@@ -1114,6 +1232,22 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     };
     let game_dir = load.join(format!("{tid:016X}"));
     view.location = Some(game_dir.display().to_string());
+    let ids = match exe_ids(app, target) {
+        Ok(ids) => Some(ids),
+        Err(e) => {
+            view.notes.push(format!("Kaleido n'a pas pu vérifier si les correctifs 60 FPS conviennent à ta version du jeu ({e})."));
+            None
+        }
+    };
+    if let Some(ids) = &ids {
+        let source = match (ids.has_update, target.game_version.as_deref()) {
+            (true, Some(v)) => format!("la mise à jour {v}"),
+            (true, None) => "la mise à jour installée".to_string(),
+            (false, _) => "le jeu de base".to_string(),
+        };
+        view.executable = Some(Executable { source, build_id: ids.running.clone() });
+    }
+    let verdict = |patches: &[String]| ids.as_ref().and_then(|i| exefs_verdict(patches, &i.running, i.base.as_deref())).map(str::to_string);
     let tier = tuning::current_tier();
     let installed = installed_dirs(&game_dir);
     let disabled = disabled_dir(app, tid).map(|d| installed_dirs(&d)).unwrap_or_default();
@@ -1126,12 +1260,12 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     // Mods présents qui ne viennent pas de Kaleido (ou mis de côté par Kaleido).
     for (name, marker) in &installed {
         if marker.is_none() {
-            view.others.push(OtherMod { name: name.clone(), enabled: true, category: other_category(name, tier), overlaps: overlaps.get(name).cloned().unwrap_or_default(), can_toggle: true });
+            view.others.push(OtherMod { name: name.clone(), enabled: true, category: other_category(name, tier), overlaps: overlaps.get(name).cloned().unwrap_or_default(), can_toggle: true, exefs: verdict(&dir_patch_ids(&game_dir.join(name))) });
         }
     }
     for (name, marker) in &disabled {
         if marker.is_none() {
-            view.others.push(OtherMod { name: name.clone(), enabled: false, category: other_category(name, tier), overlaps: vec![], can_toggle: true });
+            view.others.push(OtherMod { name: name.clone(), enabled: false, category: other_category(name, tier), overlaps: vec![], can_toggle: true, exefs: None });
         }
     }
     let active_others: Vec<(String, Kind)> = installed.iter().filter(|(_, m)| m.is_none()).map(|(n, _)| (n.clone(), classify(n, tier))).collect();
@@ -1146,9 +1280,10 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     // Fl4sh.
     let mut entries: Vec<ModEntry> = Vec::new();
     match fl4sh_archive(app, tid) {
-        Some((archive, sha)) => match fl4sh_zip(app, &archive, &sha).and_then(|z| zip_listing(&z)) {
-            Ok(listing) => {
+        Some((archive, sha)) => match fl4sh_zip(app, &archive, &sha).and_then(|z| zip_listing(&z).map(|l| (z, l))) {
+            Ok((zip_path, listing)) => {
                 let mods = zip_mods(&listing, tid);
+                let zip_ids = if ids.is_some() { zip_patch_ids(&zip_path) } else { vec![] };
                 let kinds: Vec<Kind> = mods.iter().map(|m| classify(&m.folder, tier)).collect();
                 // Dans chaque groupe, seul le mieux classé est recommandé.
                 let mut best: BTreeMap<&str, u8> = BTreeMap::new();
@@ -1165,7 +1300,9 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
                     let id = format!("fl4sh:{}", mod_key(&split_version(&m.folder).0));
                     let current = mine(&id);
                     let recommended = k.rank > 0 && (k.group.is_none() || best.get(k.group.unwrap_or("")) == Some(&k.rank));
-                    let warning = [k.warning, version_warning(version.as_deref(), target.game_version.as_deref())].into_iter().flatten().collect::<Vec<_>>().join(" ");
+                    // Sans exécutable lisible, l'écart de version reste le seul indice pour un 60 FPS.
+                    let mismatch = if ids.is_none() { version_warning(version.as_deref(), target.game_version.as_deref()) } else { None };
+                    let warning = [k.warning, mismatch].into_iter().flatten().collect::<Vec<_>>().join(" ");
                     entries.push(ModEntry {
                         installed: current.is_some(),
                         enabled: current.as_ref().is_some_and(|c| c.2),
@@ -1182,6 +1319,7 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
                         size: Some(m.size),
                         game_version: version,
                         warning: (!warning.is_empty()).then_some(warning),
+                        exefs: verdict(&zip_ids.iter().filter(|(root, _)| root.starts_with(&m.root)).map(|(_, id)| id.clone()).collect::<Vec<_>>()),
                         ..Default::default()
                     });
                 }
@@ -1216,8 +1354,26 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     for e in entries.iter_mut().filter(|e| e.installed && e.enabled) {
         e.overlaps = overlaps.get(&e.name).cloned().unwrap_or_default();
     }
+    // Correctifs ExeFS des mods installés : vérifiés sur les fichiers en place.
+    if let Ok(parked) = disabled_dir(app, tid) {
+        for e in entries.iter_mut().filter(|e| e.installed) {
+            if let Some((folder, _, on)) = mine(&e.id) {
+                let dir = if on { game_dir.join(&folder) } else { parked.join(&folder) };
+                if let Some(v) = verdict(&dir_patch_ids(&dir)) {
+                    e.exefs = Some(v);
+                }
+            }
+        }
+    }
+    if let Some(exe) = &view.executable {
+        for e in entries.iter_mut() {
+            if let Some(w) = e.exefs.as_deref().and_then(|v| exefs_warning(v, exe)) {
+                e.warning = Some(e.warning.take().map_or(w.clone(), |old| format!("{w} {old}")));
+            }
+        }
+    }
     view.installed_gb = entries.iter().filter(|e| e.installed).filter_map(|e| e.gb).collect();
-    if entries.iter().any(|e| e.category == "fps") {
+    if entries.iter().any(|e| e.category == "fps") && view.executable.is_none() {
         view.notes.push("Les mods 60 FPS ne s'appliquent qu'à la version du jeu indiquée : installe la dernière mise à jour du jeu dans Eden.".into());
     }
     view.mods = entries;
@@ -1738,6 +1894,7 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
             category: "other".into(),
             overlaps: vec![],
             can_toggle: false,
+            exefs: None,
         });
     }
     view.notes.push(format!(
@@ -1887,6 +2044,11 @@ fn plugin_marker(user: &Path, tid: u64, id: &str) -> PathBuf {
     plugins_dir(user, tid).join(format!("kaleido-{:016x}.json", fxhash(id)))
 }
 
+/// Témoin : le chargeur de plugins d'Azahar a été activé par Kaleido.
+fn loader_flag(user: &Path) -> PathBuf {
+    user.join("sdmc").join("luma").join("plugins").join("kaleido-loader.txt")
+}
+
 /// Plugin 3GX (ex. Pokémon qui suit sur Soleil et Lune) : fichiers `.3gx` copiés dans
 /// `sdmc/luma/plugins/<TITLEID>/`.
 fn install_plugin3gx(app: &AppHandle, user: &Path, tid: u64, id: &str, opts: &InstallOptions, emit: &dyn Fn(&'static str, u64, u64)) -> Result<Installed, String> {
@@ -1924,6 +2086,13 @@ fn install_plugin3gx(app: &AppHandle, user: &Path, tid: u64, id: &str, opts: &In
         }
         let marker = Marker { id: id.into(), version: Some(names.join("|")), source: "GameBanana".into(), name: Some(entry.name.clone()), category: Some(entry.category.clone()), gb: entry.gb, page: entry.page.clone() };
         fs::write(plugin_marker(user, tid, id), serde_json::to_vec_pretty(&marker).unwrap_or_default()).map_err(|e| e.to_string())?;
+        // Sans le chargeur de plugins (désactivé par défaut), Azahar ignore le .3gx. Kaleido note
+        // qu'il l'a activé lui-même, pour ne le couper ensuite que dans ce cas.
+        let config = fs::read_to_string(user.join("config").join("qt-config.ini")).unwrap_or_default();
+        if tuning::get_qt(&config, "System", "plugin_loader").as_deref() != Some("true") {
+            tuning::set_azahar_plugin_loader(user, true)?;
+            let _ = fs::write(loader_flag(user), b"Kaleido a active le chargeur de plugins d'Azahar.");
+        }
         Ok(Installed::Done)
     })();
     let _ = fs::remove_dir_all(&work);
@@ -1937,6 +2106,13 @@ fn uninstall_plugin3gx(user: &Path, tid: u64, id: &str) -> Result<bool, String> 
         let _ = fs::remove_file(plugins_dir(user, tid).join(name));
     }
     fs::remove_file(marker_path).map_err(|e| e.to_string())?;
+    // Plus aucun plugin installé par Kaleido, pour aucun jeu : on remet le chargeur comme avant.
+    let root = user.join("sdmc").join("luma").join("plugins");
+    let any_left = fs::read_dir(&root).into_iter().flatten().flatten().any(|d| fs::read_dir(d.path()).into_iter().flatten().flatten().any(|f| f.file_name().to_string_lossy().starts_with("kaleido-")));
+    if !any_left && loader_flag(user).is_file() {
+        tuning::set_azahar_plugin_loader(user, false)?;
+        let _ = fs::remove_file(loader_flag(user));
+    }
     Ok(true)
 }
 
@@ -2775,6 +2951,41 @@ mod tests {
         }
         h[0x15E..0x160].copy_from_slice(&crc.to_le_bytes());
         assert!(nds_header_ok(&h));
+    }
+
+    #[test]
+    fn exefs_verdicts() {
+        let update = "AEE8F150DDA1B5A838806E1A5EA6827AD9F3C51E";
+        let base = "7FCAD279539DE183B25C11834FD4A030591CFE25";
+        assert_eq!(exefs_verdict(&[], update, Some(base)), None);
+        assert_eq!(exefs_verdict(&[update.into()], update, Some(base)), Some("ok"));
+        assert_eq!(exefs_verdict(&[base.into()], update, Some(base)), Some("base"));
+        assert_eq!(exefs_verdict(&["0123456789ABCDEF".into()], update, Some(base)), Some("other"));
+        // Un dossier qui couvre plusieurs versions est bon dès qu'un correctif correspond.
+        assert_eq!(exefs_verdict(&[base.into(), update.into()], update, Some(base)), Some("ok"));
+
+        let dir = std::env::temp_dir().join(format!("kaleido-exefs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("exefs")).unwrap();
+        fs::write(dir.join("exefs").join("1.1.1.pchtxt"), format!("@nsobid-{update}\n@enabled\n")).unwrap();
+        fs::write(dir.join("exefs").join(format!("{base}.ips")), b"PATCHEOF").unwrap();
+        let mut ids = dir_patch_ids(&dir);
+        ids.sort();
+        assert_eq!(ids, vec![base.to_string(), update.to_string()]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plugin_loader_setting() {
+        let dir = std::env::temp_dir().join(format!("kaleido-plg-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("config")).unwrap();
+        fs::write(dir.join("config").join("qt-config.ini"), "[System]\r\nplugin_loader\\default=true\r\nplugin_loader=false\r\n").unwrap();
+        tuning::set_azahar_plugin_loader(&dir, true).unwrap();
+        let text = fs::read_to_string(dir.join("config").join("qt-config.ini")).unwrap();
+        assert_eq!(tuning::get_qt(&text, "System", "plugin_loader").as_deref(), Some("true"));
+        assert_eq!(tuning::get_qt(&text, "System", "plugin_loader\\default").as_deref(), Some("false"));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

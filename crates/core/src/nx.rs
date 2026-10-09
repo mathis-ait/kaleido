@@ -216,6 +216,8 @@ struct Section {
     ctr: [u8; 8],
     /// Début des données RomFS (niveau 6 de l'IVFC), relatif à la section.
     romfs: Option<u64>,
+    /// Début du PFS0 (ExeFS d'un programme), relatif à la section.
+    pfs0: Option<u64>,
 }
 
 /// Un NCA ouvert, avec sa clé de section déchiffrée.
@@ -289,7 +291,9 @@ impl Nca {
             let fs = &h[0x400 + i * 0x200..0x600 + i * 0x200];
             let hash_type = fs[3];
             let romfs = (hash_type == 3 && &fs[0x08..0x0C] == b"IVFC").then(|| u64le(fs, 0x08 + 0x10 + 5 * 0x18));
-            sections.push(Section { start, end, crypto: fs[4], ctr: fs[0x140..0x148].try_into().unwrap(), romfs });
+            // Hachage SHA-256 hiérarchique (type 2) : la 2e région est le PFS0.
+            let pfs0 = (hash_type == 2).then(|| u64le(fs, 0x08 + 0x28 + 0x10));
+            sections.push(Section { start, end, crypto: fs[4], ctr: fs[0x140..0x148].try_into().unwrap(), romfs, pfs0 });
         }
         Ok(Nca { file, base: entry.offset, info, sections, key })
     }
@@ -331,6 +335,35 @@ impl Nca {
         Ok(buf)
     }
 
+    /// Build ID (ModuleId, 32 octets) de l'exécutable `main` de l'ExeFS.
+    pub fn main_build_id(&mut self) -> Result<[u8; 32]> {
+        let (index, base) = self.sections.iter().enumerate().find_map(|(i, s)| s.pfs0.map(|o| (i, o))).ok_or_else(|| bad("pas d'ExeFS dans ce contenu"))?;
+        let head = self.read_section(index, base, 0x10)?;
+        if &head[..4] != b"PFS0" {
+            return Err(bad("ExeFS illisible"));
+        }
+        let (count, strtab) = (u32le(&head, 4) as usize, u32le(&head, 8) as usize);
+        if count == 0 || count > 64 || strtab > 1 << 16 {
+            return Err(bad("ExeFS illisible"));
+        }
+        let table = self.read_section(index, base + 0x10, count * 0x18 + strtab)?;
+        let names = &table[count * 0x18..];
+        let data = base + 0x10 + table.len() as u64;
+        for i in 0..count {
+            let e = &table[i * 0x18..];
+            let off = u32le(e, 0x10) as usize;
+            let end = names.get(off..).and_then(|n| n.iter().position(|&b| b == 0)).map_or(names.len(), |p| off + p);
+            if names.get(off..end) == Some(b"main".as_slice()) {
+                let nso = self.read_section(index, data + u64le(e, 0), 0x60)?;
+                if &nso[..4] != b"NSO0" {
+                    return Err(bad("exécutable main illisible"));
+                }
+                return Ok(nso[0x40..0x60].try_into().unwrap());
+            }
+        }
+        Err(bad("pas d'exécutable main dans l'ExeFS"))
+    }
+
     /// Système de fichiers RomFS du NCA (le premier trouvé).
     pub fn romfs(&mut self) -> Result<RomFs<'_>> {
         let (index, data) = self.sections.iter().enumerate().find_map(|(i, s)| s.romfs.map(|o| (i, o))).ok_or_else(|| bad("pas de RomFS dans ce contenu"))?;
@@ -363,6 +396,60 @@ pub fn open_program(path: &Path, keys: &Keys) -> Result<Nca> {
         }
     }
     best.ok_or_else(|| bad("aucun contenu « programme » avec RomFS dans ce fichier"))
+}
+
+/// Build ID de l'exécutable d'un jeu ou d'une mise à jour (.xci, .nsp).
+pub fn program_build_id(path: &Path, keys: &Keys) -> Result<[u8; 32]> {
+    let mut f = File::open(path)?;
+    let entries = container_entries(&mut f)?;
+    let mut titlekeys = HashMap::new();
+    for t in entries.iter().filter(|e| e.name.ends_with(".tik")) {
+        if let Some((rights, key)) = ticket_key(&read_at(&mut f, t.offset, t.size.min(0x400) as usize)?) {
+            titlekeys.insert(rights, key);
+        }
+    }
+    let mut last = bad("aucun exécutable dans ce fichier");
+    for e in entries.iter().filter(|e| e.name.ends_with(".nca")) {
+        let Ok(mut nca) = Nca::open(path, e, keys, &titlekeys) else { continue };
+        if nca.info.content != ContentType::Program || nca.sections.iter().all(|s| s.pfs0.is_none()) {
+            continue;
+        }
+        match nca.main_build_id() {
+            Ok(id) => return Ok(id),
+            Err(err) => last = err,
+        }
+    }
+    Err(last)
+}
+
+/// Build ID tel que l'écrivent les correctifs (`@nsobid`, nom des .ips) : hexadécimal
+/// majuscule, zéros de fin retirés (comme yuzu et Eden).
+pub fn build_id_hex(id: &[u8]) -> String {
+    let hex: String = id.iter().map(|b| format!("{b:02X}")).collect();
+    hex.trim_end_matches('0').to_string()
+}
+
+/// Build ID visé par un correctif ExeFS : ligne `@nsobid-…` d'un .pchtxt, ou nom d'un .ips.
+pub fn patch_build_id(file_name: &str, content: &[u8]) -> Option<String> {
+    let lower = file_name.to_ascii_lowercase();
+    let norm = |s: &str| {
+        let s = s.trim();
+        (s.len() >= 16 && s.chars().all(|c| c.is_ascii_hexdigit())).then(|| s.to_ascii_uppercase().trim_end_matches('0').to_string())
+    };
+    if lower.ends_with(".pchtxt") {
+        let text = String::from_utf8_lossy(content);
+        return text.lines().find_map(|l| l.trim().strip_prefix("@nsobid-")).and_then(|id| norm(id.split_whitespace().next().unwrap_or("")));
+    }
+    if lower.ends_with(".ips") {
+        return norm(&file_name[..file_name.len() - 4]);
+    }
+    None
+}
+
+/// Le correctif s'applique-t-il à l'exécutable dont le build ID est `game` (forme `build_id_hex`) ?
+pub fn build_id_matches(patch: &str, game: &str) -> bool {
+    let (p, g) = (patch.trim_end_matches('0'), game.trim_end_matches('0'));
+    !p.is_empty() && (p.eq_ignore_ascii_case(g) || (p.len() >= 16 && g.len() >= p.len() && g[..p.len()].eq_ignore_ascii_case(p)))
 }
 
 // ---------------------------------------------------------------------------
@@ -444,6 +531,32 @@ impl RomFs<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `KALEIDO_NX_FILE=<jeu ou mise à jour> KALEIDO_NX_KEYS=<prod.keys> cargo test -p kaleido-core real_build_id -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_build_id() {
+        let (Ok(file), Ok(keys)) = (std::env::var("KALEIDO_NX_FILE"), std::env::var("KALEIDO_NX_KEYS")) else { return };
+        let id = program_build_id(Path::new(&file), &Keys::load(Path::new(&keys)).unwrap()).unwrap();
+        println!("build id : {}", build_id_hex(&id));
+    }
+
+    #[test]
+    fn patch_build_ids() {
+        let mut id = [0u8; 32];
+        id[..20].copy_from_slice(&[0xAE, 0xE8, 0xF1, 0x50, 0xDD, 0xA1, 0xB5, 0xA8, 0x38, 0x80, 0x6E, 0x1A, 0x5E, 0xA6, 0x82, 0x7A, 0xD9, 0xF3, 0xC5, 0x1E]);
+        let game = build_id_hex(&id);
+        assert_eq!(game, "AEE8F150DDA1B5A838806E1A5EA6827AD9F3C51E");
+        let pchtxt = b"@nsobid-AEE8F150DDA1B5A838806E1A5EA6827AD9F3C51E\n\n# Pokemon Legends: Arceus v1.1.1 - 60FPS\n@enabled\n";
+        let p = patch_build_id("1.1.1.pchtxt", pchtxt).unwrap();
+        assert!(build_id_matches(&p, &game));
+        assert!(!build_id_matches("0123456789ABCDEF0123", &game));
+        // Nom d'un .ips : 64 chiffres avec zéros de fin, ou raccourci.
+        assert!(build_id_matches(&patch_build_id("AEE8F150DDA1B5A838806E1A5EA6827AD9F3C51E000000000000000000000000.ips", b"").unwrap(), &game));
+        assert!(build_id_matches(&patch_build_id("aee8f150dda1b5a8.ips", b"").unwrap(), &game));
+        assert_eq!(patch_build_id("readme.txt", b"@nsobid-AEE8"), None);
+        assert_eq!(patch_build_id("1.0.0.pchtxt", b"# pas de build id"), None);
+    }
 
     #[test]
     fn keys_file() {

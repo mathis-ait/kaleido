@@ -43,6 +43,9 @@ pub struct SwitchGame {
     pub has_update: bool,
     /// Version affichée de la plus récente mise à jour trouvée (`1.1.1`), si le nom du fichier l'indique.
     pub update_version: Option<String>,
+    /// Fichier de cette mise à jour (vérification des correctifs ExeFS).
+    #[serde(default)]
+    pub update_path: Option<String>,
 }
 
 /// Nature d'un title ID.
@@ -415,7 +418,7 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
         match title_kind(tid) {
             TitleKind::Update => {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                updates.push((base_title_id(tid), display_version_in_name(&name)));
+                updates.push((base_title_id(tid), display_version_in_name(&name), path.display().to_string()));
             }
             TitleKind::Dlc => {}
             TitleKind::Base => {
@@ -433,14 +436,18 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
                     title,
                     has_update: false,
                     update_version: None,
+                    update_path: None,
                 });
             }
         }
     }
     for g in &mut games {
-        let mine: Vec<_> = updates.iter().filter(|(u, _)| format!("{u:016X}") == g.title_id).collect();
+        let mine: Vec<_> = updates.iter().filter(|(u, _, _)| format!("{u:016X}") == g.title_id).collect();
         g.has_update = !mine.is_empty();
-        g.update_version = mine.iter().filter_map(|(_, v)| v.clone()).max_by_key(|v| version_key(v));
+        // La plus récente : celle qu'Eden charge quand plusieurs sont présentes.
+        let latest = mine.iter().max_by_key(|(_, v, _)| v.as_deref().map(version_key).unwrap_or_default());
+        g.update_version = latest.and_then(|(_, v, _)| v.clone());
+        g.update_path = latest.map(|(_, _, p)| p.clone());
     }
     if cache.len() != before {
         if let (Some(p), Ok(json)) = (names_path(app), serde_json::to_vec(&*cache)) {

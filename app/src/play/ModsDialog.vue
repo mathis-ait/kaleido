@@ -402,12 +402,15 @@ async function toggleCheat(c: Cheat) {
                 <Icon name="download" :size="14" /> Installer les {{ recommendedToInstall.length }} recommandés
               </button>
             </div>
+            <p v-if="view.executable" class="note small">
+              <Icon name="check" :size="14" /> Correctifs vérifiés pour {{ view.executable.source }} (exécutable {{ view.executable.buildId.slice(0, 8) }}…). Si Eden lance le jeu sans cette mise à jour, ils ne s'appliqueront pas.
+            </p>
             <p v-for="n in view.notes" :key="n" class="note small"><Icon name="info" :size="14" /> {{ n }}</p>
             <p v-for="e in view.errors" :key="e" class="error small">{{ e }}</p>
 
             <section v-for="g in groups" :key="g.category" class="group">
               <h4>{{ g.label }}</h4>
-              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+              <ModCard v-for="m in g.mods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
             </section>
             <p v-if="!groups.length" class="dim center">Aucun mod dans cette catégorie pour ce jeu.</p>
             <p v-if="view.gamebanana" class="dim small center">
@@ -421,7 +424,7 @@ async function toggleCheat(c: Cheat) {
           <!-- Installés -->
           <template v-else-if="tab === 'installed'">
             <p v-if="!installedMods.length && !view.others.length" class="dim center">Aucun mod installé pour ce jeu.</p>
-            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+            <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
             <template v-if="view.others.length">
               <div class="block-head">
                 <h4>Installés hors de Kaleido</h4>
@@ -433,6 +436,9 @@ async function toggleCheat(c: Cheat) {
                     <span>{{ o.name }}</span>
                     <small class="dim">{{ CATEGORY_LABEL[o.category] ?? "Autres" }}</small>
                     <small v-if="o.overlaps.length" class="warn">Mêmes fichiers que {{ o.overlaps.join(", ") }}</small>
+                    <small v-if="o.exefs === 'ok'" class="ok-text">Correctif compatible avec {{ view.executable?.source }}</small>
+                    <small v-else-if="o.exefs === 'base'" class="warn">Correctif prévu pour le jeu sans mise à jour : il ne s'appliquera pas avec {{ view.executable?.source }}</small>
+                    <small v-else-if="o.exefs === 'other'" class="warn">Correctif prévu pour une autre version du jeu : Eden l'ignorera</small>
                   </div>
                   <button v-if="o.canToggle" class="sv-btn small-btn" :disabled="!!busy" @click="setOther(o.name, !o.enabled)">{{ o.enabled ? "Désactiver" : "Réactiver" }}</button>
                 </li>
@@ -836,6 +842,10 @@ async function toggleCheat(c: Cheat) {
 
 .warn {
   color: var(--warn);
+}
+
+.ok-text {
+  color: var(--ok);
 }
 
 .note {

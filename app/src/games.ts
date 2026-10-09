@@ -26,6 +26,8 @@ export interface SwitchGame {
   hasUpdate: boolean;
   /** Version affichée de la mise à jour trouvée (« 1.1.1 »), si le nom du fichier l'indique. */
   updateVersion: string | null;
+  /** Fichier de cette mise à jour. */
+  updatePath?: string | null;
 }
 
 /** Libellé de la mise à jour dans les détails d'un jeu Switch. */
@@ -64,6 +66,7 @@ function switchDetection(g: SwitchGame): Detection {
     warnings: [],
     kaleido: null,
     fingerprint: null,
+    updatePath: g.updatePath ?? null,
   };
 }
 

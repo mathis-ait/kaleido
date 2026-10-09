@@ -5,7 +5,7 @@ import Icon from "../components/Icon.vue";
 import { formatCount, formatSize, modProgress, type ModEntry } from "./mods";
 
 /** Carte d'un mod : aperçu, description, avertissements et actions. */
-const props = defineProps<{ mod: ModEntry; busy: string | null; waiting?: boolean }>();
+const props = defineProps<{ mod: ModEntry; busy: string | null; waiting?: boolean; have?: string | null }>();
 const emit = defineEmits<{ install: []; import: []; download: []; cancelWait: []; uninstall: []; toggle: [enabled: boolean] }>();
 
 const m = computed(() => props.mod);
@@ -21,6 +21,9 @@ const progress = computed(() => {
     p.step === "verify" ? "Vérification…" : p.step === "extract" ? "Décompression…" : p.step === "install" ? "Installation…" : p.total ? `Téléchargement… ${formatSize(p.done)} / ${formatSize(p.total)}` : "Téléchargement…";
   return { text, percent };
 });
+
+/** Le mod a été fait pour une autre version du jeu que celle installée. */
+const otherVersion = computed(() => !!props.have && !!m.value.gameVersion && !m.value.gameVersion.split(/[/, ]+/).some((v) => v.replace(/\+$/, "") === props.have));
 
 const sourceLabel = computed(() => {
   const page = m.value.page;
@@ -45,6 +48,8 @@ const sourceLabel = computed(() => {
         <span v-if="m.installed && m.enabled" class="sv-chip ok"><Icon name="check" :size="11" /> Actif</span>
         <span v-if="m.installed && !m.enabled" class="sv-chip">Désactivé</span>
         <span v-if="m.updateAvailable" class="sv-chip upd">Mise à jour</span>
+        <span v-if="m.exefs === 'ok'" class="sv-chip ok" title="Le correctif vise exactement l'exécutable qu'Eden lance">Compatible avec ta version</span>
+        <span v-else-if="m.exefs" class="sv-chip upd">Version du jeu différente</span>
         <span v-if="manual && !m.installed" class="sv-chip">Téléchargement manuel</span>
       </div>
       <p class="desc">{{ m.description }}</p>
@@ -57,7 +62,7 @@ const sourceLabel = computed(() => {
       <p class="meta">
         <span v-if="m.author">{{ m.author }}</span>
         <span v-if="m.size">{{ formatSize(m.size) }}</span>
-        <span v-if="m.gameVersion">version du jeu {{ m.gameVersion }}</span>
+        <span v-if="m.gameVersion">version du jeu {{ m.gameVersion }}<template v-if="otherVersion"> (tu as la {{ have }})</template></span>
         <span v-if="m.popularity && m.source !== 'auto'">{{ formatCount(m.popularity) }} {{ m.page.includes("nexusmods") ? "téléchargements" : "vues" }}</span>
         <button v-if="m.page" class="link" @click="openUrl(m.page)">{{ sourceLabel }}</button>
       </p>

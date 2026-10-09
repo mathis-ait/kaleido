@@ -375,6 +375,8 @@ export interface Detection {
   fingerprint: string | null;
   /** Romhack installé par Kaleido (identifiant du catalogue). */
   romhack?: string | null;
+  /** Jeu Switch : fichier de la mise à jour trouvée (vérification des correctifs ExeFS). */
+  updatePath?: string | null;
 }
 
 /** ROM produite par Kaleido (signature, ou seed retrouvée dans le nom du fichier). */
