@@ -264,6 +264,28 @@ export async function installMod(target: ModTarget, id: string, options: Install
 
 export const uninstallMod = (target: ModTarget, id: string) => invoke<ModsView>("mods_uninstall", { target, id });
 export const toggleMod = (target: ModTarget, id: string, enabled: boolean) => invoke<ModsView>("mods_toggle", { target, id, enabled });
+/** Mods à mettre à jour par jeu (title ID), affichés sur les tuiles de la bibliothèque. */
+export const modUpdates = reactive<{ counts: Record<string, number>; checked: boolean }>({ counts: {}, checked: false });
+
+export async function refreshModUpdates() {
+  try {
+    modUpdates.counts = await invoke<Record<string, number>>("mods_pending_updates");
+  } catch {
+    // Hors ligne ou émulateur absent : pas d'étiquette.
+  } finally {
+    modUpdates.checked = true;
+  }
+}
+
+/** Nombre de mods à mettre à jour pour un jeu. */
+export function modUpdatesOf(d: Detection): number {
+  const tid = titleIdOf(d);
+  if (!tid) return 0;
+  // Les mises à jour Switch ont le même title ID de base, à 0x800 près.
+  const base = d.platform === "switch" ? tid.slice(0, 13) + "000" : tid;
+  return modUpdates.counts[base] ?? 0;
+}
+
 export const reorderMods = (target: ModTarget, order: string[]) => invoke<ModsView>("mods_reorder", { target, order });
 export const restoreSave = (target: ModTarget, id: string) => invoke<ModsView>("mods_save_restore", { target, id });
 export const saveProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_save", { target, name });

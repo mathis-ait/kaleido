@@ -19,7 +19,7 @@ import { removeItem } from "../library";
 import { RECOMMENDED, defaultEmulator, emus, formatMo, installs, loadEmulators, play as playGame } from "../play/play";
 import NewAdventure from "./NewAdventure.vue";
 import { adventure, closeAdventure, openAdventure, writeAdventure } from "./adventure";
-import { modsDialog, openMods } from "../play/mods";
+import { modUpdatesOf, modsDialog, openMods } from "../play/mods";
 import { romhacksDialog } from "../play/romhacks";
 import type { Detection } from "../types";
 import { isKaleidoRom } from "../types";
@@ -50,6 +50,7 @@ const list = computed(() => props.games.filter((g) => tab.value === "all" || g.p
 
 const index = ref(Math.max(0, list.value.findIndex((g) => g.path === libraryUi.selected)));
 const game = computed<Detection | null>(() => list.value[index.value] ?? null);
+const pendingMods = computed(() => (game.value ? modUpdatesOf(game.value) : 0));
 
 watch(list, (l) => {
   const keep = l.findIndex((g) => g.path === libraryUi.selected);
@@ -737,7 +738,7 @@ const stats = computed(() => {
             </button>
             <button v-if="canRandomize(game)" class="ghost" @click="startAdventure"><Icon name="dice" :size="16" /> Nouvelle aventure</button>
             <button v-if="status?.saveExists && isPokemonGame(game)" class="ghost" @click="openSave"><Icon name="save" :size="16" /> Sauvegarde</button>
-            <button class="ghost" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods</button>
+            <button class="ghost" :title="pendingMods ? `${pendingMods} mod${pendingMods > 1 ? 's ont' : ' a'} une nouvelle version` : undefined" @click="openMods(game)"><Icon name="wand" :size="16" /> Mods<template v-if="pendingMods"> · {{ pendingMods }} à mettre à jour</template></button>
             <button class="ghost icon" title="Plus d'actions" aria-label="Plus d'actions" @click="openMenu">⋯</button>
           </div>
           <p v-if="notice" class="notice">{{ notice }}</p>

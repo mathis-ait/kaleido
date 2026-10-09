@@ -10,7 +10,7 @@ import { isKaleidoRom, type Detection } from "../types";
 import { RECOMMENDED, defaultEmulator, emus, installs } from "../play/play";
 import { platformOf, canRandomize as canRandomizeGame, coverUrl, isPokemonGame, formatDuration, lastPlayed, launchGame, openSaveOf, playTime, randomize as randomizeGame, statusOf, timeAgo } from "../launcher/actions";
 import { audio, previewMusic, stopMusic } from "../launcher/audio";
-import { openMods } from "../play/mods";
+import { modUpdatesOf, openMods } from "../play/mods";
 
 /**
  * Jeu de la grille : la jaquette sur un fond flouté de ses propres couleurs, le titre et
@@ -20,6 +20,7 @@ import { openMods } from "../play/mods";
 const props = defineProps<{ game: Detection; showConsole?: boolean }>();
 
 const randomized = computed(() => isKaleidoRom(props.game));
+const pendingMods = computed(() => modUpdatesOf(props.game));
 const coverSrc = computed(() => coverUrl(props.game));
 const coverFailed = ref(false);
 const coverLoaded = ref(false);
@@ -113,6 +114,7 @@ const line = computed(() => {
         <p :title="time ? `Temps de jeu ${time.source}` : game.path">
           <span v-if="randomized" class="tag" :title="game.kaleido ? `Seed ${game.kaleido.seed}` : 'ROM générée par Kaleido'">Randomisée</span>
           <span v-if="game.kind === 'ctr_dump'" class="tag" title="Dossier : joué comme mod par-dessus le jeu d'origine">Mod</span>
+          <button v-if="pendingMods" class="tag tag-btn" :title="`${pendingMods} mod${pendingMods > 1 ? 's ont' : ' a'} une nouvelle version`" @click="openMods(game)">Mods à mettre à jour</button>
           {{ line }}
         </p>
       </div>
@@ -121,7 +123,7 @@ const line = computed(() => {
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
         </button>
         <div v-if="menuOpen" class="menu" @click="menuOpen = false">
-          <button @click="openMods(game)"><Icon name="wand" :size="15" /> Mods et réglages</button>
+          <button @click="openMods(game)"><Icon name="wand" :size="15" /> Mods et réglages<template v-if="pendingMods"> · {{ pendingMods }} à mettre à jour</template></button>
           <button v-if="gameStatus?.saveExists && isPokemonGame(game)" @click="openSave"><Icon name="save" :size="15" /> Ouvrir sa sauvegarde</button>
           <button v-if="canRandomize" @click="randomizeGame(game)"><Icon name="dice" :size="15" /> Randomiser</button>
           <button v-if="isPokemonGame(game)" @click="openRom(game.path)"><Icon name="pencil" :size="15" /> Éditer la ROM</button>
@@ -275,6 +277,17 @@ h3 {
   color: var(--bg);
   font-size: var(--fs-xs);
   font-weight: 700;
+}
+
+.tag-btn {
+  border: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.tag-btn:hover {
+  background: color-mix(in srgb, var(--text) 80%, transparent);
 }
 
 .status {

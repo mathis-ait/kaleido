@@ -3156,6 +3156,77 @@ pub async fn mods_details(id: u32, app: AppHandle) -> Result<crate::gamebanana::
     crate::blocking(move || crate::gamebanana::profile(&app, id)).await
 }
 
+// ---------------------------------------------------------------------------
+// Mises à jour en attente, pour la bibliothèque
+
+/// Mods installés par Kaleido d'un jeu : (title ID, marqueur).
+fn kaleido_markers(app: &AppHandle) -> Vec<(u64, Marker)> {
+    let mut out = Vec::new();
+    // Switch : dossiers actifs et mis de côté.
+    let eden = resolve(EmulatorId::Eden, app);
+    if let Some(load) = eden_load_dir(&eden) {
+        for game in fs::read_dir(&load).into_iter().flatten().flatten() {
+            let Some(tid) = u64::from_str_radix(&game.file_name().to_string_lossy(), 16).ok() else { continue };
+            let parked = disabled_dir(app, tid).map(|d| installed_dirs(&d)).unwrap_or_default();
+            for (_, m) in installed_dirs(&game.path()).into_iter().chain(parked) {
+                if let Some(m) = m.filter(|m| !m.id.starts_with("kaleido:")) {
+                    out.push((tid, m));
+                }
+            }
+        }
+    }
+    // 3DS : mods LayeredFS fusionnés.
+    if let Some(user) = ctr_emulator(app).ctr_user_dir() {
+        for game in fs::read_dir(user.join("load").join("mods")).into_iter().flatten().flatten() {
+            let Some(tid) = u64::from_str_radix(&game.file_name().to_string_lossy(), 16).ok() else { continue };
+            for m in read_manifest(&game.path()).mods {
+                out.push((tid, m.marker));
+            }
+        }
+    }
+    out
+}
+
+/// Nombre de mods à mettre à jour par jeu (title ID en hexadécimal). S'appuie sur les caches
+/// (fiches GameBanana 6 h, archives Fl4sh 1 jour) : léger au démarrage de la bibliothèque.
+fn pending_updates(app: &AppHandle) -> BTreeMap<String, u32> {
+    let markers = kaleido_markers(app);
+    let gb_ids: Vec<u32> = markers.iter().filter_map(|(_, m)| m.gb).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let profiles = gb_profiles(app, &gb_ids);
+    let nexus_keys: Vec<(String, u32)> = markers.iter().filter(|(_, m)| m.nexus_version.is_some()).filter_map(|(_, m)| crate::nexus::parse_id(&m.id)).collect();
+    let nexus = crate::nexus::mods(app, &nexus_keys);
+    let mut fl4sh: BTreeMap<u64, Vec<ZipMod>> = BTreeMap::new();
+    let mut out: BTreeMap<String, u32> = BTreeMap::new();
+    for (tid, m) in &markers {
+        let outdated = if let Some(gb) = m.gb {
+            let prefix = crate::mods_catalog::find(app, &tid_key(*tid), &m.id).and_then(|c| c.file);
+            match profiles.get(&gb) {
+                Some(Ok((_, files))) => pick_gb_file(files, None, prefix.as_deref()).is_some_and(|f| m.version.as_deref() != Some(f._sFile.as_str()) && m.file != Some(f._idRow)),
+                _ => false,
+            }
+        } else if let Some(key) = m.id.strip_prefix("fl4sh:") {
+            let mods = fl4sh.entry(*tid).or_insert_with(|| {
+                fl4sh_archive(app, *tid).and_then(|(a, sha)| fl4sh_zip(app, &a, &sha).ok()).and_then(|z| zip_listing(&z).ok()).map(|l| zip_mods(&l, *tid)).unwrap_or_default()
+            });
+            mods.iter().find(|z| mod_key(&split_version(&z.folder).0) == key).is_some_and(|z| split_version(&z.folder).1 != m.version)
+        } else if let (Some(have), Some(k)) = (m.nexus_version.as_deref(), crate::nexus::parse_id(&m.id)) {
+            nexus.get(&k).and_then(|n| n.version.as_deref()).is_some_and(|now| now != have)
+        } else {
+            false
+        };
+        if outdated {
+            *out.entry(format!("{tid:016X}")).or_default() += 1;
+        }
+    }
+    out
+}
+
+/// Mods à mettre à jour, par jeu (title ID), pour la bibliothèque.
+#[tauri::command]
+pub async fn mods_pending_updates(app: AppHandle) -> Result<BTreeMap<String, u32>, String> {
+    crate::blocking(move || Ok(pending_updates(&app))).await
+}
+
 /// Dossier Téléchargements de l'utilisateur (sélecteur de fichier des mods manuels).
 #[tauri::command]
 pub fn mods_downloads_dir(app: AppHandle) -> Option<String> {

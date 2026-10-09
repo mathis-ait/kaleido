@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import GameTile from "../components/GameTile.vue";
 import ConsoleLogo from "../components/ConsoleLogo.vue";
@@ -14,7 +14,7 @@ import ModsDialog from "../play/ModsDialog.vue";
 import DiscoverDialog from "../play/DiscoverDialog.vue";
 import RomhacksDialog from "../play/RomhacksDialog.vue";
 import { romhacksDialog } from "../play/romhacks";
-import { modsDialog } from "../play/mods";
+import { modUpdates, modsDialog, refreshModUpdates } from "../play/mods";
 import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
 import { SHELVES, consoleOf, type ShelfFilter } from "../consoles";
 import { coverUrl, formatDuration, lastPlayed, launchGame, platformOf, playTime, statusOf, timeAgo } from "../launcher/actions";
@@ -25,6 +25,13 @@ import type { Detection, Platform } from "../types";
 onMounted(() => {
   if (!games.loaded) loadGames();
   if (!emus.loaded) loadEmulators();
+  // Mods à mettre à jour : une fois par session, après l'affichage (requêtes en cache).
+  if (!modUpdates.checked) setTimeout(() => void refreshModUpdates(), 4000);
+});
+
+// Après la fenêtre Mods, l'étiquette du jeu suit ce qui vient d'y être fait.
+watch(() => modsDialog.game, (now, before) => {
+  if (before && !now) void refreshModUpdates();
 });
 
 const filter = ref<ShelfFilter>("all");
