@@ -38,15 +38,16 @@ pub fn create(original: &[u8], patched: &[u8]) -> crate::Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Applique un patch IPS (enregistrements simples et répétés « RLE »).
-pub fn apply(data: &mut Vec<u8>, ips: &[u8]) -> crate::Result<()> {
+/// Enregistrements d'un patch IPS : (position, octets écrits).
+pub fn records(ips: &[u8]) -> crate::Result<Vec<(usize, Vec<u8>)>> {
     const BAD: crate::FormatError = crate::FormatError::Invalid("patch IPS invalide");
     let rest = ips.strip_prefix(b"PATCH").ok_or(BAD)?;
+    let mut out = Vec::new();
     let mut p = 0;
     loop {
         let rec = rest.get(p..p + 3).ok_or(BAD)?;
         if rec == b"EOF" {
-            return Ok(());
+            return Ok(out);
         }
         let at = (rec[0] as usize) << 16 | (rec[1] as usize) << 8 | rec[2] as usize;
         let size = u16::from_be_bytes(rest.get(p + 3..p + 5).ok_or(BAD)?.try_into().unwrap()) as usize;
@@ -61,11 +62,24 @@ pub fn apply(data: &mut Vec<u8>, ips: &[u8]) -> crate::Result<()> {
             p += size;
             b
         };
+        out.push((at, bytes));
+    }
+}
+
+/// Applique un patch IPS (enregistrements simples et répétés « RLE »).
+pub fn apply(data: &mut Vec<u8>, ips: &[u8]) -> crate::Result<()> {
+    for (at, bytes) in records(ips)? {
         if data.len() < at + bytes.len() {
             data.resize(at + bytes.len(), 0);
         }
         data[at..at + bytes.len()].copy_from_slice(&bytes);
     }
+    Ok(())
+}
+
+/// Zones `[début, fin)` écrites par un patch IPS.
+pub fn ranges(ips: &[u8]) -> crate::Result<Vec<(usize, usize)>> {
+    Ok(records(ips)?.into_iter().map(|(at, b)| (at, at + b.len())).collect())
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@
 pub mod encounters;
 pub mod evolutions;
 pub mod field_items;
+pub mod fps60_ctr;
 pub mod gen12;
 pub mod gen3;
 pub mod learnsets;

@@ -227,7 +227,8 @@ export const CATEGORY_ORDER: ModCategory[] = ["fps", "graphics", "textures", "st
 export function targetOf(d: Detection): ModTarget {
   const platform: PlayPlatform = d.platform === "switch" ? "switch" : d.platform === "3ds" ? "3ds" : d.platform === "gba" || d.platform === "gb" ? "gba" : "nds";
   const gameVersion = d.details.find((x) => x.label === UPDATE_LABEL)?.value ?? null;
-  const rom = platform === "nds" || platform === "gba" || platform === "switch" ? d.path : null;
+  // 3DS : le 60 fps natif lit le programme du jeu pour vérifier la version.
+  const rom = platform === "nds" || platform === "gba" || platform === "switch" || platform === "3ds" ? d.path : null;
   return { platform, titleId: titleIdOf(d), rom, gameVersion: gameVersion && /^\d/.test(gameVersion) ? gameVersion : null, updateFile: platform === "switch" ? (d.updatePath ?? null) : null };
 }
 

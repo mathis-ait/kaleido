@@ -549,6 +549,14 @@ fn hex_subdirs(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// Mise à jour d'un jeu 3DS installée dans la carte SD émulée (title 0004000E-<bas>) :
+/// l'émulateur lance alors le programme de la mise à jour, pas celui de la cartouche.
+pub fn ctr_update_installed(user: &Path, title_id: u64) -> bool {
+    let low = format!("{:08x}", title_id & 0xFFFF_FFFF);
+    let root = user.join("sdmc").join("Nintendo 3DS");
+    hex_subdirs(&root).iter().flat_map(|id0| hex_subdirs(id0)).any(|id1| id1.join("title").join("0004000e").join(&low).join("content").is_dir())
+}
+
 /// Dossier de l'archive de sauvegarde d'un jeu 3DS dans la carte SD émulée.
 pub fn ctr_save_dir(user: &Path, title_id: u64) -> PathBuf {
     let high = format!("{:08x}", title_id >> 32);

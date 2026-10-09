@@ -86,7 +86,7 @@ const sourceLabel = computed(() => {
             {{ working ? "Installation…" : m.kind === "patch" ? "Appliquer le patch…" : "Installer le fichier…" }}
           </button>
         </template>
-        <button v-else class="sv-btn solid" :disabled="locked" @click="emit('install')">{{ working ? "Installation…" : "Installer" }}</button>
+        <button v-else class="sv-btn solid" :disabled="locked || !!m.blocked" @click="emit('install')">{{ working ? "Installation…" : "Installer" }}</button>
       </template>
       <template v-else>
         <button v-if="m.updateAvailable" class="sv-btn solid" :disabled="locked" @click="emit('install')">Mettre à jour</button>

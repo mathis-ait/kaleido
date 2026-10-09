@@ -39,6 +39,7 @@ use crate::library::{download_to, extract_zip, safe_entry_path, USER_AGENT};
 use crate::play::{self, EmulatorId, Env, Resolved};
 use crate::switch::base_title_id;
 use crate::tuning::{self, Tier};
+use kaleido_core::data::fps60_ctr;
 
 // ---------------------------------------------------------------------------
 // Types échangés avec l'interface
@@ -2204,6 +2205,9 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
         kind: Some("cheats".into()),
         ..Default::default()
     });
+    if fps60_ctr::supports(tid) {
+        view.mods.push(fps60_entry(&user, target, tid));
+    }
     let tex_dir = ctr_textures_dir(&user, tid);
     if let Some(pack) = texture_pack(tid) {
         view.mods.push(ModEntry {
@@ -2269,7 +2273,14 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     view.mods.extend(entries);
 
     // Fichiers LayeredFS présents qui ne viennent pas de Kaleido.
-    let known: std::collections::HashSet<String> = manifest.mods.iter().flat_map(|m| m.files.iter().map(|f| f.to_lowercase())).chain([CTR_MANIFEST.to_lowercase()]).collect();
+    let mut known: std::collections::HashSet<String> = manifest.mods.iter().flat_map(|m| m.files.iter().map(|f| f.to_lowercase())).chain([CTR_MANIFEST.to_lowercase()]).collect();
+    // Le 60 fps natif : son marqueur, et le code.ips quand il est seul (sans mod du randomiseur).
+    if mods_dir.join(FPS60_MARKER).is_file() {
+        known.insert(FPS60_MARKER.to_lowercase());
+        if !mods_dir.join("romfs").exists() {
+            known.insert("code.ips".into());
+        }
+    }
     let foreign = files_under(&mods_dir).into_iter().filter(|f| !known.contains(f)).count();
     if foreign > 0 {
         view.others.push(OtherMod {
@@ -2281,9 +2292,11 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
             exefs: None,
         });
     }
-    view.notes.push(format!(
-        "Pas de vrai mode 60 FPS pour Pokémon {fr} : les codes « 60 FPS » qui circulent font tourner tout le jeu deux fois plus vite (sa logique est calée sur 30 images par seconde). Kaleido ne les propose donc pas."
-    ));
+    if !fps60_ctr::supports(tid) {
+        view.notes.push(format!(
+            "Pas encore de 60 fps natif pour Pokémon {fr} : les codes « 60 FPS » qui circulent font tourner tout le jeu deux fois plus vite (sa logique est calée sur 30 images par seconde). Kaleido ne les propose donc pas."
+        ));
+    }
     view
 }
 
@@ -2348,8 +2361,97 @@ fn install_ctr(app: &AppHandle, target: &ModTarget, tid: u64, id: &str, opts: &I
             let _ = fs::remove_dir_all(&work);
             result.map(|_| Installed::Done)
         }
+        "fps60" => {
+            emit("install", 0, 1);
+            install_fps60(&user, target, tid).map(|_| Installed::Done)
+        }
         _ => install_ctr_mod(app, target, &user, tid, id, opts, emit),
     }
+}
+
+// ---------------------------------------------------------------------------
+// 60 fps natif (runtime ctr-smooth) : un code.ips précompilé par version du jeu, fusionné avec
+// le code.ips déjà présent (taux de chromatiques du randomiseur…).
+
+/// Marqueur du 60 fps natif dans `load/mods/<TID>/`.
+const FPS60_MARKER: &str = "kaleido-fps60.json";
+
+fn fps60_entry(user: &Path, target: &ModTarget, tid: u64) -> ModEntry {
+    let mods_dir = ctr_mods_dir(user, tid);
+    let blocked = if play::ctr_update_installed(user, tid) {
+        Some("Une mise à jour du jeu est installée dans l'émulateur : le 60 fps natif ne couvre que la version de la cartouche (1.0), sans mise à jour.".to_string())
+    } else if target.rom.is_none() {
+        Some("Ouvre ce jeu depuis la Bibliothèque : Kaleido doit lire son programme pour vérifier la version.".to_string())
+    } else {
+        None
+    };
+    ModEntry {
+        id: "fps60".into(),
+        name: "60 fps natif".into(),
+        description: "Le jeu affiche 60 images par seconde au lieu de 30 : caméra, personnages et Pokémon bougent entre deux images, en exploration comme en combat. La vitesse du jeu, la musique, les événements et le hasard restent ceux d'origine (la logique tourne toujours à 30 images par seconde). Les menus et effets en 2D restent à 30. L + R + Select, tenus une seconde en jeu, coupent ou rétablissent le lissage.".into(),
+        category: "fps".into(),
+        source: "auto".into(),
+        author: "Kaleido (ctr-smooth)".into(),
+        page: String::new(),
+        installed: mods_dir.join(FPS60_MARKER).is_file(),
+        enabled: true,
+        warning: Some("Expérimental. L'ordinateur dessine deux fois plus d'images : préfère Vulkan dans l'émulateur et baisse la résolution interne s'il ralentit. Un mod relancé depuis le randomiseur remplace le dossier du jeu : réactive alors le 60 fps natif.".into()),
+        kind: Some("fps60".into()),
+        blocked,
+        ..Default::default()
+    }
+}
+
+/// Programme d'origine (décompressé) et profil 60 fps de la ROM du jeu.
+fn fps60_profile(target: &ModTarget, tid: u64) -> Result<(Vec<u8>, &'static fps60_ctr::Profile), String> {
+    let rom = target.rom.as_deref().ok_or("fichier du jeu inconnu : ouvre ce jeu depuis la Bibliothèque")?;
+    let game = kaleido_core::CtrGameRom::open(Path::new(rom)).map_err(|e| e.to_string())?;
+    let code = game.code().map_err(|e| e.to_string())?.code;
+    let profile = fps60_ctr::profile_for(tid, &code).ok_or_else(|| {
+        format!("Cette version du jeu n'est pas couverte (programme {}…). Le 60 fps natif existe pour Rubis Oméga EUR, cartouche 1.0.", &fps60_ctr::sha256_hex(&code)[..12])
+    })?;
+    Ok((code, profile))
+}
+
+fn install_fps60(user: &Path, target: &ModTarget, tid: u64) -> Result<(), String> {
+    if play::ctr_update_installed(user, tid) {
+        return Err("Une mise à jour du jeu est installée dans l'émulateur : le 60 fps natif ne couvre que la version 1.0 de la cartouche.".into());
+    }
+    // Les codes « 60 FPS » de la base de triche doublent la vitesse du jeu par-dessus le lissage.
+    let cheats = fs::read_to_string(user.join("cheats").join(format!("{tid:016X}.txt"))).unwrap_or_default();
+    if let Some(c) = parse_azahar(&cheats).into_iter().find(|c| c.enabled && c.name.to_lowercase().replace(' ', "").contains("60fps")) {
+        return Err(format!("Le code de triche « {} » est activé : il ferait tourner le jeu deux fois plus vite. Désactive-le d'abord (onglet Codes de triche).", c.name));
+    }
+    let (original, profile) = fps60_profile(target, tid)?;
+    let dir = ctr_mods_dir(user, tid);
+    let ips_path = dir.join("code.ips");
+    let existing = fs::read(&ips_path).ok();
+    // Un code.ips qui contient déjà le lissage (réinstallation, ancienne version, copie
+    // manuelle) : on repart des autres patchs qu'il contient.
+    let previous = match &existing {
+        Some(e) => fps60_ctr::strip(profile, &original, e).map_err(|e| e.to_string())?,
+        None => None,
+    };
+    let merged = fps60_ctr::merged_ips(profile, &original, previous.as_deref()).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(&ips_path, merged).map_err(|e| e.to_string())?;
+    let marker = serde_json::json!({ "version": profile.version, "code_sha256": profile.code_sha256, "merged_with_existing": previous.is_some() });
+    fs::write(dir.join(FPS60_MARKER), serde_json::to_vec_pretty(&marker).unwrap()).map_err(|e| e.to_string())
+}
+
+/// Retire le lissage du code.ips ; les autres patchs (taux de chromatiques…) restent.
+fn uninstall_fps60(user: &Path, target: &ModTarget, tid: u64) -> Result<(), String> {
+    let dir = ctr_mods_dir(user, tid);
+    let ips_path = dir.join("code.ips");
+    if let Ok(existing) = fs::read(&ips_path) {
+        let (original, profile) = fps60_profile(target, tid)?;
+        match fps60_ctr::strip(profile, &original, &existing).map_err(|e| e.to_string())? {
+            Some(rest) => fs::write(&ips_path, rest).map_err(|e| e.to_string())?,
+            None => fs::remove_file(&ips_path).map_err(|e| e.to_string())?,
+        }
+    }
+    let _ = fs::remove_file(dir.join(FPS60_MARKER));
+    Ok(())
 }
 
 /// Mod du catalogue, de GameBanana ou d'un fichier : LayeredFS ou pack de textures.
@@ -2608,10 +2710,11 @@ fn texture_root(dir: &Path, depth: u8) -> Option<PathBuf> {
     dirs.iter().any(|d| texture_root(d, depth - 1).is_some()).then(|| dir.to_path_buf())
 }
 
-fn uninstall_ctr(app: &AppHandle, tid: u64, id: &str) -> Result<(), String> {
+fn uninstall_ctr(app: &AppHandle, target: &ModTarget, tid: u64, id: &str) -> Result<(), String> {
     let r = ctr_emulator(app);
     let user = r.ctr_user_dir().ok_or("dossier de l'émulateur 3DS introuvable")?;
     match id {
+        "fps60" => uninstall_fps60(&user, target, tid),
         "cheats" => fs::remove_file(user.join("cheats").join(format!("{tid:016X}.txt"))).map_err(|e| e.to_string()),
         "textures" => {
             let target = ctr_textures_dir(&user, tid);
@@ -3076,7 +3179,7 @@ pub async fn mods_uninstall(target: ModTarget, id: String, app: AppHandle) -> Re
         let offer = game_tid(&target).filter(|_| view_for(&app, &target).ok().and_then(|v| save_affecting(&v, &id)).is_some_and(|m| m.enabled)).and_then(|tid| crate::mods_saves::offer_for(&app, tid, &id));
         match target.platform.as_str() {
             "switch" => uninstall_switch(&app, base_title_id(parse_tid(target.title_id.as_deref())?), &id)?,
-            "3ds" => uninstall_ctr(&app, parse_tid(target.title_id.as_deref())?, &id)?,
+            "3ds" => uninstall_ctr(&app, &target, parse_tid(target.title_id.as_deref())?, &id)?,
             "nds" => {
                 let rom = PathBuf::from(target.rom.as_deref().ok_or("ROM inconnue")?);
                 if id == "cheats" {
