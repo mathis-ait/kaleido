@@ -63,6 +63,7 @@ const sourceLabel = computed(() => {
         <span v-if="m.author">{{ m.author }}</span>
         <span v-if="m.size">{{ formatSize(m.size) }}</span>
         <span v-if="m.gameVersion">version du jeu {{ m.gameVersion }}<template v-if="otherVersion"> (tu as la {{ have }})</template></span>
+        <span v-if="m.affectsSave && !m.installed">ta partie sera copiée avant</span>
         <span v-if="m.popularity && m.source !== 'auto'">{{ formatCount(m.popularity) }} {{ m.page.includes("nexusmods") ? "téléchargements" : "vues" }}</span>
         <button v-if="m.page" class="link" @click="openUrl(m.page)">{{ sourceLabel }}</button>
       </p>

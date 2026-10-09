@@ -30,6 +30,7 @@ mod library;
 mod live;
 mod mods;
 mod mods_catalog;
+mod mods_saves;
 mod nexus;
 mod nuzlocke;
 mod nxmusic;
@@ -496,6 +497,10 @@ fn main() {
             mods::mods_uninstall,
             mods::mods_toggle_other,
             mods::mods_toggle,
+            mods::mods_save_restore,
+            mods::mods_profile_save,
+            mods::mods_profile_delete,
+            mods::mods_profile_apply,
             mods::mods_browse,
             mods::mods_categories,
             mods::mods_details,

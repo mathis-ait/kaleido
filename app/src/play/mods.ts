@@ -46,6 +46,8 @@ export interface ModEntry {
   kind: string | null;
   /** Correctifs ExeFS : « ok », « base » (jeu sans mise à jour), « other » (autre version). */
   exefs: "ok" | "base" | "other" | null;
+  /** Touche à la partie : la sauvegarde est copiée avant de l'activer. */
+  affectsSave: boolean;
 }
 
 export interface OtherMod {
@@ -70,7 +72,34 @@ export interface ModsView {
   canImport: boolean;
   /** Switch : exécutable lancé par Eden. */
   executable: { source: string; buildId: string } | null;
+  saves: SaveBackup[];
+  lastBackup: SaveBackup | null;
+  restoreOffer: SaveBackup | null;
+  profiles: GameProfiles | null;
+  missing: string[];
 }
+
+export interface SaveBackup {
+  id: string;
+  reason: string;
+  modId: string | null;
+  created: number;
+  size: number;
+}
+
+export interface ModProfile {
+  name: string;
+  mods: string[];
+  ownSave: boolean;
+}
+
+export interface GameProfiles {
+  active: string | null;
+  profiles: ModProfile[];
+}
+
+/** Profil sans mod, toujours proposé (miroir de `mods_saves::ORIGIN`). */
+export const ORIGIN_PROFILE = "Jeu d'origine";
 
 export interface InstallOptions {
   disableConflicts?: boolean;
@@ -231,6 +260,13 @@ export async function installMod(target: ModTarget, id: string, options: Install
 
 export const uninstallMod = (target: ModTarget, id: string) => invoke<ModsView>("mods_uninstall", { target, id });
 export const toggleMod = (target: ModTarget, id: string, enabled: boolean) => invoke<ModsView>("mods_toggle", { target, id, enabled });
+export const restoreSave = (target: ModTarget, id: string) => invoke<ModsView>("mods_save_restore", { target, id });
+export const saveProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_save", { target, name });
+export const deleteProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_delete", { target, name });
+export const applyProfile = (target: ModTarget, name: string) => invoke<ModsView>("mods_profile_apply", { target, name });
+
+/** « 9 oct. 2026 à 13:07 ». */
+export const formatDate = (secs: number) => new Date(secs * 1000).toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 export const browseMods = (game: number, query: string, sort: string, category: number | null, page: number) => invoke<GbPage>("mods_browse", { game, query, sort, category, page });
 export const modCategories = (game: number) => invoke<GbCategory[]>("mods_categories", { game });
 export const modDetails = (id: number) => invoke<GbProfile>("mods_details", { id });

@@ -476,7 +476,7 @@ pub async fn music_title_theme(path: PathBuf, game: String, app: AppHandle) -> R
 // Émulateurs en cours d'exécution
 
 /// Noms des émulateurs connus présents dans la liste des processus Windows.
-fn running_emulators() -> Vec<&'static str> {
+pub(crate) fn running_emulators() -> Vec<&'static str> {
     let mut cmd = std::process::Command::new("tasklist");
     cmd.args(["/FO", "CSV", "/NH"]);
     #[cfg(windows)]

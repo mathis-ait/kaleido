@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { coverUrl } from "../launcher/actions";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -24,6 +24,12 @@ import {
   listMods,
   modsDialog,
   setCheats,
+  applyProfile,
+  deleteProfile,
+  formatDate,
+  ORIGIN_PROFILE,
+  restoreSave,
+  saveProfile,
   stopWatch,
   targetOf,
   watchDownloads,
@@ -249,7 +255,7 @@ async function run(id: string, name: string, options: InstallOptions) {
         opts = { ...opts, variant: v };
         continue;
       }
-      if (r.view) view.value = r.view;
+      if (r.view) await applyView(r.view);
       if (r.output) {
         await rescan().catch(() => undefined);
         await message(`La ROM « ${r.output.split(/[\\/]/).pop()} » a été créée à côté de ton jeu. Elle apparaît dans la bibliothèque.`, { title: "Romhack prêt" });
@@ -311,7 +317,7 @@ async function uninstall(m: ModEntry) {
   }
   busy.value = m.id;
   try {
-    view.value = await uninstallMod(target.value, m.id);
+    await applyView(await uninstallMod(target.value, m.id));
     await loadCheats();
   } catch (e) {
     await message(String(e), { title: "Impossible de retirer le mod", kind: "error" });
@@ -323,7 +329,7 @@ async function uninstall(m: ModEntry) {
 async function toggle(m: ModEntry, enabled: boolean) {
   busy.value = m.id;
   try {
-    view.value = await toggleMod(target.value, m.id, enabled);
+    await applyView(await toggleMod(target.value, m.id, enabled));
   } catch (e) {
     await message(String(e), { title: "Action impossible", kind: "error" });
   } finally {
@@ -334,13 +340,119 @@ async function toggle(m: ModEntry, enabled: boolean) {
 async function setOther(name: string, enabled: boolean) {
   busy.value = `other:${name}`;
   try {
-    view.value = await toggleOther(target.value, name, enabled);
+    await applyView(await toggleOther(target.value, name, enabled));
   } catch (e) {
     await message(String(e), { title: "Action impossible", kind: "error" });
   } finally {
     busy.value = null;
   }
 }
+
+// --- Sauvegardes et profils
+
+/** Copie faite juste avant le dernier changement (affichée jusqu'au suivant). */
+const backupNote = ref<string | null>(null);
+
+/** Nouvelle vue après une action : copie signalée, remise en place proposée. */
+async function applyView(v: ModsView) {
+  view.value = v;
+  backupNote.value = v.lastBackup ? `Ta partie a été copiée (${v.lastBackup.reason}). Tu peux la remettre depuis l'onglet Installés.` : null;
+  if (v.missing.length) {
+    await message(`Ces mods du profil ne sont plus installés : ${v.missing.map((k) => k.replace(/^(id|folder):/, "")).join(", ")}. Réinstalle-les puis enregistre à nouveau le profil.`, { title: "Mods manquants" });
+  }
+  const offer = v.restoreOffer;
+  if (offer) {
+    const ok = await ask(
+      `Remettre la partie d'avant ce mod ?\n\nCopie du ${formatDate(offer.created)} (${offer.reason}). Ta partie actuelle est d'abord copiée à son tour : tu pourras y revenir.`,
+      { title: "Sauvegarde du jeu", okLabel: "Remettre cette partie", cancelLabel: "Garder la partie actuelle" },
+    );
+    if (ok) await restore(offer.id);
+  }
+}
+
+async function restore(id: string) {
+  busy.value = `save:${id}`;
+  try {
+    view.value = await restoreSave(target.value, id);
+    backupNote.value = "Partie remise en place. Ta partie d'avant a été copiée dans la liste ci-dessous.";
+  } catch (e) {
+    await message(String(e), { title: "Remise en place impossible", kind: "error" });
+  } finally {
+    busy.value = null;
+  }
+}
+
+async function askRestore(id: string) {
+  const b = view.value?.saves.find((s) => s.id === id);
+  if (!b) return;
+  const ok = await ask(`Remettre la partie du ${formatDate(b.created)} (${b.reason}) ? Ta partie actuelle est d'abord copiée.`, {
+    title: "Sauvegarde du jeu",
+    okLabel: "Remettre",
+    cancelLabel: "Annuler",
+  });
+  if (ok) await restore(id);
+}
+
+const profiles = computed(() => view.value?.profiles ?? null);
+const activeProfile = computed(() => profiles.value?.active ?? ORIGIN_PROFILE);
+const profileChoice = ref<string>(ORIGIN_PROFILE);
+
+async function switchProfile(name: string) {
+  if (name === activeProfile.value) return;
+  const from = profiles.value?.profiles.find((p) => p.name === activeProfile.value);
+  const to = profiles.value?.profiles.find((p) => p.name === name);
+  if (from?.ownSave || to?.ownSave) {
+    const ok = await ask(
+      `« ${from?.name ?? ORIGIN_PROFILE} » et « ${name} » n'ont pas la même partie. Kaleido range la partie actuelle avec « ${from?.name ?? ORIGIN_PROFILE} » et remet celle de « ${name} » si elle existe.`,
+      { title: "Changer de profil", okLabel: "Changer", cancelLabel: "Annuler" },
+    );
+    if (!ok) {
+      profileChoice.value = activeProfile.value;
+      return;
+    }
+  }
+  busy.value = "profile";
+  try {
+    await applyView(await applyProfile(target.value, name));
+  } catch (e) {
+    await message(String(e), { title: "Profil non appliqué", kind: "error" });
+  } finally {
+    busy.value = null;
+    profileChoice.value = activeProfile.value;
+  }
+}
+
+const profileAsk = ref<{ name: string } | null>(null);
+
+function newProfile() {
+  profileAsk.value = { name: activeProfile.value === ORIGIN_PROFILE ? "" : activeProfile.value };
+}
+
+async function confirmProfile() {
+  const name = profileAsk.value?.name.trim();
+  if (!name) return;
+  profileAsk.value = null;
+  busy.value = "profile";
+  try {
+    view.value = await saveProfile(target.value, name);
+    profileChoice.value = activeProfile.value;
+  } catch (e) {
+    await message(String(e), { title: "Profil non enregistré", kind: "error" });
+  } finally {
+    busy.value = null;
+  }
+}
+
+async function removeProfile() {
+  const name = activeProfile.value;
+  if (name === ORIGIN_PROFILE) return;
+  const ok = await ask(`Supprimer le profil « ${name} » ? Les mods restent installés.`, { title: "Supprimer le profil", okLabel: "Supprimer", cancelLabel: "Annuler" });
+  if (!ok) return;
+  view.value = await deleteProfile(target.value, name);
+  profileChoice.value = activeProfile.value;
+}
+
+watch(activeProfile, (p) => (profileChoice.value = p), { immediate: true });
 
 const installedMods = computed(() => (view.value?.mods ?? []).filter((m) => m.installed && m.kind !== "cheats"));
 
@@ -376,6 +488,15 @@ async function toggleCheat(c: Cheat) {
 
       <nav v-if="!loading && !error" class="md-tabs">
         <Segmented v-model="tab" :options="tabs" label="Sections" />
+        <div v-if="profiles" class="profile">
+          <label for="mods-profile">Profil</label>
+          <select id="mods-profile" v-model="profileChoice" class="sv-input" :disabled="!!busy" @change="switchProfile(profileChoice)">
+            <option :value="ORIGIN_PROFILE">{{ ORIGIN_PROFILE }}</option>
+            <option v-for="p in profiles.profiles" :key="p.name" :value="p.name">{{ p.name }}</option>
+          </select>
+          <button class="sv-btn small-btn" :disabled="!!busy" title="Enregistrer les mods actifs comme profil" @click="newProfile">Enregistrer…</button>
+          <button v-if="activeProfile !== ORIGIN_PROFILE" class="icon-btn" :disabled="!!busy" aria-label="Supprimer ce profil" title="Supprimer ce profil" @click="removeProfile"><Icon name="trash" :size="15" /></button>
+        </div>
         <button v-if="view?.canImport && tab !== 'settings'" class="sv-btn small-btn" :disabled="!!busy" @click="importFile(null)">
           <Icon name="upload" :size="14" /> Installer depuis un fichier…
         </button>
@@ -386,6 +507,7 @@ async function toggleCheat(c: Cheat) {
         <p v-else-if="error" class="error">{{ error }}</p>
 
         <template v-else-if="view">
+          <p v-if="backupNote" class="note small"><Icon name="save" :size="14" /> {{ backupNote }}</p>
           <p v-if="!view.emulatorFound" class="warn small">
             <Icon name="alert" :size="14" /> {{ view.emulator }} n'est pas encore installé : les mods seront prêts dès qu'il le sera.
           </p>
@@ -425,6 +547,20 @@ async function toggleCheat(c: Cheat) {
           <template v-else-if="tab === 'installed'">
             <p v-if="!installedMods.length && !view.others.length" class="dim center">Aucun mod installé pour ce jeu.</p>
             <ModCard v-for="m in installedMods" :key="m.id" :mod="m" :busy="busy" :have="target.gameVersion" :waiting="waiting?.id === m.id" @install="install(m)" @import="importFile(m)" @download="download(m)" @cancel-wait="cancelWait" @uninstall="uninstall(m)" @toggle="(on) => toggle(m, on)" />
+            <template v-if="view.saves.length">
+              <div class="block-head">
+                <h4>Copies de ta partie</h4>
+              </div>
+              <ul class="others">
+                <li v-for="s in view.saves" :key="s.id">
+                  <div>
+                    <span>{{ formatDate(s.created) }}</span>
+                    <small class="dim">{{ s.reason }} · {{ formatSize(s.size) }}</small>
+                  </div>
+                  <button class="sv-btn small-btn" :disabled="!!busy" @click="askRestore(s.id)">{{ busy === `save:${s.id}` ? "…" : "Remettre" }}</button>
+                </li>
+              </ul>
+            </template>
             <template v-if="view.others.length">
               <div class="block-head">
                 <h4>Installés hors de Kaleido</h4>
@@ -514,6 +650,19 @@ async function toggleCheat(c: Cheat) {
         </template>
       </div>
 
+      <!-- Nom d'un profil -->
+      <div v-if="profileAsk" class="variant-overlay" @mousedown.self="profileAsk = null">
+        <form class="variant panel" role="dialog" aria-modal="true" aria-label="Enregistrer un profil" @submit.prevent="confirmProfile">
+          <h3>Enregistrer comme profil</h3>
+          <p class="dim small">Le profil retient les mods actifs de ce jeu. Choisis-le plus tard pour les retrouver d'un coup ; les autres sont mis de côté, sans être supprimés.</p>
+          <input v-model="profileAsk.name" class="sv-input" maxlength="60" placeholder="Luminescent, Jeu de base HD…" autofocus />
+          <div class="row end">
+            <button type="button" class="sv-btn" @click="profileAsk = null">Annuler</button>
+            <button type="submit" class="sv-btn solid" :disabled="!profileAsk.name.trim()">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+
       <!-- Choix d'une variante -->
       <div v-if="variantAsk" class="variant-overlay" @mousedown.self="variantAsk.resolve(null)">
         <div class="variant panel" role="dialog" aria-modal="true" aria-label="Choisir une variante">
@@ -600,6 +749,27 @@ async function toggleCheat(c: Cheat) {
 
 .md-tabs .small-btn {
   margin-left: auto;
+}
+
+.profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.profile + .small-btn {
+  margin-left: 0;
+}
+
+.profile .small-btn {
+  margin-left: 0;
+}
+
+.profile select {
+  width: auto;
+  min-width: 160px;
 }
 
 .md-body {

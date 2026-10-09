@@ -103,6 +103,8 @@ pub struct ModEntry {
     /// mise à jour), « other » (une autre version) ; absent quand le mod n'en a pas ou que
     /// l'exécutable n'a pas pu être lu.
     pub exefs: Option<String>,
+    /// Touche à la partie (romhack, rééquilibrage, mod exclusif) : sauvegarde copiée avant.
+    pub affects_save: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,6 +138,16 @@ pub struct ModsView {
     pub can_import: bool,
     /// Switch : exécutable lancé par Eden, vérifié pour les correctifs ExeFS.
     pub executable: Option<Executable>,
+    /// Copies de la sauvegarde du jeu (les plus récentes d'abord).
+    pub saves: Vec<crate::mods_saves::SaveBackup>,
+    /// Copie faite juste avant ce changement.
+    pub last_backup: Option<crate::mods_saves::SaveBackup>,
+    /// Copie à proposer de remettre (mod de partie désactivé ou retiré).
+    pub restore_offer: Option<crate::mods_saves::SaveBackup>,
+    /// Profils de mods du jeu (Switch, 3DS).
+    pub profiles: Option<crate::mods_saves::GameProfiles>,
+    /// Mods d'un profil qui ne sont plus installés (après un changement de profil).
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -270,7 +282,7 @@ fn folder_name(name: &str) -> String {
     name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '-' } else { c }).collect::<String>().trim_end_matches(['.', ' ']).to_string()
 }
 
-fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -538,13 +550,13 @@ fn parse_tid(s: Option<&str>) -> Result<u64, String> {
     s.and_then(|t| u64::from_str_radix(t, 16).ok()).ok_or_else(|| "title ID du jeu inconnu".to_string())
 }
 
-fn resolve(id: EmulatorId, app: &AppHandle) -> Resolved {
+pub(crate) fn resolve(id: EmulatorId, app: &AppHandle) -> Resolved {
     let config = play::load_config(app);
     play::resolve(id, &config, &Env::system(&config.search_dirs))
 }
 
 /// Émulateur 3DS à utiliser : celui choisi, sinon le premier trouvé, sinon Azahar.
-fn ctr_emulator(app: &AppHandle) -> Resolved {
+pub(crate) fn ctr_emulator(app: &AppHandle) -> Resolved {
     let config = play::load_config(app);
     let env = Env::system(&config.search_dirs);
     let order = config.preferred_ctr.into_iter().chain([EmulatorId::Azahar, EmulatorId::Lime3ds, EmulatorId::Citra]);
@@ -2540,12 +2552,51 @@ fn cheats_file(app: &AppHandle, target: &ModTarget) -> Result<(PathBuf, bool), S
 // Commandes
 
 fn view_for(app: &AppHandle, target: &ModTarget) -> Result<ModsView, String> {
+    let mut view = match target.platform.as_str() {
+        "switch" => switch_view(app, target, base_title_id(parse_tid(target.title_id.as_deref())?)),
+        "3ds" => ctr_view(app, target, parse_tid(target.title_id.as_deref())?),
+        "nds" => nds_view(app, Path::new(target.rom.as_deref().ok_or("ROM inconnue")?)),
+        "gba" => gba_view(app),
+        _ => return Err("console inconnue".into()),
+    };
+    if let Some(tid) = game_tid(target) {
+        for m in view.mods.iter_mut() {
+            m.affects_save = crate::mods_saves::affects_save(m);
+        }
+        view.saves = crate::mods_saves::list(app, tid);
+        view.profiles = Some(crate::mods_saves::game_profiles(app, tid));
+    }
+    Ok(view)
+}
+
+/// Title ID d'un jeu dont Kaleido gère la sauvegarde (Switch, 3DS).
+fn game_tid(target: &ModTarget) -> Option<u64> {
     match target.platform.as_str() {
-        "switch" => Ok(switch_view(app, target, base_title_id(parse_tid(target.title_id.as_deref())?))),
-        "3ds" => Ok(ctr_view(app, target, parse_tid(target.title_id.as_deref())?)),
-        "nds" => Ok(nds_view(app, Path::new(target.rom.as_deref().ok_or("ROM inconnue")?))),
-        "gba" => Ok(gba_view(app)),
-        _ => Err("console inconnue".into()),
+        "switch" => parse_tid(target.title_id.as_deref()).ok().map(base_title_id),
+        "3ds" => parse_tid(target.title_id.as_deref()).ok(),
+        _ => None,
+    }
+}
+
+/// Mod de la vue qui touche à la partie, par identifiant.
+fn save_affecting(view: &ModsView, id: &str) -> Option<ModEntry> {
+    view.mods.iter().find(|m| m.id == id && crate::mods_saves::affects_save(m)).cloned()
+}
+
+/// Active ou met de côté un mod installé (identifiant Kaleido ou dossier installé à la main).
+fn toggle_key(app: &AppHandle, target: &ModTarget, tid: u64, key: &str, enabled: bool) -> Result<(), String> {
+    if let Some(id) = key.strip_prefix("id:") {
+        return match target.platform.as_str() {
+            "switch" => toggle_switch_mod(app, tid, id, enabled),
+            _ => {
+                let user = ctr_emulator(app).ctr_user_dir().ok_or("dossier de l'émulateur 3DS introuvable")?;
+                toggle_ctr_mod(app, &user, tid, id, enabled)
+            }
+        };
+    }
+    match key.strip_prefix("folder:") {
+        Some(name) if target.platform == "switch" => toggle_folder(app, tid, name, enabled),
+        _ => Err("mod inconnu".into()),
     }
 }
 
@@ -2571,6 +2622,14 @@ pub async fn mods_install(target: ModTarget, id: String, options: Option<Install
         let emit = |step: &'static str, done: u64, total: u64| {
             let _ = app.emit("mod-install", Progress { id: id.clone(), step, done, total });
         };
+        // Mod qui touche à la partie : la sauvegarde est copiée avant (rien si déjà actif).
+        let mut last_backup = None;
+        if let Some(tid) = game_tid(&target) {
+            let before = view_for(&app, &target)?;
+            if let Some(m) = save_affecting(&before, &id).filter(|m| !(m.installed && m.enabled)) {
+                last_backup = crate::mods_saves::backup(&app, &target, tid, &format!("avant {}", m.name), Some(&id))?;
+            }
+        }
         let outcome = match target.platform.as_str() {
             "switch" => install_switch(&app, &target, base_title_id(parse_tid(target.title_id.as_deref())?), &id, &opts, &emit)?,
             "3ds" => install_ctr(&app, &target, parse_tid(target.title_id.as_deref())?, &id, &opts, &emit)?,
@@ -2585,9 +2644,13 @@ pub async fn mods_install(target: ModTarget, id: String, options: Option<Install
             }
             _ => return Err("console inconnue".into()),
         };
+        let with_backup = |mut v: ModsView| {
+            v.last_backup = last_backup.clone();
+            v
+        };
         Ok(match outcome {
             Installed::Variants(variants) => InstallResult { variants, ..Default::default() },
-            Installed::Done => InstallResult { view: Some(view_for(&app, &target)?), ..Default::default() },
+            Installed::Done => InstallResult { view: Some(with_backup(view_for(&app, &target)?)), ..Default::default() },
             Installed::Output(path) => InstallResult { view: Some(view_for(&app, &target)?), output: Some(path.display().to_string()), ..Default::default() },
         })
     })
@@ -2597,6 +2660,7 @@ pub async fn mods_install(target: ModTarget, id: String, options: Option<Install
 #[tauri::command]
 pub async fn mods_uninstall(target: ModTarget, id: String, app: AppHandle) -> Result<ModsView, String> {
     crate::blocking(move || {
+        let offer = game_tid(&target).filter(|_| view_for(&app, &target).ok().and_then(|v| save_affecting(&v, &id)).is_some_and(|m| m.enabled)).and_then(|tid| crate::mods_saves::offer_for(&app, tid, &id));
         match target.platform.as_str() {
             "switch" => uninstall_switch(&app, base_title_id(parse_tid(target.title_id.as_deref())?), &id)?,
             "3ds" => uninstall_ctr(&app, parse_tid(target.title_id.as_deref())?, &id)?,
@@ -2615,7 +2679,9 @@ pub async fn mods_uninstall(target: ModTarget, id: String, app: AppHandle) -> Re
             }
             _ => return Err("console inconnue".into()),
         }
-        view_for(&app, &target)
+        let mut view = view_for(&app, &target)?;
+        view.restore_offer = offer;
+        Ok(view)
     })
     .await
 }
@@ -2624,15 +2690,107 @@ pub async fn mods_uninstall(target: ModTarget, id: String, app: AppHandle) -> Re
 #[tauri::command]
 pub async fn mods_toggle(target: ModTarget, id: String, enabled: bool, app: AppHandle) -> Result<ModsView, String> {
     crate::blocking(move || {
-        match target.platform.as_str() {
-            "switch" => toggle_switch_mod(&app, base_title_id(parse_tid(target.title_id.as_deref())?), &id, enabled)?,
-            "3ds" => {
-                let user = ctr_emulator(&app).ctr_user_dir().ok_or("dossier de l'émulateur 3DS introuvable")?;
-                toggle_ctr_mod(&app, &user, parse_tid(target.title_id.as_deref())?, &id, enabled)?
-            }
-            _ => return Err("pas possible pour cette console".into()),
+        let tid = game_tid(&target).ok_or("pas possible pour cette console")?;
+        let before = view_for(&app, &target)?;
+        let affecting = save_affecting(&before, &id);
+        let mut last_backup = None;
+        if let Some(m) = affecting.as_ref().filter(|_| enabled) {
+            last_backup = crate::mods_saves::backup(&app, &target, tid, &format!("avant {}", m.name), Some(&id))?;
         }
+        toggle_key(&app, &target, tid, &format!("id:{id}"), enabled)?;
+        let mut view = view_for(&app, &target)?;
+        view.last_backup = last_backup;
+        if !enabled && affecting.is_some() {
+            view.restore_offer = crate::mods_saves::offer_for(&app, tid, &id);
+        }
+        Ok(view)
+    })
+    .await
+}
+
+/// Remet une copie de la sauvegarde (la partie actuelle est copiée avant).
+#[tauri::command]
+pub async fn mods_save_restore(target: ModTarget, id: String, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        let tid = game_tid(&target).ok_or("pas de sauvegarde gérée pour cette console")?;
+        crate::mods_saves::restore(&app, &target, tid, &id)?;
         view_for(&app, &target)
+    })
+    .await
+}
+
+/// Enregistre les mods actifs comme profil `name` (remplacé s'il existe) et le rend actif.
+#[tauri::command]
+pub async fn mods_profile_save(target: ModTarget, name: String, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        let tid = game_tid(&target).ok_or("pas de profils pour cette console")?;
+        let name = name.trim().to_string();
+        if name.is_empty() || name == crate::mods_saves::ORIGIN || name.chars().count() > 60 {
+            return Err("nom de profil invalide".into());
+        }
+        let view = view_for(&app, &target)?;
+        let mods = crate::mods_saves::active_keys(&view);
+        let own_save = view.mods.iter().any(|m| m.installed && m.enabled && crate::mods_saves::affects_save(m));
+        let mut g = crate::mods_saves::game_profiles(&app, tid);
+        g.profiles.retain(|p| p.name != name);
+        g.profiles.push(crate::mods_saves::Profile { name: name.clone(), mods, own_save });
+        g.profiles.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        g.active = Some(name);
+        crate::mods_saves::set_game_profiles(&app, tid, g)?;
+        view_for(&app, &target)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mods_profile_delete(target: ModTarget, name: String, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        let tid = game_tid(&target).ok_or("pas de profils pour cette console")?;
+        let mut g = crate::mods_saves::game_profiles(&app, tid);
+        g.profiles.retain(|p| p.name != name);
+        if g.active.as_deref() == Some(name.as_str()) {
+            g.active = None;
+        }
+        crate::mods_saves::set_game_profiles(&app, tid, g)?;
+        view_for(&app, &target)
+    })
+    .await
+}
+
+/// Passe au profil `name` (« Jeu d'origine » = aucun mod) : sauvegardes échangées si l'un
+/// des deux profils garde la sienne, puis mods activés ou mis de côté.
+#[tauri::command]
+pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        use crate::mods_saves::ORIGIN;
+        let tid = game_tid(&target).ok_or("pas de profils pour cette console")?;
+        let mut g = crate::mods_saves::game_profiles(&app, tid);
+        let from = g.active.clone().unwrap_or_else(|| ORIGIN.to_string());
+        let wanted: Vec<String> = if name == ORIGIN { vec![] } else { g.profiles.iter().find(|p| p.name == name).ok_or("profil introuvable")?.mods.clone() };
+        let own = |n: &str| g.profiles.iter().any(|p| p.name == n && p.own_save);
+        let before = view_for(&app, &target)?;
+        let (enable, disable, missing) = crate::mods_saves::plan(&before, &wanted);
+        // Mods de partie mis de côté : leur copie d'avant est proposée si le profil choisi n'a
+        // pas encore de sauvegarde à lui.
+        let leaving_save_mods: Vec<String> = disable.iter().filter_map(|k| k.strip_prefix("id:")).filter(|id| save_affecting(&before, id).is_some()).map(str::to_string).collect();
+        let mut swapped = false;
+        if from != name && (own(&from) || own(&name) || !leaving_save_mods.is_empty()) {
+            swapped = crate::mods_saves::swap_saves(&app, &target, tid, &from, &name)?;
+        }
+        for k in &disable {
+            toggle_key(&app, &target, tid, k, false)?;
+        }
+        for k in &enable {
+            toggle_key(&app, &target, tid, k, true)?;
+        }
+        g.active = (name != ORIGIN).then_some(name);
+        crate::mods_saves::set_game_profiles(&app, tid, g)?;
+        let mut view = view_for(&app, &target)?;
+        view.missing = missing;
+        if !swapped {
+            view.restore_offer = leaving_save_mods.iter().find_map(|id| crate::mods_saves::offer_for(&app, tid, id));
+        }
+        Ok(view)
     })
     .await
 }
