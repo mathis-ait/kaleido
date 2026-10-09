@@ -549,6 +549,9 @@ fn hex_subdirs(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// Marqueur d'un mod du Randomizer copié dans `load/mods/<TID>/` au lancement.
+pub const MOD_COPY_MARKER: &str = "kaleido.txt";
+
 /// Mise à jour d'un jeu 3DS installée dans la carte SD émulée (title 0004000E-<bas>) :
 /// l'émulateur lance alors le programme de la mise à jour, pas celui de la cartouche.
 pub fn ctr_update_installed(user: &Path, title_id: u64) -> bool {
@@ -754,7 +757,7 @@ pub fn install_mod(romfs: &Path, user: &Path, title_id: u64, replace: bool, stam
         fs::copy(&ips, target.join("code.ips")).map_err(|e| format!("copie de code.ips impossible : {e}"))?;
     }
     // Petit mot pour reconnaître le mod (ignoré par l'émulateur).
-    let _ = fs::write(target.join("kaleido.txt"), format!("Mod généré par Kaleido, copié depuis :\n{}\n", romfs.display()));
+    let _ = fs::write(target.join(MOD_COPY_MARKER), format!("Mod généré par Kaleido, copié depuis :\n{}\n", romfs.display()));
     Ok((target, backup))
 }
 

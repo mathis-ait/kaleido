@@ -123,6 +123,9 @@ pub struct OtherMod {
     pub overlaps: Vec<String>,
     pub can_toggle: bool,
     pub exefs: Option<String>,
+    /// Généré par Kaleido (Randomizer, éditeur de ROM) mais pas suivi par le manifeste des mods.
+    #[serde(default)]
+    pub from_kaleido: bool,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -1510,12 +1513,12 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     // Mods présents qui ne viennent pas de Kaleido (ou mis de côté par Kaleido).
     for (name, marker) in &installed {
         if marker.is_none() && name != TRINITY_INDEX_DIR {
-            view.others.push(OtherMod { name: name.clone(), enabled: true, category: other_category(name, tier), overlaps: overlaps.get(name).cloned().unwrap_or_default(), can_toggle: true, exefs: verdict(&dir_patch_ids(&game_dir.join(name))) });
+            view.others.push(OtherMod { name: name.clone(), enabled: true, category: other_category(name, tier), overlaps: overlaps.get(name).cloned().unwrap_or_default(), can_toggle: true, exefs: verdict(&dir_patch_ids(&game_dir.join(name))), from_kaleido: false });
         }
     }
     for (name, marker) in &disabled {
         if marker.is_none() {
-            view.others.push(OtherMod { name: name.clone(), enabled: false, category: other_category(name, tier), overlaps: vec![], can_toggle: true, exefs: None });
+            view.others.push(OtherMod { name: name.clone(), enabled: false, category: other_category(name, tier), overlaps: vec![], can_toggle: true, exefs: None, from_kaleido: false });
         }
     }
     let active_others: Vec<(String, Kind)> = installed.iter().filter(|(_, m)| m.is_none()).map(|(n, _)| (n.clone(), classify(n, tier))).collect();
@@ -2272,7 +2275,7 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     view.installed_gb = entries.iter().filter(|e| e.installed).filter_map(|e| e.gb).collect();
     view.mods.extend(entries);
 
-    // Fichiers LayeredFS présents qui ne viennent pas de Kaleido.
+    // Fichiers LayeredFS présents qui ne viennent pas des mods de Kaleido.
     let mut known: std::collections::HashSet<String> = manifest.mods.iter().flat_map(|m| m.files.iter().map(|f| f.to_lowercase())).chain([CTR_MANIFEST.to_lowercase()]).collect();
     // Le 60 fps natif : son marqueur, et le code.ips quand il est seul (sans mod du randomiseur).
     if mods_dir.join(FPS60_MARKER).is_file() {
@@ -2281,7 +2284,25 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
             known.insert("code.ips".into());
         }
     }
-    let foreign = files_under(&mods_dir).into_iter().filter(|f| !known.contains(f)).count();
+    let mut rest: Vec<String> = files_under(&mods_dir).into_iter().filter(|f| !known.contains(f)).collect();
+    // Mod du Randomizer ou de l'éditeur de ROM, copié par la Bibliothèque au lancement (marqueur
+    // kaleido.txt) : RomFS, code.ips (taux de chromatiques) et le marqueur.
+    if mods_dir.join(play::MOD_COPY_MARKER).is_file() {
+        let before = rest.len();
+        rest.retain(|f| f != play::MOD_COPY_MARKER && f != "code.ips" && !f.starts_with("romfs/"));
+        if rest.len() < before {
+            view.others.push(OtherMod {
+                name: "Mod du Randomizer Kaleido".into(),
+                enabled: true,
+                category: "gameplay".into(),
+                overlaps: vec![],
+                can_toggle: false,
+                exefs: None,
+                from_kaleido: true,
+            });
+        }
+    }
+    let foreign = rest.len();
     if foreign > 0 {
         view.others.push(OtherMod {
             name: format!("Mod LayeredFS installé à la main ({foreign} fichier{})", if foreign > 1 { "s" } else { "" }),
@@ -2290,6 +2311,7 @@ fn ctr_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
             overlaps: vec![],
             can_toggle: false,
             exefs: None,
+            from_kaleido: false,
         });
     }
     if !fps60_ctr::supports(tid) {

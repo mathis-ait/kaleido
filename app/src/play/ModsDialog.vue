@@ -651,13 +651,26 @@ async function toggleCheat(c: Cheat) {
                 </li>
               </ul>
             </template>
-            <template v-if="view.others.length">
+            <template v-if="view.others.some((o) => o.fromKaleido)">
+              <div class="block-head">
+                <h4>Générés par Kaleido</h4>
+              </div>
+              <ul class="others">
+                <li v-for="o in view.others.filter((o) => o.fromKaleido)" :key="o.name">
+                  <div>
+                    <span>{{ o.name }}</span>
+                    <small class="dim">Données du jeu et taux de chromatiques choisis dans le Randomizer, remis en place à chaque lancement depuis la Bibliothèque</small>
+                  </div>
+                </li>
+              </ul>
+            </template>
+            <template v-if="view.others.some((o) => !o.fromKaleido)">
               <div class="block-head">
                 <h4>Installés hors de Kaleido</h4>
                 <Tip term="play.otherMods" />
               </div>
               <ul class="others">
-                <li v-for="o in view.others" :key="o.name" :class="{ off: !o.enabled }">
+                <li v-for="o in view.others.filter((o) => !o.fromKaleido)" :key="o.name" :class="{ off: !o.enabled }">
                   <div>
                     <span>{{ o.name }}</span>
                     <small class="dim">{{ CATEGORY_LABEL[o.category] ?? "Autres" }}</small>

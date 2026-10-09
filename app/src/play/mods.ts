@@ -64,6 +64,8 @@ export interface OtherMod {
   overlaps: string[];
   canToggle: boolean;
   exefs: "ok" | "base" | "other" | "shadowed" | null;
+  /** Généré par Kaleido (Randomizer) sans passer par les mods. */
+  fromKaleido?: boolean;
 }
 
 export interface ModsView {
