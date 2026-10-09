@@ -331,7 +331,7 @@ mod tests {
         let entry = |id: &str, on: bool| ModEntry { id: id.into(), installed: true, enabled: on, source: "gamebanana".into(), ..Default::default() };
         let view = crate::mods::ModsView {
             mods: vec![entry("gb:1", true), entry("gb:2", false), entry("nexus:lumi", true)],
-            others: vec![crate::mods::OtherMod { name: "Mon mod".into(), enabled: true, category: "other".into(), overlaps: vec![], can_toggle: true, exefs: None }],
+            others: vec![crate::mods::OtherMod { name: "Mon mod".into(), enabled: true, category: "other".into(), overlaps: vec![], can_toggle: true, exefs: None, from_kaleido: false }],
             ..Default::default()
         };
         assert_eq!(active_keys(&view), vec!["folder:Mon mod", "id:gb:1", "id:nexus:lumi"]);
