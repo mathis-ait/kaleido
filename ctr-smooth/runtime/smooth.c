@@ -33,9 +33,9 @@
 #define TAB_BYTES (TAB_N * sizeof(Entry)) /* 0x40000 */
 #define SNAP_OFF 0x40000u
 #define TRACE_OFF 0x41000u
-#define MAX_PERIOD 8u
+#define MAX_PERIOD 8u   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
 #define UNSEEN_FRAMES 4u
-#define PAD_COMBO 0x304u /* L (0x200) + R (0x100) + Select (0x4) */   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
+#define PAD_COMBO 0x204u /* L (0x200) + Select (0x4) ; sans R : L + R + Start redémarre le jeu */
 
 struct Entry {
     u32 key;        /* adresse de la matrice dans la mémoire du jeu (0 = libre) */
@@ -285,7 +285,7 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
             S.failed = rc ? rc : 1u;
         }
     }
-    /* L + R + Select tenus une seconde (60 images) : lissage coupé ou rétabli. La table
+    /* L + Select tenus une seconde (60 images) : lissage coupé ou rétabli. La table
      * est vidée au rétablissement : aucune valeur d'avant la coupure n'est mélangée. */
     if ((S.pad & PAD_COMBO) == PAD_COMBO) {
         if (!S.combo_f)

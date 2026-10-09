@@ -10,7 +10,7 @@
 - Nouvelle entrée « 60 fps natif » dans **Mods et réglages** de Pokémon Rubis Oméga (catégorie Fluidité). Le jeu affiche 60 images par seconde au lieu de 30 : caméra, personnages et Pokémon bougent entre deux images, en exploration, en intérieur, en combat, en Envol, en Surf, pendant les Méga-Évolutions, les Concours et Pokémon-Amie.
 - La vitesse du jeu ne change pas : la logique tourne toujours à 30 images par seconde, donc la musique, les événements, les durées et le hasard restent ceux d'origine (vérifié sur des parties rejouées à l'identique). Ce n'est pas un code « 60 FPS » qui accélère tout le jeu.
 - Les menus, textes et effets en 2D restent à 30 images par seconde.
-- **L + R + Select**, tenus une seconde en jeu, coupent ou rétablissent le lissage.
+- **L + Select**, tenus une seconde en jeu, coupent ou rétablissent le lissage.
 - Se combine avec le taux de chromatiques du Randomizer : Kaleido fusionne les deux dans un seul patch. Retirer le 60 fps natif garde le taux de chromatiques.
 
 ## À savoir

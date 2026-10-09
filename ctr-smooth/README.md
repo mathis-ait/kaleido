@@ -56,7 +56,7 @@ Azahar ne suit pas (89 % de vitesse) : Vulkan conseillé. Méthode : `build.py -
 | Entrée dans un bâtiment | une image blanche au début du balayage (absente du jeu d'origine) : **corrigé** |
 | Sortie d'un bâtiment | l'extérieur visible une image avant le fondu : **corrigé** |
 | Azahar limité à 50 % | rapport tick / dessin conservé, aucun dessin sauté, pas de plantage |
-| Interrupteur en jeu | **L + R + Select** tenus une seconde : lissage coupé ou rétabli |
+| Interrupteur en jeu | **L + Select** tenus une seconde : lissage coupé ou rétabli |
 | Place pour le code | runtime déplacé dans une fonction morte de 10 Ko (7,7 Ko libres) ; la marge de `.text` ne garde que les crochets |
 
 Repli automatique « ordinateur trop lent » : impossible à détecter depuis le jeu (il compte en

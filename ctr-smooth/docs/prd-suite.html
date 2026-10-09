@@ -174,7 +174,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <li>Repli automatique : si le jeu saute trop de dessins sur une fenêtre de 2 secondes, repasser en 30 images régulières plutôt qu'en 30/60 irrégulier, puis réessayer.</li>
     <li>Combinaison de touches en jeu pour couper et rétablir le lissage, lue dans le code statique, sans GDB.</li>
   </ul>
-  <p><b>Résultat.</b> Deux images parasites trouvées et corrigées : une image blanche au début du balayage d'entrée et l'extérieur visible une image avant le fondu de sortie (le dessin ajouté montrait l'ancienne capture de la transition). Plus de dessin ajouté sur un tick où une transition change d'état. À 50 % de vitesse : rapport tick / dessin conservé, aucun dessin sauté. Repli automatique abandonné : le jeu compte en temps émulé et ne peut pas voir un hôte lent. Interrupteur L + R + Select vérifié. Runtime déplacé dans une fonction morte de 10 Ko. Scène du rival rejouée (2 actives, 2 coupées) : état MT19937 final identique octet pour octet, et identique à la phase 2. Vérifié sur 4 passages de porte, pas 20.</p>
+  <p><b>Résultat.</b> Deux images parasites trouvées et corrigées : une image blanche au début du balayage d'entrée et l'extérieur visible une image avant le fondu de sortie (le dessin ajouté montrait l'ancienne capture de la transition). Plus de dessin ajouté sur un tick où une transition change d'état. À 50 % de vitesse : rapport tick / dessin conservé, aucun dessin sauté. Repli automatique abandonné : le jeu compte en temps émulé et ne peut pas voir un hôte lent. Interrupteur L + Select vérifié. Runtime déplacé dans une fonction morte de 10 Ko. Scène du rival rejouée (2 actives, 2 coupées) : état MT19937 final identique octet pour octet, et identique à la phase 2. Vérifié sur 4 passages de porte, pas 20.</p>
   <div class="gate"><b>Porte :</b> 0 image mélangée sur 20 passages de porte scriptés ; à 50 % de vitesse, durées en temps émulé identiques à l'original ; interrupteur en jeu vérifié.</div>
 </section>
 
@@ -289,7 +289,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 </div>
 <div class="q">
   <div><b>6. Combinaison de touches pour couper le lissage en jeu</b></div>
-  <div class="reco"><b>Proposition :</b> L + R + Select maintenus une seconde, à vérifier contre les raccourcis du jeu.</div>
+  <div class="reco"><b>Proposition :</b> L + Select maintenus une seconde, à vérifier contre les raccourcis du jeu.</div>
 </div>
 
 <h2>Risques</h2>

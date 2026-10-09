@@ -2388,7 +2388,7 @@ fn fps60_entry(user: &Path, target: &ModTarget, tid: u64) -> ModEntry {
     ModEntry {
         id: "fps60".into(),
         name: "60 fps natif".into(),
-        description: "Le jeu affiche 60 images par seconde au lieu de 30 : caméra, personnages et Pokémon bougent entre deux images, en exploration comme en combat. La vitesse du jeu, la musique, les événements et le hasard restent ceux d'origine (la logique tourne toujours à 30 images par seconde). Les menus et effets en 2D restent à 30. L + R + Select, tenus une seconde en jeu, coupent ou rétablissent le lissage.".into(),
+        description: "Le jeu affiche 60 images par seconde au lieu de 30 : caméra, personnages et Pokémon bougent entre deux images, en exploration comme en combat. La vitesse du jeu, la musique, les événements et le hasard restent ceux d'origine (la logique tourne toujours à 30 images par seconde). Les menus et effets en 2D restent à 30. L + Select, tenus une seconde en jeu, coupent ou rétablissent le lissage.".into(),
         category: "fps".into(),
         source: "auto".into(),
         author: "Kaleido (ctr-smooth)".into(),

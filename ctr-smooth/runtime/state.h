@@ -54,7 +54,7 @@ typedef struct {
     u32 n_eye;         /* vues de caméras d'yeux lissées (cumul) */
     /* Suite : interrupteur en jeu */
     u32 pad;           /* boutons tenus au dernier tick (bits HID, gfl::ui::CTR_DeviceManager+0x78) */
-    u32 combo_f;       /* frame + 1 au début de l'appui sur L + R + Select (0 = relâché) */
+    u32 combo_f;       /* frame + 1 au début de l'appui sur L + Select (0 = relâché) */
     /* Suite : transitions */
     u32 tstate[2];     /* état (+0x0C, +0x44, +0x48 combinés) des deux contextes de transition */
     u32 n_tskip;       /* dessins ajoutés supprimés au changement d'état d'une transition */

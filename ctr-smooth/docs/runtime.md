@@ -35,7 +35,7 @@ de l'image.
 | 0x00375EA8 | `push {r0-r11,lr}` → `b hook_camera` | copie de la vue avant la file de rendu ; caméra = `[sp+0xC]` (`nw::gfx::Camera`) |
 | 0x0039B338 | `push {r3-r11,lr}` → `b hook_h3d` | rendu d'un maillage H3D ; `r0` = modèle |
 | 0x002EC354 | `push {r4-r8,lr}` → `b hook_nwmesh` | `nw::gfx` MeshRenderer ; `r2` = modèle |
-| 0x0036FB34 | `add r1,r4,#0x98` → `bl hook_hid` | boutons tenus copiés dans `S.pad` (interrupteur L + R + Select) ; **builds de test** : `hook_pad` (entrées injectées) |
+| 0x0036FB34 | `add r1,r4,#0x98` → `bl hook_hid` | boutons tenus copiés dans `S.pad` (interrupteur L + Select) ; **builds de test** : `hook_pad` (entrées injectées) |
 | 0x0038CEA4 | `push {r3-r7,lr}` → `b hook_cnt3d` | **builds de test** (`--count3d`) : passes de scène 3D |
 | 0x0010E5AC | `bl 0x0011CB60` → `bl smooth_fade` | transitions : avance figée et rappel neutralisé sur le dessin ajouté |
 | 0x0014D618 | `push {r4-r12,lr}` → `b hook_lytanim` | animations d interface : retour immédiat sur le dessin ajouté |
@@ -107,11 +107,11 @@ Limite de vitesse à 50 % dans le bac à sable : 29,3 dessins et 14,7 ticks par 
 rapport 2 pour 1 est conservé), aucun dessin sauté par le jeu, marche et changement de carte sans
 plantage. Le jeu mesure son temps en ticks **émulés** (`svcGetSystemTick`) : un hôte lent ne
 déclenche pas le saut d'image du jeu, il ralentit simplement tout. Un repli automatique « hôte trop
-lent » n'est donc pas détectable depuis le jeu ; l'interrupteur L + R + Select en tient lieu.
+lent » n'est donc pas détectable depuis le jeu ; l'interrupteur L + Select en tient lieu.
 
 ## Interrupteur en jeu
 
-**L + R + Select tenus 60 images (une seconde)** coupent ou rétablissent le lissage (`S.enabled`).
+**L + Select tenus 60 images (une seconde)** coupent ou rétablissent le lissage (`S.enabled`).
 Lissage coupé, la boucle retrouve exactement le comportement d'origine (un dessin sur deux). Au
 rétablissement, la table est vidée : aucune valeur d'avant la coupure n'est mélangée. Les boutons
 viennent de `gfl::ui::CTR_DeviceManager` (`[r4+0x78]` juste après `nn::hid::PadReader::ReadLatest`).

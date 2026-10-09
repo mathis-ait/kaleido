@@ -44,7 +44,7 @@ render:
     lytanim: { addr: 0x0014D618, orig: "f05f2de9", note: "avance des animations d'interface 2D" }
     # caméras des yeux (3D stéréo, intérieurs) : posées pendant update() par 0x00377984 -> SetViewMatrix
     setview: { addr: 0x00392FB4, orig: "524f80e2", note: "add r4,r0,#0x148 ; r0 = nw::gfx::Camera de l'œil, vue +0x148, inverse +0x178" }
-    hid:     { addr: 0x0036FB34, orig: "981084e2", note: "boutons tenus [r4+0x78] -> S.pad (L+R+Select) ; builds de test : entrées injectées" }
+    hid:     { addr: 0x0036FB34, orig: "981084e2", note: "boutons tenus [r4+0x78] -> S.pad (L+Select) ; builds de test : entrées injectées" }
   transitions: { manager: 0x0062F830, contexts: [0x38, 0x3C], signature: { state: 0x0C, flags16: 0x44, flag: 0x48 }, note: "pas de dessin ajouté au changement de signature" }
   thresholds: { translation_max: 48.0, translation_rel: 0.25, translation_min: 0.5, rotation: 0.7, rotation_camera: 0.25 }
   interpolation: "cadence adaptative par matrice : P + (C - P) * k / T, T = intervalle entre deux changements (2 à 8 images)"
