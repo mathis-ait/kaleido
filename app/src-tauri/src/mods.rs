@@ -3919,4 +3919,64 @@ mod tests {
         assert_eq!(folder_name("Écran ultra-large 21:9"), "Écran ultra-large 21-9");
         assert_eq!(folder_name("Mod. "), "Mod");
     }
+
+    /// 60 fps natif sur un dossier Azahar temporaire et la vraie ROM (ignoré sans ROM) :
+    /// installation par-dessus le taux de chromatiques, réinstallation, retrait, garde-fous.
+    #[test]
+    fn fps60_install_uninstall() {
+        let dir = std::env::var_os("KALEIDO_3DS_DIR").map(PathBuf::from).or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join("Documents").join("NDS & 3DS")));
+        let rom = dir.and_then(|d| fs::read_dir(d).ok()).into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.to_string_lossy().contains("Omega Ruby") && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("3ds")));
+        let Some(rom) = rom else {
+            eprintln!("pas de ROM Rubis Oméga : test ignoré");
+            return;
+        };
+        let tid = 0x0004_0000_0011_C400u64;
+        let user = std::env::temp_dir().join(format!("kaleido-fps60-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&user);
+        let mods = ctr_mods_dir(&user, tid);
+        fs::create_dir_all(&mods).unwrap();
+        let shiny = include_bytes!("../../../ctr-smooth/proto/kaleido-shiny-or-eur-v1.0.ips");
+        fs::write(mods.join("code.ips"), shiny).unwrap();
+        let target = ModTarget { platform: "3ds".into(), title_id: Some(format!("{tid:016X}")), rom: Some(rom.display().to_string()), game_version: None, update_file: None };
+        let game = kaleido_core::CtrGameRom::open(&rom).unwrap();
+        let original = game.code().unwrap().code;
+        let profile = fps60_ctr::profile_for(tid, &original).unwrap();
+        assert!(fps60_entry(&user, &target, tid).blocked.is_none());
+
+        install_fps60(&user, &target, tid).unwrap();
+        let ips_now = fs::read(mods.join("code.ips")).unwrap();
+        assert!(fps60_ctr::contains(profile, &original, &ips_now).unwrap());
+        assert!(fps60_entry(&user, &target, tid).installed);
+        // réinstallation : même résultat
+        install_fps60(&user, &target, tid).unwrap();
+        assert_eq!(fs::read(mods.join("code.ips")).unwrap(), ips_now);
+        // retrait : le taux de chromatiques revient tel quel
+        uninstall_fps60(&user, &target, tid).unwrap();
+        let back = fs::read(mods.join("code.ips")).unwrap();
+        let (mut a, mut b) = (original.clone(), original.clone());
+        kaleido_core::formats::ips::apply(&mut a, &back).unwrap();
+        kaleido_core::formats::ips::apply(&mut b, shiny).unwrap();
+        assert_eq!(a, b);
+        assert!(!mods.join(FPS60_MARKER).exists());
+        // sans autre patch : le code.ips disparaît au retrait
+        fs::remove_file(mods.join("code.ips")).unwrap();
+        install_fps60(&user, &target, tid).unwrap();
+        uninstall_fps60(&user, &target, tid).unwrap();
+        assert!(!mods.join("code.ips").exists());
+        // code de triche « 60 FPS » actif : refus
+        let cheats = user.join("cheats");
+        fs::create_dir_all(&cheats).unwrap();
+        fs::write(cheats.join(format!("{tid:016X}.txt")), "[60 FPS]
+*citra_enabled
+D3000000 00000000
+").unwrap();
+        assert!(install_fps60(&user, &target, tid).unwrap_err().contains("60 FPS"));
+        fs::remove_dir_all(&cheats).unwrap();
+        // mise à jour installée : bloqué
+        let upd = user.join("sdmc/Nintendo 3DS").join("0".repeat(32)).join("0".repeat(32)).join("title/0004000e/0011c400/content");
+        fs::create_dir_all(&upd).unwrap();
+        assert!(fps60_entry(&user, &target, tid).blocked.is_some());
+        assert!(install_fps60(&user, &target, tid).is_err());
+        let _ = fs::remove_dir_all(&user);
+    }
 }
