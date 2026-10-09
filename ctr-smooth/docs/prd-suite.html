@@ -104,7 +104,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <tr><td>Monde extérieur (Route 103)</td><td><span class="pill p-ok">60 images</span></td><td>29 transitions distinctes sur 29 en capture image par image, contre 14 sur 29 d'origine</td></tr>
     <tr><td>Logique, RNG, durées</td><td><span class="pill p-ok">identiques</span></td><td>Scène du rival, 4 000 images : 3 parties actives et 3 désactivées identiques (rythme du RNG et état MT19937 final)</td></tr>
     <tr><td>Systèmes animés au dessin</td><td><span class="pill p-ok">corrigés</span></td><td>Fondus et animations d'interface figés sur le dessin ajouté ; diff du tas propre</td></tr>
-    <tr><td>Intérieurs des bâtiments</td><td><span class="pill p-warn">saccadé</span></td><td>Ressenti de l'essai réel, jamais mesuré (aucun test en intérieur jusqu'ici)</td></tr>
+    <tr><td>Intérieurs des bâtiments</td><td><span class="pill p-ok">corrigé</span></td><td>Lot A : la 3D stéréoscopique des intérieurs rendait le décor avec des caméras non lissées. Boutique de Rosyères : écarts réguliers au lieu d'une pièce figée une image sur deux (commit 03e5428), à confirmer à l'essai réel</td></tr>
     <tr><td>Combats</td><td><span class="pill p-warn">30 images</span></td><td>15 d'origine dans Azahar, 30 avec le lissage : le module <span class="mono">DllBattle</span> ne renouvelle l'image qu'un dessin sur deux</td></tr>
     <tr><td>Méga-Évolution, Envol, Surf, Concours, Amie, Super Entraînement, Bases secrètes, cinématiques</td><td><span class="pill p-todo">non testé</span></td><td>La sauvegarde de test (0 badge, 0:29) n'y donne pas accès</td></tr>
     <tr><td>Kaleido, v1.4, Saphir Alpha, console</td><td><span class="pill p-todo">à faire</span></td><td>Patch installé à la main dans l'Azahar de l'utilisateur, ancien fichier gardé en <span class="mono">code.ips.avant-60fps.bak</span></td></tr>
@@ -136,9 +136,9 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 <section class="lot" id="lot-a">
   <div class="lot-head">
     <span class="lot-id">Lot A</span><h3>Intérieurs saccadés</h3>
-    <span class="meta"><span class="pill p-ruby">priorité 1</span><span class="pill p-todo">1 à 2 séances</span></span>
+    <span class="meta"><span class="pill p-ok">fait le 9 octobre</span><span class="pill p-wait">essai réel à faire</span></span>
   </div>
-  <p>Rien n'a été mesuré en intérieur. Le bac à sable permet d'y aller sans nouvelle sauvegarde : une partie scriptée descend de la Route 103 jusqu'à Rosyeux et entre au Centre Pokémon.</p>
+  <p>Rien n'a été mesuré en intérieur. Le bac à sable permet d'y aller sans nouvelle sauvegarde : une partie scriptée descend de la Route 103 jusqu'à Rosyères et entre au Centre Pokémon.</p>
   <h4>Hypothèses, de la plus probable à la moins probable</h4>
   <div class="tbl"><table>
     <thead><tr><th>#</th><th>Hypothèse</th><th>Symptôme attendu</th><th>Mesure</th></tr></thead>
@@ -158,7 +158,8 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     <li>A4 : seuils ajustés, revérifiés sur la Route 103 et la scène du rival.</li>
     <li>A5 : documenter et ajouter un repli automatique (lot B).</li>
   </ul>
-  <div class="gate"><b>Porte :</b> Centre Pokémon de Rosyeux et maison de Bourg-en-Vol à 60 transitions distinctes sur 60 en marchant, aucune image mélangée au passage de la porte, scène du rival toujours identique (6 parties).</div>
+  <p><b>Résultat.</b> Ni A1 ni A2 à A5 tels que formulés : la pièce est rendue avec les caméras des deux yeux (3D stéréoscopique, active seulement en intérieur), recalculées pendant <span class="mono">update()</span> par le module de terrain via <span class="mono">SetViewMatrix</span> (0x00392F90), et jamais vues par le crochet de caméra. Correctif : crochet en 0x00392FB4 qui retient ces caméras, lissées au début de chaque dessin. Boutique de Rosyères : écarts image à image de 4,9 à 5,25 au lieu d'une alternance 6 / 0,25, aucun tirage pendant les dessins ajoutés, extérieur inchangé. Centre Pokémon et maisons de Bourg-en-Vol non mesurés (même chemin attendu).</p>
+  <div class="gate"><b>Porte :</b> Centre Pokémon de Rosyères et maison de Bourg-en-Vol à 60 transitions distinctes sur 60 en marchant, aucune image mélangée au passage de la porte, scène du rival toujours identique (6 parties).</div>
 </section>
 
 <section class="lot" id="lot-b">
@@ -264,7 +265,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 <h2>Décisions à prendre</h2>
 <div class="q">
   <div><b>1. Quel bâtiment, et à quelle vitesse tournait Azahar ?</b></div>
-  <div class="reco">Le nom du bâtiment et le pourcentage affiché en bas d'Azahar suffisent à départager A2/A5 des autres hypothèses. <b>Par défaut :</b> mesure au Centre Pokémon de Rosyeux et dans la maison de Bourg-en-Vol.</div>
+  <div class="reco">Le nom du bâtiment et le pourcentage affiché en bas d'Azahar suffisent à départager A2/A5 des autres hypothèses. <b>Par défaut :</b> mesure au Centre Pokémon de Rosyères et dans la maison de Bourg-en-Vol.</div>
 </div>
 <div class="q">
   <div><b>2. Une sauvegarde plus avancée est-elle disponible ?</b></div>
