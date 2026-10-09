@@ -3211,6 +3211,22 @@ pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle)
     .await
 }
 
+/// Installe la mise à jour séparée d'un jeu dans la NAND d'Eden (progression sous `id`).
+fn install_update_for(app: &AppHandle, target: &ModTarget, id: &str) -> Result<(), String> {
+    if crate::library::running_emulators().contains(&"Eden") {
+        return Err("Ferme Eden d'abord : il ne relit sa NAND qu'au démarrage.".into());
+    }
+    let update = PathBuf::from(target.update_file.as_deref().ok_or("pas de mise à jour séparée pour ce jeu")?);
+    let keys_path = crate::switch::prod_keys(app).ok_or("clés de la console (prod.keys) introuvables")?;
+    let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
+    let (registered, keys_dir) = eden_nand(app).ok_or("dossier d'Eden introuvable")?;
+    let emit = |done: u64, total: u64| {
+        let _ = app.emit("mod-install", Progress { id: id.into(), step: "install", done, total });
+    };
+    kaleido_core::nx::install_update_to_nand(&update, &registered, &keys_dir, &keys, emit).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Switch : installe la mise à jour séparée du jeu dans la NAND d'Eden, comme son menu
 /// « Installer des fichiers dans la NAND ».
 #[tauri::command]
@@ -3219,18 +3235,88 @@ pub async fn mods_install_update(target: ModTarget, app: AppHandle) -> Result<Mo
         if target.platform != "switch" {
             return Err("seulement pour les jeux Switch".into());
         }
-        if crate::library::running_emulators().contains(&"Eden") {
-            return Err("Ferme Eden d'abord : il ne relit sa NAND qu'au démarrage.".into());
-        }
-        let update = PathBuf::from(target.update_file.as_deref().ok_or("pas de mise à jour séparée pour ce jeu")?);
-        let keys_path = crate::switch::prod_keys(&app).ok_or("clés de la console (prod.keys) introuvables")?;
-        let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
-        let (registered, keys_dir) = eden_nand(&app).ok_or("dossier d'Eden introuvable")?;
-        let emit = |done: u64, total: u64| {
-            let _ = app.emit("mod-install", Progress { id: "nand-update".into(), step: "install", done, total });
-        };
-        kaleido_core::nx::install_update_to_nand(&update, &registered, &keys_dir, &keys, emit).map_err(|e| e.to_string())?;
+        install_update_for(&app, &target, "nand-update")?;
         view_for(&app, &target)
+    })
+    .await
+}
+
+/// Jeu Switch de la bibliothèque, tel que l'interface le connaît.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchGameRef {
+    pub path: String,
+    pub title_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub update_path: Option<String>,
+    #[serde(default)]
+    pub update_version: Option<String>,
+}
+
+impl SwitchGameRef {
+    fn target(&self) -> ModTarget {
+        ModTarget { platform: "switch".into(), title_id: Some(self.title_id.clone()), rom: Some(self.path.clone()), game_version: self.update_version.clone(), update_file: self.update_path.clone() }
+    }
+}
+
+/// Jeu dont Eden ne lance pas la dernière mise à jour trouvée.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleUpdate {
+    pub title: String,
+    pub path: String,
+    /// Fichier de la mise à jour à installer.
+    pub update_file: String,
+    pub update_version: Option<String>,
+    /// Ce qu'Eden lance à la place.
+    pub running: String,
+}
+
+/// La mise à jour séparée d'un jeu est-elle masquée (mise à jour du .xci, ou autre version
+/// dans la NAND) ? Rend ce qu'Eden lance à la place.
+fn stale_update(app: &AppHandle, target: &ModTarget) -> Option<String> {
+    let ids = exe_ids(app, target).ok()?;
+    let separate = ids.separate.as_ref()?;
+    if *separate == ids.running {
+        return None;
+    }
+    if ids.nand.is_some() {
+        Some("une autre version installée dans Eden".into())
+    } else if ids.embedded.is_some() {
+        Some("la mise à jour contenue dans le fichier du jeu".into())
+    } else {
+        None
+    }
+}
+
+/// Bibliothèque : jeux Switch dont Eden ne lance pas la dernière mise à jour.
+#[tauri::command]
+pub async fn switch_updates_check(games: Vec<SwitchGameRef>, app: AppHandle) -> Result<Vec<StaleUpdate>, String> {
+    crate::blocking(move || {
+        Ok(games
+            .iter()
+            .filter(|g| g.update_path.is_some())
+            .filter_map(|g| {
+                let running = stale_update(&app, &g.target())?;
+                let file = g.update_path.as_deref().and_then(|u| Path::new(u).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                Some(StaleUpdate { title: g.title.clone(), path: g.path.clone(), update_file: file, update_version: g.update_version.clone(), running })
+            })
+            .collect())
+    })
+    .await
+}
+
+/// Bibliothèque : installe dans Eden la dernière mise à jour de chacun de ces jeux.
+#[tauri::command]
+pub async fn switch_updates_install(games: Vec<SwitchGameRef>, app: AppHandle) -> Result<u32, String> {
+    crate::blocking(move || {
+        let mut done = 0;
+        for g in &games {
+            install_update_for(&app, &g.target(), &format!("nand:{}", g.path))?;
+            done += 1;
+        }
+        Ok(done)
     })
     .await
 }

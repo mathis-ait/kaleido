@@ -15,12 +15,19 @@ import DiscoverDialog from "../play/DiscoverDialog.vue";
 import RomhacksDialog from "../play/RomhacksDialog.vue";
 import { romhacksDialog } from "../play/romhacks";
 import { modUpdates, modsDialog, refreshModUpdates } from "../play/mods";
-import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan } from "../games";
+import { addFiles, addFolder, allGames, byRelease, games, libraryUi, loadGames, removeFolder, rescan, checkSwitchUpdates, installSwitchUpdates, switchUpdates } from "../games";
 import { SHELVES, consoleOf, type ShelfFilter } from "../consoles";
 import { coverUrl, formatDuration, lastPlayed, launchGame, platformOf, playTime, statusOf, timeAgo } from "../launcher/actions";
 import { nav } from "../nav";
 import { RECOMMENDED, available, locateEmulator, emus, formatMo, installEmulator, installs, loadEmulators, type EmulatorId, type PlayPlatform } from "../play/play";
 import type { Detection, Platform } from "../types";
+
+// Mises à jour Switch masquées : vérifiées quand la liste des jeux Switch change.
+watch(
+  () => games.switchFound.map((g) => g.path + (g.updatePath ?? "")).join("|"),
+  () => void checkSwitchUpdates(),
+  { immediate: true },
+);
 
 onMounted(() => {
   if (!games.loaded) loadGames();
@@ -210,6 +217,17 @@ function progressText(p: { step: string; done: number; total: number }) {
             </span>
           </template>
         </header>
+        <div v-if="s.platform === 'switch' && (switchUpdates.stale.length || switchUpdates.error)" class="updates">
+          <Icon name="download" :size="16" />
+          <p v-if="switchUpdates.error" class="err">{{ switchUpdates.error }}</p>
+          <p v-else>
+            <strong>{{ switchUpdates.stale.length === 1 ? switchUpdates.stale[0].title : `${switchUpdates.stale.length} jeux` }}</strong>
+            {{ switchUpdates.stale.length === 1 ? "ne lance pas sa dernière mise à jour" : "ne lancent pas leur dernière mise à jour" }}<template v-if="switchUpdates.stale.length === 1 && switchUpdates.stale[0].updateVersion"> ({{ switchUpdates.stale[0].updateVersion }})</template> : Eden utilise {{ switchUpdates.stale[0].running }}<template v-if="switchUpdates.stale.length > 1"> pour certains</template>, et les mods prévus pour la bonne version ne s'appliquent pas.
+          </p>
+          <button class="sv-btn small solid" :disabled="switchUpdates.installing" :title="switchUpdates.stale.map((s) => s.updateFile).join('\n')" @click="installSwitchUpdates">
+            {{ switchUpdates.installing ? "Installation…" : switchUpdates.stale.length === 1 ? "Installer dans Eden" : "Tout installer dans Eden" }}
+          </button>
+        </div>
         <div class="grid">
           <GameTile v-for="g in s.list" :key="g.path" :game="g" />
         </div>
@@ -477,6 +495,27 @@ h1 {
 
 .shelf {
   margin-top: 30px;
+}
+
+.updates {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: var(--fs-sm);
+}
+
+.updates p {
+  flex: 1;
+  margin: 0;
+}
+
+.updates .err {
+  color: var(--danger);
 }
 
 .shelf-head {

@@ -499,6 +499,8 @@ fn main() {
             mods::mods_toggle,
             mods::mods_reorder,
             mods::mods_install_update,
+            mods::switch_updates_check,
+            mods::switch_updates_install,
             mods::mods_pending_updates,
             mods::mods_save_restore,
             mods::mods_profile_save,

@@ -32,6 +32,44 @@ export interface SwitchGame {
   incomplete?: [string, number][];
 }
 
+/** Jeux Switch dont Eden ne lance pas la dernière mise à jour trouvée (miroir de `StaleUpdate`). */
+export interface StaleUpdate {
+  title: string;
+  path: string;
+  updateFile: string;
+  updateVersion: string | null;
+  running: string;
+}
+
+export const switchUpdates = reactive({ stale: [] as StaleUpdate[], installing: false, done: 0, error: null as string | null });
+
+const switchRefs = (list: SwitchGame[]) => list.map((g) => ({ path: g.path, titleId: g.titleId, title: g.title, updatePath: g.updatePath ?? null, updateVersion: g.updateVersion }));
+
+export async function checkSwitchUpdates() {
+  const list = games.switchFound.filter((g) => g.updatePath);
+  if (!list.length) {
+    switchUpdates.stale = [];
+    return;
+  }
+  switchUpdates.stale = await invoke<StaleUpdate[]>("switch_updates_check", { games: switchRefs(list) }).catch(() => []);
+}
+
+/** Installe dans Eden la dernière mise à jour des jeux concernés, en un clic. */
+export async function installSwitchUpdates() {
+  const paths = new Set(switchUpdates.stale.map((s) => s.path));
+  const list = games.switchFound.filter((g) => paths.has(g.path));
+  switchUpdates.installing = true;
+  switchUpdates.error = null;
+  try {
+    switchUpdates.done = await invoke<number>("switch_updates_install", { games: switchRefs(list) });
+    await checkSwitchUpdates();
+  } catch (e) {
+    switchUpdates.error = String(e);
+  } finally {
+    switchUpdates.installing = false;
+  }
+}
+
 /** Libellé de la mise à jour dans les détails d'un jeu Switch. */
 export const UPDATE_LABEL = "Mise à jour";
 
