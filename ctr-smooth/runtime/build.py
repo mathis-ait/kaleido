@@ -95,7 +95,7 @@ def main():
         objs.append(os.path.join(out, 'test.o'))
     elf = os.path.join(out, 'ctr-smooth.elf')
     run(tool('ld'), '-T', os.path.join(HERE, 'link.ld'), '--gc-sections', '-e', 'hook_gate',
-        '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'smooth_fade', '-u', 'hook_lytanim', '-u', 'hook_setview', '-u', 'S',
+        '-u', 'hook_camera', '-u', 'hook_h3d', '-u', 'hook_nwmesh', '-u', 'smooth_end', '-u', 'smooth_fade', '-u', 'hook_lytanim', '-u', 'hook_setview', '-u', 'hook_hid', '-u', 'S',
         *(['-u', 'hook_pad'] if a.test_input else []), *(['-u', 'hook_cnt3d'] if a.count3d else []),
         '--no-warn-mismatch', *objs, '-o', elf)
     run(tool('objcopy'), '-O', 'binary', '-j', '.text', elf, os.path.join(out, 'text.bin'))
@@ -128,9 +128,11 @@ def main():
         (0x0039B338, 'push {r3-r11,lr}', bytes.fromhex('f84f2de9'), branch(0x0039B338, syms['hook_h3d'])),
         (0x002EC354, 'push {r4-r8,lr}', bytes.fromhex('f0412de9'), branch(0x002EC354, syms['hook_nwmesh'])),
         (0x00392FB4, 'add r4,r0,#0x148', bytes.fromhex('524f80e2'), branch(0x00392FB4, syms['hook_setview'], True)),
+        # boutons tenus : interrupteur en jeu (release) ou entrées injectées (essais)
+        (0x0036FB34, 'add r1,r4,#0x98', bytes.fromhex('981084e2'),
+         branch(0x0036FB34, syms['hook_pad' if a.test_input else 'hook_hid'], True)),
     ]
     if a.test_input:
-        hooks.append((0x0036FB34, 'add r1,r4,#0x98', bytes.fromhex('981084e2'), branch(0x0036FB34, syms['hook_pad'], True)))
         if a.count3d:
             hooks.append((0x0038CEA4, 'push {r3-r7,lr}', bytes.fromhex('f8402de9'), branch(0x0038CEA4, syms['hook_cnt3d'])))
     recs = []

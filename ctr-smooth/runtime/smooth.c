@@ -33,7 +33,8 @@
 #define TAB_BYTES (TAB_N * sizeof(Entry)) /* 0x3C000 */
 #define SNAP_OFF 0x3C000u
 #define TRACE_OFF 0x3D000u
-#define MAX_PERIOD 8u   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
+#define MAX_PERIOD 8u
+#define PAD_COMBO 0x304u /* L (0x200) + R (0x100) + Select (0x4) */   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
 
 struct Entry {
     u32 key;        /* adresse de la matrice dans la mémoire du jeu (0 = libre) */
@@ -51,6 +52,8 @@ __attribute__((section(".state"), used)) State S;
 
 /* hooks.S lit S.extra à cet offset */
 _Static_assert(__builtin_offsetof(State, extra) == 0x9C, "State.extra doit rester en 0x9C");
+/* hooks.S (hook_hid) écrit S.pad à cet offset */
+_Static_assert(__builtin_offsetof(State, pad) == 0xC8, "State.pad doit rester en 0xC8");
 
 #ifdef TEST_SCRIPT
 u32 test_frame(u32 did_update, u32 on); /* test.c (Thumb) */
@@ -248,6 +251,20 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
         } else {
             S.failed = rc ? rc : 1u;
         }
+    }
+    /* L + R + Select tenus une seconde (60 images) : lissage coupé ou rétabli. La table
+     * est vidée au rétablissement : aucune valeur d'avant la coupure n'est mélangée. */
+    if ((S.pad & PAD_COMBO) == PAD_COMBO) {
+        if (!S.combo_f)
+            S.combo_f = S.frame + 1u;
+        else if (S.frame + 1u - S.combo_f == 60u) {
+            S.enabled ^= 1u;
+            if (S.enabled && S.tab)
+                for (u32 i = 0; i < TAB_N; i++)
+                    S.tab[i].key = 0;
+        }
+    } else {
+        S.combo_f = 0;
     }
     u32 on = S.enabled && S.tab;
     u32 skip = (mode && did_update) && !on;

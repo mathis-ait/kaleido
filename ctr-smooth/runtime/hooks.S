@@ -62,6 +62,17 @@ hook_setview:                   @ bl depuis 0x00392FB4 (add r4,r0,#0x148) ; r0 =
     add     r4, r0, #0x148
     bx      lr
 
+@ 0x0036FB34, juste après nn::hid::PadReader::ReadLatest dans gfl::ui::CTR_DeviceManager::Main :
+@ « bl hook_hid ». Copie les boutons tenus ([r4+0x78]) dans S.pad (interrupteur en jeu).
+@ Les builds de test remplacent ce crochet par hook_pad (entrées injectées).
+    .global hook_hid
+hook_hid:
+    ldr     r12, =S
+    ldr     r0, [r4, #0x78]
+    str     r0, [r12, #0xC8]
+    add     r1, r4, #0x98
+    bx      lr
+
     .global hook_nwmesh
 hook_nwmesh:
     push    {r0-r3, r12, lr}

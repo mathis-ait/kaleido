@@ -15,7 +15,9 @@ public static class W {
   [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Rt, B; }
 }
 "@
-$p = Get-Process azahar -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+# uniquement l'Azahar du bac a sable : jamais la fenetre de l'utilisateur
+$p = Get-Process azahar -ErrorAction Stop | Where-Object { $_.Path -like '*azahar-sandbox*' -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if (-not $p) { throw 'Azahar du bac a sable introuvable' }
 $h = $p.MainWindowHandle
 if ($cmd -eq 'shot') {
   $r = New-Object W+R; [W]::GetWindowRect($h, [ref]$r) | Out-Null

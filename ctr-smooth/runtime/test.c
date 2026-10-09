@@ -103,5 +103,6 @@ u32 smooth_pad(u32 hold)
             }
         }
     }
-    return hold | S.vpad | mask;
+    S.pad = hold | S.vpad | mask;
+    return S.pad;
 }

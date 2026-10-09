@@ -35,7 +35,7 @@ de l'image.
 | 0x00375EA8 | `push {r0-r11,lr}` → `b hook_camera` | copie de la vue avant la file de rendu ; caméra = `[sp+0xC]` (`nw::gfx::Camera`) |
 | 0x0039B338 | `push {r3-r11,lr}` → `b hook_h3d` | rendu d'un maillage H3D ; `r0` = modèle |
 | 0x002EC354 | `push {r4-r8,lr}` → `b hook_nwmesh` | `nw::gfx` MeshRenderer ; `r2` = modèle |
-| 0x0036FB34 | `add r1,r4,#0x98` → `bl hook_pad` | **builds de test** (`--test-input`) : entrées injectées |
+| 0x0036FB34 | `add r1,r4,#0x98` → `bl hook_hid` | boutons tenus copiés dans `S.pad` (interrupteur L + R + Select) ; **builds de test** : `hook_pad` (entrées injectées) |
 | 0x0038CEA4 | `push {r3-r7,lr}` → `b hook_cnt3d` | **builds de test** (`--count3d`) : passes de scène 3D |
 | 0x0010E5AC | `bl 0x0011CB60` → `bl smooth_fade` | transitions : avance figée et rappel neutralisé sur le dessin ajouté |
 | 0x0014D618 | `push {r4-r12,lr}` → `b hook_lytanim` | animations d interface : retour immédiat sur le dessin ajouté |
@@ -83,6 +83,24 @@ Mesures (boutique de Rosyères, marche) : 39 images distinctes sur 39 avec des �
 des valeurs recalculées à chaque dessin et un drapeau « premier dessin après le tick »
 (0x086FBB28, bit 0x80, et un pointeur voisin) posé une fois par tick, comme dans le jeu d'origine.
 
+## Interrupteur en jeu
+
+**L + R + Select tenus 60 images (une seconde)** coupent ou rétablissent le lissage (`S.enabled`).
+Lissage coupé, la boucle retrouve exactement le comportement d'origine (un dessin sur deux). Au
+rétablissement, la table est vidée : aucune valeur d'avant la coupure n'est mélangée. Les boutons
+viennent de `gfl::ui::CTR_DeviceManager` (`[r4+0x78]` juste après `nn::hid::PadReader::ReadLatest`).
+Vérifié dans le bac à sable (dans les deux sens, aucun menu ouvert par la combinaison).
+
+## Latence (mesure)
+
+`tools/latcap.py` arrête le jeu à chaque VBlank, appuie sur une direction et suit l'écart de chaque
+image à l'image d'avant l'appui. Boutique de Rosyères, 6 paires : la réaction (le personnage se
+tourne) apparaît à l'image 0 ou 1 dans les deux modes, et le défilement du décor démarre vers
+l'image 9 ou 10 lissage actif contre 13 lissage coupé : le premier demi-pas est montré plus tôt,
+le lissage n'ajoute aucune latence côté jeu émulé. Une latence ressentie viendrait de l'hôte
+(60 présentations par seconde au lieu de 30 : file d'images de la VSync, présentation asynchrone,
+3DS à 59,83 Hz contre un écran à 60 Hz).
+
 ## Seuils (coupures, apparitions)
 
 Pour chaque changement de `C`, avec `mag` = plus grande coordonnée de translation :
@@ -129,6 +147,7 @@ démarrage. Si elle échoue, `failed` ≠ 0 et le jeu garde son comportement d'o
 | | | | 0xA4–0xB3 | eye[4] (caméras des yeux) |
 | | | | 0xB4–0xC3 | eye_f[4] (image de la pose) |
 | | | | 0xC4 | n_eye (vues d'yeux lissées) |
+| | | | 0xC8, 0xCC | pad (boutons tenus), combo_f |
 
 `tools/smstat.py` lit et modifie cette structure via le stub GDB (`set enabled 0`, `set jump_rcam 0.3`).
 

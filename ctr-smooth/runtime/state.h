@@ -52,6 +52,9 @@ typedef struct {
     u8 *eye[4];        /* nw::gfx::Camera dont la vue est posée par SetViewMatrix (0x00392F90) */
     u32 eye_f[4];      /* valeur de frame lors de cette pose */
     u32 n_eye;         /* vues de caméras d'yeux lissées (cumul) */
+    /* Suite : interrupteur en jeu */
+    u32 pad;           /* boutons tenus au dernier tick (bits HID, gfl::ui::CTR_DeviceManager+0x78) */
+    u32 combo_f;       /* frame + 1 au début de l'appui sur L + R + Select (0 = relâché) */
 } State;
 
 extern State S;
