@@ -28,6 +28,8 @@ import {
   deleteProfile,
   formatDate,
   ORIGIN_PROFILE,
+  installUpdateToEden,
+  modProgress,
   reorderMods,
   restoreSave,
   saveProfile,
@@ -498,6 +500,23 @@ async function move(index: number, by: number) {
   }
 }
 
+async function installUpdate() {
+  busy.value = "nand-update";
+  try {
+    await applyView(await installUpdateToEden(target.value));
+    backupNote.value = "Mise à jour installée dans Eden : il la lancera au prochain démarrage du jeu.";
+  } catch (e) {
+    await message(String(e), { title: "Mise à jour non installée", kind: "error" });
+  } finally {
+    busy.value = null;
+  }
+}
+
+const updateProgress = computed(() => {
+  const p = modProgress["nand-update"];
+  return p && p.total ? `Installation… ${Math.round((p.done / p.total) * 100)} %` : "Installation…";
+});
+
 const installedMods = computed(() => (view.value?.mods ?? []).filter((m) => m.installed && m.kind !== "cheats"));
 
 // --- Codes de triche
@@ -572,6 +591,12 @@ async function toggleCheat(c: Cheat) {
               <Icon name="check" :size="14" /> Correctifs vérifiés pour {{ view.executable.source }} (exécutable {{ view.executable.buildId.slice(0, 8) }}…). Si Eden lance le jeu sans cette mise à jour, ils ne s'appliqueront pas.
             </p>
             <p v-for="n in view.notes" :key="n" class="note small"><Icon name="info" :size="14" /> {{ n }}</p>
+            <div v-if="view.installUpdate" class="sel-head">
+              <button class="sv-btn solid small-btn" :disabled="!!busy" @click="installUpdate">
+                <Icon name="download" :size="14" /> {{ busy === "nand-update" ? updateProgress : `Installer « ${view.installUpdate} » dans Eden` }}
+              </button>
+              <span class="dim small">Comme le menu d'Eden « Installer des fichiers dans la NAND ». Ferme Eden avant.</span>
+            </div>
             <p v-for="e in view.errors" :key="e" class="error small">{{ e }}</p>
 
             <section v-for="g in groups" :key="g.category" class="group">

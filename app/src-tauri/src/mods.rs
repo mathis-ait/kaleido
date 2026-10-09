@@ -144,6 +144,9 @@ pub struct ModsView {
     pub can_import: bool,
     /// Switch : exécutable lancé par Eden, vérifié pour les correctifs ExeFS.
     pub executable: Option<Executable>,
+    /// Switch : mise à jour séparée qu'Eden ne lance pas (nom du fichier) : Kaleido peut
+    /// l'installer dans sa NAND.
+    pub install_update: Option<String>,
     /// Copies de la sauvegarde du jeu (les plus récentes d'abord).
     pub saves: Vec<crate::mods_saves::SaveBackup>,
     /// Copie faite juste avant ce changement.
@@ -1339,6 +1342,20 @@ struct ExeIds {
     embedded: Option<String>,
     /// Mise à jour trouvée à côté, en fichier séparé.
     separate: Option<String>,
+    /// Mise à jour installée dans la NAND d'Eden : (build ID, numéro de version).
+    nand: Option<(String, u32)>,
+}
+
+/// Dossiers `nand/user/Contents/registered` et `keys` d'Eden.
+fn eden_nand(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
+    let user = resolve(EmulatorId::Eden, app).ctr_user_dir()?;
+    let configured = fs::read_to_string(user.join("config").join("qt-config.ini"))
+        .ok()
+        .and_then(|t| tuning::get_qt(&t, "Data%20Storage", "nand_directory"))
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
+    let nand = configured.unwrap_or_else(|| user.join("nand"));
+    Some((nand.join("user").join("Contents").join("registered"), user.join("keys")))
 }
 
 fn exe_ids(app: &AppHandle, target: &ModTarget) -> Result<ExeIds, String> {
@@ -1354,8 +1371,15 @@ fn exe_ids(app: &AppHandle, target: &ModTarget) -> Result<ExeIds, String> {
         Some(u) => Some(file_build_id(Path::new(u), &keys)?),
         None => None,
     };
-    let running = embedded.clone().or(separate.clone()).or(base.clone()).ok_or("fichier du jeu inconnu")?;
-    Ok(ExeIds { running, base, has_update: embedded.is_some() || separate.is_some(), embedded, separate })
+    let base_tid = parse_tid(target.title_id.as_deref()).map(base_title_id).ok();
+    let nand = eden_nand(app)
+        .zip(base_tid)
+        .and_then(|((reg, keys_dir), tid)| kaleido_core::nx::nand_update(&reg, &keys_dir, &keys, tid))
+        .map(|(b, v)| (kaleido_core::nx::build_id_hex(&b), v));
+    // Constaté chez l'utilisateur : une mise à jour installée dans la NAND passe avant celle
+    // contenue dans le .xci, qui passe elle-même avant le fichier séparé.
+    let running = nand.as_ref().map(|(b, _)| b.clone()).or(embedded.clone()).or(separate.clone()).or(base.clone()).ok_or("fichier du jeu inconnu")?;
+    Ok(ExeIds { running, base, has_update: embedded.is_some() || separate.is_some() || nand.is_some(), embedded, separate, nand })
 }
 
 /// Verdict des correctifs ExeFS d'un mod (build IDs visés) face à l'exécutable lancé.
@@ -1418,7 +1442,7 @@ fn exefs_warning(verdict: &str, exe: &Executable) -> Option<String> {
     match verdict {
         "base" => Some(format!("Ce correctif vise le jeu sans mise à jour, alors qu'Eden lance {} : il ne s'appliquera pas.", exe.source)),
         "other" => Some(format!("Ce correctif vise une autre version du jeu que {} : Eden l'ignorera sans rien dire.", exe.source)),
-        "shadowed" => Some("Ce correctif vise ta mise à jour séparée, mais Eden lance la mise à jour intégrée à ton fichier de jeu : il ne s'appliquera pas tant que la mise à jour séparée n'est pas installée dans Eden (voir la note en haut).".to_string()),
+        "shadowed" => Some(format!("Ce correctif vise ta mise à jour séparée, mais Eden lance {} : il ne s'appliquera pas tant que la mise à jour séparée n'est pas installée dans Eden (bouton en haut de la sélection).", exe.source)),
         _ => None,
     }
 }
@@ -1440,7 +1464,12 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
         }
     };
     if let Some(ids) = &ids {
-        let source = if ids.embedded.is_some() {
+        let source = if let Some((nand_id, _)) = &ids.nand {
+            match target.game_version.as_deref().filter(|_| ids.separate.as_ref() == Some(nand_id)) {
+                Some(v) => format!("la mise à jour {v} installée dans Eden"),
+                None => "la mise à jour installée dans Eden".to_string(),
+            }
+        } else if ids.embedded.is_some() {
             "la mise à jour intégrée à ton fichier de jeu".to_string()
         } else {
             match (ids.has_update, target.game_version.as_deref()) {
@@ -1450,16 +1479,20 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
             }
         };
         view.executable = Some(Executable { source, build_id: ids.running.clone() });
-        if ids.embedded.is_some() && ids.separate.is_some() && ids.embedded != ids.separate {
+        let separate_shadowed = ids.separate.is_some() && ids.separate.as_deref() != Some(ids.running.as_str()) && (ids.embedded.is_some() || ids.nand.is_some());
+        if separate_shadowed {
+            view.install_update = target.update_file.as_deref().and_then(|u| Path::new(u).file_name()).map(|n| n.to_string_lossy().into_owned());
+        }
+        if separate_shadowed && ids.nand.is_none() {
             let file = target.update_file.as_deref().and_then(|u| Path::new(u).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            view.notes.insert(0, format!("Ton fichier de jeu contient sa propre mise à jour, différente de « {file} » : Eden lance celle du fichier de jeu, et les correctifs prévus pour l'autre ne s'appliquent pas. Pour qu'Eden lance « {file} », installe-la dans Eden (menu Fichier, « Installer des fichiers dans la NAND »), puis vérifie la version dans Propriétés, Add-ons."));
+            view.notes.insert(0, format!("Ton fichier de jeu contient sa propre mise à jour, différente de « {file} » : Eden lance celle du fichier de jeu, et les correctifs prévus pour l'autre ne s'appliquent pas. Kaleido peut l'installer dans Eden pour qu'il la lance (bouton ci-dessous)."));
         }
     }
     let verdict = |patches: &[String]| {
         let i = ids.as_ref()?;
         let v = exefs_verdict(patches, &i.running, i.base.as_deref())?;
         // Bon pour la mise à jour séparée, mais Eden lance celle du fichier de jeu.
-        if v != "ok" && i.embedded.is_some() && i.separate.as_deref().is_some_and(|s| patches.iter().any(|p| kaleido_core::nx::build_id_matches(p, s))) {
+        if v != "ok" && (i.embedded.is_some() || i.nand.is_some()) && i.separate.as_deref().is_some_and(|s| patches.iter().any(|p| kaleido_core::nx::build_id_matches(p, s))) {
             return Some("shadowed".to_string());
         }
         Some(v.to_string())
@@ -3174,6 +3207,30 @@ pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle)
             view.restore_offer = leaving_save_mods.iter().find_map(|id| crate::mods_saves::offer_for(&app, tid, id));
         }
         Ok(view)
+    })
+    .await
+}
+
+/// Switch : installe la mise à jour séparée du jeu dans la NAND d'Eden, comme son menu
+/// « Installer des fichiers dans la NAND ».
+#[tauri::command]
+pub async fn mods_install_update(target: ModTarget, app: AppHandle) -> Result<ModsView, String> {
+    crate::blocking(move || {
+        if target.platform != "switch" {
+            return Err("seulement pour les jeux Switch".into());
+        }
+        if crate::library::running_emulators().contains(&"Eden") {
+            return Err("Ferme Eden d'abord : il ne relit sa NAND qu'au démarrage.".into());
+        }
+        let update = PathBuf::from(target.update_file.as_deref().ok_or("pas de mise à jour séparée pour ce jeu")?);
+        let keys_path = crate::switch::prod_keys(&app).ok_or("clés de la console (prod.keys) introuvables")?;
+        let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
+        let (registered, keys_dir) = eden_nand(&app).ok_or("dossier d'Eden introuvable")?;
+        let emit = |done: u64, total: u64| {
+            let _ = app.emit("mod-install", Progress { id: "nand-update".into(), step: "install", done, total });
+        };
+        kaleido_core::nx::install_update_to_nand(&update, &registered, &keys_dir, &keys, emit).map_err(|e| e.to_string())?;
+        view_for(&app, &target)
     })
     .await
 }

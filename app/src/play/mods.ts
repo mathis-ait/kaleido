@@ -79,6 +79,8 @@ export interface ModsView {
   canImport: boolean;
   /** Switch : exécutable lancé par Eden. */
   executable: { source: string; buildId: string } | null;
+  /** Switch : mise à jour séparée qu'Eden ne lance pas, à installer dans sa NAND. */
+  installUpdate: string | null;
   saves: SaveBackup[];
   lastBackup: SaveBackup | null;
   restoreOffer: SaveBackup | null;
@@ -287,6 +289,15 @@ export function modUpdatesOf(d: Detection): number {
   // Les mises à jour Switch ont le même title ID de base, à 0x800 près.
   const base = d.platform === "switch" ? tid.slice(0, 13) + "000" : tid;
   return modUpdates.counts[base] ?? 0;
+}
+
+export async function installUpdateToEden(target: ModTarget) {
+  modProgress["nand-update"] = { step: "install", done: 0, total: 0 };
+  try {
+    return await invoke<ModsView>("mods_install_update", { target });
+  } finally {
+    delete modProgress["nand-update"];
+  }
 }
 
 export const reorderMods = (target: ModTarget, order: string[]) => invoke<ModsView>("mods_reorder", { target, order });
