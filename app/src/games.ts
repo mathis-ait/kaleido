@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { library } from "./library";
-import { isRom, type Detection } from "./types";
+import { isGameFile, isKaleidoRom, type Detection } from "./types";
 import type { StoredLook } from "./launcher/scene/models";
 import { applyState, emus, loadEmulators, type EmulatorId, type EmulatorsState } from "./play/play";
 
@@ -26,6 +26,48 @@ export interface SwitchGame {
   hasUpdate: boolean;
   /** Version affichée de la mise à jour trouvée (« 1.1.1 »), si le nom du fichier l'indique. */
   updateVersion: string | null;
+  /** Fichier de cette mise à jour. */
+  updatePath?: string | null;
+  /** Fichiers incomplets : [nom, octets manquants]. */
+  incomplete?: [string, number][];
+}
+
+/** Jeux Switch dont Eden ne lance pas la dernière mise à jour trouvée (miroir de `StaleUpdate`). */
+export interface StaleUpdate {
+  title: string;
+  path: string;
+  updateFile: string;
+  updateVersion: string | null;
+  running: string;
+}
+
+export const switchUpdates = reactive({ stale: [] as StaleUpdate[], installing: false, done: 0, error: null as string | null });
+
+const switchRefs = (list: SwitchGame[]) => list.map((g) => ({ path: g.path, titleId: g.titleId, title: g.title, updatePath: g.updatePath ?? null, updateVersion: g.updateVersion }));
+
+export async function checkSwitchUpdates() {
+  const list = games.switchFound.filter((g) => g.updatePath);
+  if (!list.length) {
+    switchUpdates.stale = [];
+    return;
+  }
+  switchUpdates.stale = await invoke<StaleUpdate[]>("switch_updates_check", { games: switchRefs(list) }).catch(() => []);
+}
+
+/** Installe dans Eden la dernière mise à jour des jeux concernés, en un clic. */
+export async function installSwitchUpdates() {
+  const paths = new Set(switchUpdates.stale.map((s) => s.path));
+  const list = games.switchFound.filter((g) => paths.has(g.path));
+  switchUpdates.installing = true;
+  switchUpdates.error = null;
+  try {
+    switchUpdates.done = await invoke<number>("switch_updates_install", { games: switchRefs(list) });
+    await checkSwitchUpdates();
+  } catch (e) {
+    switchUpdates.error = String(e);
+  } finally {
+    switchUpdates.installing = false;
+  }
 }
 
 /** Libellé de la mise à jour dans les détails d'un jeu Switch. */
@@ -61,14 +103,54 @@ function switchDetection(g: SwitchGame): Detection {
       { label: "Title ID", value: g.titleId },
       ...(g.hasUpdate ? [{ label: UPDATE_LABEL, value: g.updateVersion ?? "trouvée" }] : []),
     ],
-    warnings: [],
+    warnings: (g.incomplete ?? []).map(([name, missing]) => `Fichier incomplet : « ${name} » (il manque ${Math.round(missing / 1024 / 1024)} Mo à la fin). Le jeu risque de planter : télécharge ou copie-le à nouveau.`),
     kaleido: null,
     fingerprint: null,
+    updatePath: g.updatePath ?? null,
   };
 }
 
 /** Title ID d'un jeu (Switch, 3DS), tel que l'affiche la détection. */
 export const titleIdOf = (d: Detection) => d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toUpperCase() ?? null;
+
+/** Code produit à 4 caractères d'une ROM DS ou 3DS (« ADAF », « EKJP »), d'après la détection. */
+export function romCodeOf(d: Pick<Detection, "platform" | "details">): string | null {
+  const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
+  const code = d.platform === "3ds" ? (detail("Code produit").split("-").pop() ?? "") : detail("Code jeu");
+  return /^[A-Z0-9]{4}$/.test(code) ? code : null;
+}
+
+/** Jeux de la série dans l'ordre de leur sortie (Japon), versions jumelles côte à côte. */
+const RELEASE_ORDER = [
+  "red", "blue", "yellow", "gold", "silver", "crystal", "ruby", "sapphire", "fire_red", "leaf_green", "emerald",
+  "diamond", "pearl", "platinum", "heart_gold", "soul_silver", "black", "white", "black2", "white2",
+  "x", "y", "omega_ruby", "alpha_sapphire", "sun", "moon", "ultra_sun", "ultra_moon",
+];
+
+/** Jeux Pokémon sur Switch (Title ID de base), dans l'ordre de sortie. */
+const SWITCH_ORDER = [
+  "010003F003A34000", "0100187003A36000", // Let's Go Pikachu / Évoli
+  "0100ABF008968000", "01008DB008C2C000", // Épée / Bouclier
+  "0100000011D90000", "010018E011D92000", // Diamant Étincelant / Perle Scintillante
+  "01001F5010DFA000", // Légendes Arceus
+  "0100A3D008C5C000", "01008F6008C5E000", // Écarlate / Violet
+];
+
+/** Rang de sortie : jeux de la série d'abord, puis les autres jeux Switch. */
+function releaseRank(d: Detection): number {
+  const i = d.game ? RELEASE_ORDER.indexOf(d.game.id) : -1;
+  if (i >= 0) return i;
+  if (d.platform === "switch") {
+    const tid = titleIdOf(d)?.replace(/[0-9A-F]{3}$/, "000");
+    const j = tid ? SWITCH_ORDER.findIndex((t) => t.slice(0, 13) === tid.slice(0, 13)) : -1;
+    return j >= 0 ? RELEASE_ORDER.length + j : 1000;
+  }
+  return (d.generation ?? 10) * 100;
+}
+
+/** Tri par date de sortie, puis titre (les ROMs randomisées suivent leur jeu d'origine). */
+export const byRelease = (a: Detection, b: Detection) =>
+  releaseRank(a) - releaseRank(b) || Number(isKaleidoRom(a)) - Number(isKaleidoRom(b)) || a.title.localeCompare(b.title, "fr");
 
 /** Jeux suivis, plus les ROMs ouvertes pendant la session (sans doublon). */
 export const allGames = computed(() => {
@@ -86,7 +168,7 @@ export const allGames = computed(() => {
   games.found.forEach(add);
   games.switchFound.map(switchDetection).forEach(add);
   for (const d of library.items) {
-    if (isRom(d) && !games.config.hidden.includes(d.path)) add(d);
+    if (isGameFile(d) && !games.config.hidden.includes(d.path)) add(d);
   }
   return list;
 });
@@ -204,7 +286,7 @@ export async function hideGame(path: string) {
 
 // Les ROMs ouvertes (ou générées par le randomizer) restent dans la bibliothèque.
 watch(
-  () => library.items.filter(isRom).map((d) => d.path),
+  () => library.items.filter(isGameFile).map((d) => d.path),
   async (paths) => {
     if (!games.loaded) await loadGames();
     const fresh = paths.filter((p) => !games.config.files.includes(p) && !games.found.some((g) => g.path === p));

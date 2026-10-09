@@ -1,0 +1,121 @@
+{
+  "titles": [
+    "0004000000164800",
+    "0004000000175E00"
+  ],
+  "gamebanana": 5897,
+  "notes": [
+    "Aucun pack de textures HD dédié à Soleil/Lune n'existe sur GameBanana (PokeTex ne couvre pas SM). Les packs USUM (Faithful HD Types, Modern Sprites) partagent peut-être les mêmes hash de textures, mais ce n'est pas confirmé : non ajoutés ici.",
+    "Pokémon qui suit (gb:694400) n'est PAS un mod LayeredFS : c'est un plugin 3GX (Gen7FieldFollower.3gx) à placer dans <dossier utilisateur Azahar>/sdmc/luma/plugins/<TID>/ (l'archive contient un dossier luma à fusionner dans sdmc). Il faut activer « Activer le chargeur de plugins 3GX » (Émulation > Configurer > Système) et relancer le jeu. Marqué \"kind\": \"plugin3gx\" : Kaleido doit gérer ce type (copie dans sdmc + activation du réglage plugin loader dans la config d'Azahar). Fonctionne sur le jeu non mis à jour et en 1.2 (détection automatique).",
+    "Shiny Lock Removal 1.2 = patch du code (exefs) ; groupe « sm-code ».",
+    "Écarté : « Pokémon moon randomizer » (gb:367140, 62k vues) : randomisation figée, Lune seulement, et Kaleido a déjà son propre randomiseur.",
+    "Romhack manuel : Nova Sun / Umbra Moon (Dio Vento), fourni en « Drag & Drop » LayeredFS, exige Soleil/Lune 1.2.",
+    "Mods vérifiés via l'API GameBanana (ProfilePage). L'endpoint RawFileList renvoyait une réponse vide pour tous les fichiers (octobre 2026) : la structure exacte des archives (romfs/exefs à la racine ou dans un sous-dossier) n'a pas pu être vérifiée, elle est déduite des descriptions."
+  ],
+  "mods": [
+    {
+      "id": "gb:694400:sun",
+      "source": "gamebanana",
+      "group": null,
+      "recommended": true,
+      "warning": "Plugin 3GX (pas LayeredFS) : il faut activer le chargeur de plugins 3GX dans Azahar (Système) puis relancer complètement le jeu. Prends « sun_ » et pas « ultra_sun_ ».",
+      "requires": [],
+      "exclusive": false,
+      "titles": [
+        "0004000000164800"
+      ],
+      "gb": 694400,
+      "kind": "plugin3gx",
+      "file": "sun_",
+      "name": "Pokémon qui suit",
+      "description": "Le premier Pokémon de ton équipe te suit dans Alola, comme dans HeartGold ou Let's Go. Fonctionne aussi sur console.",
+      "category": "qol",
+      "gameVersion": "1.0 ou 1.2",
+      "author": "Aqua_",
+      "popularity": 19225
+    },
+    {
+      "id": "gb:694400:moon",
+      "source": "gamebanana",
+      "group": null,
+      "recommended": true,
+      "warning": "Plugin 3GX (pas LayeredFS) : il faut activer le chargeur de plugins 3GX dans Azahar (Système) puis relancer complètement le jeu. Prends « moon_ » et pas « ultra_moon_ ».",
+      "requires": [],
+      "exclusive": false,
+      "titles": [
+        "0004000000175E00"
+      ],
+      "gb": 694400,
+      "kind": "plugin3gx",
+      "file": "moon_",
+      "name": "Pokémon qui suit",
+      "description": "Le premier Pokémon de ton équipe te suit dans Alola, comme dans HeartGold ou Let's Go. Fonctionne aussi sur console.",
+      "category": "qol",
+      "gameVersion": "1.0 ou 1.2",
+      "author": "Aqua_",
+      "popularity": 19225
+    },
+    {
+      "id": "gb:513467:sun",
+      "source": "gamebanana",
+      "group": "sm-code",
+      "recommended": false,
+      "warning": "Exige la mise à jour 1.2 (sinon plantage au chargement). Fichier « citra_normal » ; la variante « citra_zygarde » sert uniquement pour Zygarde Forme Parfaite et les échanges in-game. Chromatiques non légaux pour Banque/HOME.",
+      "requires": [],
+      "exclusive": false,
+      "titles": [
+        "0004000000164800"
+      ],
+      "gb": 513467,
+      "kind": "layeredfs",
+      "file": "pok_mon_sun_12_-_citra_normal",
+      "name": "Suppression des verrous chromatiques",
+      "description": "Tokos, Solgaleo, Lunala, Cosmog, Ultra-Chimères, Necrozma et Magearna peuvent maintenant être chromatiques.",
+      "category": "gameplay",
+      "gameVersion": "1.2",
+      "author": "itsskinnymems",
+      "popularity": 5960
+    },
+    {
+      "id": "gb:513467:moon",
+      "source": "gamebanana",
+      "group": "sm-code",
+      "recommended": false,
+      "warning": "Exige la mise à jour 1.2 (sinon plantage au chargement). Fichier « citra_normal » ; la variante « citra_zygarde » sert uniquement pour Zygarde et les échanges in-game. Chromatiques non légaux pour Banque/HOME.",
+      "requires": [],
+      "exclusive": false,
+      "titles": [
+        "0004000000175E00"
+      ],
+      "gb": 513467,
+      "kind": "layeredfs",
+      "file": "pok_mon_moon_12_-_citra_normal",
+      "name": "Suppression des verrous chromatiques",
+      "description": "Tokos, Solgaleo, Lunala, Cosmog, Ultra-Chimères, Necrozma et Magearna peuvent maintenant être chromatiques.",
+      "category": "gameplay",
+      "gameVersion": "1.2",
+      "author": "itsskinnymems",
+      "popularity": 5960
+    },
+    {
+      "source": "manual",
+      "gb": null,
+      "file": null,
+      "group": null,
+      "recommended": false,
+      "warning": "Prends le paquet « Drag & Drop » (v1.5 ou plus), qui exige Soleil/Lune 1.2. Ancien (2017) : lien à chercher dans le fil.",
+      "requires": [],
+      "exclusive": true,
+      "titles": null,
+      "id": "web:nova-sun-umbra-moon",
+      "page": "https://projectpokemon.org/home/forums/topic/40238-pok%C3%A9mon-nova-sun-umbra-moon-fully-featured-challenging-sunmoon-romhacks/",
+      "kind": "layeredfs",
+      "name": "Pokémon Nova Sun / Umbra Moon",
+      "description": "Romhack exigeant de Soleil/Lune : équipes adverses compétitives, IA plus maligne, niveaux relevés, mais œufs qui éclosent plus vite, meilleurs objets en boutique et Métamorph parfait pour l'élevage.",
+      "category": "romhack",
+      "gameVersion": "1.2",
+      "author": "Dio Vento",
+      "popularity": 60000
+    }
+  ]
+}

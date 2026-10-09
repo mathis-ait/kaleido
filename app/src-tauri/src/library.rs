@@ -72,7 +72,8 @@ pub fn library_set_config(config: LibraryConfig, app: AppHandle) -> Result<(), S
     fs::write(path, serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
-/// Jeux (ROMs et dossiers 3DS identifiés) contenus dans les dossiers et fichiers suivis.
+/// Jeux contenus dans les dossiers et fichiers suivis : toutes les ROMs (Pokémon ou non) et
+/// les dossiers 3DS identifiés.
 #[tauri::command]
 pub async fn library_scan(config: LibraryConfig) -> Result<Vec<kaleido_core::detect::Detection>, String> {
     crate::blocking(move || {
@@ -84,11 +85,29 @@ pub async fn library_scan(config: LibraryConfig) -> Result<Vec<kaleido_core::det
             .iter()
             .filter(|p| !config.hidden.iter().any(|h| Path::new(h) == p.as_path()))
             .filter_map(|p| kaleido_core::detect_path(p).ok())
-            .filter(|d| d.game.is_some() && !matches!(d.kind, kaleido_core::detect::FileKind::Save | kaleido_core::detect::FileKind::Unknown))
+            .filter(is_library_game)
+            .map(|mut d| {
+                // Jeu hors Pokémon : « ROM DS « MARIOKART DS » » ne parle à personne, le nom du fichier si.
+                if d.game.is_none() {
+                    d.title = crate::switch::name_from_file(&d.file_name);
+                }
+                d
+            })
             .collect();
         Ok(games)
     })
     .await
+}
+
+/// ROM de n'importe quel jeu ; un dossier 3DS seulement s'il s'agit d'un jeu connu (sinon
+/// c'est souvent un simple dossier de mod).
+fn is_library_game(d: &kaleido_core::detect::Detection) -> bool {
+    use kaleido_core::detect::FileKind;
+    match d.kind {
+        FileKind::GbRom | FileKind::GbaRom | FileKind::NdsRom | FileKind::CtrRom => true,
+        FileKind::CtrDump => d.game.is_some(),
+        FileKind::Save | FileKind::Unknown => false,
+    }
 }
 
 /// Jeux Switch des dossiers et fichiers suivis.
@@ -167,7 +186,8 @@ fn cover_sources(game: &str) -> Option<CoverSources> {
 
 /// Photos de face de vraies cartouches sur LaunchBox, relevées une fois pour les jeux pris en
 /// charge (`cart_photos.json` : jeu → `fr|en <fichier>`, régions européennes puis américaines,
-/// jamais une autre langue ; jeux Switch par title ID, `nx_<title id>`). Images publiques, sans clé.
+/// jamais une autre langue ; jeux Switch par title ID, `nx_<title id>` ; autres jeux par plateforme
+/// et code sans la région, `ds_YFT`, pour les spin-off). Images publiques, sans clé.
 const CART_PHOTOS: &str = include_str!("cart_photos.json");
 const LAUNCHBOX_IMAGES: &str = "https://images.launchbox-app.com";
 
@@ -199,7 +219,11 @@ fn cart_urls(key: &str) -> Option<Vec<String>> {
     if code.is_some_and(|c| c.len() != 4 || !c.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())) {
         return None;
     }
-    let photos = launchbox_photos(game);
+    // Autre jeu (`photo-<plateforme>-jeu-<code>`) : photo LaunchBox d'après le code sans la région.
+    let photos = match (game, code) {
+        ("jeu", Some(code)) => launchbox_photos(&format!("{platform}_{}", &code[..3])),
+        _ => launchbox_photos(game),
+    };
     let mut urls: Vec<String> = photos.iter().filter(|(fr, _)| *fr).map(|(_, u)| u.clone()).collect();
     // GameTDB : cartes DS et 3DS seulement, d'après le code de la ROM.
     let mut tdb_own = Vec::new();
@@ -234,9 +258,16 @@ pub fn cover_urls(game: &str) -> Vec<String> {
     if let Some(urls) = cart_urls(game) {
         return urls;
     }
+    // Romhack installé par Kaleido (`hack-<id>`) : écran titre du hack.
+    if let Some(hack) = game.strip_prefix("hack-").and_then(kaleido_core::romhack::find) {
+        return vec![hack.cover_url.to_string()];
+    }
     // Jeu Switch (`nx-<title ID>`) : icône officielle.
     if let Some(tid) = switch_cover_id(game) {
         return vec![format!("https://api.nlib.cc/nx/{tid}/icon/512/512")];
+    }
+    if let Some(urls) = code_cover_urls(game) {
+        return urls;
     }
     let Some(s) = cover_sources(game) else { return Vec::new() };
     let mut urls: Vec<String> = s.tdb.iter().map(|(platform, code)| format!("{GAMETDB_URL}/{platform}/coverHQ/FR/{code}.jpg")).collect();
@@ -244,6 +275,25 @@ pub fn cover_urls(game: &str) -> Vec<String> {
     urls.extend(s.tdb.iter().map(|(platform, code)| format!("{GAMETDB_URL}/{platform}/coverM/FR/{code}.jpg")));
     urls.extend(s.eu.map(|n| libretro_url(s.repo, n)));
     urls
+}
+
+/// Boîte d'un jeu quelconque d'après son code (`tdb-<ds|3ds>-<code>`, ex. `tdb-ds-AMCP`) :
+/// GameTDB, version française d'abord, puis celle de la région de la ROM, puis l'anglaise.
+fn code_cover_urls(key: &str) -> Option<Vec<String>> {
+    let (platform, code) = key.strip_prefix("tdb-")?.split_once('-')?;
+    if !matches!(platform, "ds" | "3ds") || code.len() != 4 || !code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+        return None;
+    }
+    let base = &code[..3];
+    let own = code.as_bytes()[3] as char;
+    const REGIONS: [(char, &str); 11] = [('F', "FR"), ('P', "FR"), ('E', "US"), ('O', "US"), ('X', "EN"), ('D', "DE"), ('S', "ES"), ('I', "IT"), ('H', "NL"), ('J', "JA"), ('K', "KO")];
+    let mut codes: Vec<(char, &str)> = vec![('F', "FR"), ('P', "FR")];
+    codes.extend(REGIONS.iter().copied().filter(|(c, _)| *c == own));
+    codes.extend([('E', "US"), ('P', "EN")]);
+    codes.dedup();
+    let mut urls: Vec<String> = codes.iter().map(|(c, r)| format!("{GAMETDB_URL}/{platform}/coverHQ/{r}/{base}{c}.jpg")).collect();
+    urls.extend(codes.iter().map(|(c, r)| format!("{GAMETDB_URL}/{platform}/coverM/{r}/{base}{c}.jpg")));
+    Some(urls)
 }
 
 /// `nx-01001f5010dfa000` → « 01001F5010DFA000 ».
@@ -274,8 +324,9 @@ fn load_cover(dir: &Path, game: &str) -> Result<Vec<u8>, String> {
     if let Ok(data) = fs::read(&file) {
         return Ok(data);
     }
+    // Marqueur valable pour cette version seulement : une mise à jour peut ajouter des sources.
     let missing = dir.join(format!("{game}.missing"));
-    if missing.exists() {
+    if fs::read(&missing).is_ok_and(|v| v == env!("CARGO_PKG_VERSION").as_bytes()) {
         return Err("pas de jaquette".into());
     }
     let urls = cover_urls(game);
@@ -297,7 +348,7 @@ fn load_cover(dir: &Path, game: &str) -> Result<Vec<u8>, String> {
     if let Some(e) = offline {
         return Err(e);
     }
-    let _ = fs::write(&missing, b"");
+    let _ = fs::write(&missing, env!("CARGO_PKG_VERSION"));
     Err("pas de jaquette".into())
 }
 
@@ -306,7 +357,7 @@ pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) 
     let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png");
     // Ancien format `<jeu>-en` : la boîte française est désormais toujours servie.
     let game = key.strip_suffix("-en").unwrap_or(key).to_string();
-    let valid = switch_cover_id(&game).is_some() || cart_urls(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+    let valid = switch_cover_id(&game).is_some() || cart_urls(&game).is_some() || code_cover_urls(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &game)) } else { Err("nom invalide".into()) };
     match result {
         Ok(data) => Response::builder()
@@ -425,7 +476,7 @@ pub async fn music_title_theme(path: PathBuf, game: String, app: AppHandle) -> R
 // Émulateurs en cours d'exécution
 
 /// Noms des émulateurs connus présents dans la liste des processus Windows.
-fn running_emulators() -> Vec<&'static str> {
+pub(crate) fn running_emulators() -> Vec<&'static str> {
     let mut cmd = std::process::Command::new("tasklist");
     cmd.args(["/FO", "CSV", "/NH"]);
     #[cfg(windows)]
@@ -702,12 +753,22 @@ mod tests {
             ]
         );
         assert!(cover_urls("pokemon_stadium").is_empty());
+        // Jeu quelconque : boîte GameTDB d'après son code, française d'abord.
+        let mario = cover_urls("tdb-ds-AMCE");
+        assert_eq!(mario[0], "https://art.gametdb.com/ds/coverHQ/FR/AMCF.jpg");
+        assert_eq!(mario[2], "https://art.gametdb.com/ds/coverHQ/US/AMCE.jpg");
+        assert!(cover_urls("tdb-wii-AMCE").is_empty() && cover_urls("tdb-ds-../x").is_empty());
         // Blanche 2 : photo française de LaunchBox d'abord, puis GameTDB (région de la ROM), puis l'anglais.
         let w2 = cover_urls("photo-ds-white2-IRDF");
         assert!(w2[0].starts_with("https://images.launchbox-app.com/") && w2[1] == "https://art.gametdb.com/ds/cart/FR/IRDF.png");
         assert!(!w2.iter().any(|u| u.contains("/ES/") || u.contains("/JA/")));
         // Cartouche GBA : LaunchBox seulement ; code facultatif (Game Boy).
         assert!(cover_urls("photo-gba-emerald-BPEF").iter().all(|u| u.contains("launchbox")));
+        // Spin-off (Donjon Mystère, Ranger…) : photo LaunchBox d'après le code, quelle que soit la région de la ROM.
+        assert!(cover_urls("photo-ds-jeu-YFTE").iter().any(|u| u.contains("launchbox")));
+        assert!(cover_urls("photo-ds-jeu-APHF").iter().any(|u| u.contains("launchbox")));
+        assert!(cover_urls("photo-3ds-jeu-A98A").iter().any(|u| u.contains("launchbox")) && cover_urls("photo-switch-nx_0100b3f000be2000")[0].contains("launchbox"));
+        assert!(cover_urls("photo-gba-jeu-B24E").iter().any(|u| u.contains("launchbox")));
         assert!(!cover_urls("photo-gb-red").is_empty());
         assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-inconnu").is_empty() && cover_urls("photo-switch-arceus").is_empty());
         // Carte Switch : par title ID (Épée).

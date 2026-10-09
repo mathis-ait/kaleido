@@ -1,11 +1,14 @@
 import { reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 /** Résultat de la commande `check_update` (dernière release GitHub). */
 export interface UpdateInfo {
   current: string;
   latest: string | null;
   newer: boolean;
+  /** Kaleido peut télécharger et lancer l'installeur lui-même. */
+  installable: boolean;
   url: string;
   name: string | null;
   notes: string | null;
@@ -27,6 +30,12 @@ export const updates = reactive({
   checking: false,
   info: null as UpdateInfo | null,
   error: null as string | null,
+  /** Fenêtre « nouvelle version » ouverte. */
+  prompt: false,
+  installing: false,
+  /** Téléchargement de l'installeur (octets). */
+  progress: null as { done: number; total: number } | null,
+  installError: null as string | null,
 });
 
 watch(
@@ -52,7 +61,30 @@ export async function checkUpdate() {
   }
 }
 
-/** Vérification silencieuse au lancement, si elle est activée. */
-export function initUpdates() {
-  if (updates.auto && !import.meta.env.DEV) checkUpdate();
+/**
+ * Télécharge et lance l'installeur de la nouvelle version : Kaleido se ferme, l'installeur
+ * fait la mise à jour puis le rouvre.
+ */
+export async function installUpdate() {
+  if (updates.installing) return;
+  updates.prompt = true;
+  updates.installing = true;
+  updates.installError = null;
+  updates.progress = null;
+  const unlisten = await listen<{ done: number; total: number }>("update-progress", (e) => (updates.progress = e.payload));
+  try {
+    await invoke("update_install");
+  } catch (e) {
+    updates.installError = String(e);
+    updates.installing = false;
+  } finally {
+    unlisten();
+  }
+}
+
+/** Vérification silencieuse au lancement, si elle est activée ; propose la mise à jour s'il y en a une. */
+export async function initUpdates() {
+  if (!updates.auto || import.meta.env.DEV) return;
+  await checkUpdate();
+  if (updates.info?.newer) updates.prompt = true;
 }

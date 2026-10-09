@@ -20,6 +20,7 @@ mod bank;
 mod companion;
 mod runlog;
 mod discover;
+mod gamebanana;
 mod battle;
 mod emusaves;
 mod gifts;
@@ -28,10 +29,14 @@ mod labels;
 mod library;
 mod live;
 mod mods;
+mod mods_catalog;
+mod mods_saves;
+mod nexus;
 mod nuzlocke;
 mod nxmusic;
 mod overlay;
 mod play;
+mod romhacks;
 mod saves;
 mod showdown;
 mod sprites;
@@ -491,8 +496,26 @@ fn main() {
             mods::mods_install,
             mods::mods_uninstall,
             mods::mods_toggle_other,
+            mods::mods_toggle,
+            mods::mods_reorder,
+            mods::mods_install_update,
+            mods::switch_updates_check,
+            mods::switch_updates_install,
+            mods::mods_pending_updates,
+            mods::mods_save_restore,
+            mods::mods_profile_save,
+            mods::mods_profile_delete,
+            mods::mods_profile_apply,
+            mods::mods_browse,
+            mods::mods_categories,
+            mods::mods_details,
+            mods::mods_downloads_dir,
+            mods::mods_watch_downloads,
+            mods::mods_watch_stop,
             mods::cheats_list,
             mods::cheats_set,
+            romhacks::romhacks_list,
+            romhacks::romhack_install,
             tuning::tune_plan,
             tuning::tune_apply,
             tuning::tune_restore,
@@ -523,6 +546,7 @@ fn main() {
             teams::teams_list,
             teams::teams_get,
             updates::check_update,
+            updates::update_install,
             emusaves::emulator_saves,
             gifts::gifts_search,
             gifts::gifts_overview,

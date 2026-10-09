@@ -36,10 +36,28 @@ impl OpenSave {
     }
 }
 
+/// ROM jouée avec une sauvegarde : celle du même nom à côté (convention de melonDS et
+/// DeSmuME), sinon celle liée au suivi Nuzlocke.
+fn rom_of_save(save: &std::path::Path) -> Option<PathBuf> {
+    let sibling = save.with_extension("nds");
+    if sibling.is_file() {
+        return Some(sibling);
+    }
+    kaleido_core::nuzlocke::load_state(save).rom_path.map(PathBuf::from).filter(|p| p.is_file())
+}
+
+/// Ouvre une sauvegarde ; chromatiques d'après la ROM jouée (un randomizer peut avoir changé
+/// le taux : le jeu n'utilise alors plus le seuil 8).
+fn open_session(path: &std::path::Path, bytes: &[u8]) -> Result<SaveSession, String> {
+    let mut session = SaveSession::open(bytes).map_err(|e| e.to_string())?;
+    session.set_shiny_threshold(crate::companion::shiny_threshold(rom_of_save(path).as_deref()).filter(|&t| t != 8));
+    Ok(session)
+}
+
 #[tauri::command]
 pub fn open_save(path: PathBuf, state: State<'_, OpenSave>) -> Result<SaveView, String> {
     let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
-    let session = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+    let session = open_session(&path, &bytes)?;
     let view = session.view().map_err(|e| e.to_string())?;
     *state.0.lock().map_err(|e| e.to_string())? = Some((path, session));
     Ok(view)
@@ -372,7 +390,7 @@ pub struct SavePeek {
 pub async fn peek_save(path: PathBuf) -> Result<SavePeek, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = std::fs::read(&path).map_err(|e| format!("lecture impossible : {e}"))?;
-        let s = SaveSession::open(&bytes).map_err(|e| e.to_string())?;
+        let s = open_session(&path, &bytes)?;
         let v = s.view().map_err(|e| e.to_string())?;
         let dex = s.pokedex().unwrap_or_default();
         let modified =

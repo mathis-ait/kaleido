@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { launcherScale } from "../presentation";
 /**
  * Mode Cartouche : la scène three.js qui dessine les cartouches du carrousel.
  *
  * Elle ne fait que dessiner : Launcher.vue garde l'état (jeu sélectionné, glisser,
- * inclinaison, manette) et les boutons du carrousel restent dans le DOM, invisibles,
+ * inclinaison) et les boutons du carrousel restent dans le DOM, invisibles,
  * pour les clics, le glisser et le lecteur d'écran. Même géométrie que le carrousel
  * CSS (décalages 250 px puis 168 px, rotation 44°, perspective 1100 px) : passer d'un
  * mode à l'autre ne déplace rien.
@@ -57,8 +58,6 @@ const props = defineProps<{
   dragging: boolean;
   /** Inclinaison à la souris (degrés). */
   tilt: { x: number; y: number };
-  /** Stick droit de la manette (-1 à 1). */
-  stick: { x: number; y: number };
   /** Choix « Inspecter » par clé de jeu. */
   looks: Record<string, StoredLook>;
   /** Couleur dominante du jeu, pour la silhouette de la console. */
@@ -93,7 +92,9 @@ function poseOf(i: number): Pose {
     rot: k === 0 ? 0 : -sign * 44,
     scale: k === 0 ? 1.16 : 0.9,
     dim: k === 0 ? 1 : Math.max(0.45, 0.85 - abs * 0.08),
-    opacity: abs > 6 ? 0 : 1 - Math.max(0, abs - 2) * 0.18,
+    // Les lointaines restent opaques : un fondu par transparence laissait voir l'intérieur
+    // des coques (circuit, dos de l'étiquette). Le masque du canevas les estompe.
+    opacity: abs > 6 ? 0 : 1,
   };
 }
 
@@ -741,7 +742,6 @@ function invalidate() {
 
 /** Mise en page du carrousel DOM (centre de la perspective, position de l'anneau), mesurée à part. */
 let layout: { w: number; h: number; cx: number; cy: number; rx: number; ry: number } | null = null;
-const smallWindow = window.matchMedia("(max-height: 820px)");
 
 function measure() {
   const el = canvas.value;
@@ -755,8 +755,8 @@ function measure() {
   const cx = s ? s.left + s.width / 2 - c.left : w / 2;
   const cy = s ? s.top + s.height / 2 - c.top : h / 2;
   layout = { w, h, cx, cy, rx: r ? r.left - c.left - cx : 0, ry: r ? -(r.top - c.top - cy) : 0 };
-  // Même règle que la feuille de style du lanceur : carrousel réduit sur les petites fenêtres.
-  zoom = smallWindow.matches ? 0.78 : 1;
+  // Même échelle que le carrousel CSS du lanceur.
+  zoom = launcherScale.stage;
   invalidate();
 }
 
@@ -779,8 +779,8 @@ function placeCamera() {
 function step(now: number): boolean {
   let busy = false;
   const center = props.games[props.index]?.path;
-  // Inclinaison : souris et stick droit, rattrapés en douceur.
-  const target = { x: props.tilt.x - props.stick.y * 12, y: props.tilt.y + props.stick.x * 16 };
+  // Inclinaison sous la souris, rattrapée en douceur.
+  const target = { x: props.tilt.x, y: props.tilt.y };
   tiltNow.x += (target.x - tiltNow.x) * 0.25;
   tiltNow.y += (target.y - tiltNow.y) * 0.25;
   if (Math.abs(target.x - tiltNow.x) > 0.05 || Math.abs(target.y - tiltNow.y) > 0.05) busy = true;
@@ -950,7 +950,8 @@ watch(
 );
 watch(() => [props.games, props.index], () => measure());
 watch(() => props.looks, refreshLooks, { deep: true });
-watch(() => [props.tilt, props.stick, props.tint], () => invalidate());
+watch(() => [props.tilt, props.tint], () => invalidate());
+watch(() => launcherScale.stage, () => measure());
 watch(currentTheme, () => renderer && themeLight());
 watch(
   () => audio.running.length,
@@ -1016,5 +1017,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  /* Fondu des cartouches lointaines, à partir du centre du carrousel (voir poseOf). */
+  --fade: linear-gradient(
+    to right,
+    transparent calc(50% - 800px),
+    #000 calc(50% - 420px),
+    #000 calc(50% + 420px),
+    transparent calc(50% + 800px)
+  );
+  -webkit-mask-image: var(--fade);
+  mask-image: var(--fade);
 }
 </style>

@@ -238,8 +238,10 @@ export function cartPhotoKey(d: Pick<Detection, "platform" | "details" | "game">
   }
   const platforms: Record<string, string> = { nds: "ds", "3ds": "3ds", gba: "gba", gb: "gb" };
   const platform = platforms[d.platform ?? ""];
-  if (!platform || !d.game) return null;
+  if (!platform) return null;
   const detail = (label: string) => d.details.find((x) => x.label === label)?.value.trim() ?? "";
   const code = d.platform === "3ds" ? (detail("Code produit").split("-").pop() ?? "") : detail("Code jeu");
+  // Autre jeu : photo LaunchBox ou GameTDB d'après le code seul.
+  if (!d.game) return /^[A-Z0-9]{4}$/.test(code) ? `photo-${platform}-jeu-${code}` : null;
   return /^[A-Z0-9]{4}$/.test(code) ? `photo-${platform}-${d.game.id}-${code}` : `photo-${platform}-${d.game.id}`;
 }

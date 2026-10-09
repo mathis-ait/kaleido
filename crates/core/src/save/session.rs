@@ -141,6 +141,8 @@ pub struct SaveSession {
     pub save: SaveFile,
     undo: Vec<SaveFile>,
     redo: Vec<SaveFile>,
+    /// Seuil des chromatiques de la ROM jouée, si le randomizer l'a changé (voir [`SaveSession::set_shiny_threshold`]).
+    pub(super) shiny_threshold: Option<u32>,
 }
 
 fn growth(game: Game, species: u16, form: u8) -> Option<GrowthRate> {
@@ -356,7 +358,22 @@ impl SaveSession {
     }
 
     pub fn open(bytes: &[u8]) -> Result<Self, SaveError> {
-        Ok(Self { save: SaveFile::from_bytes(bytes)?, undo: Vec::new(), redo: Vec::new() })
+        Ok(Self { save: SaveFile::from_bytes(bytes)?, undo: Vec::new(), redo: Vec::new(), shiny_threshold: None })
+    }
+
+    /// Chromatiques d'après le seuil de la ROM jouée : un randomizer peut changer le taux,
+    /// le jeu compare alors la même valeur (TID ^ SID ^ PID) à un autre seuil que 8.
+    pub fn set_shiny_threshold(&mut self, threshold: Option<u32>) {
+        self.shiny_threshold = threshold;
+    }
+
+    /// Fiche d'un Pokémon, chromatique selon le seuil de la ROM.
+    fn slot_view(&self, slot: Slot, p: &Pokemon) -> SlotView {
+        let mut v = view_of(self.game(), slot, p);
+        if let (Some(t), Some(x)) = (self.shiny_threshold, p.shiny_xor()) {
+            v.summary.shiny = x < t;
+        }
+        v
     }
 
     /// Applique une modification ; en cas d'erreur la sauvegarde est restaurée telle
@@ -401,7 +418,7 @@ impl SaveSession {
 
     pub fn view(&self) -> Result<SaveView, SaveError> {
         let s = &self.save;
-        let party = s.party()?.iter().enumerate().map(|(i, p)| view_of(self.game(), Slot::Party { index: i }, p)).collect();
+        let party = s.party()?.iter().enumerate().map(|(i, p)| self.slot_view(Slot::Party { index: i }, p)).collect();
         let (trainer_name_max, box_name_max) = s.name_limits();
         Ok(SaveView {
             game: s.version().label(),
@@ -428,14 +445,14 @@ impl SaveSession {
         (0..BOX_SLOTS)
             .map(|i| {
                 let slot = Slot::Box { r#box: b, index: i };
-                Ok(self.save.box_slot(b, i)?.filter(|p| !p.is_empty()).map(|p| view_of(self.game(), slot, &p)))
+                Ok(self.save.box_slot(b, i)?.filter(|p| !p.is_empty()).map(|p| self.slot_view(slot, &p)))
             })
             .collect()
     }
 
     /// Tous les Pokémon de la sauvegarde (équipe puis boîtes).
     pub fn all(&self) -> Result<Vec<SlotView>, SaveError> {
-        let mut out: Vec<SlotView> = self.save.party()?.iter().enumerate().map(|(i, p)| view_of(self.game(), Slot::Party { index: i }, p)).collect();
+        let mut out: Vec<SlotView> = self.save.party()?.iter().enumerate().map(|(i, p)| self.slot_view(Slot::Party { index: i }, p)).collect();
         for b in 0..self.save.box_count() {
             out.extend(self.box_view(b)?.into_iter().flatten());
         }
@@ -643,12 +660,13 @@ impl SaveSession {
 
     pub fn view_slot(&self, slot: Slot) -> Result<SlotView, SaveError> {
         let p = self.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
-        Ok(view_of(self.game(), slot, &p))
+        Ok(self.slot_view(slot, &p))
     }
 
     pub fn patch(&mut self, slot: Slot, patch: &PokemonPatch) -> Result<SlotView, SaveError> {
         self.mutate(|s| {
-            let p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
+            let mut p = s.get(slot)?.ok_or_else(|| SaveError::Invalid("emplacement vide".into()))?;
+            p.set_rom_shiny_threshold(s.shiny_threshold);
             let p = apply_patch(s.game(), p, patch)?;
             s.set(slot, Some(p))
         })?;

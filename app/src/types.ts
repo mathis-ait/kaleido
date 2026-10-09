@@ -175,6 +175,9 @@ export const romExt = (path: string) => path.match(/\.(gbc|gb|gba)$/i)?.[1].toLo
 
 export const isRom = (d: Detection) => ["gb_rom", "gba_rom", "nds_rom", "ctr_rom", "ctr_dump"].includes(d.kind) && d.game !== null;
 
+/** Jeu jouable depuis la bibliothèque, Pokémon ou non (un dossier 3DS doit être un jeu connu). */
+export const isGameFile = (d: Detection) => ["gb_rom", "gba_rom", "nds_rom", "ctr_rom"].includes(d.kind) || isRom(d);
+
 export interface CtrOutcome extends Outcome {
   /** Dossier `romfs` du LayeredFS, si demandé. */
   romfs: string | null;
@@ -370,6 +373,10 @@ export interface Detection {
   kaleido: { tool: string; version: string; seed: number; shareCode: string } | null;
   /** Empreinte du contenu, pour repérer les doublons. */
   fingerprint: string | null;
+  /** Romhack installé par Kaleido (identifiant du catalogue). */
+  romhack?: string | null;
+  /** Jeu Switch : fichier de la mise à jour trouvée (vérification des correctifs ExeFS). */
+  updatePath?: string | null;
 }
 
 /** ROM produite par Kaleido (signature, ou seed retrouvée dans le nom du fichier). */

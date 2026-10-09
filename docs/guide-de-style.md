@@ -8,7 +8,7 @@ Kaleido doit ressembler à une console : sobre, lisible, la même d'une page à 
 2. **Jetons, pas de valeurs en dur.** Espacements, rayons, tailles de texte et couleurs passent par les variables de `styles/main.css`. Une couleur hexadécimale dans une page est un bug. Seule exception : les tables de données en TypeScript (couleurs des types dans `TypeBadge`, familles de rencontre dans `legality.ts`, formats de cartes dans `gifts/terms.ts`), définies une seule fois.
 3. **Un « i » sur chaque terme technique**, alimenté par le glossaire central (`<Tip term="…">`). Aucun terme sans entrée, aucune bulle écrite en dur dans une page (`title=` / `text=` inline).
 4. **Finition console.** Pas de barre d'accent colorée à gauche, pas d'emoji ni de symbole (★, ⚡) en guise de badge, pas de halo ni de pulsation animés, pas de dégradé décoratif. La sélection se montre par l'inversion texte / fond (pastille claire en thème sombre), comme les onglets. Le survol ne s'applique jamais à l'élément sélectionné (`:hover:not(.on)`).
-5. **Clavier et manette partout.** Tout élément interactif est un vrai `<button>` (ou un champ), atteignable au Tab et à la croix de la manette, avec un focus visible (anneau `--focus`, global). Entrée et Espace activent le bouton qui a le focus ; les raccourcis de la barre du bas ne les volent pas.
+5. **Clavier partout.** Tout élément interactif est un vrai `<button>` (ou un champ), atteignable au Tab, avec un focus visible (anneau `--focus`, global). Entrée et Espace activent le bouton qui a le focus ; les raccourcis de la barre du bas ne les volent pas.
 6. **Trois états par page ou panneau** : vide (avec l'action pour en sortir), chargement, erreur en français lisible (avec « Réessayer » quand ça a du sens). Jamais d'erreur avalée en silence.
 7. **Français simple, mêmes mots partout** : « N. 50 » pour le niveau, « Chromatique », « Talent », « Objet tenu », « Lieu de rencontre », « Dresseur d'origine ». Tutoiement.
 
@@ -74,10 +74,6 @@ Un seul point d'entrée : `GLOSSARY`. Les termes généraux (nature, talent, IV,
 | Showdown | `save/showdown/glossary.ts` | aucun |
 
 Avant d'ajouter un terme de module, vérifier qu'il n'existe pas déjà en terme général : un même mot doit avoir une seule explication.
-
-## Manette
-
-`gamepadNav.ts` donne la manette à toutes les pages : croix et stick pour aller à l'élément voisin dans cette direction, A pour activer, B pour Échap, LB / RB pour Q / E. Le lanceur garde sa propre gestion (`useGamepad`, qui met la navigation globale en retrait). Une page n'a rien à faire de spécial, à condition d'utiliser de vrais boutons.
 
 ## Vérifier
 

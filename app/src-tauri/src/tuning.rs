@@ -609,6 +609,16 @@ pub fn set_azahar_custom_textures(user: &Path, enabled: bool, preload: bool) -> 
     fs::write(&file, set_qt(&text, "Utility", &values, false)).map_err(|e| e.to_string())
 }
 
+/// Active ou non le chargeur de plugins 3GX d'Azahar (réglage global `plugin_loader`, section `[System]`).
+pub fn set_azahar_plugin_loader(user: &Path, enabled: bool) -> Result<(), String> {
+    let file = user.join("config").join("qt-config.ini");
+    let text = fs::read_to_string(&file).unwrap_or_default();
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    fs::write(&file, set_qt(&text, "System", &[("plugin_loader", enabled.to_string())], false)).map_err(|e| e.to_string())
+}
+
 /// Active les codes de triche de melonDS (`Instance0.EnableCheats`).
 pub fn enable_melonds_cheats(exe: &Path) -> Result<(), String> {
     let dir = exe.parent().ok_or("dossier de melonDS introuvable")?;

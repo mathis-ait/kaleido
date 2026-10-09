@@ -71,6 +71,8 @@ pub struct Detection {
     pub kaleido: Option<crate::randomizer::KaleidoTag>,
     /// Empreinte du contenu (fichiers ≤ 600 Mo), pour repérer les doublons.
     pub fingerprint: Option<String>,
+    /// Romhack installé par Kaleido (identifiant du catalogue `romhack::HACKS`).
+    pub romhack: Option<String>,
 }
 
 /// Au-delà, pas d'empreinte (lecture trop longue, ex. ROM 3DS de 2 Go).
@@ -109,6 +111,7 @@ impl Detection {
             warnings: Vec::new(),
             kaleido: None,
             fingerprint: None,
+            romhack: None,
         }
     }
 
@@ -177,6 +180,16 @@ pub fn detect_path(path: &Path) -> Result<Detection, DetectError> {
     };
     detection.path = path.display().to_string();
     detection.file_name = path.file_name().map_or_else(|| detection.path.clone(), |n| n.to_string_lossy().into_owned());
+    // Romhack installé par Kaleido : nom du hack et langue réelle du texte.
+    if detection.kind == FileKind::NdsRom {
+        if let Some((hack, french)) = crate::romhack::from_file_name(&detection.file_name) {
+            detection.title = format!("Pokémon {}", hack.name);
+            detection.is_french = french;
+            detection.language = Some(if french { "Français" } else { "Anglais" }.into());
+            detection.romhack = Some(hack.id.into());
+            detection.detail("Romhack", format!("{} v{} par {}", hack.name, hack.version, hack.author));
+        }
+    }
     // ROM générée avant l'ajout de la signature : la seed figure dans le nom proposé par Kaleido.
     if matches!(detection.kind, FileKind::NdsRom | FileKind::GbRom) && detection.kaleido.is_none() {
         if let Some(seed) = seed_from_file_name(&detection.file_name) {

@@ -43,6 +43,12 @@ pub struct SwitchGame {
     pub has_update: bool,
     /// Version affichée de la plus récente mise à jour trouvée (`1.1.1`), si le nom du fichier l'indique.
     pub update_version: Option<String>,
+    /// Fichier de cette mise à jour (vérification des correctifs ExeFS).
+    #[serde(default)]
+    pub update_path: Option<String>,
+    /// Fichiers incomplets (jeu ou mise à jour) : (nom, octets manquants).
+    #[serde(default)]
+    pub incomplete: Vec<(String, u64)>,
 }
 
 /// Nature d'un title ID.
@@ -410,12 +416,16 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
 
     let mut games: Vec<SwitchGame> = Vec::new();
     let mut updates = Vec::new();
+    let mut broken: Vec<(u64, String, u64)> = Vec::new();
     for path in files {
         let Some(tid) = title_id_of(&path, key.as_ref()) else { continue };
         match title_kind(tid) {
             TitleKind::Update => {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                updates.push((base_title_id(tid), display_version_in_name(&name)));
+                updates.push((base_title_id(tid), display_version_in_name(&name), path.display().to_string()));
+                if let Some(missing) = kaleido_core::nx::missing_bytes(&path) {
+                    broken.push((base_title_id(tid), name.clone(), missing));
+                }
             }
             TitleKind::Dlc => {}
             TitleKind::Base => {
@@ -433,14 +443,20 @@ pub fn scan(app: &AppHandle, roots: &[PathBuf], hidden: &[String]) -> Vec<Switch
                     title,
                     has_update: false,
                     update_version: None,
+                    update_path: None,
+                    incomplete: kaleido_core::nx::missing_bytes(&path).map(|m| (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), m)).into_iter().collect(),
                 });
             }
         }
     }
     for g in &mut games {
-        let mine: Vec<_> = updates.iter().filter(|(u, _)| format!("{u:016X}") == g.title_id).collect();
+        let mine: Vec<_> = updates.iter().filter(|(u, _, _)| format!("{u:016X}") == g.title_id).collect();
         g.has_update = !mine.is_empty();
-        g.update_version = mine.iter().filter_map(|(_, v)| v.clone()).max_by_key(|v| version_key(v));
+        // La plus récente : celle qu'Eden charge quand plusieurs sont présentes.
+        let latest = mine.iter().max_by_key(|(_, v, _)| v.as_deref().map(version_key).unwrap_or_default());
+        g.update_version = latest.and_then(|(_, v, _)| v.clone());
+        g.update_path = latest.map(|(_, _, p)| p.clone());
+        g.incomplete.extend(broken.iter().filter(|(t, _, _)| format!("{t:016X}") == g.title_id).map(|(_, n, m)| (n.clone(), *m)));
     }
     if cache.len() != before {
         if let (Some(p), Ok(json)) = (names_path(app), serde_json::to_vec(&*cache)) {

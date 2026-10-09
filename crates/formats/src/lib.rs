@@ -9,11 +9,13 @@ pub mod ctr_build;
 pub mod garc;
 pub mod gb;
 pub mod gba;
+pub mod bps;
 pub mod ips;
 pub mod lz;
 pub mod narc;
 pub mod nds;
 pub mod romfs;
+pub mod vcdiff;
 mod util;
 
 pub use util::stream_len;

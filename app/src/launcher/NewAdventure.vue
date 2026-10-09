@@ -5,7 +5,7 @@ import EmptyState from "../components/EmptyState.vue";
 import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
 import Tip from "../components/Tip.vue";
-import type { PadAction } from "./gamepad";
+import type { KeyAction } from "./scene/hints";
 import type { AdventurePreset } from "../presets";
 import {
   adventure,
@@ -23,7 +23,7 @@ import {
  * route, premier champion) avant de l'écrire et de jouer. Aucune case à cocher ici :
  * les réglages fins sont derrière « Personnaliser ».
  */
-const props = defineProps<{ cover: string | null; padConnected: boolean }>();
+const props = defineProps<{ cover: string | null }>();
 const emit = defineEmits<{ play: [] }>();
 
 const COLUMNS = 3;
@@ -71,12 +71,12 @@ async function remove(p: AdventurePreset) {
   cards.value[adventure.index]?.focus();
 }
 
-/** Manette et clavier, transmis par le lanceur. */
-function handle(a: PadAction) {
+/** Clavier, transmis par le lanceur. */
+function handle(a: KeyAction) {
   if (adventure.step === "preset") {
     const n = adventure.presets.length;
     if (!n) return a === "back" && closeAdventure();
-    // Corbeille d'un preset personnel : Menu (X / M) y amène le focus, A / Entrée supprime, B / Échap revient à la carte.
+    // Corbeille d'un preset personnel : M y amène le focus, Entrée supprime, Échap revient à la carte.
     const trash = document.activeElement instanceof HTMLElement && document.activeElement.classList.contains("remove") ? document.activeElement : null;
     if (trash && a === "accept") return trash.click();
     if (trash && a === "back") return cards.value[adventure.index]?.focus();
@@ -127,7 +127,8 @@ defineExpose({ handle });
         >
           <span class="card-head" :class="{ removable: p.user }">
             <strong>{{ p.name }}</strong>
-            <span v-if="p.user" class="sv-chip dim">Ton preset</span>
+            <span v-if="p.default" class="sv-chip accent">Par défaut</span>
+            <span v-else-if="p.user" class="sv-chip dim">Ton preset</span>
             <span v-if="p.companion?.nuzlocke" class="sv-chip accent">Compagnon</span>
           </span>
           <span class="tagline">{{ p.tagline }}</span>
@@ -146,9 +147,6 @@ defineExpose({ handle });
           <Icon name="trash" :size="14" />
         </button>
       </div>
-      <p class="hint">
-        {{ padConnected ? "Croix pour choisir · A pour valider · B pour revenir" : "Flèches pour choisir · Entrée pour valider · Échap pour revenir" }}
-      </p>
     </section>
 
     <!-- 3. L'aperçu -->
@@ -220,7 +218,6 @@ defineExpose({ handle });
         <button type="button" class="sv-link" @click="customize">Personnaliser</button>
         <button type="button" class="play" :disabled="!adventure.preview || adventure.loading" @click="emit('play')">
           <Icon name="play" :size="18" /> Jouer
-          <span class="key">{{ padConnected ? "A" : "Entrée" }}</span>
         </button>
       </footer>
     </section>
@@ -368,13 +365,6 @@ defineExpose({ handle });
   color: var(--danger);
 }
 
-.hint {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  text-align: center;
-}
 
 /* --- Aperçu */
 

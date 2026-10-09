@@ -21,3 +21,4 @@ aes = "0.8"
 md-5 = "0.10"
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["util"] }
 tiny_http = "0.12"
+unrar = "0.5.8"

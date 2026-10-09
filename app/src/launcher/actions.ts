@@ -1,6 +1,6 @@
 import { reactive } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { allGames, titleIdOf } from "../games";
+import { allGames, romCodeOf, titleIdOf } from "../games";
 import { library } from "../library";
 import { nav } from "../nav";
 import { isKaleidoRom, RANDOMIZABLE, type Detection } from "../types";
@@ -15,8 +15,16 @@ export const platformOf = (d: Detection): PlayPlatform =>
 /** Jaquette (boîte française en priorité, icône officielle pour la Switch ; voir library.rs). */
 export function coverUrl(d: Detection) {
   if (d.platform === "switch") return convertFileSrc(`nx-${titleIdOf(d)}.png`, "cover");
-  return d.game ? convertFileSrc(`${d.game.id}.png`, "cover") : null;
+  if (d.romhack) return convertFileSrc(`hack-${d.romhack}.png`, "cover");
+  if (d.game) return convertFileSrc(`${d.game.id}.png`, "cover");
+  // Autre jeu DS ou 3DS : boîte GameTDB d'après son code.
+  const code = romCodeOf(d);
+  const platform = d.platform === "nds" ? "ds" : d.platform === "3ds" ? "3ds" : null;
+  return code && platform ? convertFileSrc(`tdb-${platform}-${code}.png`, "cover") : null;
 }
+
+/** Jeu Pokémon reconnu : sauvegarde, compagnon et éditeur de ROM ne valent que pour eux. */
+export const isPokemonGame = (d: Detection) => d.game !== null;
 
 /** Un dossier 3DS (mod LayeredFS ou jeu extrait) se joue par-dessus le jeu d'origine. */
 export function playOptions(d: Detection): PlayOptions {
@@ -56,7 +64,8 @@ export async function launchGame(d: Detection): Promise<string | null> {
 
 export const openSaveOf = (d: Detection) => openGameSave(playOptions(d));
 
-export const canRandomize = (d: Detection) => !isKaleidoRom(d) && RANDOMIZABLE.includes(d.game?.id ?? "");
+// Un romhack (hg-engine…) n'a plus la structure du jeu d'origine : pas de randomizer.
+export const canRandomize = (d: Detection) => !isKaleidoRom(d) && !d.romhack && RANDOMIZABLE.includes(d.game?.id ?? "");
 
 export function randomize(d: Detection) {
   // Le Randomizer choisit parmi les fichiers ouverts : un jeu de la bibliothèque y est ajouté.

@@ -314,7 +314,7 @@ const dock: { icon: string; label: string; run: () => void }[] = [
   { icon: "send", label: "Envoyer au jeu (ferme le jeu avant)", run: () => sendToGame() },
   { icon: "grid", label: "Boîtes (Ctrl+1)", run: () => goTo("boxes") },
   { icon: "undo", label: "Annuler (Ctrl+Z)", run: () => history(false) },
-  { icon: "settings", label: "Apparence de Kaleido", run: () => (nav.view = "settings") },
+  { icon: "settings", label: "Paramètres de Kaleido", run: () => (nav.view = "settings") },
   { icon: "power", label: "Fermer la sauvegarde", run: () => closeSave() },
 ];
 
