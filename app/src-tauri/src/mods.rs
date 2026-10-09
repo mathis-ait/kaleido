@@ -1017,9 +1017,163 @@ fn overlap_map(dirs: &[(String, Vec<String>)]) -> BTreeMap<String, Vec<String>> 
     out
 }
 
-/// Fichiers du romfs d'un dossier de mod (les correctifs d'exefs se cumulent sans conflit).
+/// Fichiers du romfs d'un dossier de mod (les correctifs d'exefs se cumulent sans conflit ;
+/// l'index Trinity `arc/data.trpfd` est refait par Kaleido).
 fn romfs_files(dir: &Path) -> Vec<String> {
-    files_under(dir).into_iter().filter(|f| f.starts_with("romfs/")).collect()
+    files_under(dir).into_iter().filter(|f| f.starts_with("romfs/") && !f.starts_with("romfs/arc/data.trpfd")).collect()
+}
+
+// ---------------------------------------------------------------------------
+// Moteur Trinity (Écarlate / Violet, Légendes Z-A) : index `data.trpfd` fusionné
+
+/// Jeux dont les fichiers en vrac ne sont lus que s'ils sont retirés de `arc/data.trpfd`.
+const TRINITY: &[u64] = &[0x0100A3D008C5C000, 0x01008F6008C5E000, 0x0100F43008C44000];
+
+/// Mods « Trinity Bypass » du catalogue : inutiles avec l'index fusionné.
+const TRINITY_BYPASS: &[&str] = &["gb:640721", "gb:631935"];
+
+const TRINITY_INDEX_ID: &str = "kaleido:trinity";
+const TRINITY_INDEX_DIR: &str = "Kaleido - index Trinity";
+/// Index apporté par un mod, mis de côté : celui de Kaleido le remplace.
+const TRPFD_OFF: &str = "data.trpfd.kaleido-off";
+
+pub fn is_trinity(tid: u64) -> bool {
+    TRINITY.contains(&tid)
+}
+
+/// Dossier `romfs` d'un dossier de mod (casse quelconque).
+fn romfs_dir(dir: &Path) -> Option<PathBuf> {
+    fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.is_dir() && p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("romfs")))
+}
+
+/// Index d'origine de la version installée (gardé en cache par build ID de l'exécutable).
+fn vanilla_trpfd(app: &AppHandle, target: &ModTarget) -> Result<Vec<u8>, String> {
+    let keys_path = crate::switch::prod_keys(app).ok_or("clés de la console (prod.keys) introuvables")?;
+    let keys = kaleido_core::nx::Keys::load(&keys_path).map_err(|e| e.to_string())?;
+    let base = target.rom.as_deref().ok_or("fichier du jeu inconnu")?;
+    let exe = target.update_file.as_deref().unwrap_or(base);
+    let id = file_build_id(Path::new(exe), &keys)?;
+    let cache = cache_dir(app)?.join("trinity");
+    let file = cache.join(format!("{id}.trpfd"));
+    if let Ok(data) = fs::read(&file) {
+        return Ok(data);
+    }
+    let data = kaleido_core::nx::read_game_file(Path::new(base), target.update_file.as_deref().map(Path::new), &keys, "arc/data.trpfd").map_err(|e| e.to_string())?;
+    let _ = fs::create_dir_all(&cache);
+    let _ = fs::write(&file, &data);
+    Ok(data)
+}
+
+/// Refait l'index Trinity d'un jeu à partir des mods actifs. Rend une phrase pour la vue.
+/// En cas d'échec, chaque mod retrouve son propre index (comportement d'avant Kaleido).
+fn refresh_trinity(app: &AppHandle, target: &ModTarget, tid: u64) -> Result<Option<String>, String> {
+    if !is_trinity(tid) {
+        return Ok(None);
+    }
+    let r = resolve(EmulatorId::Eden, app);
+    let game_dir = eden_load_dir(&r).ok_or("dossier d'Eden introuvable")?.join(format!("{tid:016X}"));
+    let index_dir = game_dir.join(TRINITY_INDEX_DIR);
+    let arcs: Vec<(String, PathBuf, Vec<String>)> = installed_dirs(&game_dir)
+        .into_iter()
+        .filter(|(_, m)| !m.as_ref().is_some_and(|m| m.id == TRINITY_INDEX_ID))
+        .filter_map(|(name, _)| {
+            let romfs = romfs_dir(&game_dir.join(&name))?;
+            let files: Vec<String> = files_rel(&romfs).into_iter().filter(|f| !f.to_ascii_lowercase().starts_with("arc/data.trpfd")).collect();
+            Some((name, romfs.join("arc"), files))
+        })
+        .collect();
+    let built = build_trinity_index(app, target, &arcs);
+    match built {
+        Ok(None) => {
+            restore_mod_indexes(&arcs);
+            if index_dir.exists() {
+                fs::remove_dir_all(&index_dir).map_err(|e| e.to_string())?;
+            }
+            Ok(None)
+        }
+        Ok(Some((bytes, mods, files, source))) => {
+            let arc = index_dir.join("romfs").join("arc");
+            fs::create_dir_all(&arc).map_err(|e| e.to_string())?;
+            fs::write(arc.join("data.trpfd"), bytes).map_err(|e| e.to_string())?;
+            write_marker(&index_dir, &Marker { id: TRINITY_INDEX_ID.into(), version: Some(format!("{mods} mods, {files} fichiers")), source: source.into(), name: Some("Index Trinity".into()), ..Default::default() })?;
+            // L'index est en place : ceux des mods sont mis de côté.
+            for (name, arc, _) in &arcs {
+                let own = arc.join("data.trpfd");
+                if own.is_file() {
+                    let off = arc.join(TRPFD_OFF);
+                    let _ = fs::remove_file(&off);
+                    fs::rename(&own, &off).map_err(|e| format!("index de « {name} » impossible à mettre de côté : {e}"))?;
+                }
+            }
+            let s = |n: usize| if n > 1 { "s" } else { "" };
+            Ok(Some(format!("Index Trinity refait d'après {source} : {mods} mod{} cumulé{}, {files} fichier{} lu{} en vrac.", s(mods), s(mods), s(files), s(files))))
+        }
+        Err(e) => {
+            restore_mod_indexes(&arcs);
+            if index_dir.exists() {
+                let _ = fs::remove_dir_all(&index_dir);
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Remet l'index propre à chaque mod (mis de côté par une fusion précédente).
+fn restore_mod_indexes(arcs: &[(String, PathBuf, Vec<String>)]) {
+    for (_, arc, _) in arcs {
+        let off = arc.join(TRPFD_OFF);
+        if off.is_file() && !arc.join("data.trpfd").exists() {
+            let _ = fs::rename(&off, arc.join("data.trpfd"));
+        }
+    }
+}
+
+/// Index fusionné : (octets, mods cumulés, fichiers en vrac, source), ou `None` sans fichier de mod.
+fn build_trinity_index(app: &AppHandle, target: &ModTarget, arcs: &[(String, PathBuf, Vec<String>)]) -> Result<Option<(Vec<u8>, usize, usize, &'static str)>, String> {
+    use kaleido_core::trinity::{path_hash, FileDescriptor};
+    let hashes: std::collections::HashSet<u64> = arcs.iter().flat_map(|(_, _, files)| files.iter().map(|f| path_hash(f))).collect();
+    let mods = arcs.iter().filter(|(_, _, files)| !files.is_empty()).count();
+    if hashes.is_empty() {
+        return Ok(None);
+    }
+    let (mut index, source) = match vanilla_trpfd(app, target) {
+        Ok(data) => (FileDescriptor::parse(&data).map_err(|e| e.to_string())?, "ton jeu"),
+        Err(e) => {
+            // Secours : l'union des index apportés par les mods, s'ils viennent exactement de la
+            // même version du jeu (chacun n'en retire que ses propres fichiers).
+            let parsed: Vec<FileDescriptor> = arcs
+                .iter()
+                .filter_map(|(_, arc, _)| fs::read(arc.join("data.trpfd")).or_else(|_| fs::read(arc.join(TRPFD_OFF))).ok())
+                .filter_map(|d| FileDescriptor::parse(&d).ok())
+                .collect();
+            let same = parsed.windows(2).all(|w| w[0].pack_names == w[1].pack_names && w[0].packs == w[1].packs);
+            let Some(first) = parsed.first().filter(|_| same) else {
+                return Err(format!("l'index d'origine du jeu est illisible ({e}), et ceux des mods viennent de versions différentes : ces mods ne peuvent pas être cumulés"));
+            };
+            let mut all: Vec<(u64, kaleido_core::trinity::FileInfo)> = parsed.iter().flat_map(|d| d.hashes.iter().copied().zip(d.files.iter().copied())).collect();
+            all.sort_by_key(|(h, _)| *h);
+            all.dedup_by_key(|(h, _)| *h);
+            let mut d = first.clone();
+            d.hashes = all.iter().map(|(h, _)| *h).collect();
+            d.files = all.iter().map(|(_, f)| *f).collect();
+            (d, "les index des mods")
+        }
+    };
+    index.remove(&hashes);
+    Ok(Some((index.to_bytes(), mods, hashes.len(), source)))
+}
+
+/// Après un changement de mods : refait l'index Trinity si besoin, et le signale.
+fn after_change(app: &AppHandle, target: &ModTarget, view: &mut ModsView) {
+    if target.platform != "switch" {
+        return;
+    }
+    let Some(tid) = parse_tid(target.title_id.as_deref()).ok().map(base_title_id) else { return };
+    match refresh_trinity(app, target, tid) {
+        Ok(Some(note)) => view.notes.insert(0, note),
+        Ok(None) => {}
+        Err(e) => view.errors.push(format!("Index Trinity : {e}")),
+    }
 }
 
 /// Profils GameBanana de plusieurs mods, récupérés en parallèle.
@@ -1271,7 +1425,7 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
 
     // Mods présents qui ne viennent pas de Kaleido (ou mis de côté par Kaleido).
     for (name, marker) in &installed {
-        if marker.is_none() {
+        if marker.is_none() && name != TRINITY_INDEX_DIR {
             view.others.push(OtherMod { name: name.clone(), enabled: true, category: other_category(name, tier), overlaps: overlaps.get(name).cloned().unwrap_or_default(), can_toggle: true, exefs: verdict(&dir_patch_ids(&game_dir.join(name))) });
         }
     }
@@ -1342,7 +1496,23 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
     }
 
     // Catalogue.
-    let catalog = catalog_entries(app, &tid_key(tid), target, &mine, &mut view);
+    let mut catalog = catalog_entries(app, &tid_key(tid), target, &mine, &mut view);
+    // Jeux Trinity : l'index fusionné remplace le groupe « trpfd » et le Trinity Bypass, à
+    // condition de pouvoir lire l'index d'origine dans le jeu (fichier connu et clés présentes).
+    if is_trinity(tid) && target.rom.is_some() && crate::switch::prod_keys(app).is_some() {
+        for e in catalog.iter_mut() {
+            if e.group.as_deref() == Some("trpfd") {
+                e.group = None;
+            }
+            e.requires.retain(|r| !r.contains("Bypass"));
+            e.requires_ids.retain(|r| !TRINITY_BYPASS.contains(&r.as_str()));
+            if TRINITY_BYPASS.contains(&e.id.as_str()) {
+                e.recommended = false;
+                let w = "Inutile avec Kaleido : il refait lui-même l'index des fichiers (data.trpfd) pour cumuler les mods.".to_string();
+                e.warning = Some(e.warning.take().map_or(w.clone(), |old| format!("{w} {old}")));
+            }
+        }
+    }
     // Un mod du catalogue du même groupe qu'un mod Fl4sh (ex. 60 FPS) n'est pas recommandé deux fois.
     let fl4sh_groups: Vec<String> = entries.iter().filter(|e| e.recommended).filter_map(|e| e.group.clone()).collect();
     for mut e in catalog {
@@ -1354,7 +1524,7 @@ fn switch_view(app: &AppHandle, target: &ModTarget, tid: u64) -> ModsView {
 
     // Mods installés par Kaleido hors catalogue (explorateur, fichier).
     for (folder, marker, on) in installed.iter().map(|(n, m)| (n, m, true)).chain(disabled.iter().map(|(n, m)| (n, m, false))) {
-        if let Some(m) = marker {
+        if let Some(m) = marker.as_ref().filter(|m| !m.id.starts_with("kaleido:")) {
             if !entries.iter().any(|e| e.id == m.id) {
                 entries.push(entry_from_marker(folder, m, on));
             }
@@ -2650,7 +2820,14 @@ pub async fn mods_install(target: ModTarget, id: String, options: Option<Install
         };
         Ok(match outcome {
             Installed::Variants(variants) => InstallResult { variants, ..Default::default() },
-            Installed::Done => InstallResult { view: Some(with_backup(view_for(&app, &target)?)), ..Default::default() },
+            Installed::Done => InstallResult {
+                view: Some(with_backup({
+                    let mut v = view_for(&app, &target)?;
+                    after_change(&app, &target, &mut v);
+                    v
+                })),
+                ..Default::default()
+            },
             Installed::Output(path) => InstallResult { view: Some(view_for(&app, &target)?), output: Some(path.display().to_string()), ..Default::default() },
         })
     })
@@ -2680,6 +2857,7 @@ pub async fn mods_uninstall(target: ModTarget, id: String, app: AppHandle) -> Re
             _ => return Err("console inconnue".into()),
         }
         let mut view = view_for(&app, &target)?;
+        after_change(&app, &target, &mut view);
         view.restore_offer = offer;
         Ok(view)
     })
@@ -2699,6 +2877,7 @@ pub async fn mods_toggle(target: ModTarget, id: String, enabled: bool, app: AppH
         }
         toggle_key(&app, &target, tid, &format!("id:{id}"), enabled)?;
         let mut view = view_for(&app, &target)?;
+        after_change(&app, &target, &mut view);
         view.last_backup = last_backup;
         if !enabled && affecting.is_some() {
             view.restore_offer = crate::mods_saves::offer_for(&app, tid, &id);
@@ -2786,6 +2965,7 @@ pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle)
         g.active = (name != ORIGIN).then_some(name);
         crate::mods_saves::set_game_profiles(&app, tid, g)?;
         let mut view = view_for(&app, &target)?;
+        after_change(&app, &target, &mut view);
         view.missing = missing;
         if !swapped {
             view.restore_offer = leaving_save_mods.iter().find_map(|id| crate::mods_saves::offer_for(&app, tid, id));
@@ -2800,7 +2980,9 @@ pub async fn mods_profile_apply(target: ModTarget, name: String, app: AppHandle)
 pub async fn mods_toggle_other(target: ModTarget, name: String, enabled: bool, app: AppHandle) -> Result<ModsView, String> {
     crate::blocking(move || {
         toggle_folder(&app, base_title_id(parse_tid(target.title_id.as_deref())?), &name, enabled)?;
-        view_for(&app, &target)
+        let mut view = view_for(&app, &target)?;
+        after_change(&app, &target, &mut view);
+        Ok(view)
     })
     .await
 }

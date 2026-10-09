@@ -15,6 +15,7 @@ pub mod live;
 pub mod music;
 pub mod names;
 pub mod nx;
+pub mod trinity;
 pub mod nuzlocke;
 pub mod pokemon;
 pub mod randomizer;

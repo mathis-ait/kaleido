@@ -218,6 +218,8 @@ struct Section {
     romfs: Option<u64>,
     /// Début du PFS0 (ExeFS d'un programme), relatif à la section.
     pfs0: Option<u64>,
+    /// Mise à jour (BKTR) : tables de relocalisation et de sous-sections (offset, taille).
+    bktr: Option<[(u64, u64); 2]>,
 }
 
 /// Un NCA ouvert, avec sa clé de section déchiffrée.
@@ -293,13 +295,20 @@ impl Nca {
             let romfs = (hash_type == 3 && &fs[0x08..0x0C] == b"IVFC").then(|| u64le(fs, 0x08 + 0x10 + 5 * 0x18));
             // Hachage SHA-256 hiérarchique (type 2) : la 2e région est le PFS0.
             let pfs0 = (hash_type == 2).then(|| u64le(fs, 0x08 + 0x28 + 0x10));
-            sections.push(Section { start, end, crypto: fs[4], ctr: fs[0x140..0x148].try_into().unwrap(), romfs, pfs0 });
+            let bktr = (fs[4] == 4).then(|| [(u64le(fs, 0x100), u64le(fs, 0x108)), (u64le(fs, 0x120), u64le(fs, 0x128))]);
+            sections.push(Section { start, end, crypto: fs[4], ctr: fs[0x140..0x148].try_into().unwrap(), romfs, pfs0, bktr });
         }
         Ok(Nca { file, base: entry.offset, info, sections, key })
     }
 
     /// Lit `len` octets déchiffrés d'une section, à partir de `offset` (relatif à la section).
     fn read_section(&mut self, s: usize, offset: u64, len: usize) -> Result<Vec<u8>> {
+        self.read_section_gen(s, offset, len, None)
+    }
+
+    /// Comme `read_section`, avec la « génération » d'une sous-section de mise à jour (BKTR),
+    /// qui remplace les octets 4 à 7 du compteur AES-CTR.
+    fn read_section_gen(&mut self, s: usize, offset: u64, len: usize, generation: Option<u32>) -> Result<Vec<u8>> {
         let sec = self.sections[s].clone();
         let abs = sec.start + offset;
         if abs + len as u64 > sec.end {
@@ -316,6 +325,9 @@ impl Nca {
                 let mut ctr = [0u8; 16];
                 for j in 0..8 {
                     ctr[j] = sec.ctr[7 - j];
+                }
+                if let Some(g) = generation {
+                    ctr[4..8].copy_from_slice(&g.to_be_bytes());
                 }
                 let mut block_index = aligned / 16;
                 for chunk in buf.chunks_mut(16) {
@@ -374,8 +386,151 @@ impl Nca {
         let at = |i: usize| u64le(&header, i * 8);
         let dirs = self.read_section(index, data + at(3), at(4) as usize)?;
         let files = self.read_section(index, data + at(7), at(8) as usize)?;
-        Ok(RomFs { nca: self, section: index, data_base: data + at(9), dirs, files })
+        Ok(RomFs { src: Source::Plain(self, index), data_base: data + at(9), dirs, files })
     }
+
+    /// RomFS d'une mise à jour (section BKTR) : les données non modifiées sont lues dans le
+    /// jeu de base `base`.
+    pub fn patched_romfs<'a>(&'a mut self, base: &'a mut Nca) -> Result<RomFs<'a>> {
+        let (index, data) = self.sections.iter().enumerate().find_map(|(i, s)| s.romfs.filter(|_| s.crypto == 4).map(|o| (i, o))).ok_or_else(|| bad("pas de RomFS de mise à jour dans ce contenu"))?;
+        let base_index = base.sections.iter().position(|s| s.romfs.is_some() && s.crypto != 4).ok_or_else(|| bad("pas de RomFS dans le jeu de base"))?;
+        let [(reloc_off, reloc_size), (subs_off, subs_size)] = self.sections[index].bktr.ok_or_else(|| bad("table de mise à jour absente"))?;
+        let reloc_raw = self.read_section(index, reloc_off, reloc_size as usize)?;
+        let subs_raw = self.read_section(index, subs_off, subs_size as usize)?;
+        let (reloc, reloc_end) = bucket_entries(&reloc_raw, 0x14);
+        let (subs, subs_end) = bucket_entries(&subs_raw, 0x10);
+        let reloc: Vec<(u64, u64, u32)> = reloc.iter().map(|e| (u64le(e, 0), u64le(e, 8), u32le(e, 16))).collect();
+        let subs: Vec<(u64, u32)> = subs.iter().map(|e| (u64le(e, 0), u32le(e, 12))).collect();
+        if reloc.is_empty() || subs.is_empty() {
+            return Err(bad("tables de mise à jour vides"));
+        }
+        let mut src = Source::Patched(Box::new(Patched { patch: self, section: index, base, base_section: base_index, reloc, reloc_end, subs, subs_end }));
+        let header = src.read(data, 0x50)?;
+        let at = |i: usize| u64le(&header, i * 8);
+        let dirs = src.read(data + at(3), at(4) as usize)?;
+        let files = src.read(data + at(7), at(8) as usize)?;
+        Ok(RomFs { src, data_base: data + at(9), dirs, files })
+    }
+}
+
+/// Entrées d'un arbre de compartiments (BKTR) : nœud racine de 0x4000 octets
+/// (`nombre de compartiments` en +4), puis les compartiments de 0x4000 octets
+/// (`nombre d'entrées` en +4, entrées dès +0x10). Rend aussi l'offset de fin (+8 de la racine).
+fn bucket_entries(buf: &[u8], entry_size: usize) -> (Vec<&[u8]>, u64) {
+    const NODE: usize = 0x4000;
+    if buf.len() < 0x10 {
+        return (vec![], 0);
+    }
+    let buckets = u32le(buf, 4) as usize;
+    let end = u64le(buf, 8);
+    let mut out = Vec::new();
+    for b in 0..buckets {
+        let at = NODE * (1 + b);
+        if at + 0x10 > buf.len() {
+            break;
+        }
+        let n = (u32le(buf, at + 4) as usize).min((NODE - 0x10) / entry_size);
+        for i in 0..n {
+            let e = at + 0x10 + i * entry_size;
+            if let Some(slice) = buf.get(e..e + entry_size) {
+                out.push(slice);
+            }
+        }
+    }
+    (out, end)
+}
+
+/// Mise à jour ouverte par-dessus le jeu de base.
+struct Patched<'a> {
+    patch: &'a mut Nca,
+    section: usize,
+    base: &'a mut Nca,
+    base_section: usize,
+    /// (offset virtuel, offset physique, 0 = jeu de base / 1 = mise à jour), triés.
+    reloc: Vec<(u64, u64, u32)>,
+    reloc_end: u64,
+    /// (offset physique dans la mise à jour, génération du compteur), triés.
+    subs: Vec<(u64, u32)>,
+    subs_end: u64,
+}
+
+impl Patched<'_> {
+    fn read_patch(&mut self, mut phys: u64, len: usize) -> Result<Vec<u8>> {
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            let i = self.subs.partition_point(|s| s.0 <= phys).checked_sub(1).ok_or_else(|| bad("sous-section de mise à jour introuvable"))?;
+            let next = self.subs.get(i + 1).map_or(self.subs_end.max(phys + 1), |s| s.0);
+            let chunk = ((next - phys) as usize).min(len - out.len());
+            out.extend(self.patch.read_section_gen(self.section, phys, chunk, Some(self.subs[i].1))?);
+            phys += chunk as u64;
+        }
+        Ok(out)
+    }
+
+    fn read(&mut self, mut virt: u64, len: usize) -> Result<Vec<u8>> {
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            let i = self.reloc.partition_point(|r| r.0 <= virt).checked_sub(1).ok_or_else(|| bad("donnée de mise à jour introuvable"))?;
+            let (v, p, storage) = self.reloc[i];
+            let next = self.reloc.get(i + 1).map_or(self.reloc_end.max(virt + 1), |r| r.0);
+            let chunk = ((next - virt) as usize).min(len - out.len());
+            let phys = p + (virt - v);
+            let data = if storage == 0 { self.base.read_section(self.base_section, phys, chunk)? } else { self.read_patch(phys, chunk)? };
+            out.extend(data);
+            virt += chunk as u64;
+        }
+        Ok(out)
+    }
+}
+
+/// D'où une RomFS lit ses octets.
+enum Source<'a> {
+    Plain(&'a mut Nca, usize),
+    Patched(Box<Patched<'a>>),
+}
+
+impl Source<'_> {
+    fn read(&mut self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        match self {
+            Source::Plain(nca, section) => nca.read_section(*section, offset, len),
+            Source::Patched(p) => p.read(offset, len),
+        }
+    }
+}
+
+/// Ouvre le NCA « programme » d'une mise à jour (RomFS BKTR).
+pub fn open_update_program(path: &Path, keys: &Keys) -> Result<Nca> {
+    let mut f = File::open(path)?;
+    let entries = container_entries(&mut f)?;
+    let mut titlekeys = HashMap::new();
+    for t in entries.iter().filter(|e| e.name.ends_with(".tik")) {
+        if let Some((rights, key)) = ticket_key(&read_at(&mut f, t.offset, t.size.min(0x400) as usize)?) {
+            titlekeys.insert(rights, key);
+        }
+    }
+    for e in entries.iter().filter(|e| e.name.ends_with(".nca")) {
+        let Ok(nca) = Nca::open(path, e, keys, &titlekeys) else { continue };
+        if nca.info.content == ContentType::Program && nca.sections.iter().any(|s| s.romfs.is_some() && s.crypto == 4) {
+            return Ok(nca);
+        }
+    }
+    Err(bad("aucune RomFS de mise à jour dans ce fichier"))
+}
+
+/// Contenu d'un fichier de la RomFS du jeu, mise à jour comprise quand elle est donnée.
+pub fn read_game_file(base: &Path, update: Option<&Path>, keys: &Keys, path: &str) -> Result<Vec<u8>> {
+    let want = format!("/{}", path.trim_start_matches('/'));
+    let mut base_nca = open_program(base, keys)?;
+    let mut patch_nca;
+    let mut romfs = match update {
+        Some(u) => {
+            patch_nca = open_update_program(u, keys)?;
+            patch_nca.patched_romfs(&mut base_nca)?
+        }
+        None => base_nca.romfs()?,
+    };
+    let file = romfs.list().into_iter().find(|f| f.path.eq_ignore_ascii_case(&want)).ok_or_else(|| bad(format!("fichier {path} absent du jeu")))?;
+    romfs.read_all(&file)
 }
 
 /// Ouvre le NCA « programme » d'un jeu (celui qui contient la RomFS).
@@ -456,8 +611,7 @@ pub fn build_id_matches(patch: &str, game: &str) -> bool {
 // RomFS
 
 pub struct RomFs<'a> {
-    nca: &'a mut Nca,
-    section: usize,
+    src: Source<'a>,
     data_base: u64,
     dirs: Vec<u8>,
     files: Vec<u8>,
@@ -520,7 +674,7 @@ impl RomFs<'_> {
     /// Lit `len` octets d'un fichier à partir de `offset`.
     pub fn read(&mut self, file: &RomFile, offset: u64, len: usize) -> Result<Vec<u8>> {
         let len = len.min(file.size.saturating_sub(offset) as usize);
-        self.nca.read_section(self.section, self.data_base + file.offset + offset, len)
+        self.src.read(self.data_base + file.offset + offset, len)
     }
 
     pub fn read_all(&mut self, file: &RomFile) -> Result<Vec<u8>> {
@@ -531,6 +685,36 @@ impl RomFs<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `KALEIDO_NX_FILE=<jeu de base> KALEIDO_NX_UPDATE=<mise à jour> KALEIDO_NX_KEYS=<prod.keys> cargo test -p kaleido-core real_patched_romfs -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_patched_romfs() {
+        let (Ok(file), Ok(update), Ok(keys)) = (std::env::var("KALEIDO_NX_FILE"), std::env::var("KALEIDO_NX_UPDATE"), std::env::var("KALEIDO_NX_KEYS")) else { return };
+        let keys = Keys::load(Path::new(&keys)).unwrap();
+        let mut base = open_program(Path::new(&file), &keys).unwrap();
+        let base_files = base.romfs().unwrap().list();
+        let mut patch = open_update_program(Path::new(&update), &keys).unwrap();
+        let mut romfs = patch.patched_romfs(&mut base).unwrap();
+        let files = romfs.list();
+        println!("jeu de base : {} fichiers, avec la mise à jour : {}", base_files.len(), files.len());
+        let new: Vec<&RomFile> = files.iter().filter(|f| !base_files.iter().any(|b| b.path == f.path)).collect();
+        println!("nouveaux : {}", new.len());
+        for f in files.iter().filter(|f| f.size > 0).take(3).chain(new.iter().copied().filter(|f| f.size > 0).take(3)) {
+            let data = romfs.read(f, 0, 16).unwrap();
+            println!("{} ({} o) : {:02X?}", f.path, f.size, data);
+        }
+    }
+
+    /// `KALEIDO_NX_FILE=<jeu> KALEIDO_NX_UPDATE=<mise à jour> KALEIDO_NX_KEYS=<prod.keys> KALEIDO_NX_PATH=<chemin du romfs>`
+    #[test]
+    #[ignore]
+    fn real_game_file() {
+        let (Ok(file), Ok(update), Ok(keys), Ok(path)) = (std::env::var("KALEIDO_NX_FILE"), std::env::var("KALEIDO_NX_UPDATE"), std::env::var("KALEIDO_NX_KEYS"), std::env::var("KALEIDO_NX_PATH")) else { return };
+        let keys = Keys::load(Path::new(&keys)).unwrap();
+        let data = read_game_file(Path::new(&file), Some(Path::new(&update)), &keys, &path).unwrap();
+        println!("{path} : {} octets, début {:02X?}", data.len(), &data[..16.min(data.len())]);
+    }
 
     /// `KALEIDO_NX_FILE=<jeu ou mise à jour> KALEIDO_NX_KEYS=<prod.keys> cargo test -p kaleido-core real_build_id -- --ignored --nocapture`
     #[test]
