@@ -83,6 +83,32 @@ Mesures (boutique de Rosyères, marche) : 39 images distinctes sur 39 avec des �
 des valeurs recalculées à chaque dessin et un drapeau « premier dessin après le tick »
 (0x086FBB28, bit 0x80, et un pointeur voisin) posé une fois par tick, comme dans le jeu d'origine.
 
+## Changements de carte (lot B)
+
+Deux protections, vérifiées en entrant et en sortant de la boutique de Rosyères (capture image par
+image, comparée au jeu d'origine) :
+
+- **Pas de dessin ajouté sur un tick où une transition change d'état.** Les fondus et balayages
+  affichent une image capturée que le jeu renouvelle lors de son propre dessin, au tick suivant le
+  changement d'état. Un dessin ajouté sur ce tick montrait l'ancienne capture : une image blanche en
+  entrant (le balayage d'entrée commence), l'extérieur pendant une image en sortant. La signature
+  d'un contexte (`*(0x0062F830)` + 0x38 / + 0x3C) combine l'état `+0x0C`, les drapeaux `+0x44`
+  (deux octets bas) et `+0x48` : le fondu de sortie change l'état (6 → 0xC), le balayage d'entrée
+  ne change que `+0x45` et `+0x48`. Coût : une image répétée au début et à la fin d'une transition
+  (`n_tskip`), pendant laquelle le jeu d'origine est de toute façon à 30 images/s.
+- **Une matrice non lue depuis plus de 4 images repart sans mélange** : après un fondu ou un
+  changement de carte, une adresse peut appartenir à un autre objet.
+
+Les fondus restent à la cadence du jeu (avance figée sur le dessin ajouté, phase 2).
+
+## Azahar ralenti (lot B)
+
+Limite de vitesse à 50 % dans le bac à sable : 29,3 dessins et 14,7 ticks par seconde réelle (le
+rapport 2 pour 1 est conservé), aucun dessin sauté par le jeu, marche et changement de carte sans
+plantage. Le jeu mesure son temps en ticks **émulés** (`svcGetSystemTick`) : un hôte lent ne
+déclenche pas le saut d'image du jeu, il ralentit simplement tout. Un repli automatique « hôte trop
+lent » n'est donc pas détectable depuis le jeu ; l'interrupteur L + R + Select en tient lieu.
+
 ## Interrupteur en jeu
 
 **L + R + Select tenus 60 images (une seconde)** coupent ou rétablissent le lissage (`S.enabled`).
@@ -118,7 +144,8 @@ fois n'est pas mélangée.
 
 | Zone | Adresse | Contenu |
 | --- | --- | --- |
-| Code | 0x00579610–0x0057A000 (marge de fin de `.text`) | 2,3 Ko (release, marge restante 240 octets) ; le code des essais va dans la fonction morte 0x004FBF20 |
+| Crochets | 0x00579610–0x0057A000 (marge de fin de `.text`) | trampolines de `hooks.S`, 176 octets |
+| Runtime | 0x004FBF20–0x004FE790 (fonction morte de 10 Ko : aucune référence, aucun littéral, non exportée par `static.crs`) | corps de `smooth.c`, 2,4 Ko, puis code des essais ; `build.py` vérifie ses premiers octets |
 | Données des essais | 0x005EBA20–0x005EC000 (marge de fin de `.rodata`) | script d'entrées compilé |
 | État `State` | 0x006AE640 (marge de fin de `.bss`, hors fichier) | initialisé au premier appel (magic `SMTH`) |
 | Table | 0x0A000000, 288 Ko, `svcControlMemory` | 2 048 entrées de 120 octets (0x3C000) ; instantané en +0x3C000, trace en +0x3D000 (tests) |
@@ -148,6 +175,8 @@ démarrage. Si elle échoue, `failed` ≠ 0 et le jeu garde son comportement d'o
 | | | | 0xB4–0xC3 | eye_f[4] (image de la pose) |
 | | | | 0xC4 | n_eye (vues d'yeux lissées) |
 | | | | 0xC8, 0xCC | pad (boutons tenus), combo_f |
+| | | | 0xD0, 0xD4 | tstate[2] (état des contextes de transition) |
+| | | | 0xD8 | n_tskip (dessins ajoutés supprimés aux changements d'état) |
 
 `tools/smstat.py` lit et modifie cette structure via le stub GDB (`set enabled 0`, `set jump_rcam 0.3`).
 

@@ -6,6 +6,19 @@ ajoutée est rendue avec des matrices interpolées entre les deux derniers ticks
 
 Cible : Pokémon Rubis Oméga EUR, code cartouche v1.0 (Rev 2), Azahar 2126.1.2.
 
+## Suite — lot B : portes, Azahar ralenti, interrupteur (9 octobre 2026)
+
+| Point | Résultat |
+| --- | --- |
+| Entrée dans un bâtiment | une image blanche au début du balayage (absente du jeu d'origine) : **corrigé** |
+| Sortie d'un bâtiment | l'extérieur visible une image avant le fondu : **corrigé** |
+| Azahar limité à 50 % | rapport tick / dessin conservé, aucun dessin sauté, pas de plantage |
+| Interrupteur en jeu | **L + R + Select** tenus une seconde : lissage coupé ou rétabli |
+| Place pour le code | runtime déplacé dans une fonction morte de 10 Ko (7,7 Ko libres) ; la marge de `.text` ne garde que les crochets |
+
+Repli automatique « ordinateur trop lent » : impossible à détecter depuis le jeu (il compte en
+temps émulé) ; l'interrupteur en tient lieu. Détails dans [`docs/runtime.md`](docs/runtime.md).
+
 ## Suite — lot A : intérieurs (9 octobre 2026)
 
 Plan de la suite : [`docs/prd-suite.html`](docs/prd-suite.html). Premier essai réel : « dans les

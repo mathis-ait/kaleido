@@ -24,6 +24,7 @@ GCC = os.environ.get('ARM_GCC_BIN', r'C:\Users\Thisma\Documents\Switch\tools-re\
 CODE = r'C:\Users\Thisma\Documents\Switch\tools-re\rosa-or\code.bin'
 SHA = 'd587c98ac5c4dedacf9be4baf2d6b7d10169e6a63f8bc35b132002cc27bc1a37'
 BASE = 0x00100000
+DEAD_FN_HEAD = 'f04f2de9b80f9fe5'  # 0x004FBF20 : push {r4-r11,lr} ; ldr r0,[pc,#0xFB8] (fonction morte)
 
 
 def tool(name):
@@ -101,6 +102,7 @@ def main():
     run(tool('objcopy'), '-O', 'binary', '-j', '.text', elf, os.path.join(out, 'text.bin'))
     run(tool('objcopy'), '-O', 'binary', '-j', '.testro', elf, os.path.join(out, 'testro.bin'))
     run(tool('objcopy'), '-O', 'binary', '-j', '.testtext', elf, os.path.join(out, 'testtext.bin'))
+    run(tool('objcopy'), '-O', 'binary', '-j', '.rtext', elf, os.path.join(out, 'rtext.bin'))
     syms = {}
     for line in run(tool('nm'), elf).splitlines():
         p = line.split()
@@ -145,6 +147,12 @@ def main():
     if any(orig(t0, len(text))):
         sys.exit('la marge de .text n est pas vide')
     recs.append((t0 - BASE, text))
+    # corps du runtime dans la fonction morte 0x004FBF20 (10 Ko), suivi du code des essais
+    FN0, FN1 = 0x004FBF20, 0x004FE790
+    rtext = open(os.path.join(out, 'rtext.bin'), 'rb').read()
+    if orig(FN0, 8) != bytes.fromhex(DEAD_FN_HEAD):
+        sys.exit('fonction morte 0x%08x : octets inattendus (autre version ?)' % FN0)
+    recs.append((FN0 - BASE, rtext))
     testro = open(os.path.join(out, 'testro.bin'), 'rb').read() if os.path.exists(os.path.join(out, 'testro.bin')) else b''
     if testro:
         if len(testro) > 0x5E0 or any(orig(0x005EBA20, len(testro))):
@@ -154,14 +162,19 @@ def main():
     if testtext:
         if not (a.test_input or a.count3d):
             sys.exit('code de test dans un build distribue')
-        recs.append((0x004FBF20 - BASE, testtext))  # fonction morte, builds de test uniquement
-        print('code de test : %d octets dans la fonction morte 0x004FBF20' % len(testtext))
+        t1 = syms.get('hook_pad', syms.get('hook_cnt3d'))
+        recs.append((t1 - BASE, testtext))  # après le runtime, builds de test uniquement
+        print('code de test : %d octets en 0x%08x' % (len(testtext), t1))
     if a.counters:
         import instrument
         recs += instrument.records(draw60=False)
     os.makedirs(os.path.dirname(os.path.abspath(a.o)), exist_ok=True)
     write_ips(a.o, recs)
-    print('runtime : .text %d octets (marge %d), etat a 0x%08x' % (len(text), 0x0057A000 - t0 - len(text), syms['S']))
+    used = len(rtext) + len(testtext)
+    if FN0 + used > FN1:
+        sys.exit('runtime trop gros pour la fonction morte : %d / %d' % (used, FN1 - FN0))
+    print('crochets : %d octets en fin de .text (marge %d) ; runtime : %d octets en 0x%08x (marge %d) ; etat a 0x%08x' % (
+        len(text), 0x0057A000 - t0 - len(text), len(rtext), FN0, FN1 - FN0 - used, syms['S']))
     for k in ('hook_gate', 'hook_camera', 'hook_h3d', 'hook_nwmesh', 'smooth_gate', 'smooth_end', 'S') + (('hook_pad',) if a.test_input else ()):
         print('  %-14s 0x%08x' % (k, syms[k]))
     print('->', a.o)

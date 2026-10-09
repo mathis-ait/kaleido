@@ -44,17 +44,19 @@ render:
     lytanim: { addr: 0x0014D618, orig: "f05f2de9", note: "avance des animations d'interface 2D" }
     # caméras des yeux (3D stéréo, intérieurs) : posées pendant update() par 0x00377984 -> SetViewMatrix
     setview: { addr: 0x00392FB4, orig: "524f80e2", note: "add r4,r0,#0x148 ; r0 = nw::gfx::Camera de l'œil, vue +0x148, inverse +0x178" }
-    test_pad: { addr: 0x0036FB34, orig: "981084e2", note: "builds de test : mot boutons en [r4+0x78]" }
+    hid:     { addr: 0x0036FB34, orig: "981084e2", note: "boutons tenus [r4+0x78] -> S.pad (L+R+Select) ; builds de test : entrées injectées" }
+  transitions: { manager: 0x0062F830, contexts: [0x38, 0x3C], signature: { state: 0x0C, flags16: 0x44, flag: 0x48 }, note: "pas de dessin ajouté au changement de signature" }
   thresholds: { translation_max: 48.0, translation_rel: 0.25, translation_min: 0.5, rotation: 0.7, rotation_camera: 0.25 }
   interpolation: "cadence adaptative par matrice : P + (C - P) * k / T, T = intervalle entre deux changements (2 à 8 images)"
   runtime:
-    code: { addr: 0x00579610, max: 0x9F0 }      # marge de fin de .text (release : 0x900 utilisés)
+    hooks: { addr: 0x00579610, max: 0x9F0 }     # marge de fin de .text : trampolines
+    code: { addr: 0x004FBF20, max: 0x2870, head: "f04f2de9b80f9fe5" }  # fonction morte : runtime puis essais
     state: 0x006AE640                           # marge de fin de .bss
     table: { addr: 0x0A000000, size: 0x48000 }  # svcControlMemory au premier appel
 
 # Pour les essais (builds de test uniquement)
 test:
-  code_cave: { addr: 0x004FBF20, size: 0x2870, note: "fonction morte : aucune référence, aucun littéral, non exportée par static.crs" }
+  code_cave: "après le runtime dans la fonction morte 0x004FBF20 (aucune référence, aucun littéral, non exportée par static.crs)"
   rodata_cave: { addr: 0x005EBA20, size: 0x5E0 }
   tinymt: 0x08C55E24               # TinyMT global, consommé pendant la marche
   rng_mt19937: 0x08C55E64          # instance gfl MT (index + 624 mots), avancée à chaque VBlank par 0x0010676C

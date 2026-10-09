@@ -34,6 +34,7 @@
 #define SNAP_OFF 0x3C000u
 #define TRACE_OFF 0x3D000u
 #define MAX_PERIOD 8u
+#define UNSEEN_FRAMES 4u
 #define PAD_COMBO 0x304u /* L (0x200) + R (0x100) + Select (0x4) */   /* au-delà : changement isolé, mélangé sur un tick (T = 2) */
 
 struct Entry {
@@ -108,7 +109,9 @@ static void smooth(float *m, u32 camera)
     if (!e || e->obs == S.frame)
         return;
     u32 f = S.frame;
-    if (e->obs == 0) {
+    /* Pas lue depuis plus de UNSEEN_FRAMES images (fondu, changement de carte, objet
+     * masqué) : son adresse peut appartenir à un autre objet, on repart sans mélange. */
+    if (e->obs == 0 || f - e->obs > UNSEEN_FRAMES) {
         for (u32 i = 0; i < 12; i++)
             e->prev[i] = e->cur[i] = m[i];
         e->obs = e->tc = f;
@@ -267,7 +270,25 @@ u32 smooth_gate(const u8 *mgr, u32 did_update)
         S.combo_f = 0;
     }
     u32 on = S.enabled && S.tab;
-    u32 skip = (mode && did_update) && !on;
+    /* Transition qui change d'état à ce tick (contextes *(0x0062F830) + 0x38 / + 0x3C :
+     * état +0x0C, drapeaux +0x44 (deux octets bas) et +0x48 ; par exemple 6 -> 0xC au
+     * début du fondu de sortie, +0x45 et +0x48 à 1 au début du balayage d'entrée) : le jeu
+     * renouvelle l'image capturée qu'affiche la transition lors de son propre dessin,
+     * au tick suivant. Un dessin ajouté montrerait l'ancienne capture (image blanche en
+     * entrant dans un bâtiment, extérieur une image en sortant) : pas de dessin ajouté. */
+    const u8 *tm = *(const u8 *const *)0x0062F830u;
+    u32 tchg = 0;
+    for (u32 i = 0; i < 2u; i++) {
+        const u8 *c = tm ? *(const u8 *const *)(tm + 0x38u + 4u * i) : 0;
+        u32 st = c ? *(const u32 *)(c + 0x0C) ^ (*(const u32 *)(c + 0x44) & 0xFFFFu) << 8 ^
+                         *(const u32 *)(c + 0x48) << 24 : 0xFFFFFFFFu;
+        if (st != S.tstate[i])
+            tchg = 1;
+        S.tstate[i] = st;
+    }
+    if (on && mode && did_update && tchg)
+        S.n_tskip++;
+    u32 skip = (mode && did_update) && (!on || tchg);
     /* Le jeu saute lui-même le prochain dessin après une image trop lente
      * ([[mgr+0x1C]+0x1FE], testé juste après cette fonction) : pas d'interpolation. */
     const u8 *gfx = *(const u8 *const *)(mgr + 0x1C);
