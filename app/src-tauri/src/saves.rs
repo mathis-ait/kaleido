@@ -48,7 +48,7 @@ fn rom_of_save(save: &std::path::Path) -> Option<PathBuf> {
 
 /// Ouvre une sauvegarde ; chromatiques d'après la ROM jouée (un randomizer peut avoir changé
 /// le taux : le jeu n'utilise alors plus le seuil 8).
-fn open_session(path: &std::path::Path, bytes: &[u8]) -> Result<SaveSession, String> {
+pub(crate) fn open_session(path: &std::path::Path, bytes: &[u8]) -> Result<SaveSession, String> {
     let mut session = SaveSession::open(bytes).map_err(|e| e.to_string())?;
     session.set_shiny_threshold(crate::companion::shiny_threshold(rom_of_save(path).as_deref()).filter(|&t| t != 8));
     Ok(session)
