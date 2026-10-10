@@ -20,6 +20,8 @@ pub struct ScannedSource {
     pub game: String,
     pub version: Option<kaleido_core::save::SaveVersion>,
     pub generation: u8,
+    /// Nombre de boîtes de la sauvegarde (0 pour la banque).
+    pub boxes: usize,
     pub trainer: String,
     /// Dernière modification du fichier (secondes depuis 1970).
     pub modified: Option<u64>,
@@ -39,6 +41,7 @@ fn scan_save(path: &Path) -> ScannedSource {
         game: String::new(),
         version: None,
         generation: 0,
+        boxes: 0,
         trainer: String::new(),
         modified: modified(path),
         specimens: Vec::new(),
@@ -50,6 +53,7 @@ fn scan_save(path: &Path) -> ScannedSource {
         out.game = view.game.to_string();
         out.version = Some(view.version);
         out.generation = view.generation;
+        out.boxes = session.save.box_count();
         out.trainer = view.trainer.name.clone();
         livedex::from_session(&session).map_err(|e| e.to_string())
     });
@@ -67,6 +71,7 @@ fn scan_bank(app: &AppHandle) -> ScannedSource {
         game: "Banque Kaleido".into(),
         version: None,
         generation: 0,
+        boxes: 0,
         trainer: String::new(),
         modified: None,
         specimens: Vec::new(),
