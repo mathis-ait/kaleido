@@ -5,8 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import Icon from "../components/Icon.vue";
 import Sprite from "../components/Sprite.vue";
-import { library } from "../library";
-import { goTo, openSave, recentSaves, saveState } from "../saveStore";
+import { goTo, openSave, saveState } from "../saveStore";
+import { knownSaves, SAVES_FOLDER_KEY } from "./knownSaves";
 import type { Gender } from "../types";
 import { useShell } from "./shell";
 
@@ -27,7 +27,7 @@ interface Peek {
   modified: number | null;
 }
 
-const FOLDER_KEY = "kaleido.savesFolder";
+const FOLDER_KEY = SAVES_FOLDER_KEY;
 const folder = ref<string | null>(readFolder());
 const saves = ref<Peek[]>([]);
 const failed = ref<string[]>([]);
@@ -61,20 +61,11 @@ async function chooseFolder() {
 async function refresh() {
   loading.value = true;
   failed.value = [];
-  const paths = new Set<string>(library.items.filter((d) => d.kind === "save").map((d) => d.path));
-  if (folder.value) {
-    const found = await invoke<string[]>("expand_paths", { paths: [folder.value] }).catch(() => []);
-    found.forEach((p) => paths.add(p));
-  }
-  if (saveState.path) paths.add(saveState.path);
-  recentSaves().forEach((p) => paths.add(p));
-  // Sauvegardes rangées par les émulateurs (Azahar, Citra, melonDS, DeSmuME) et à côté des ROMs.
-  const romDirs = [...new Set(library.items.filter((d) => d.kind !== "save").map((d) => d.path.replace(/[\\/][^\\/]*$/, "")))];
-  const fromEmus = await invoke<{ path: string; emulator: string; game: string | null }[]>("emulator_saves", { romDirs }).catch(() => []);
-  emulatorOf.value = Object.fromEntries(fromEmus.map((s) => [s.path, s.emulator]));
-  fromEmus.forEach((s) => paths.add(s.path));
+  const known = await knownSaves();
+  emulatorOf.value = known.emulatorOf;
+  const paths = known.paths;
   const results = await Promise.all(
-    [...paths].map((path) =>
+    paths.map((path) =>
       invoke<Peek>("peek_save", { path }).catch(() => {
         // ROM ou fichier non pris en charge : ignoré, sauf s'il ressemble à une sauvegarde.
         if (/\.(sav|dsv|main|bin)$/i.test(path)) failed.value.push(path);

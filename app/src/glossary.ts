@@ -436,6 +436,7 @@ import { BATTLE_TIPS } from "./save/battle/glossary";
 import { GIFT_TERMS } from "./save/gifts/terms";
 import { NUZLOCKE_TERMS } from "./save/nuzlocke/terms";
 import { SHOWDOWN_TERMS } from "./save/showdown/glossary";
+import { LIVEDEX_TERMS } from "./livedex/terms";
 
 function register(prefix: string, entries: Record<string, GlossaryEntry>) {
   for (const [key, entry] of Object.entries(entries)) GLOSSARY[prefix ? `${prefix}.${key}` : key] = entry;
@@ -447,6 +448,7 @@ register("companion", COMPANION_TERMS);
 register("adventure", ADVENTURE_TERMS);
 register("randomizer", RANDOMIZER_TERMS);
 register("bank", BANK_TERMS);
+register("livedex", LIVEDEX_TERMS);
 register("battle", BATTLE_TIPS);
 register("gifts", GIFT_TERMS);
 register("nuzlocke", NUZLOCKE_TERMS);

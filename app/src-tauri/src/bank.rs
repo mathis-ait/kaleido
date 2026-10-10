@@ -44,7 +44,7 @@ fn configured_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 impl OpenBank {
-    fn with<T>(&self, app: &AppHandle, f: impl FnOnce(&mut Bank) -> Result<T, String>) -> Result<T, String> {
+    pub(crate) fn with<T>(&self, app: &AppHandle, f: impl FnOnce(&mut Bank) -> Result<T, String>) -> Result<T, String> {
         let mut slot = self.0.lock().map_err(|e| e.to_string())?;
         if slot.is_none() {
             *slot = Some(Bank::open(configured_path(app)?).map_err(|e| e.to_string())?);

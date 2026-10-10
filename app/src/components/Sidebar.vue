@@ -14,6 +14,7 @@ const items: { id: ViewId; label: string; icon: string }[] = [
   { id: "randomizer", label: "Randomizer", icon: "M4 7h3l10 10h3M4 17h3l3-3M14 10l3-3h3M18 4l3 3-3 3M18 14l3 3-3 3" },
   { id: "editor", label: "Éditeur de ROM", icon: "M5 19h4L19 9l-4-4L5 15zM13 7l4 4" },
   { id: "saves", label: "Sauvegardes", icon: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" },
+  { id: "livedex", label: "Living Dex", icon: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM16.5 13v7M13 16.5h7" },
 ];
 </script>
 
