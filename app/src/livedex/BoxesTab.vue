@@ -2,7 +2,9 @@
 import { computed, ref } from "vue";
 import Segmented from "../components/Segmented.vue";
 import Sprite from "../components/Sprite.vue";
+import Icon from "../components/Icon.vue";
 import Toggle from "../components/Toggle.vue";
+import ArrangeDialog from "./ArrangeDialog.vue";
 import { dex, frDate } from "./data";
 import type { LivingSlot } from "./slots";
 import { collection } from "./store";
@@ -10,6 +12,7 @@ import { livedexUi, openSpecies, rememberUi } from "./ui";
 
 const BOX = 30;
 const hideFull = ref(false);
+const arranging = ref(false);
 
 const shiny = computed({
   get: () => livedexUi.shiny,
@@ -59,7 +62,10 @@ const spriteGender = (s: LivingSlot) => (s.gender === "f" ? "female" : undefined
         ]"
         label="Living Dex affichée"
       />
-      <Toggle v-model="hideFull" label="Masquer les boîtes complètes" />
+      <span class="sv-row">
+        <Toggle v-model="hideFull" label="Masquer les boîtes complètes" />
+        <button type="button" class="sv-btn small" title="Où ranger chaque Pokémon dans une sauvegarde pour suivre l'ordre de la Living Dex" @click="arranging = true"><Icon name="box" :size="14" /> Plan de rangement</button>
+      </span>
     </div>
 
     <p v-if="!shown.length" class="dim done">Toutes les boîtes sont complètes.</p>
@@ -87,6 +93,7 @@ const spriteGender = (s: LivingSlot) => (s.gender === "f" ? "female" : undefined
         </div>
       </section>
     </div>
+    <ArrangeDialog v-model="arranging" />
   </div>
 </template>
 

@@ -114,6 +114,8 @@ export interface Specimen {
   metLevel: number;
   metDate: { year: number; month: number; day: number } | null;
   place: string;
+  /** Emplacement dans la sauvegarde (absent pour la banque). */
+  slot: { kind: "party"; index: number } | { kind: "box"; box: number; index: number } | null;
   legality: "legal" | "fishy" | "illegal" | null;
 }
 
@@ -123,6 +125,8 @@ export interface ScannedSource {
   game: string;
   version: string | null;
   generation: number;
+  /** Nombre de boîtes (0 pour la banque). */
+  boxes: number;
   trainer: string;
   modified: number | null;
   specimens: Specimen[];

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import raw from "../../public/livedex/dex.json";
 import type { Dex } from "./data";
 import { buildSlots, computeCollection, RULE_PRESETS, slotKeyFor } from "./slots";
-import type { CatchEntry, DexIndex } from "./types";
+import { arrangePlan } from "./arrange";
+import type { CatchEntry, DexIndex, Specimen } from "./types";
 
 const index = raw as unknown as DexIndex;
 const dex: Dex = {
@@ -45,5 +46,48 @@ describe("cases de la Living Dex", () => {
     expect(dex.species(25)?.name).toBe("Pikachu");
     expect(dex.species(6)?.name).toBe("Dracaufeu");
     expect(dex.form(26, 1)?.full).toBe("Raichu d'Alola");
+  });
+});
+
+describe("plan de rangement", () => {
+  const spec = (species: number, slot: Specimen["slot"], extra: Partial<Specimen> = {}): Specimen => ({
+    key: `${species}-${JSON.stringify(slot)}`,
+    species,
+    form: 0,
+    gender: "male",
+    shiny: false,
+    nickname: null,
+    level: 5,
+    ball: 4,
+    otName: "Moi",
+    tid: 1,
+    sid: 0,
+    version: 30,
+    metLocation: null,
+    metLevel: 5,
+    metDate: null,
+    place: "",
+    slot,
+    legality: "legal",
+    ...extra,
+  });
+  const rules = RULE_PRESETS.species.rules;
+  const slots = buildSlots(dex, rules);
+
+  it("garde ce qui est en place, déplace le reste et compte les manquants", () => {
+    const list = [spec(1, { kind: "box", box: 0, index: 0 }), spec(3, { kind: "box", box: 0, index: 1 }), spec(2, { kind: "party", index: 0 }), spec(1, { kind: "box", box: 5, index: 3 })];
+    const plan = arrangePlan(dex, rules, slots, list, 32, false);
+    expect(plan.steps[0].status).toBe("ok");
+    expect(plan.steps[1]).toMatchObject({ status: "move", from: null });
+    expect(plan.steps[1].occupant?.species).toBe(3);
+    expect(plan.steps[2]).toMatchObject({ status: "move", from: { box: 0, index: 1 } });
+    expect(plan.missing).toBe(32 * 30 - 3);
+    expect(plan.spare.map((s) => s.species)).toEqual([1]);
+    expect(plan.overflow).toBe(1025 - 32 * 30);
+  });
+
+  it("ne garde que les chromatiques en mode chromatique", () => {
+    const plan = arrangePlan(dex, rules, slots, [spec(1, { kind: "box", box: 0, index: 0 })], 40, true);
+    expect(plan.steps[0].status).toBe("missing");
   });
 });
