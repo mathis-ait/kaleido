@@ -87,3 +87,31 @@ fn fps60_replaces_older_runtime() {
         assert_eq!(shiny_ctr::current(&b).unwrap(), shiny_ctr::current(&s).unwrap());
     }
 }
+
+/// Réinstaller par-dessus la 0.9.0 (runtime placé dans une initialisation statique du jeu,
+/// fusionné avec le taux de chromatiques) remet cette zone d'origine et garde le taux.
+#[test]
+fn fps60_repairs_090() {
+    let v090 = include_bytes!("../../../ctr-smooth/proto/fps60-0.9.0.ips");
+    let shiny_only = include_bytes!("../../../ctr-smooth/proto/kaleido-shiny-or-eur-v1.0.ips");
+    for rom in roms() {
+        let Ok(game) = CtrGameRom::open(&rom) else { continue };
+        let original = game.code().unwrap().code;
+        let Some(profile) = fps60_ctr::profile_for(game.title_id(), &original) else { continue };
+        if game.title_id() != 0x0004_0000_0011_C400 {
+            continue;
+        }
+        let mut with_shiny = original.clone();
+        ips::apply(&mut with_shiny, shiny_only).unwrap();
+        ips::apply(&mut with_shiny, v090).unwrap();
+        let installed = ips::create(&original, &with_shiny).unwrap();
+        let rest = fps60_ctr::strip(profile, &original, &installed).unwrap().expect("le taux de chromatiques reste");
+        let merged = fps60_ctr::merged_ips(profile, &original, Some(&rest)).unwrap();
+        let mut b = original.clone();
+        ips::apply(&mut b, &merged).unwrap();
+        assert_eq!(&b[0x3F_BF20..0x3F_E790], &original[0x3F_BF20..0x3F_E790], "initialisation statique remise d'origine");
+        let mut s = original.clone();
+        ips::apply(&mut s, shiny_only).unwrap();
+        assert_eq!(shiny_ctr::current(&b).unwrap(), shiny_ctr::current(&s).unwrap());
+    }
+}

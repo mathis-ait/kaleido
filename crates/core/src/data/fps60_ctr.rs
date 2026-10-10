@@ -14,18 +14,32 @@ pub struct Profile {
     pub version: &'static str,
     pub code_sha256: &'static str,
     pub ips: &'static [u8],
-    /// Zones réservées au runtime (positions dans le code.bin) : marges et fonction morte où
-    /// vit son code. Un ancien patch 60 fps y écrivait aussi : on les nettoie avant de fusionner.
+    /// Zones réservées au runtime (positions dans le code.bin) : marges où vit son code, et la
+    /// zone où la 0.9.0 l'avait placé (une initialisation statique du jeu, appelée au démarrage,
+    /// qu'elle écrasait). On les remet d'origine avant de fusionner : réinstaller répare la 0.9.0.
     pub owned: &'static [(usize, usize)],
 }
 
-pub const PROFILES: &[Profile] = &[Profile {
-    title_id: 0x0004_0000_0011_C400,
-    version: "1.0",
-    code_sha256: "d587c98ac5c4dedacf9be4baf2d6b7d10169e6a63f8bc35b132002cc27bc1a37",
-    ips: include_bytes!("../../../../ctr-smooth/runtime/build/code.ips"),
-    owned: &[(0x47_9610, 0x47_A000), (0x3F_BF20, 0x3F_E790), (0x4E_BA20, 0x4E_C000)],
-}];
+/// Le même patch convient aux deux jeux : Saphir Alpha a les mêmes adresses que Rubis Oméga
+/// pour tout ce que le runtime touche (voir `ctr-smooth/runtime/build.py`).
+const PATCH: &[u8] = include_bytes!("../../../../ctr-smooth/runtime/build/code.ips");
+
+pub const PROFILES: &[Profile] = &[
+    Profile {
+        title_id: 0x0004_0000_0011_C400,
+        version: "1.0",
+        code_sha256: "d587c98ac5c4dedacf9be4baf2d6b7d10169e6a63f8bc35b132002cc27bc1a37",
+        ips: PATCH,
+        owned: &[(0x47_9610, 0x47_A000), (0x3F_BF20, 0x3F_E790), (0x4E_BA20, 0x4E_C000)],
+    },
+    Profile {
+        title_id: 0x0004_0000_0011_C500,
+        version: "1.0",
+        code_sha256: "b7f9ce60361f3709ed0ce879658afe10a712f7db060640fa72bba826301b7c16",
+        ips: PATCH,
+        owned: &[(0x47_9610, 0x47_A000), (0x4E_BA20, 0x4E_C000)],
+    },
+];
 
 /// Jeux pour lesquels un profil existe (quelle que soit la version).
 pub fn supports(title_id: u64) -> bool {
@@ -97,6 +111,18 @@ mod tests {
             assert!(!r.is_empty());
             // tout tient dans .text/.rodata/.data du code.bin (moins de 6 Mio)
             assert!(r.iter().all(|(_, end)| *end < 0x60_0000));
+        }
+    }
+
+    /// Le runtime ne doit écrire que dans la marge de fin de .text et aux crochets : la zone
+    /// 0x4FBF18-0x4FE790 est une initialisation statique appelée au démarrage (bug de la 0.9.0).
+    #[test]
+    fn patch_stays_out_of_static_initializer() {
+        for p in PROFILES {
+            for (a, b) in ips::ranges(p.ips).unwrap() {
+                assert!(b <= 0x3F_BF18 || a >= 0x3F_E790, "écriture en 0x{:X}", a + 0x10_0000);
+                assert!(b - a <= 4 || (a >= 0x47_9604 && b <= 0x47_A000), "bloc inattendu en 0x{:X} ({} octets)", a + 0x10_0000, b - a);
+            }
         }
     }
 

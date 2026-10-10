@@ -2430,7 +2430,7 @@ fn fps60_profile(target: &ModTarget, tid: u64) -> Result<(Vec<u8>, &'static fps6
     let game = kaleido_core::CtrGameRom::open(Path::new(rom)).map_err(|e| e.to_string())?;
     let code = game.code().map_err(|e| e.to_string())?.code;
     let profile = fps60_ctr::profile_for(tid, &code).ok_or_else(|| {
-        format!("Cette version du jeu n'est pas couverte (programme {}…). Le 60 fps natif existe pour Rubis Oméga EUR, cartouche 1.0.", &fps60_ctr::sha256_hex(&code)[..12])
+        format!("Cette version du jeu n'est pas couverte (programme {}…). Le 60 fps natif existe pour Rubis Oméga et Saphir Alpha EUR, version de la cartouche (1.0).", &fps60_ctr::sha256_hex(&code)[..12])
     })?;
     Ok((code, profile))
 }
