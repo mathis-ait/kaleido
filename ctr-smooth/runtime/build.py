@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(ROOT, 'proto'))
 from mkpatch import read_ips, write_ips  # noqa: E402
 
 GCC = os.environ.get('ARM_GCC_BIN', r'C:\Users\Thisma\Documents\Switch\tools-re\gcc\bin')
-CODE = r'C:\Users\Thisma\Documents\Switch\tools-re\rosa-or\code.bin'
+CODE = os.environ.get('CTR_SMOOTH_CODE_BIN', r'C:\Users\Thisma\Documents\Switch\tools-re\rosa-or\code.bin')
 SHA = 'd587c98ac5c4dedacf9be4baf2d6b7d10169e6a63f8bc35b132002cc27bc1a37'
 BASE = 0x00100000
 DEAD_FN_HEAD = 'f04f2de9b80f9fe5'  # 0x004FBF20 : push {r4-r11,lr} ; ldr r0,[pc,#0xFB8] (fonction morte)
