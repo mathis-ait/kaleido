@@ -29,7 +29,7 @@ const speciesWithTag = (ctx: AchievementContext, tag: SpeciesTag) => ctx.dex.spe
 const caughtOf = (ctx: AchievementContext, ids: number[]): [number, number] => [ids.filter((id) => ctx.collection.speciesCaught.has(id)).length, ids.length];
 
 function slotsAchievement(n: number, title: string): Achievement {
-  return { id: `slots-${n}`, category: "Living Dex", title, description: `Remplir ${n.toLocaleString("fr-FR")} cases de la Living Dex.`, progress: (c) => [caughtSlots(c), n] };
+  return { id: `slots-${n}`, category: "Living Dex", title, description: n === 1 ? "Remplir une case de la Living Dex." : `Remplir ${n.toLocaleString("fr-FR")} cases de la Living Dex.`, progress: (c) => [caughtSlots(c), n] };
 }
 
 function percentAchievement(p: number, title: string): Achievement {

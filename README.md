@@ -42,6 +42,7 @@ boîtes, équipes stratégiques, légalité, Cadeaux mystère, Nuzlocke, calculs
 | ✅ **Légalité** | Vérification de chaque Pokémon, « Rendre légal » en un clic, base des rencontres (où et comment obtenir chaque espèce). |
 | 🎁 **Cadeaux mystère** | Plus de 3 000 distributions officielles Gen 4 à 7, à ajouter directement à la sauvegarde ou à exporter. |
 | 🪦 **Nuzlocke** | Suivi des routes, des captures et des morts, niveau maximum avant le prochain champion, détection des infractions. |
+| 📚 **Living Dex** | Remplie toute seule à partir de tes sauvegardes et de la banque, avec les 1 025 espèces, leurs formes, « où le trouver » dans chaque jeu (jeux de ta bibliothèque en premier), journal, saisie manuelle pour la Switch et succès. |
 | 🏦 **Banque** | Range tes Pokémon hors des sauvegardes et transfère-les d'un jeu à l'autre (PK4 → PK7). |
 | ▶️ **Jouer** | Détection des sauvegardes de melonDS et Azahar, bouton « Jouer » et synchronisation avec l'émulateur. |
 
@@ -281,6 +282,9 @@ et [TidalHeX](https://github.com/HydrosPlays/TidalHeX).
 - **Données de jeu** de l'éditeur de sauvegardes (`crates/core/src/dex/`, `crates/core/data/pkhex/`) : ressources de
   [PKHeX](https://github.com/kwsch/PKHeX) de kwsch (GPLv3). Puissance, précision et catégorie des attaques :
   [PokeAPI](https://github.com/PokeAPI/pokeapi) (BSD-3-Clause).
+- **Living Dex** (`app/public/livedex/`) : données et règles des cases de [Pelagix](https://github.com/HydrosPlays/Pelagix)
+  de HydrosPlays (GPLv3), tirées de PKHeX et de PokeAPI, traduites en français avec les textes de PKHeX par
+  `tools/livedex/build-data.mjs`.
 - **Showdown** : format d'équipe de [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) (MIT) et
   `ShowdownSet` de PKHeX (GPLv3).
 - **Sets compétitifs** : analyses de [Smogon University](https://www.smogon.com), au format JSON de

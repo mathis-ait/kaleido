@@ -66,6 +66,8 @@ watch(
   () => f.species,
   () => {
     if (!forms.value.some((x) => x.f === f.form)) f.form = 0;
+    // Sexe impossible pour la nouvelle espèce : on prend le premier possible.
+    if (genderOptions.value.find((o) => o.value === f.gender)?.disabled) f.gender = genderOptions.value.find((o) => !o.disabled)?.value ?? "n";
   },
 );
 

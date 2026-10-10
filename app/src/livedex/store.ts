@@ -23,6 +23,8 @@ export const livedex = reactive({
   sources: [] as ScannedSource[],
   /** Fichiers qui ressemblent à des sauvegardes mais n'ont pas pu être lus. */
   unreadable: [] as { path: string; error: string }[],
+  /** Émulateur qui utilise chaque sauvegarde détectée chez lui. */
+  emulatorOf: {} as Record<string, string>,
   saved: emptyState(),
   /** Succès débloqués pendant la session, à annoncer. */
   unlocked: [] as string[],
@@ -54,6 +56,7 @@ export async function scan(): Promise<void> {
   livedex.scanning = true;
   try {
     const known = await knownSaves();
+    livedex.emulatorOf = known.emulatorOf;
     const result = await invoke<ScannedSource[]>("livedex_scan", { paths: known.paths, bank: livedex.saved.bank });
     livedex.sources = result.filter((s) => !s.error).sort((a, b) => a.generation - b.generation || a.game.localeCompare(b.game));
     livedex.unreadable = result.filter((s) => s.error && s.path !== "bank" && SAVE_LIKE.test(s.path)).map((s) => ({ path: s.path, error: s.error ?? "" }));

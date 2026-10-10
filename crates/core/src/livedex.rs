@@ -92,7 +92,9 @@ pub fn from_session(session: &SaveSession) -> Result<Vec<Specimen>, SaveError> {
     for v in session.all()? {
         let place = match v.slot {
             Slot::Party { .. } => "Équipe".to_string(),
-            Slot::Box { r#box, .. } => box_names.get(r#box).filter(|n| !n.trim().is_empty()).cloned().unwrap_or_else(|| format!("Boîte {}", r#box + 1)),
+            Slot::Box { r#box, .. } => {
+                box_names.get(r#box).filter(|n| !n.trim().is_empty()).cloned().unwrap_or_else(|| format!("Boîte {}", r#box + 1))
+            }
         };
         let verdict = session.get(v.slot)?.map(|pk| legality::analyze(&pk, game).verdict);
         out.extend(specimen(&v, generation, place, verdict));

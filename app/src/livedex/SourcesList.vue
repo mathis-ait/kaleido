@@ -27,7 +27,7 @@ const plural = (n: number, one: string, many: string) => `${n.toLocaleString("fr
             <strong>{{ s.game }}</strong>
             <span class="dim">{{ s.trainer || "Dresseur sans nom" }} · {{ plural(s.specimens.length, "Pokémon", "Pokémon") }}</span>
           </span>
-          <span class="path" :title="s.path">{{ shortPath(s.path) }}</span>
+          <span class="path" :title="s.path">{{ livedex.emulatorOf[s.path] ?? shortPath(s.path) }}</span>
         </label>
       </li>
     </ul>
