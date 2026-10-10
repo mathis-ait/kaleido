@@ -28,6 +28,7 @@ mod legality;
 mod labels;
 mod library;
 mod live;
+mod livedex;
 mod mods;
 mod mods_catalog;
 mod mods_saves;
@@ -560,6 +561,9 @@ fn main() {
             nuzlocke::nuzlocke_view,
             nuzlocke::nuzlocke_set_state,
             nuzlocke::nuzlocke_link_rom,
+            livedex::livedex_scan,
+            livedex::livedex_load,
+            livedex::livedex_store,
             bank::bank_info,
             bank::bank_set_path,
             bank::bank_box,

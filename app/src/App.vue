@@ -10,6 +10,7 @@ import LibraryView from "./views/LibraryView.vue";
 import EditorView from "./views/EditorView.vue";
 import RandomizerView from "./views/RandomizerView.vue";
 import SavesView from "./views/SavesView.vue";
+import LivingDexView from "./views/LivingDexView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import { addPaths } from "./library";
 import { nav } from "./nav";
@@ -54,6 +55,7 @@ onUnmounted(() => unlisten?.());
           <EditorView v-else-if="nav.view === 'editor'" />
           <RandomizerView v-else-if="nav.view === 'randomizer'" />
           <SavesView v-else-if="nav.view === 'saves'" />
+          <LivingDexView v-else-if="nav.view === 'livedex'" />
           <SettingsView v-else-if="nav.view === 'settings'" />
         </div>
       </Transition>

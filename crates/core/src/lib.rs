@@ -12,6 +12,7 @@ pub mod gba_rom;
 pub mod gifts;
 pub mod legality;
 pub mod live;
+pub mod livedex;
 pub mod music;
 pub mod names;
 pub mod nx;
