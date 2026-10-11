@@ -243,6 +243,23 @@ fn cart_urls(key: &str) -> Option<Vec<String>> {
     (!urls.is_empty()).then_some(urls)
 }
 
+/// Dos, tranche et face avant (Switch) des boîtes sur LaunchBox, relevés une fois par
+/// `tools/boxes/scrape_boxart.py` (`box_art.json` : jeu → face → `fr|en <fichier>`, français
+/// d'abord, jamais une autre langue). Clé : `box-<back|spine|front>-<jeu>` (jeu Switch :
+/// `nx_<title id>`).
+const BOX_ART: &str = include_str!("box_art.json");
+
+fn box_art_urls(key: &str) -> Option<Vec<String>> {
+    static TABLE: std::sync::OnceLock<std::collections::HashMap<String, std::collections::HashMap<String, Vec<String>>>> = std::sync::OnceLock::new();
+    let (face, game) = key.strip_prefix("box-")?.split_once('-')?;
+    if !matches!(face, "back" | "spine" | "front") {
+        return None;
+    }
+    let table = TABLE.get_or_init(|| serde_json::from_str(BOX_ART).unwrap_or_default());
+    let urls: Vec<String> = table.get(game)?.get(face)?.iter().filter_map(|e| e.split_once(' ')).map(|(_, file)| format!("{LAUNCHBOX_IMAGES}/{file}")).collect();
+    Some(urls)
+}
+
 fn libretro_url(repo: &str, name: &str) -> String {
     // Les noms No-Intro ne contiennent que des lettres, chiffres, espaces, virgules et parenthèses.
     let encoded = name.replace(' ', "%20").replace(',', "%2C").replace('(', "%28").replace(')', "%29");
@@ -257,6 +274,10 @@ pub fn cover_urls(game: &str) -> Vec<String> {
     // Étiquette réelle d'une cartouche (mode Cartouche du lanceur) : `photo-<plateforme>-<jeu>[-<code>]`.
     if let Some(urls) = cart_urls(game) {
         return urls;
+    }
+    // Faces de la boîte en 3D (mode Jaquettes du lanceur) : `box-<face>-<jeu>`.
+    if game.starts_with("box-") {
+        return box_art_urls(game).unwrap_or_default();
     }
     // Romhack installé par Kaleido (`hack-<id>`) : écran titre du hack.
     if let Some(hack) = game.strip_prefix("hack-").and_then(kaleido_core::romhack::find) {
@@ -357,7 +378,7 @@ pub fn handle_cover<R: Runtime>(app: &AppHandle<R>, request: &Request<Vec<u8>>) 
     let key = request.uri().path().trim_start_matches('/').trim_end_matches(".png");
     // Ancien format `<jeu>-en` : la boîte française est désormais toujours servie.
     let game = key.strip_suffix("-en").unwrap_or(key).to_string();
-    let valid = switch_cover_id(&game).is_some() || cart_urls(&game).is_some() || code_cover_urls(&game).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+    let valid = switch_cover_id(&game).is_some() || cart_urls(&game).is_some() || code_cover_urls(&game).is_some() || box_art_urls(&game).is_some_and(|u| !u.is_empty()) || game.strip_prefix("hack-").and_then(kaleido_core::romhack::find).is_some() || (!game.is_empty() && game.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let result = if valid { covers_dir(app).and_then(|dir| load_cover(&dir, &game)) } else { Err("nom invalide".into()) };
     match result {
         Ok(data) => Response::builder()
@@ -773,6 +794,10 @@ mod tests {
         assert!(cover_urls("photo-ds-../x").is_empty() && cover_urls("photo-gba-inconnu").is_empty() && cover_urls("photo-switch-arceus").is_empty());
         // Carte Switch : par title ID (Épée).
         assert!(cover_urls("photo-switch-nx_0100abf008968000")[0].contains("launchbox"));
+        // Faces des boîtes 3D : dos et tranche LaunchBox, face avant pour la Switch.
+        assert!(cover_urls("box-back-diamond")[0].starts_with("https://images.launchbox-app.com/"));
+        assert!(!cover_urls("box-spine-soul_silver").is_empty() && !cover_urls("box-front-nx_01001f5010dfa000").is_empty());
+        assert!(cover_urls("box-front-diamond").is_empty() && cover_urls("box-back-inconnu").is_empty() && cover_urls("box-x-diamond").is_empty());
         assert_eq!(cover_urls("nx-01001f5010dfa000"), ["https://api.nlib.cc/nx/01001F5010DFA000/icon/512/512"]);
         assert!(switch_cover_id("nx-0100").is_none());
     }
