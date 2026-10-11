@@ -25,8 +25,9 @@ const BRANCH_OFFSET: usize = 6;
 /// `nop` Thumb (mov r8, r8).
 const THUMB_NOP: [u8; 2] = [0xC0, 0x46];
 pub const DEFAULT_THRESHOLD: u16 = 8;
-/// Seuil spécial : tous les Pokémon sont chromatiques.
-pub const ALWAYS: u16 = 256;
+/// Seuil spécial : tous les Pokémon sont chromatiques (hors des seuils réels : hg-engine
+/// peut aller jusqu'à 256).
+pub const ALWAYS: u16 = u16::MAX;
 
 /// Position (dans l'ARM9 décompressé) du début du test. La constante et le saut sont
 /// ignorés : on retrouve aussi une ROM déjà modifiée.

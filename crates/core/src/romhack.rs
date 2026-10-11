@@ -55,7 +55,8 @@ pub struct CodePatch {
     pub overlay: u32,
     /// Adresse en mémoire du premier octet modifié.
     pub address: u32,
-    pub original: &'static [u8],
+    /// Contenus remplaçables : celui du hack, puis ceux des versions précédentes de Kaleido.
+    pub previous: &'static [&'static [u8]],
     pub patched: &'static [u8],
 }
 
@@ -122,14 +123,14 @@ pub const HACKS: &[HackDef] = &[HackDef {
         pack: include_str!("../data/romhacks/heartgold-generations-fr.json"),
     }),
     // hg-engine remplace le test du jeu (ARM9 0x02070068) par le sien, dans l'overlay 129 :
-    // `SHINY_VALUE <= SHINY_ODDS` avec SHINY_ODDS = 8 (9 / 65 536). On passe à 127 :
-    // 128 / 65 536 = 1 / 512. La boucle qui empêche certains Pokémon d'être chromatiques
-    // (même comparaison) suit le même seuil.
+    // `SHINY_VALUE <= SHINY_ODDS` avec SHINY_ODDS = 8 (9 / 65 536). On passe à 255 :
+    // 256 / 65 536 = 1 / 256 (Kaleido 0.11.1 : 127, 1 / 512). La boucle qui empêche certains
+    // Pokémon d'être chromatiques (même comparaison) suit le même seuil.
     tweaks: Some(Tweaks {
-        label: "Chromatiques : 1 chance sur 512 (au lieu d'environ 1 sur 7 300)",
+        label: "Chromatiques : 1 chance sur 256 (au lieu d'environ 1 sur 7 300)",
         patches: &[
-            CodePatch { overlay: 129, address: 0x023D_B28E, original: &[0x08, 0x22], patched: &[0x7F, 0x22] }, // movs r2, #8 → #127
-            CodePatch { overlay: 129, address: 0x023D_AACE, original: &[0x08, 0x2B], patched: &[0x7F, 0x2B] }, // cmp r3, #8 → #127
+            CodePatch { overlay: 129, address: 0x023D_B28E, previous: &[&[0x08, 0x22], &[0x7F, 0x22]], patched: &[0xFF, 0x22] }, // movs r2, #8 → #255
+            CodePatch { overlay: 129, address: 0x023D_AACE, previous: &[&[0x08, 0x2B], &[0x7F, 0x2B]], patched: &[0xFF, 0x2B] }, // cmp r3, #8 → #255
         ],
     }),
 }];
@@ -173,23 +174,23 @@ fn patch_offset<R: Read + Seek>(r: &mut R, p: &CodePatch) -> Result<u64> {
             return Err(RomhackError::Invalid(format!("overlay {} compressé", p.overlay)));
         }
         let (start, end) = (read_u32(r, fat + file_id * 8)?, read_u32(r, fat + file_id * 8 + 4)?);
-        let rel = p.address.checked_sub(ram).filter(|&o| start + o + p.original.len() as u32 <= end);
+        let rel = p.address.checked_sub(ram).filter(|&o| start + o + p.patched.len() as u32 <= end);
         return rel.map(|o| (start + o) as u64).ok_or_else(|| RomhackError::Invalid(format!("adresse {:#x} hors de l'overlay {}", p.address, p.overlay)));
     }
     Err(RomhackError::Invalid(format!("overlay {} introuvable", p.overlay)))
 }
 
-/// Les ajustements Kaleido sont-ils déjà dans cette ROM ? Erreur si le code ne
-/// ressemble ni à l'original ni à la version retouchée (autre version du hack).
+/// Les ajustements Kaleido actuels sont-ils dans cette ROM ? Erreur si le code ne
+/// ressemble à aucune version connue (autre version du hack).
 pub fn tweaks_applied<R: Read + Seek>(r: &mut R, def: &HackDef) -> Result<bool> {
     let Some(t) = def.tweaks else { return Ok(true) };
     let mut all = true;
     for p in t.patches {
         let at = patch_offset(r, p)?;
-        let mut cur = vec![0u8; p.original.len()];
+        let mut cur = vec![0u8; p.patched.len()];
         r.seek(SeekFrom::Start(at)).map_err(io_err)?;
         r.read_exact(&mut cur).map_err(io_err)?;
-        if cur == p.original {
+        if p.previous.contains(&cur.as_slice()) {
             all = false;
         } else if cur != p.patched {
             return Err(RomhackError::Invalid("code inattendu : cette ROM n'est pas la version du hack prévue".into()));
@@ -363,17 +364,21 @@ mod tests {
         put(&mut rom, ovt + 24, 3);
         put(&mut rom, fat + 24, code);
         put(&mut rom, fat + 28, code + 0x6400);
-        for p in t.patches {
-            let at = (code + p.address - ram) as usize;
-            rom[at..at + 2].copy_from_slice(p.original);
+        // Chaque version connue (hack d'origine, Kaleido précédent) passe à la version actuelle.
+        let mut rom = rom;
+        for v in 0..t.patches[0].previous.len() {
+            for p in t.patches {
+                let at = (code + p.address - ram) as usize;
+                rom[at..at + 2].copy_from_slice(p.previous[v]);
+            }
+            let mut cur = std::io::Cursor::new(rom);
+            assert!(!tweaks_applied(&mut cur, def).unwrap());
+            assert!(apply_tweaks(&mut cur, def).unwrap());
+            assert!(tweaks_applied(&mut cur, def).unwrap());
+            assert!(!apply_tweaks(&mut cur, def).unwrap());
+            rom = cur.into_inner();
+            assert_eq!(&rom[(code + 0x023D_B28E - ram) as usize..][..2], &[0xFF, 0x22]);
         }
-        let mut cur = std::io::Cursor::new(rom);
-        assert!(!tweaks_applied(&mut cur, def).unwrap());
-        assert!(apply_tweaks(&mut cur, def).unwrap());
-        assert!(tweaks_applied(&mut cur, def).unwrap());
-        assert!(!apply_tweaks(&mut cur, def).unwrap());
-        let rom = cur.into_inner();
-        assert_eq!(&rom[(code + 0x023D_B28E - ram) as usize..][..2], &[0x7F, 0x22]);
         // Code inconnu : refus.
         let mut bad = rom.clone();
         bad[(code + 0x023D_B28E - ram) as usize] = 0x10;
