@@ -452,6 +452,10 @@ const inspectRows = computed<InspectRow[]>(() => {
       ],
     },
     { id: "wear", label: "Usure", options: WEARS.map((w) => ({ id: w.id === "neuve" ? undefined : w.id, label: w.label })) },
+    // Cartes DS : présentées dans leur boîtier, qui s'ouvre au lancement.
+    ...(natural.support.id === "ds"
+      ? [{ id: "case" as const, label: "Boîtier", options: [{ id: undefined, label: "Dans son boîtier" }, { id: "none", label: "Carte seule" }] }]
+      : []),
   ];
 });
 

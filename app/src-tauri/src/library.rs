@@ -52,6 +52,9 @@ pub struct CartridgeLook {
     pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wear: Option<String>,
+    /// `none` : carte DS présentée sans son boîtier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case: Option<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {

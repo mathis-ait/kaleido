@@ -29,6 +29,8 @@ import {
   RepeatWrapping,
   Plane,
   PMREMGenerator,
+  Quaternion,
+  Euler,
   Scene,
   Shape,
   ShapeGeometry,
@@ -49,7 +51,8 @@ import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
 import { REAL_MODELS, disposeTemplates, instantiate, realTemplate, type RealTemplate } from "./realModels";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { INITIAL, startInsertion, type InsertState, type Insertion } from "./insert";
+import { CASE_PRELUDE, INITIAL, insertState, startInsertion, type InsertState, type Insertion } from "./insert";
+import { CASE_SIZE, SEAT, buildCase, dimCase, disposeCaseGeometries, type GameCase } from "./gameCase";
 
 const props = defineProps<{
   games: Detection[];
@@ -153,6 +156,37 @@ interface Item {
   sizePx: [number, number];
   /** Cartouche centrale lors du dernier réglage des matériaux. */
   center: boolean | null;
+  /** Échelle de la carte seule (px par mm). */
+  cartK: number;
+  /** Boîtier du jeu (cartes DS), ouvert au lancement. */
+  gcase: GameCase | null;
+}
+
+/** Échelle d'un boîtier : tient dans la boîte d'une jaquette, comme une cartouche. */
+const CASE_K = pxPerMm(CASE_SIZE);
+const seatPos = new Vector3();
+const seatQuat = new Quaternion();
+const freeQuat = new Quaternion();
+const euler = new Euler();
+
+/** Jeux présentés dans leur boîtier : cartes DS, sauf si Inspecter l'a retiré. */
+function wantsCase(item: Item) {
+  return item.look.support.id === "ds" && props.looks[item.key]?.case !== "none";
+}
+
+function setCase(item: Item, on: boolean) {
+  if (on === !!item.gcase) return;
+  if (item.gcase) {
+    item.group.remove(item.gcase.group);
+    item.gcase.dispose();
+    item.gcase = null;
+  } else {
+    const d = item.game;
+    const base = d.game ? convertFileSrc(`${d.game.id}.png`, "cover") : null;
+    item.gcase = buildCase([coverUrl(d), base], d.title, invalidate);
+    item.group.add(item.gcase.group);
+  }
+  invalidate();
 }
 
 let renderer: WebGLRenderer | null = null;
@@ -296,7 +330,7 @@ function init() {
   themeLight();
 
   // @ts-expect-error mesure en développement (`renderer.info.memory`)
-  if (import.meta.env.DEV) window.__kaleidoScene = { renderer, items };
+  if (import.meta.env.DEV) window.__kaleidoScene = { renderer, items, freeze };
 }
 
 // --- Cartouches
@@ -529,6 +563,7 @@ function buildProcedural(item: Item) {
   item.labelMesh = new Mesh(geo.label, item.labelMat.map ? item.labelMat : loadingMaterial());
   item.body.add(new Mesh(geo.shell, shellMat), item.labelMesh);
   item.body.scale.setScalar(k);
+  item.cartK = k;
   item.shells = [shellMat];
   item.sizePx = [geo.size[0] * k, geo.size[1] * k];
 }
@@ -539,6 +574,7 @@ function buildReal(item: Item, t: RealTemplate) {
   item.labelMesh = new Mesh(t.label, item.labelMat.map ? item.labelMat : loadingMaterial());
   item.body.add(inst.root, item.labelMesh);
   item.body.scale.setScalar(k);
+  item.cartK = k;
   item.shells = inst.shells;
   item.others = inst.others;
   item.real = t;
@@ -573,6 +609,8 @@ function createItem(game: Detection, i: number): Item {
     dur: 0,
     sizePx: [0, 0],
     center: null,
+    cartK: 1,
+    gcase: null,
   };
   const finish = (t: RealTemplate | null) => {
     if (items.get(game.path) !== item) return;
@@ -582,6 +620,7 @@ function createItem(game: Detection, i: number): Item {
     item.center = props.games[props.index]?.path === game.path;
     applyMaterial(item, item.center);
     prepareMaterials(item);
+    setCase(item, wantsCase(item));
     loadLabel(item);
     invalidate();
   };
@@ -592,6 +631,7 @@ function createItem(game: Detection, i: number): Item {
 
 function disposeItem(item: Item) {
   root.remove(item.group);
+  item.gcase?.dispose();
   // Géométries et textures des modèles réels : partagées, gardées ; seuls les matériaux sont propres.
   for (const m of [...item.shells, ...item.others]) m.dispose();
   item.labelMat.map?.dispose();
@@ -652,6 +692,7 @@ function refreshLooks() {
     item.look = look;
     item.center = props.games[props.index]?.path === item.game.path;
     applyMaterial(item, item.center);
+    if (item.ready) setCase(item, wantsCase(item));
     const sig = lookSig(look);
     const labelChanged = before.split("|").slice(3).join("|") !== sig.split("|").slice(3).join("|");
     if (labelChanged) loadLabel(item);
@@ -825,7 +866,36 @@ function step(now: number): boolean {
     item.group.position.set(x, y, z);
     item.group.rotation.set(0, cur.rot * deg, 0);
     item.group.scale.setScalar(scale);
-    item.body.rotation.set(rotX, rotY, 0);
+    const c = item.gcase;
+    if (c) {
+      // Boîtier : incliné comme la carte centrale ; en s'ouvrant il se pose « sur la table »
+      // et se décale pour rester centré, puis descend et s'efface quand la carte en est sortie.
+      const open = inserting ? insert.open : 0;
+      const lift = inserting ? insert.lift : 0;
+      const out = inserting ? insert.out : 0;
+      const o1 = Math.min(1, open);
+      const tilted = isCenter || inserting;
+      c.group.scale.setScalar(CASE_K);
+      c.group.rotation.set((tilted ? tiltNow.x * deg : 0) - 0.38 * o1, tilted ? (tiltNow.y + sway) * deg : 0, 0);
+      c.group.position.set((CASE_SIZE[0] / 2) * CASE_K * o1, -380 * out, 0);
+      c.lid.rotation.y = -Math.PI * open;
+      c.group.visible = out < 0.999;
+      dimCase(c, cur.dim, opacity * (1 - out));
+      // Carte : dans son logement, puis vers sa pose habituelle, face à l'écran.
+      seatQuat.setFromEuler(c.group.rotation);
+      seatPos.copy(SEAT).multiplyScalar(CASE_K).applyQuaternion(seatQuat).add(c.group.position);
+      freeQuat.setFromEuler(euler.set(rotX, rotY, 0));
+      item.body.position.copy(seatPos).multiplyScalar(1 - lift);
+      item.body.position.z += Math.sin(Math.PI * lift) * 140;
+      item.body.quaternion.slerpQuaternions(seatQuat, freeQuat, lift);
+      item.body.scale.setScalar(CASE_K + (item.cartK - CASE_K) * lift);
+      item.body.visible = open > 0.001 || lift > 0;
+    } else {
+      item.body.position.set(0, 0, 0);
+      item.body.scale.setScalar(item.cartK);
+      item.body.rotation.set(rotX, rotY, 0);
+      item.body.visible = true;
+    }
     item.group.visible = item.ready && opacity > 0.01;
     for (const m of [...item.shells, ...item.others, item.labelMat]) {
       m.opacity = opacity * ((m.userData.alpha as number | undefined) ?? 1);
@@ -903,27 +973,47 @@ function startInsert(hooks: { launch(): void; done(): void; cancelled(): void })
   if (!renderer || !item || insertion) return false;
   insertPath = g.path;
   buildSlot(item.look.support.slot, item.sizePx[0]);
-  insertion = startInsertion({
-    frame: (s) => {
-      insert = s;
-      emit("fade", s.fade);
-      invalidate();
+  insertion = startInsertion(
+    {
+      frame: (s) => {
+        insert = s;
+        emit("fade", s.fade);
+        invalidate();
+      },
+      launch: hooks.launch,
+      click: () => insertClick(item.look.support.click),
+      done: () => {
+        insertion = null;
+        hooks.done();
+      },
+      cancelled: () => {
+        insertion = null;
+        insertPath = null;
+        insert = { ...INITIAL };
+        invalidate();
+        hooks.cancelled();
+      },
     },
-    launch: hooks.launch,
-    click: () => insertClick(item.look.support.click),
-    done: () => {
-      insertion = null;
-      hooks.done();
-    },
-    cancelled: () => {
-      insertion = null;
-      insertPath = null;
-      insert = { ...INITIAL };
-      invalidate();
-      hooks.cancelled();
-    },
-  });
+    undefined,
+    item.gcase ? CASE_PRELUDE : 0,
+  );
   return true;
+}
+
+/** Développement : fige la séquence de la carte centrale au temps `t` (ms), sans rien lancer ; `null` remet en place. */
+function freeze(t: number | null) {
+  const g = props.games[props.index];
+  const item = g ? items.get(g.path) : undefined;
+  if (!item || insertion) return;
+  if (t === null) {
+    insertPath = null;
+    insert = { ...INITIAL };
+  } else {
+    insertPath = g.path;
+    buildSlot(item.look.support.slot, item.sizePx[0]);
+    insert = insertState(t, item.gcase ? CASE_PRELUDE : 0);
+  }
+  invalidate();
 }
 
 function cancelInsert(): boolean {
@@ -990,6 +1080,7 @@ onUnmounted(() => {
     slot = null;
   }
   disposeGeometries();
+  disposeCaseGeometries();
   disposeTemplates();
   for (const t of recolors.values()) t.dispose();
   recolors.clear();

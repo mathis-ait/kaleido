@@ -155,6 +155,8 @@ export interface StoredLook {
   finish?: Finish;
   label?: "custom";
   wear?: Wear;
+  /** `none` : carte DS présentée sans son boîtier. */
+  case?: "none";
 }
 
 export interface Look {
