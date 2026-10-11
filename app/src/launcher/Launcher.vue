@@ -12,7 +12,7 @@ import ConsoleTabs from "../components/ConsoleTabs.vue";
 import { SHELVES, consoleOf, generationLabel, type ShelfFilter } from "../consoles";
 import { openRom } from "../editor";
 import { UPDATE_LABEL, games as libraryState, hideGame, libraryUi, setCartridgeLook } from "../games";
-import { cartridgeBlocker, cartridgeMode, launcherScale, measureLauncher, presentation } from "./presentation";
+import { boxesMode, cartridgeBlocker, cartridgeMode, launcherScale, measureLauncher, presentation, sceneFailed } from "./presentation";
 import { FINISHES, WEARS, cartridgeKey, resolveLook, type StoredLook } from "./scene/models";
 import type { KeyAction } from "./scene/hints";
 import { removeItem } from "../library";
@@ -239,8 +239,9 @@ const notice = ref<string | null>(null);
 async function play() {
   const g = game.value;
   if (!g || launching.value || installing.value || inserting.value) return;
-  // Mode Cartouche : la cartouche s'insère dans la console (si l'émulateur est prêt).
-  if (cartridgeMode.value && scene.value && emulator.value && insertAndPlay(g)) return;
+  // Mode Cartouche : la cartouche s'insère dans la console ; mode Jaquettes en 3D : la boîte
+  // s'ouvre et la carte en sort (si l'émulateur est prêt).
+  if ((cartridgeMode.value || boxesMode.value) && scene.value && emulator.value && insertAndPlay(g)) return;
   // Sans l'oublier : la musique reprend quand on ferme l'émulateur et revient dans Kaleido.
   stopMusic(false);
   launching.value = { cover: coverUrl(g), title: g.title, status: "Lancement…" };
@@ -316,7 +317,13 @@ function insertAndPlay(g: Detection): boolean {
 }
 
 function onSceneFailed(reason: string) {
+  if (boxesMode.value) {
+    sceneFailed.value = true;
+    notice.value = `Boîtes en 3D indisponibles (${reason}) : jaquettes plates.`;
+    return;
+  }
   presentation.wanted = "covers";
+  sceneFailed.value = true;
   notice.value = `Mode Cartouche indisponible (${reason}) : retour aux jaquettes.`;
 }
 
@@ -452,10 +459,6 @@ const inspectRows = computed<InspectRow[]>(() => {
       ],
     },
     { id: "wear", label: "Usure", options: WEARS.map((w) => ({ id: w.id === "neuve" ? undefined : w.id, label: w.label })) },
-    // Cartes DS : présentées dans leur boîtier, qui s'ouvre au lancement.
-    ...(natural.support.id === "ds"
-      ? [{ id: "case" as const, label: "Boîtier", options: [{ id: undefined, label: "Dans son boîtier" }, { id: "none", label: "Carte seule" }] }]
-      : []),
   ];
 });
 
@@ -659,12 +662,14 @@ const stats = computed(() => {
 </script>
 
 <template>
-  <section ref="rootEl" class="launcher" :class="{ cartridges: cartridgeMode }" :style="{ '--tint': color, '--ui': launcherScale.ui, '--stage': launcherScale.stage }" @wheel.passive="onWheel">
+  <section ref="rootEl" class="launcher" :class="{ cartridges: cartridgeMode || boxesMode }" :style="{ '--tint': color, '--ui': launcherScale.ui, '--stage': launcherScale.stage }" @wheel.passive="onWheel">
     <Backdrop :image="game ? coverUrl(game) : null" :color="color" />
     <TitleScene :game="game ?? null" />
     <CartridgeScene
-      v-if="cartridgeMode"
+      v-if="cartridgeMode || boxesMode"
+      :key="cartridgeMode ? 'cartridges' : 'boxes'"
       ref="scene"
+      :kind="cartridgeMode ? 'cartridges' : 'boxes'"
       :games="list"
       :index="index"
       :drag-shift="dragShift"

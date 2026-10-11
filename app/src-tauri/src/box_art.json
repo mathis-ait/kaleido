@@ -1,0 +1,383 @@
+{
+ "red": {
+  "spine": [
+   "en 5882fcc5-cb56-4583-a8a2-2515b2cabfa7.jpg"
+  ],
+  "back": [
+   "en ef3897c8-fb89-42bb-a0f8-0e742938e9d6.jpg"
+  ]
+ },
+ "blue": {
+  "back": [
+   "en a80a4371-5734-48ff-985e-69baa44e7c4d.jpg",
+   "en 84ffe39a-e885-4ecf-9582-c0eaa13eb934.jpg"
+  ],
+  "spine": [
+   "en d0d56b0f-d328-43fe-acc2-7ed5dcf00c0a.jpg",
+   "en b66e57db-c55d-4208-acce-7f317c8aa6e8.jpg"
+  ]
+ },
+ "yellow": {
+  "back": [
+   "fr 26dbb2bb-5a1c-423e-b703-b1a5344beba9.jpg",
+   "en e50fa7b8-2d54-4a38-93bd-8b72d985ece1.jpg",
+   "en 8cefba35-db84-47d0-8756-bcb9de069e61.jpg"
+  ],
+  "spine": [
+   "en 301258c4-b985-4a9c-8aac-5e0fea4fec8f.jpg"
+  ]
+ },
+ "gold": {
+  "back": [
+   "fr 0731f3fc-c28b-468c-b226-79d5914c3ad7.jpg",
+   "en ff031a09-43a9-47b9-98de-5b61a7f9619c.jpg",
+   "en 52a25a9b-471c-4f86-b242-ef144f0ae535.jpg"
+  ],
+  "spine": [
+   "en 8bc07bce-9951-4a08-99fe-a7ffff808a31.jpg"
+  ]
+ },
+ "silver": {
+  "back": [
+   "en f7fcf2d1-2a36-47c1-b985-69f509068766.jpg",
+   "en d263a06d-f3e6-484c-aaf2-78211b25f66d.jpg",
+   "en e20f15d0-7cae-4542-8fa8-49f6c99ae402.jpg"
+  ],
+  "spine": [
+   "en r2_276695f7-6c7b-4c31-9f5a-50b5501ed215.jpg",
+   "en f0138aef-0396-4791-9495-d575bf25d858.jpg"
+  ]
+ },
+ "crystal": {
+  "back": [
+   "en b669b003-9267-4aa6-a302-8c7dc38e3537.jpg",
+   "en e8b85a4a-1c3c-4924-8ede-47a693e42930.jpg"
+  ],
+  "spine": [
+   "en 33078ee9-7177-4b33-a9a8-b567a7f76752.jpg"
+  ]
+ },
+ "sapphire": {
+  "back": [
+   "en cab077d8-0248-4f6e-8b56-eaf5ab6f097d.jpg",
+   "en a89a5672-7a40-4544-a79d-3191d5e445c4.jpg"
+  ],
+  "spine": [
+   "en 8c4c7610-aa84-4669-bbb2-02121a532851.jpg"
+  ]
+ },
+ "emerald": {
+  "back": [
+   "fr 363ee3ef-1f35-4e82-884e-0464801c55f0.jpg",
+   "en 6602f3ad-0d9c-47d2-93f8-d36f18d5e092.jpg",
+   "en d5722a3a-7c4b-4b48-97eb-8ebcf99219d1.jpg"
+  ],
+  "spine": [
+   "en 567c7a8d-baeb-4b16-9dc3-b158c11f411d.jpg"
+  ]
+ },
+ "fire_red": {
+  "back": [
+   "en 77e0d70a-6b04-4b50-b13f-7c8a71014122.jpg",
+   "en 6636694a-1350-47e8-ba1f-a6485a01fc94.jpg"
+  ]
+ },
+ "leaf_green": {
+  "back": [
+   "en r2_dd152233-f4b0-4c9b-8f5a-7c598def469b.png"
+  ]
+ },
+ "diamond": {
+  "back": [
+   "en 86cb3945-8504-4cd7-94ca-65e0edf22736.jpg",
+   "en 05249d37-5db8-41ca-ac8d-b6154c15fd4c.jpg",
+   "en ee4922b5-5792-4ad2-90a8-0cd17bacae76.jpg"
+  ],
+  "spine": [
+   "en cc22f5b5-f1bb-4ac2-95fe-5f74532e225a.jpg",
+   "en 98b599c4-e24a-4f89-8927-ef3914187b0b.jpg",
+   "en b0bbe1ae-c35f-44e9-8cb8-199b47ebd3ef.jpg"
+  ]
+ },
+ "pearl": {
+  "back": [
+   "en d984b7b9-5004-43e2-9f50-0726daa52783.jpg",
+   "en f2f2cc1f-714a-4e82-af6a-6ce9a5eb018d.jpg",
+   "en 4f000792-6d1a-412d-93d3-9ea1149a827e.jpg"
+  ],
+  "spine": [
+   "en 6be556ec-f15d-42ca-8298-d6adf2ab2ebe.jpg",
+   "en 291a19f1-e3b4-4d2a-8175-7a733b5a9c05.jpg",
+   "en c480d361-fd06-44a9-afe2-d2e1a2f3c982.jpg"
+  ]
+ },
+ "platinum": {
+  "back": [
+   "fr c8b0f472-dcf6-4dd3-93ae-4106642b04a3.jpg",
+   "en 4a6428b1-31b6-4f7a-895d-93ae6355c77f.jpg",
+   "en a08f5346-2d71-4e4c-9953-aa2828a1f904.jpg"
+  ],
+  "spine": [
+   "en 83e43f04-6828-47ec-a1c3-cb6ec26dce6b.jpg",
+   "en da8b45fe-70f7-4f43-8a9d-f4ff765aab1c.jpg",
+   "en e5290a4b-fe19-4497-926d-d4da369d1003.jpg"
+  ]
+ },
+ "heart_gold": {
+  "back": [
+   "fr 13abd0ac-abf7-4aeb-a5af-a6f799bc8190.jpg",
+   "en 94ad9bd4-3dac-4a41-93c9-8f320b020b68.jpg",
+   "en 09a84da4-461a-4ae8-9e4f-2748200159d7.jpg"
+  ],
+  "spine": [
+   "en 36d64f48-4c0d-4dd2-abdc-72fbb3e90913.jpg",
+   "en 1460aabe-055d-4bfc-9e72-6ae1493b6844.jpg",
+   "en 00bf14ba-24ac-4fce-8b9e-c7ed6e811d41.jpg"
+  ]
+ },
+ "soul_silver": {
+  "back": [
+   "fr 7dc8814f-299a-4e31-b912-13b36ae54920.jpg",
+   "en c9dd9aa0-6886-4691-9be8-acce34d50825.jpg",
+   "en c81ced5d-a2f2-4a7c-8a67-7bfc8a173254.jpg"
+  ],
+  "spine": [
+   "en 996e85bb-7907-490b-ace9-c4d6a18a2a98.jpg",
+   "en a021e7bf-ad5b-492c-8eb6-e648253eeb79.jpg",
+   "en a80286b4-e312-4a4e-80be-d10ddb00d733.jpg"
+  ]
+ },
+ "black": {
+  "back": [
+   "fr 6375c67f-3223-4b63-8a0f-fd2629e25078.jpg",
+   "en 00ab5791-ef11-461a-9cca-21131e816f6f.jpg",
+   "en d3dfa86d-4607-4b76-b144-62617cb0f518.jpg"
+  ],
+  "spine": [
+   "en ea182bcc-1eac-419f-a47d-1050f7ca28f1.jpg",
+   "en c782bee5-b2f6-44c8-b388-6048b25a0fee.jpg"
+  ]
+ },
+ "white": {
+  "back": [
+   "fr 3516d90d-9d67-4484-8702-ac988a8e9306.jpg",
+   "en 614e1125-7187-45aa-b928-3afa5cd026be.jpg",
+   "en r2_f8233540-5b47-476d-a5c2-07ef6255cc13.jpg"
+  ],
+  "spine": [
+   "en 9098da7e-470f-4294-918b-c1fc5115ad53.jpg",
+   "en 1c951f39-a57e-4d42-b637-b6463448de25.jpg"
+  ]
+ },
+ "black2": {
+  "back": [
+   "fr c3b1f1dd-58fb-4a41-ba58-8cce36bcaee3.jpg",
+   "en 949b1f1e-54eb-4470-90e7-b84da08d5e0b.jpg",
+   "en 8efd9168-8a74-4d10-8c6c-4fc592a6e9cd.jpg"
+  ],
+  "spine": [
+   "en 1484fe3e-ed3f-42fe-baba-98c65237c6e2.jpg",
+   "en 7d40d0bd-2344-4eb3-921c-c3b22206d54d.png"
+  ]
+ },
+ "white2": {
+  "back": [
+   "fr f865c4a7-816e-40eb-b94a-305a680c5f66.jpg",
+   "en e295df15-0232-4575-b99f-6845e9a9e572.jpg",
+   "en c7727fcc-a21e-49e1-ae9e-d328e39c2755.jpg"
+  ],
+  "spine": [
+   "en e15c723f-405a-4fd2-a382-a23ac8bb8543.jpg",
+   "en 9b0c5607-bcce-4a9b-b5a4-6f884964c6bb.jpg",
+   "en df5e960a-26bd-45f2-aef0-706b912308e5.jpg"
+  ]
+ },
+ "x": {
+  "back": [
+   "en 7b441eb0-5bef-4441-b872-4ae0c818606f.jpg",
+   "en a936b39e-debd-4ffe-8823-749056674791.jpg",
+   "en f351b940-23c7-4e12-a1b9-cf23467c219d.jpg"
+  ],
+  "spine": [
+   "en c1b73dd1-43db-4261-a89c-4d9ba4603622.jpg",
+   "en 9de78b8f-95f1-4a87-b59e-541f5156616d.jpg"
+  ]
+ },
+ "y": {
+  "back": [
+   "en 43cac826-d3e0-486d-8b9b-1e4def0c5eda.jpg",
+   "en 84ba0f4f-180b-41d6-8efa-45e4d51d1ecf.jpg",
+   "en cd9e15c5-9197-45a1-a727-6bcf26496f04.jpg"
+  ],
+  "spine": [
+   "en 341ebb15-2aa8-45f1-93f1-440a5280c14d.jpg",
+   "en 564c8095-23ee-4d89-9d4e-4f6c01a2aec6.jpg"
+  ]
+ },
+ "omega_ruby": {
+  "back": [
+   "en d9da0601-9506-4c56-85d6-c8903f91782b.jpg",
+   "en 202db9f0-6bb3-4864-9d71-f3b2aaf04b04.jpg"
+  ],
+  "spine": [
+   "en 9994d690-1858-435a-9d13-1faa29d1950b.jpg",
+   "en 3f4e5a62-f116-4779-8f0a-8390a6bb0d51.jpg"
+  ]
+ },
+ "alpha_sapphire": {
+  "back": [
+   "fr 52b66851-0b6b-4e3d-b1b6-4e0e9f1053e3.jpg",
+   "en 4e581192-0d48-4412-9332-adac794f18ba.jpg",
+   "en 994a3346-3c21-47cb-bc0d-978ba96aca61.jpg"
+  ],
+  "spine": [
+   "fr 8acc8237-f64d-4a76-a2b9-87b283ec1d6a.jpg",
+   "en a0893315-d8e9-4576-8b42-6f6fd0d87031.jpg",
+   "en 52d318e3-3078-4192-bc2c-b266bcb8cfbe.jpg"
+  ]
+ },
+ "sun": {
+  "back": [
+   "en 86ac5c2a-78bc-4aaf-8e74-2342f57bba64.jpg",
+   "en r2_dbd9ab0a-a670-4a39-820c-7f3d10b58901.jpg",
+   "en r2_ab954507-9c42-4acf-8a1c-544634c9ad69.jpg"
+  ],
+  "spine": [
+   "en bbe281b8-39f6-45c2-9341-d746485c4756.jpg",
+   "en r2_b06da684-d1ca-44e1-a714-539bdcf2f159.jpg",
+   "en r2_4afdab84-af1a-469c-a573-55ca6a36f48a.jpg"
+  ]
+ },
+ "moon": {
+  "back": [
+   "en 2af7a17b-2987-444c-8342-fa6d097756c9.jpg",
+   "en 8406be6e-8aba-4493-b3bc-cacae618b2eb.jpg",
+   "en ff9a1cf2-623c-4505-bcee-25cdcb04a9b4.jpg"
+  ],
+  "spine": [
+   "en 2e98d5d1-357e-4e0f-9e08-0e314c2ff17b.jpg",
+   "en 52102e1d-2578-4752-82e2-99fc1e755a9b.jpg",
+   "en r2_3b39cc2b-d067-4caf-8be0-3745f3ef73bc.jpg"
+  ]
+ },
+ "ultra_sun": {
+  "back": [
+   "en r2_68156b02-3a91-439f-99d7-f1d5a3fe9ebb.jpg"
+  ],
+  "spine": [
+   "en r2_c1211ed7-412d-438a-b1dc-fbc3ef75d4cb.jpg"
+  ]
+ },
+ "ultra_moon": {
+  "back": [
+   "en 02134537-a99a-4cf3-98e9-0afad364ca45.jpg",
+   "en 88087b44-392f-49ae-a0e5-6035a9ebfc72.jpg"
+  ],
+  "spine": [
+   "en 22afdd21-4535-4aa5-9ff2-0344fdad4aa9.jpg",
+   "en 656baa23-a6c4-441b-9cba-cb511c85ab42.png"
+  ]
+ },
+ "nx_0100abf008968000": {
+  "front": [
+   "fr 74b54cc3-665a-4f8e-aee1-7ca0d3abace9.jpg",
+   "en b13b32dd-12a3-4db7-bd15-945c3316df4d.png",
+   "en f7b74a44-86aa-41d4-b1e2-f50d0c7d5ed7.jpg"
+  ],
+  "spine": [
+   "en 31dc9c5e-54ce-4a80-8151-ecd2d2bbd4d0.jpg"
+  ]
+ },
+ "nx_01008db008c2c000": {
+  "front": [
+   "fr 72337b56-b305-444d-9454-c3d3f9a88c1a.jpg",
+   "en 19cb9042-f147-4f44-8691-6c06cbe7d30f.jpg",
+   "en be9c86d5-7ce9-455a-9c4d-f2e0185a91e5.jpg"
+  ],
+  "back": [
+   "en f9e63101-10f6-4141-85fb-e0d283f23614.jpg",
+   "en r2_e7be95d0-1841-41ed-a198-6708005c5270.png"
+  ],
+  "spine": [
+   "en 66fc5b0b-cd9f-4647-8e46-2f271bc7bd65.jpg",
+   "en 3cbaa8e0-955b-4a4b-abc6-2130b48e5482.jpg"
+  ]
+ },
+ "nx_0100000011d90000": {
+  "front": [
+   "fr 5522a9cc-7e85-4e3f-a650-f070f26b54d3.jpg",
+   "en 933f6dde-7e20-4f5e-a468-5f0c32461b7c.jpg",
+   "en 5d23b35e-7611-4519-9072-d950fec78927.jpg"
+  ],
+  "back": [
+   "en r2_dcc4b594-19a0-4c75-8edd-40d37b8435cf.jpg"
+  ],
+  "spine": [
+   "en eeff78d4-00b8-4434-aa8e-9b771093153d.png"
+  ]
+ },
+ "nx_010018e011d92000": {
+  "front": [
+   "fr 2e709295-1434-4c63-b1a2-edc77aa18c6b.jpg",
+   "en a3eec852-1694-4d21-8d8b-7afa8654ec19.jpg"
+  ],
+  "back": [
+   "en r2_0383a9be-8720-4b4d-ab74-e75dfc5fb34b.jpg"
+  ],
+  "spine": [
+   "en 127931f8-a27c-4c73-aff6-af549b4821b1.png"
+  ]
+ },
+ "nx_01001f5010dfa000": {
+  "front": [
+   "fr 3af61c47-8b21-4d47-8837-13e3d5979a54.jpg",
+   "en c0a0af4b-3827-43c0-949d-de3dbb96b797.jpg",
+   "en 00e96255-20ed-49d2-9ae9-88aa143b2be6.png"
+  ],
+  "back": [
+   "en e79d9b1b-ae9c-4269-86df-5fe3efc2f162.jpg"
+  ],
+  "spine": [
+   "en 4142a679-0b72-4a06-94fa-17eee6a2c711.jpg"
+  ]
+ },
+ "nx_0100a3d008c5c000": {
+  "front": [
+   "fr 92b09e25-5946-4ee9-b94e-3f80f5b41d3f.png",
+   "en f7f3a4dd-6381-47f5-aa31-bf9a11ef5edf.jpg",
+   "en 466d3909-b3a2-43ac-8aa1-a2215bc5b50a.jpg"
+  ],
+  "back": [
+   "en fcdcd429-0167-4717-950c-046c06be1922.jpg"
+  ],
+  "spine": [
+   "en fcf9a044-c9a9-4bff-a12c-588bb4797e64.png"
+  ]
+ },
+ "nx_01008f6008c5e000": {
+  "front": [
+   "en c026989e-3907-40ef-af6b-51f977227d5a.png",
+   "en 93b1d9cd-d501-4717-bd88-5e45ba897192.jpg"
+  ],
+  "back": [
+   "en r2_db34ccfb-3735-46da-9cf7-2ea46211c5d1.jpg"
+  ],
+  "spine": [
+   "en 068109e6-f1bb-45d4-97d1-a9112ea70041.png",
+   "en b08b681e-0b6d-4f33-bcee-70345c285cb2.png"
+  ]
+ },
+ "nx_0100187003a36000": {
+  "front": [
+   "en e625103c-c71f-401c-ad1f-decc71b534d2.jpg",
+   "en b2f0570f-6f7e-418e-b19a-5fd4f9d1fedd.jpg",
+   "en 93a30744-201a-4317-936a-c6b68ed307ff.jpg"
+  ],
+  "back": [
+   "en 3bab0e01-86e0-41ec-8126-bbb64abd230d.jpg"
+  ],
+  "spine": [
+   "en 575e8289-87b4-4ebf-83a6-ee0c05384de8.jpg"
+  ]
+ }
+}

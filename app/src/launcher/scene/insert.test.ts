@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CANCEL_MS, CASE_PRELUDE, INITIAL, TIMELINE, insertState, startInsertion, type Clock, type InsertState } from "./insert";
+import { CANCEL_MS, INITIAL, OPEN_TIMELINE, TIMELINE, openPlan, openState, insertPlan, type Plan, insertState, startInsertion, type Clock, type InsertState } from "./insert";
 
 /** Horloge manuelle : `advance` fait tourner les images une par une (16 ms). */
 function manualClock() {
@@ -22,7 +22,7 @@ function manualClock() {
   return { clock, advance };
 }
 
-function run(prelude = 0) {
+function run(plan: Plan = insertPlan) {
   const { clock, advance } = manualClock();
   const log = { frames: [] as InsertState[], launched: 0, clicked: 0, done: 0, cancelled: 0 };
   const insertion = startInsertion(
@@ -34,7 +34,7 @@ function run(prelude = 0) {
       cancelled: () => log.cancelled++,
     },
     clock,
-    prelude,
+    plan,
   );
   return { insertion, advance, log };
 }
@@ -76,27 +76,25 @@ describe("insertion", () => {
     expect(log.done).toBe(1);
   });
 
-  describe("avec boîtier", () => {
-    it("ouvre le boîtier, sort la carte, puis insère comme sans boîtier", () => {
-      expect(insertState(0, CASE_PRELUDE)).toEqual(INITIAL);
-      const mid = insertState(CASE_PRELUDE, CASE_PRELUDE);
-      expect(mid).toMatchObject({ lift: 1, slot: 0, descend: 0 });
-      expect(mid.open).toBeCloseTo(1, 5);
-      expect(insertState(TIMELINE.end + CASE_PRELUDE, CASE_PRELUDE)).toMatchObject({ spread: 1, slot: 1, descend: 1, sink: 1, fade: 1, out: 1 });
+  describe("ouverture de la boîte (mode Jaquettes)", () => {
+    it("ouvre, sort la carte, efface la boîte puis fondu, sans console", () => {
+      expect(openState(0)).toEqual(INITIAL);
+      const end = openState(OPEN_TIMELINE.end);
+      expect(end).toMatchObject({ open: 1, lift: 1, out: 1, fade: 1, slot: 0, descend: 0, sink: 0 });
     });
 
-    it("décale le lancement de la durée du prélude", () => {
-      const { advance, log } = run(CASE_PRELUDE);
-      advance(TIMELINE.launch + CASE_PRELUDE - 20);
+    it("lance le jeu une fois, sans clic de cartouche", () => {
+      const { advance, log } = run(openPlan);
+      advance(OPEN_TIMELINE.launch - 20);
       expect(log.launched).toBe(0);
       advance(40);
       expect(log.launched).toBe(1);
-      advance(TIMELINE.end);
-      expect(log).toMatchObject({ launched: 1, clicked: 1, done: 1 });
+      advance(OPEN_TIMELINE.end);
+      expect(log).toMatchObject({ launched: 1, clicked: 0, done: 1 });
     });
 
-    it("annulation pendant l'ouverture : boîtier refermé, carte rangée", () => {
-      const { insertion, advance, log } = run(CASE_PRELUDE);
+    it("annulation pendant l'ouverture : boîte refermée, carte rangée", () => {
+      const { insertion, advance, log } = run(openPlan);
       advance(600);
       expect(insertion.cancel()).toBe(true);
       advance(CANCEL_MS + 40);

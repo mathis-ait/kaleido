@@ -9,9 +9,8 @@
  *   500 → 800 ms   la cartouche s'enfonce ; clic en fin de course
  *   800 → 1100 ms  fondu au noir
  *
- * Jeu DS dans son boîtier : un prélude de `CASE_PRELUDE` ms précède les phases ci-dessus
- * (sauf l'écart des voisines, immédiat) : le couvercle s'ouvre, la carte sort de son
- * logement et vient face à l'écran, le boîtier descend et s'efface.
+ * Mode Jaquettes (`openPlan`) : la boîte s'ouvre, la carte en sort et vient face à
+ * l'écran, la boîte descend et s'efface, puis fondu au noir ; pas de console.
  */
 
 export interface InsertState {
@@ -25,11 +24,11 @@ export interface InsertState {
   sink: number;
   /** Fondu au noir. */
   fade: number;
-  /** Couvercle du boîtier ouvert (peut dépasser 1 : léger rebond). */
+  /** Boîte ouverte (mode Jaquettes ; peut dépasser 1 : léger rebond). */
   open: number;
-  /** Carte sortie du boîtier, face à l'écran. */
+  /** Carte sortie de la boîte, face à l'écran. */
   lift: number;
-  /** Boîtier descendu et effacé. */
+  /** Boîte descendue et effacée. */
   out: number;
 }
 
@@ -46,12 +45,14 @@ export const TIMELINE = {
   end: 1100,
 } as const;
 
-/** Prélude du boîtier (ms). */
-export const CASE_PRELUDE = 950;
-export const CASE_TIMELINE = {
+export const OPEN_TIMELINE = {
+  spread: [0, 200],
   open: [0, 560],
-  lift: [380, 950],
-  out: [700, 1050],
+  lift: [380, 1000],
+  out: [650, 1000],
+  fade: [950, 1250],
+  launch: 950,
+  end: 1250,
 } as const;
 
 /** Durée du retour en place après une annulation. */
@@ -64,20 +65,44 @@ const easeIn = (x: number) => x * x * x;
 const easeOutBack = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 + 2.2 * (x - 1) ** 3 + 1.2 * (x - 1) ** 2);
 const phase = ([a, b]: readonly [number, number], t: number) => clamp01((t - a) / (b - a));
 
-/** État de la séquence au temps `t` (ms depuis le début) ; `prelude` : boîtier à ouvrir d'abord. */
-export function insertState(t: number, prelude = 0): InsertState {
-  const u = t - prelude;
+/** État de la séquence au temps `t` (ms depuis le début). */
+export function insertState(t: number): InsertState {
   return {
     spread: easeInOut(phase(TIMELINE.spread, t)),
-    slot: easeInOut(phase(TIMELINE.slot, u)),
-    descend: easeInOut(phase(TIMELINE.descend, u)),
-    sink: easeIn(phase(TIMELINE.sink, u)),
-    fade: phase(TIMELINE.fade, u),
-    open: prelude ? easeOutBack(phase(CASE_TIMELINE.open, t)) : 0,
-    lift: prelude ? easeInOut(phase(CASE_TIMELINE.lift, t)) : 0,
-    out: prelude ? easeInOut(phase(CASE_TIMELINE.out, t)) : 0,
+    slot: easeInOut(phase(TIMELINE.slot, t)),
+    descend: easeInOut(phase(TIMELINE.descend, t)),
+    sink: easeIn(phase(TIMELINE.sink, t)),
+    fade: phase(TIMELINE.fade, t),
+    open: 0,
+    lift: 0,
+    out: 0,
   };
 }
+
+/** Mode Jaquettes : état de l'ouverture de la boîte au temps `t`. */
+export function openState(t: number): InsertState {
+  return {
+    spread: easeInOut(phase(OPEN_TIMELINE.spread, t)),
+    slot: 0,
+    descend: 0,
+    sink: 0,
+    fade: phase(OPEN_TIMELINE.fade, t),
+    open: easeOutBack(phase(OPEN_TIMELINE.open, t)),
+    lift: easeInOut(phase(OPEN_TIMELINE.lift, t)),
+    out: easeInOut(phase(OPEN_TIMELINE.out, t)),
+  };
+}
+
+/** Une séquence : état à chaque instant, lancement du jeu, clic éventuel, fin. */
+export interface Plan {
+  state(t: number): InsertState;
+  launch: number;
+  click: number | null;
+  end: number;
+}
+
+export const insertPlan: Plan = { state: insertState, launch: TIMELINE.launch, click: TIMELINE.click, end: TIMELINE.end };
+export const openPlan: Plan = { state: openState, launch: OPEN_TIMELINE.launch, click: null, end: OPEN_TIMELINE.end };
 
 const lerpState = (from: InsertState, k: number): InsertState => ({
   spread: from.spread * (1 - k),
@@ -122,7 +147,7 @@ export interface Insertion {
   readonly running: boolean;
 }
 
-export function startInsertion(hooks: InsertHooks, clock: Clock = browserClock, prelude = 0): Insertion {
+export function startInsertion(hooks: InsertHooks, clock: Clock = browserClock, plan: Plan = insertPlan): Insertion {
   const t0 = clock.now();
   let frame = 0;
   let launched = false;
@@ -148,17 +173,17 @@ export function startInsertion(hooks: InsertHooks, clock: Clock = browserClock, 
       return;
     }
     const t = now - t0;
-    state = insertState(t, prelude);
+    state = plan.state(t);
     hooks.frame(state);
-    if (!launched && t >= TIMELINE.launch + prelude) {
+    if (!launched && t >= plan.launch) {
       launched = true;
       hooks.launch();
     }
-    if (!clicked && t >= TIMELINE.click + prelude) {
+    if (!clicked && plan.click !== null && t >= plan.click) {
       clicked = true;
       hooks.click();
     }
-    if (t >= TIMELINE.end + prelude) {
+    if (t >= plan.end) {
       running = false;
       hooks.done();
       return;

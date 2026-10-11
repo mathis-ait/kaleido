@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { launcherScale } from "../presentation";
 /**
- * Mode Cartouche : la scène three.js qui dessine les cartouches du carrousel.
+ * Mode Cartouche : la scène three.js qui dessine les cartouches du carrousel. En mode
+ * Jaquettes (`kind: "boxes"`), elle dessine la boîte de chaque jeu, qui s'ouvre au lancement.
  *
  * Elle ne fait que dessiner : Launcher.vue garde l'état (jeu sélectionné, glisser,
  * inclinaison) et les boutons du carrousel restent dans le DOM, invisibles,
@@ -51,10 +52,12 @@ import { disposeGeometries, supportGeometry } from "./geometry";
 import { forgetLabel, labelTexture } from "./label";
 import { REAL_MODELS, disposeTemplates, instantiate, realTemplate, type RealTemplate } from "./realModels";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { CASE_PRELUDE, INITIAL, insertState, startInsertion, type InsertState, type Insertion } from "./insert";
-import { CASE_SIZE, SEAT, buildCase, dimCase, disposeCaseGeometries, type GameCase } from "./gameCase";
+import { INITIAL, insertPlan, openPlan, startInsertion, type InsertState, type Insertion } from "./insert";
+import { buildBox, disposeBoxGeometries, shadeBox, type GameBox } from "./boxes";
 
 const props = defineProps<{
+  /** Cartouches (insertion dans la console) ou boîtes des jeux (mode Jaquettes). */
+  kind: "cartridges" | "boxes";
   games: Detection[];
   index: number;
   dragShift: number;
@@ -158,35 +161,33 @@ interface Item {
   center: boolean | null;
   /** Échelle de la carte seule (px par mm). */
   cartK: number;
-  /** Boîtier du jeu (cartes DS), ouvert au lancement. */
-  gcase: GameCase | null;
+  /** Boîte du jeu (mode Jaquettes), ouverte au lancement. */
+  box: GameBox | null;
 }
 
-/** Échelle d'un boîtier : tient dans la boîte d'une jaquette, comme une cartouche. */
-const CASE_K = pxPerMm(CASE_SIZE);
-const seatPos = new Vector3();
-const seatQuat = new Quaternion();
+const boxQuat = new Quaternion();
 const freeQuat = new Quaternion();
 const euler = new Euler();
+const seatPos = new Vector3();
+const exitPos = new Vector3();
 
-/** Jeux présentés dans leur boîtier : cartes DS, sauf si Inspecter l'a retiré. */
-function wantsCase(item: Item) {
-  return item.look.support.id === "ds" && props.looks[item.key]?.case !== "none";
-}
-
-function setCase(item: Item, on: boolean) {
-  if (on === !!item.gcase) return;
-  if (item.gcase) {
-    item.group.remove(item.gcase.group);
-    item.gcase.dispose();
-    item.gcase = null;
-  } else {
-    const d = item.game;
-    const base = d.game ? convertFileSrc(`${d.game.id}.png`, "cover") : null;
-    item.gcase = buildCase([coverUrl(d), base], d.title, invalidate);
-    item.group.add(item.gcase.group);
-  }
-  invalidate();
+function attachBox(item: Item) {
+  const d = item.game;
+  // Romhack sans jaquette : celle du jeu de base.
+  const base = d.game && d.platform !== "switch" ? convertFileSrc(`${d.game.id}.png`, "cover") : null;
+  // Scans LaunchBox (`box_art.json`) : jeu pris en charge, ou jeu Switch par title ID.
+  const tid = d.details.find((x) => x.label === "Title ID")?.value.replace(/^0x/i, "").toLowerCase();
+  const key = d.platform === "switch" ? (tid && /^[0-9a-f]{16}$/.test(tid) ? `nx_${tid}` : null) : (d.game?.id ?? null);
+  const scan = (face: string) => (key ? convertFileSrc(`box-${face}-${key}.png`, "cover") : null);
+  item.box = buildBox({
+    support: item.look.support.id,
+    covers: [coverUrl(d), base],
+    scans: { back: scan("back"), spine: scan("spine"), front: d.platform === "switch" ? scan("front") : null },
+    title: d.title,
+    randomized: isKaleidoRom(d),
+    onChange: invalidate,
+  });
+  item.group.add(item.box.group);
 }
 
 let renderer: WebGLRenderer | null = null;
@@ -610,7 +611,7 @@ function createItem(game: Detection, i: number): Item {
     sizePx: [0, 0],
     center: null,
     cartK: 1,
-    gcase: null,
+    box: null,
   };
   const finish = (t: RealTemplate | null) => {
     if (items.get(game.path) !== item) return;
@@ -620,7 +621,7 @@ function createItem(game: Detection, i: number): Item {
     item.center = props.games[props.index]?.path === game.path;
     applyMaterial(item, item.center);
     prepareMaterials(item);
-    setCase(item, wantsCase(item));
+    if (props.kind === "boxes") attachBox(item);
     loadLabel(item);
     invalidate();
   };
@@ -631,7 +632,7 @@ function createItem(game: Detection, i: number): Item {
 
 function disposeItem(item: Item) {
   root.remove(item.group);
-  item.gcase?.dispose();
+  item.box?.dispose();
   // Géométries et textures des modèles réels : partagées, gardées ; seuls les matériaux sont propres.
   for (const m of [...item.shells, ...item.others]) m.dispose();
   item.labelMat.map?.dispose();
@@ -692,7 +693,6 @@ function refreshLooks() {
     item.look = look;
     item.center = props.games[props.index]?.path === item.game.path;
     applyMaterial(item, item.center);
-    if (item.ready) setCase(item, wantsCase(item));
     const sig = lookSig(look);
     const labelChanged = before.split("|").slice(3).join("|") !== sig.split("|").slice(3).join("|");
     if (labelChanged) loadLabel(item);
@@ -866,40 +866,39 @@ function step(now: number): boolean {
     item.group.position.set(x, y, z);
     item.group.rotation.set(0, cur.rot * deg, 0);
     item.group.scale.setScalar(scale);
-    const c = item.gcase;
-    if (c) {
-      // Boîtier : incliné comme la carte centrale ; en s'ouvrant il se pose « sur la table »
-      // et se décale pour rester centré, puis descend et s'efface quand la carte en est sortie.
+    const b = item.box;
+    if (b) {
+      // Boîte : inclinée comme la cartouche centrale ; en s'ouvrant elle se pose (boîtier) ou
+      // se penche (carton), puis descend et s'efface quand la carte en est sortie.
       const open = inserting ? insert.open : 0;
       const lift = inserting ? insert.lift : 0;
       const out = inserting ? insert.out : 0;
       const o1 = Math.min(1, open);
+      const k = pxPerMm(b.size);
       const tilted = isCenter || inserting;
-      c.group.scale.setScalar(CASE_K);
-      c.group.rotation.set((tilted ? tiltNow.x * deg : 0) - 0.38 * o1, tilted ? (tiltNow.y + sway) * deg : 0, 0);
-      c.group.position.set((CASE_SIZE[0] / 2) * CASE_K * o1, -380 * out, 0);
-      c.lid.rotation.y = -Math.PI * open;
-      c.group.visible = out < 0.999;
-      dimCase(c, cur.dim, opacity * (1 - out));
-      // Carte : dans son logement, puis vers sa pose habituelle, face à l'écran.
-      seatQuat.setFromEuler(c.group.rotation);
-      seatPos.copy(SEAT).multiplyScalar(CASE_K).applyQuaternion(seatQuat).add(c.group.position);
+      b.group.scale.setScalar(k);
+      b.group.rotation.set((tilted ? tiltNow.x * deg : 0) + b.openTilt * o1, tilted ? (tiltNow.y + sway) * deg : 0, 0);
+      b.group.position.set(b.openShift * k * o1, -380 * out, 0);
+      b.setOpen(open);
+      b.group.visible = out < 0.999;
+      shadeBox(b, cur.dim, opacity * (1 - out));
+      // Carte : rangée, sortie de la boîte, puis vers sa pose habituelle face à l'écran.
+      boxQuat.setFromEuler(b.group.rotation);
+      seatPos.copy(b.seat).multiplyScalar(k).applyQuaternion(boxQuat).add(b.group.position);
+      exitPos.copy(b.exit).multiplyScalar(k).applyQuaternion(boxQuat).add(b.group.position);
+      const rise = Math.min(1, lift / 0.4);
+      const fly = ease(Math.max(0, (lift - 0.4) / 0.6));
+      item.body.position.lerpVectors(seatPos, exitPos, rise).multiplyScalar(1 - fly);
+      item.body.position.z += Math.sin(Math.PI * fly) * 140;
       freeQuat.setFromEuler(euler.set(rotX, rotY, 0));
-      item.body.position.copy(seatPos).multiplyScalar(1 - lift);
-      item.body.position.z += Math.sin(Math.PI * lift) * 140;
-      item.body.quaternion.slerpQuaternions(seatQuat, freeQuat, lift);
-      item.body.scale.setScalar(CASE_K + (item.cartK - CASE_K) * lift);
+      item.body.quaternion.slerpQuaternions(boxQuat, freeQuat, fly);
+      item.body.scale.setScalar(k + (item.cartK - k) * fly);
       item.body.visible = open > 0.001 || lift > 0;
-    } else {
-      item.body.position.set(0, 0, 0);
-      item.body.scale.setScalar(item.cartK);
-      item.body.rotation.set(rotX, rotY, 0);
-      item.body.visible = true;
-    }
+    } else item.body.rotation.set(rotX, rotY, 0);
     item.group.visible = item.ready && opacity > 0.01;
     for (const m of [...item.shells, ...item.others, item.labelMat]) {
       m.opacity = opacity * ((m.userData.alpha as number | undefined) ?? 1);
-      const planes = inserting ? CLIP : null;
+      const planes = inserting && props.kind === "cartridges" ? CLIP : null;
       if (m.clippingPlanes !== planes) m.clippingPlanes = planes;
     }
     for (const m of [...item.shells, ...item.others]) {
@@ -907,7 +906,7 @@ function step(now: number): boolean {
       if (base) m.color.copy(base).multiplyScalar(cur.dim);
     }
     item.labelMat.color.setScalar(cur.dim);
-    if (item.ready && !item.labelMat.map && opacity > 0.01) waiting = true;
+    if (item.ready && !item.labelMat.map && opacity > 0.01 && item.body.visible) waiting = true;
   }
 
   // Reflet des étiquettes en attente : il défile tant qu'une étiquette charge.
@@ -972,7 +971,7 @@ function startInsert(hooks: { launch(): void; done(): void; cancelled(): void })
   const item = g ? items.get(g.path) : undefined;
   if (!renderer || !item || insertion) return false;
   insertPath = g.path;
-  buildSlot(item.look.support.slot, item.sizePx[0]);
+  if (props.kind === "cartridges") buildSlot(item.look.support.slot, item.sizePx[0]);
   insertion = startInsertion(
     {
       frame: (s) => {
@@ -995,24 +994,19 @@ function startInsert(hooks: { launch(): void; done(): void; cancelled(): void })
       },
     },
     undefined,
-    item.gcase ? CASE_PRELUDE : 0,
+    props.kind === "boxes" ? openPlan : insertPlan,
   );
   return true;
 }
 
-/** Développement : fige la séquence de la carte centrale au temps `t` (ms), sans rien lancer ; `null` remet en place. */
+/** Développement : fige la séquence du jeu central au temps `t` (ms), sans rien lancer ; `null` remet en place. */
 function freeze(t: number | null) {
   const g = props.games[props.index];
   const item = g ? items.get(g.path) : undefined;
   if (!item || insertion) return;
-  if (t === null) {
-    insertPath = null;
-    insert = { ...INITIAL };
-  } else {
-    insertPath = g.path;
-    buildSlot(item.look.support.slot, item.sizePx[0]);
-    insert = insertState(t, item.gcase ? CASE_PRELUDE : 0);
-  }
+  insertPath = t === null ? null : g.path;
+  if (t !== null && props.kind === "cartridges") buildSlot(item.look.support.slot, item.sizePx[0]);
+  insert = t === null ? { ...INITIAL } : (props.kind === "boxes" ? openPlan : insertPlan).state(t);
   invalidate();
 }
 
@@ -1080,7 +1074,7 @@ onUnmounted(() => {
     slot = null;
   }
   disposeGeometries();
-  disposeCaseGeometries();
+  disposeBoxGeometries();
   disposeTemplates();
   for (const t of recolors.values()) t.dispose();
   recolors.clear();

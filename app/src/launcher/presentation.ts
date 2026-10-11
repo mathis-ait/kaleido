@@ -65,6 +65,12 @@ export const cartridgeBlocker = computed(() => {
 
 export const cartridgeMode = computed(() => presentation.wanted === "cartridges" && !cartridgeBlocker.value);
 
+/** La scène 3D a échoué pendant cette session : jaquettes plates. */
+export const sceneFailed = ref(false);
+
+/** Mode Jaquettes en 3D : chaque jeu dans sa boîte (sinon images plates, sans WebGL). */
+export const boxesMode = computed(() => presentation.wanted === "covers" && !cartridgeBlocker.value && !sceneFailed.value);
+
 /**
  * Échelle du lanceur selon la taille de la fenêtre : `ui` pour la barre du haut et la fiche
  * du jeu, `stage` pour le carrousel (jaquettes et cartouches 3D, qui lisent la même valeur).
