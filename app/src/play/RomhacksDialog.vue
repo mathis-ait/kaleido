@@ -30,6 +30,8 @@ interface HackView {
   reference: string | null;
   installedEn: string | null;
   installedFr: string | null;
+  tweaks: string | null;
+  outdated: string[];
 }
 interface Progress {
   id: string;
@@ -97,6 +99,19 @@ async function install(h: HackView) {
   }
 }
 
+async function update(h: HackView) {
+  busy.value = h.id;
+  error.value = null;
+  try {
+    for (const p of h.outdated) await invoke("romhack_update", { path: p });
+    await refresh();
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    busy.value = null;
+  }
+}
+
 function stepText(p: Progress | null) {
   if (!p || p.step === "download") return p?.total ? `Téléchargement du patch… ${formatMo(p.done)} / ${formatMo(p.total)}` : "Téléchargement du patch…";
   return { extract: "Ouverture de l'archive…", patch: "Application du patch…", translate: "Traduction en français…", write: "Écriture de la ROM…" }[p.step];
@@ -133,6 +148,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
             <span class="dim small">par {{ h.author }} · <button class="link" @click="openUrl(h.threadUrl)">fil officiel</button></span>
           </div>
           <p class="summary">{{ h.summary }}</p>
+          <p v-if="h.tweaks" class="dim small tweak"><Icon name="sparkle" :size="13" /> Ajustement Kaleido : {{ h.tweaks }}</p>
+
+          <div v-if="h.outdated.length" class="update">
+            <span>
+              <strong>Mise à jour disponible</strong>
+              <small class="dim">{{ h.tweaks }}. Ta ROM est modifiée sur place : ta sauvegarde est conservée.</small>
+            </span>
+            <button class="btn btn-primary" :disabled="!!busy" @click="update(h)"><Icon name="download" :size="15" /> {{ busy === h.id ? "Mise à jour…" : "Mettre à jour" }}</button>
+          </div>
 
           <div v-if="h.french" class="lang" role="radiogroup" aria-label="Langue">
             <label :class="{ on: lang[h.id] === 'fr' }"><input v-model="lang[h.id]" type="radio" value="fr" :disabled="!!busy" /> Français (traduction Kaleido)</label>
@@ -324,6 +348,29 @@ h3 {
 .notes :deep(svg) {
   flex: none;
   margin-top: 2px;
+}
+
+.tweak {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-hover);
+}
+
+.update span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .foot {

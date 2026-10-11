@@ -9,6 +9,10 @@
 //! - « Toujours » : on neutralise le `bcs`, la fonction répond toujours « chromatique ».
 //!   Attention : les événements qui relancent un tirage tant que le Pokémon est
 //!   chromatique (Pokémon qui ne doivent jamais l'être) peuvent alors boucler.
+//!
+//! Romhacks hg-engine (HGSS) : la fonction du jeu commence par un saut vers le code du
+//! moteur (`ldr r2, [pc] ; bx r2`), qui teste `valeur <= SHINY_ODDS` dans un overlay.
+//! Le test d'origine reste dans l'ARM9 mais n'est plus exécuté.
 
 use kaleido_formats::nds::NdsRom;
 
@@ -60,10 +64,35 @@ pub fn set_threshold(rom: &mut NdsRom, threshold: u16) -> Result<u32, RomError> 
     Ok(65536 / t as u32)
 }
 
+/// Début de la fonction HGSS avant le test : `ldr r2, [pc, #0] ; bx r2` si hg-engine l'a détournée.
+const HOOK_BACK: usize = 0x14;
+const HOOK: [u8; 4] = [0x00, 0x4A, 0x10, 0x47];
+/// Test hg-engine : `movs r2, #N ; movs r0, #0 ; cmp r2, r3 ; adcs r0, r0` (chromatique si valeur <= N).
+const ENGINE_CHECK: [u8; 8] = [0x08, 0x22, 0x00, 0x20, 0x9A, 0x42, 0x40, 0x41];
+
+/// Seuil du test hg-engine, si la fonction du jeu a été détournée vers un overlay.
+fn engine_threshold(rom: &NdsRom, arm9: &[u8], at: usize) -> Result<Option<u16>, RomError> {
+    let Some(start) = at.checked_sub(HOOK_BACK) else { return Ok(None) };
+    if arm9.get(start..start + 4) != Some(&HOOK[..]) {
+        return Ok(None);
+    }
+    let target = u32::from_le_bytes(arm9[start + 4..start + 8].try_into().unwrap()) & !1;
+    let not_found = || RomError::Layout("test chromatique de hg-engine introuvable".into());
+    let ovl = rom.overlays().iter().find(|o| (o.ram_address..o.ram_address + o.ram_size).contains(&target)).ok_or_else(not_found)?;
+    let code = rom.overlay(ovl.id)?;
+    let from = (target - ovl.ram_address) as usize;
+    let window = code.get(from..(from + 0x30).min(code.len())).ok_or_else(not_found)?;
+    let hit = window.windows(ENGINE_CHECK.len()).find(|w| w[1..] == ENGINE_CHECK[1..]).ok_or_else(not_found)?;
+    Ok(Some(hit[0] as u16 + 1))
+}
+
 /// Seuil actuellement utilisé par la ROM (8 = taux normal, [`ALWAYS`] si neutralisé).
 pub fn current_threshold(rom: &NdsRom) -> Result<u16, RomError> {
     let at = locate(rom)?;
     let arm9 = rom.arm9_decompressed()?;
+    if let Some(t) = engine_threshold(rom, &arm9, at)? {
+        return Ok(t);
+    }
     if arm9[at + BRANCH_OFFSET..at + BRANCH_OFFSET + 2] == THUMB_NOP {
         return Ok(ALWAYS);
     }

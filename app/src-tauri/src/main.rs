@@ -555,6 +555,8 @@ fn main() {
             mods::cheats_set,
             romhacks::romhacks_list,
             romhacks::romhack_install,
+            romhacks::romhacks_outdated,
+            romhacks::romhack_update,
             tuning::tune_plan,
             tuning::tune_apply,
             tuning::tune_restore,

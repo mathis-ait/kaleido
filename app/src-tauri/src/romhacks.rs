@@ -36,6 +36,9 @@ pub struct HackView {
     /// ROMs déjà installées (anglais / français).
     installed_en: Option<PathBuf>,
     installed_fr: Option<PathBuf>,
+    /// Ajustements Kaleido (ex. taux de chromatiques) et ROMs installées qui ne les ont pas encore.
+    tweaks: Option<&'static str>,
+    outdated: Vec<PathBuf>,
 }
 
 /// SHA-1 déjà calculés : (chemin, taille, date) → empreinte.
@@ -84,6 +87,8 @@ fn view(def: &'static HackDef, roms: &[PathBuf]) -> HackView {
             p.exists().then_some(p)
         })
     };
+    let (installed_en, installed_fr) = (installed(false), installed(true));
+    let outdated = [&installed_en, &installed_fr].into_iter().flatten().filter(|p| needs_tweaks(def, p)).cloned().collect();
     HackView {
         id: def.id,
         name: def.name,
@@ -97,10 +102,43 @@ fn view(def: &'static HackDef, roms: &[PathBuf]) -> HackView {
         french: t.is_some(),
         reference_label: t.map(|t| t.reference_label),
         reference,
-        installed_en: installed(false),
-        installed_fr: installed(true),
+        installed_en,
+        installed_fr,
+        tweaks: def.tweaks.map(|t| t.label),
+        outdated,
         base,
     }
+}
+
+/// ROM installée par une version précédente de Kaleido, sans les ajustements actuels.
+fn needs_tweaks(def: &HackDef, rom: &Path) -> bool {
+    fs::File::open(rom).ok().is_some_and(|mut f| romhack::tweaks_applied(&mut f, def).is_ok_and(|done| !done))
+}
+
+/// ROMs de romhack de la bibliothèque à mettre à jour (vérification légère, au démarrage).
+#[tauri::command]
+pub async fn romhacks_outdated(roms: Vec<PathBuf>) -> Result<Vec<PathBuf>, String> {
+    crate::blocking(move || {
+        Ok(roms
+            .into_iter()
+            .filter(|p| p.file_name().and_then(|n| romhack::from_file_name(&n.to_string_lossy())).is_some_and(|(def, _)| needs_tweaks(def, p)))
+            .collect())
+    })
+    .await
+}
+
+/// Applique les ajustements Kaleido à une ROM déjà installée, sur place (la sauvegarde
+/// n'est pas touchée).
+#[tauri::command]
+pub async fn romhack_update(path: PathBuf) -> Result<(), String> {
+    crate::blocking(move || {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let (def, _) = romhack::from_file_name(&name).ok_or("ROM de romhack non reconnue")?;
+        let mut f = fs::OpenOptions::new().read(true).write(true).open(&path).map_err(|e| format!("{} : {e}", path.display()))?;
+        romhack::apply_tweaks(&mut f, def).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 /// Romhacks proposés, avec ce qui manque pour les installer. `roms` : jeux de la bibliothèque.
@@ -196,6 +234,8 @@ pub async fn romhack_install(id: String, base: PathBuf, reference: Option<PathBu
             }
             _ => (patched, false),
         };
+        let mut bytes = bytes;
+        romhack::apply_tweaks(&mut std::io::Cursor::new(&mut bytes), def).map_err(|e| e.to_string())?;
 
         emit("write", 0, 1);
         let out = base.with_file_name(romhack::output_name(def, french));

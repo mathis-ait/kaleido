@@ -24,7 +24,14 @@ if (isCompanion) {
 
 // Jeux et émulateurs du PC retrouvés tout seuls, une fois l'interface affichée.
 if (!isCompanion) {
-  setTimeout(() => void import("./games").then((m) => m.autoDiscover()), 800);
+  setTimeout(
+    () =>
+      void import("./games")
+        .then((m) => m.autoDiscover())
+        .then(() => import("./play/romhacks"))
+        .then((m) => m.checkRomhackUpdates()),
+    800,
+  );
   initUpdates();
   void import("./companion/bridge").then((m) => m.initCompanionBridge());
 }
